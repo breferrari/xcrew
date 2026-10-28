@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-10-28
 
 - Until a MobileBuildMCP run's log appears, the band says `waiting to start`, so a pre-build hook or a permission prompt doesn't look like a stalled build. Only tools that have written a log before say it, so `clean` doesn't.
 - The phase is shorter and comes before the target: `build_sim · 1:02 · compiling Utility · MyApp on iPhone 17`. The file being compiled is left out, so a narrow terminal cuts the target, which you already know, not the time or the phase.
