@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.5 — 2026-10-28
 
 - A compacted failing run keeps its skipped tests' lines (`⏭️`) beside the failing ones; 0.6.2 to 0.6.4 left them out with the passing tests, so a skipped test showed only in the count.
 
