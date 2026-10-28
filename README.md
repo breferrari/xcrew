@@ -126,7 +126,6 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 ## Updating and removing
 
 - **Update:** `claude plugin marketplace update breferrari && claude plugin update xcrew@breferrari`, or `mcs sync` with mcs. The CLI rebuilds once for the new version and removes the old build.
-- **Installed before 0.3?** The plugin was `xcrew@xcrew` then. Run `claude plugin uninstall xcrew@xcrew` and `claude plugin marketplace remove xcrew`, then install it again as above.
 - **Remove:** `/plugin uninstall xcrew@breferrari` (or remove the pack with mcs), then, if you like, `rm -rf .mobilebuildmcp` in each project (and its `/.mobilebuildmcp/` line in `.git/info/exclude`), `rm -rf ~/Library/Caches/xcrew`, and `brew uninstall mobilebuildmcp`. To revoke Claude Code's access to Xcode, find its id in `xcrun mcp-server status` and run `sudo xcrun mcp-server deny <id>`; `sudo xcrun mcp-server disable` turns headless mode off.
 
 ## How it works
