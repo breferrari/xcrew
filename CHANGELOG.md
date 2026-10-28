@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.5.2 — 2026-10-28
 
-- The failure pane clears only when the same tool, scheme and test selection passes, since another scheme's pass never re-ran those tests. Clearing also closes the pane, and `/xcrew close` closes it from the prompt, for terminals where its close mark can't be clicked.
+- The failure pane clears only when the same tool, scheme and test selection passes, since another scheme's pass never re-ran those tests. Clearing also closes the pane, and `/xcrew close` closes it from the prompt: in Claude Code's default layout (`"tui": "default"`) its close mark can't be clicked; in the fullscreen layout it can.
 
 ## 0.5.1 — 2026-10-28
 

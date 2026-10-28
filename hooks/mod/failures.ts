@@ -34,7 +34,7 @@ export async function openFailures($: EngineInterface): Promise<string> {
   return `${count} ${count === 1 ? 'failure' : 'failures'} from ${list.tool}, in the pane.`
 }
 
-/** For terminals where the pane's close mark can't be clicked. */
+/** In Claude Code's default layout the pane's close mark can't be clicked; this closes it from the prompt. */
 export async function closeFailures($: EngineInterface): Promise<string> {
   await $.ui.close({ id: FAILURES_PANE })
   return 'Closed the failures pane.'
