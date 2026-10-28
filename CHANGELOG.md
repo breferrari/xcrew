@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.10 — 2026-10-28
 
 - A skipped test reaches Claude with its reason even when MobileBuildMCP leaves it out of its Test Results list, which it can in a run that also crashes or records expected failures: the skipped tests and their reasons now come from the result bundle's test list, in one `xcresulttool` call rather than one per test.
 
