@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-10-28
 
 - `/xcrew failures` opens a pane listing every failing test and compile error of the last failing run, with its message and where it failed. A later passing run of the same tool clears it.
 - When a session starts with something wrong (Xcode MCP not approved, MobileBuildMCP missing, a project still killing macro plugins), the band says so until the first run, with `(+N more)` and where to look. `xcrew doctor --problems` prints only what failed or warned, and nothing outside an Apple-platform project.
