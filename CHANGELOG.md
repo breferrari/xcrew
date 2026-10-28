@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.3 — 2026-10-28
 
 - A failing MobileBuildMCP test run gives each failure its file and line, in the result Claude gets and in the failure pane. Run on parallel simulator clones, xcodebuild logs failures without them, so the mod reads them from the run's result bundle with `xcresulttool`, one quick lookup per failing test.
 
