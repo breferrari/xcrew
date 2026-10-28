@@ -2,9 +2,9 @@
 
 <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/banner.png" alt="Xcrew: a brushed-steel screw with a copper-orange X in its head" width="100%">
 
-### The crew that gets **Claude Code** working with **Xcode**.
+### Your **Xcode** crew inside **Claude Code**.
 
-**One install sets up Apple's Xcode MCP, MobileBuildMCP and Sosumi for your Apple-platform project, shows every build and test live, and hands Claude results it can act on.**
+**Three MCP servers working as one, with live build progress and test reports Claude can act on.**
 
 [![ci](https://img.shields.io/github/actions/workflow/status/breferrari/xcrew/ci.yml?event=pull_request&style=for-the-badge&label=ci&color=3fb950&labelColor=0d1117)](https://github.com/breferrari/xcrew/actions/workflows/ci.yml) [![canary](https://img.shields.io/github/actions/workflow/status/breferrari/xcrew/canary.yml?branch=main&style=for-the-badge&label=canary&color=3fb950&labelColor=0d1117)](https://github.com/breferrari/xcrew/actions/workflows/canary.yml) [![swift](https://img.shields.io/badge/swift-6.2%2B-f85149?style=for-the-badge&logo=swift&logoColor=white&labelColor=0d1117)](Package.swift) [![xcode](https://img.shields.io/badge/xcode-27%2B-39c5cf?style=for-the-badge&logo=xcode&logoColor=white&labelColor=0d1117)](https://developer.apple.com/xcode/) [![macos](https://img.shields.io/badge/macos-26%2B-8b949e?style=for-the-badge&logo=apple&logoColor=white&labelColor=0d1117)](#quick-start)
 
