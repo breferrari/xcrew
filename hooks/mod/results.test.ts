@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import * as captured from './fixtures'
 import { summarize } from './results'
+import { callTool } from './testing'
 
 test('MobileBuildMCP test runs: counts when they pass, the first failing test when they fail', () => {
   expect(summarize('test_sim', captured.mobileTestsPassed)).toEqual({ ok: true, detail: '3 passed' })
@@ -75,9 +76,9 @@ test('the toast carries the outcome and its detail', async ($, on) => {
     return next.isError ? { result: {}, isError: true, text: next.text } : { result: {}, text: next.text }
   })
 
-  await $.tool.call({ tool: 'mcp__xcode__BuildProject' })
-  await $.tool.call({ tool: 'mcp__plugin_xcrew_MobileBuildMCP__test_sim' })
-  await $.tool.call({ tool: 'mcp__xcode__RunAllTests' })
+  await callTool($, 'mcp__xcode__BuildProject')
+  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
+  await callTool($, 'mcp__xcode__RunAllTests')
 
   expect(toasts).toEqual([
     "✗ BuildProject · 0:00 · MacroProbe.swift:13 Cannot convert value of type 'String' to specified type 'Int'",

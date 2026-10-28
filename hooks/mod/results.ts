@@ -57,8 +57,8 @@ function fromXcodeMCP(json: Json): Summary | undefined {
   if (typeof json.buildResult === 'string' && Array.isArray(json.errors)) {
     const errors = (json.errors as { classification?: string; filePath?: string; lineNumber?: number; message?: string }[])
       .filter(error => error.classification !== 'warning')
-    if (errors.length === 0) return { ok: true }
-    const first = errors[0]
+    const [first] = errors
+    if (!first) return { ok: true }
     const where = first.filePath ? `${basename(first.filePath)}:${first.lineNumber ?? '?'} ` : ''
     return { ok: false, detail: `${errors.length > 1 ? `${errors.length} errors · ` : ''}${where}${first.message ?? ''}`.trim() }
   }
@@ -69,14 +69,15 @@ function fromXcodeMCP(json: Json): Summary | undefined {
 function fromMobileBuildMCPText(text: string): Summary | undefined {
   const tests = /❌ (\d+) tests? failed, (\d+) passed, (\d+) skipped/.exec(text)
   if (tests) {
-    const [failed, passed, skipped] = tests.slice(1).map(Number)
+    const [failed = 0, passed = 0, skipped = 0] = tests.slice(1).map(Number)
     const first = /^\s*✗ (.+?) \/ (\S+?)(?:\(\))?: /m.exec(text)
     return { ok: false, detail: `${failed} of ${failed + passed + skipped} failed${first ? ` · ${first[1]}/${first[2]}` : ''}` }
   }
   if (text.startsWith('🧪') && text.includes('❌ Test failed')) return { ok: false, detail: TESTS_DID_NOT_RUN }
   if (text.includes('❌ Build failed')) {
     const first = /^\s*✗ (.+)\n\s*(\/\S+):(\d+)/m.exec(text)
-    return { ok: false, detail: first ? `${basename(first[2])}:${first[3]} ${first[1]}` : undefined }
+    const [, message, path, line] = first ?? []
+    return { ok: false, detail: message && path ? `${basename(path)}:${line} ${message}` : undefined }
   }
   return undefined
 }

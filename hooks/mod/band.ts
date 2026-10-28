@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { On } from 'claude-code'
+import type { EngineInterface, On } from 'claude-code'
 import type { BandRun } from '../../types'
 import { stopwatch } from './format'
 
@@ -10,11 +10,11 @@ const ORANGE = '#ec501d'
 
 export const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
 
-export function startRun($: Parameters<Parameters<On>[2]>[0], run: BandRun): Promise<unknown> {
+export function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
   return update($, runState, () => run)
 }
 
-export function endRun($: Parameters<Parameters<On>[2]>[0], ended: NonNullable<BandRun['ended']>): Promise<unknown> {
+export function endRun($: EngineInterface, ended: NonNullable<BandRun['ended']>): Promise<unknown> {
   return update($, runState, run => (run ? { ...run, ended } : run))
 }
 
@@ -26,14 +26,14 @@ export function segments(run: BandRun, now: number): Segment[] {
   if (!run.ended) {
     return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, ...target, { text: ` · ${stopwatch(now - run.startedAt)}`, color: 'subtle' }]
   }
-  const { ok, elapsed, average, detail } = run.ended
+  const { ok, elapsed, comparison, detail } = run.ended
   return [
     { text: ok ? '✓' : '✗', color: ok ? 'success' : 'error' },
     { text: ' ' },
     { text: run.tool, weight: 'semibold' },
     ...target,
     { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' },
-    ...(average === undefined ? [] : [{ text: ` (avg ${stopwatch(average)})`, color: ORANGE }]),
+    ...(comparison ? [{ text: ` ${comparison}`, color: ORANGE }] : []),
     ...(detail ? [{ text: ` · ${detail}`, color: ok ? 'subtle' : 'error' }] : []),
   ]
 }

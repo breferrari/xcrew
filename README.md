@@ -69,7 +69,7 @@ ok    xcode-mcp/macro-copy-phase       none
 | --- | --- |
 | MCP servers | MobileBuildMCP (started in your project, telemetry off), the Xcode MCP (`xcrun mcpbridge`), Sosumi |
 | Session briefing | The routing rules in [`context/routing.md`](context/routing.md), plus what this project or Mac still lacks; silent outside Apple-platform projects |
-| Mod | Macro-plugin repair with retry, build and test timing, the `XcodeWrite` guard (in generated projects) |
+| Mod | Macro-plugin repair with retry, build and test timing, the `XcodeWrite` guard and a note in its description (in generated projects), the `/xcrew` command |
 | Hooks | The same repair after a failed Xcode MCP build, for sessions where mods don't run |
 | Skills | `/xcrew:setup`, and the `xcrew` reference Claude loads when something fails |
 | CLI | `xcrew setup`, `doctor`, `repair-macros`, `xcode-skills`; on Claude's `PATH` while the plugin is enabled |
@@ -81,9 +81,12 @@ test_sim · MyApp on iPhone 17 · 0:41
 ✓ test_sim · 1:12 (avg 1:05) · 412 passed
 ✗ test_sim · 2:03 (avg 1:58) · 3 of 412 failed · PaymentsTests/testRefund
 ✗ BuildProject · 0:48 · FooView.swift:12 Cannot find 'bar' in scope
+✓ build_sim · 3:40 (2× its usual 1:50)
 ```
 
-A run that takes a minute or more also sends the same line as a notification, through your own Claude Code notification settings.
+A run that takes a minute or more also sends the same line as a notification, through your own Claude Code notification settings. After a macro-plugin repair, the toast also names the projects that will keep killing plugins until Tuist regenerates them.
+
+`/xcrew doctor`, `/xcrew repair` and `/xcrew history` (each tool's usual duration) answer at once, without a turn for Claude.
 
 `xcrew xcode-skills` copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. It copies whatever the installed Xcode has, so run it again after an Xcode update to pick up new ones.
 
@@ -131,6 +134,7 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 Claude Code ──┬── plugin: .mcp.json ─────────── MobileBuildMCP · Xcode MCP · Sosumi
               ├── plugin: hooks/hooks.json ──── SessionStart, PostToolUse(Failure) ─┐
               ├── plugin: mod (TypeScript) ──── tool.call: guard · timing · repair ─┤
+              │                                 tool.describe · /xcrew              │
               └── plugin: skills/ ───────────── setup · xcrew reference             │
                                                                                     ▼
                                          bin/xcrew ── builds once, then runs ── Swift CLI

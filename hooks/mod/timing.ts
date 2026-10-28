@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import { average, stopwatch } from './format'
+import { comparison, stopwatch } from './format'
 import { endRun, startRun } from './band'
 import { describe, observe } from './context'
 import { summarize } from './results'
@@ -7,7 +7,8 @@ import { kindOf, parseTool } from './tools'
 
 /** How many earlier runs of each tool the average covers. */
 const HISTORY = 10
-const historyKey = (tool: string) => `durations.${tool}`
+export const DURATIONS_PREFIX = 'durations.'
+const historyKey = (tool: string) => `${DURATIONS_PREFIX}${tool}`
 /** Runs at least this long also send a notification. */
 const LONG_RUN_MS = 60_000
 
@@ -63,13 +64,10 @@ export function registerTiming(on: On): void {
     const earlier = ((await quietly(() => $.store.get(historyKey(name)))) as number[] | undefined) ?? []
     await quietly(() => $.store.set(historyKey(name), [...earlier, elapsed].slice(-HISTORY)))
     const outcome = result.deny !== undefined ? { ok: false } : summarize(name, { isError: result.isError === true, text: result.text ?? '' })
-    const comparison = earlier.length > 0 ? ` (avg ${stopwatch(average(earlier))})` : ''
+    const compared = comparison(elapsed, earlier)
     const detail = outcome.detail ? ` · ${outcome.detail}` : ''
-    const summary = `${outcome.ok ? '✓' : '✗'} ${name} · ${stopwatch(elapsed)}${comparison}${detail}`
-    if (usesBand) {
-      const averageMs = earlier.length > 0 ? average(earlier) : undefined
-      await quietly(() => endRun($, { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, average: averageMs }))
-    }
+    const summary = `${outcome.ok ? '✓' : '✗'} ${name} · ${stopwatch(elapsed)}${compared ? ` ${compared}` : ''}${detail}`
+    if (usesBand) await quietly(() => endRun($, { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: compared }))
     await quietly(() => $.ui.toast(summary))
     // Long enough that the person has likely looked away; their notification settings decide how it arrives.
     if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summary))

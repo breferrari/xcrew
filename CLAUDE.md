@@ -8,6 +8,7 @@ A Claude Code plugin (with a mod) and an mcs techpack that set up Apple's Xcode 
 swift test                              # all Swift suites
 swift test -Xswiftc -warnings-as-errors # what CI runs
 claude plugin test .                    # the mod's tests
+scripts/typecheck.sh                    # the mod's types, after one `claude --plugin-dir .`; not in CI
 claude plugin validate .
 mcs pack validate .
 ```
@@ -31,8 +32,9 @@ mcs pack validate .
 
 ## The mod
 
-- At most one `tool.call` hook without a matcher (the engine refuses a second); give the others a `{ tool: [...] }` matcher.
-- Match every tool under both registrations: `mcp__plugin_xcrew_<server>__<tool>` and `mcp__<server>__<tool>`.
+- At most one hook per event without a matcher (the engine refuses a second); give the others a matcher.
+- Match every tool under both registrations, `mcp__plugin_xcrew_<server>__<tool>` and `mcp__<server>__<tool>`, with a regular expression from `tools.ts`: a list of names only type-checks for the MCP servers connected on the machine that laid the types.
+- Tests call tools and commands through `hooks/mod/testing.ts` for the same reason.
 - Bookkeeping (clock, store, UI) is best-effort and never fails the tool call it wraps.
 
 ## Tests

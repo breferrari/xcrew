@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- A run far slower than usual says so: `(2× its usual 1:50)` once there are five earlier runs, at 1.5× the average or more.
+- After a macro-plugin repair, the toast names the projects that will keep killing plugins until Tuist 4.203 or later regenerates them.
+- `/xcrew doctor`, `/xcrew repair` and `/xcrew history`, answered by the mod without a turn for Claude.
+- In a generated project, `XcodeWrite`'s description says it's refused there, so Claude reaches for Write first.
+- The mod type-checks under `strict` (`scripts/typecheck.sh`), on any machine's set of MCP servers.
+
 ## 0.1.0 — 2026-10-28
 
 - Plugin with MobileBuildMCP, the Xcode MCP and Sosumi; a session briefing with the routing rules.

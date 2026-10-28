@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import { callTool } from './testing'
 import * as captured from './fixtures'
 
 const BAND = {
@@ -36,7 +37,7 @@ test('while a run is going the band shows it in colour, and the plain status lin
     return { result: {}, text: captured.mobileTestsPassed.text }
   })
 
-  await $.tool.call({ tool: 'mcp__MobileBuildMCP__test_sim' })
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
   expect(drawn).toEqual({ dot: '#ec501d', tool: 'semibold', time: ' · 0:41' })
   expect(statuses.filter(Boolean)).toEqual([])
@@ -54,13 +55,13 @@ test('when it ends the band shows the outcome: success green, failure and its de
     return { result: {}, text: next.text, ...(next.isError ? { isError: true } : {}) }
   })
 
-  await $.tool.call({ tool: 'mcp__MobileBuildMCP__test_sim' })
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
   let ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: '✓' }))?.props.color).toBe('success')
   expect((await ui.find({ type: 'Text', text: / · 3 passed/ }))?.props.color).toBe('subtle')
   await ui.unmount()
 
-  await $.tool.call({ tool: 'mcp__xcode__BuildProject' })
+  await callTool($, 'mcp__xcode__BuildProject')
   ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: '✗' }))?.props.color).toBe('error')
   expect((await ui.find({ type: 'Text', text: /MacroProbe\.swift:13/ }))?.props.color).toBe('error')
@@ -79,7 +80,7 @@ test('the band hides a few minutes after the run ends', async ($, on) => {
   })
   on('tool.call', () => ({ result: {}, text: captured.xcodeBuildPassed.text }))
 
-  await $.tool.call({ tool: 'mcp__xcode__BuildProject' })
+  await callTool($, 'mcp__xcode__BuildProject')
   await clock.advance(4 * 60_000)
 
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -102,7 +103,24 @@ test('where no surface draws bands, the plain status line carries the run', asyn
     return { result: {}, text: 'ok' }
   })
 
-  await $.tool.call({ tool: 'mcp__xcode__BuildProject' })
+  await callTool($, 'mcp__xcode__BuildProject')
 
   expect(statuses).toContain('BuildProject running · 0:03')
+})
+
+test('a run far slower than usual shows it in the band', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on, { 'durations.build_sim': [100_000, 100_000, 100_000, 100_000, 100_000] })
+  inTerminal(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', async () => {
+    await clock.advance(150_000)
+    return { result: {}, text: 'ok' }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: ' (1.5× its usual 1:40)' }))?.props.color).toBe('#ec501d')
+  await ui.unmount()
 })

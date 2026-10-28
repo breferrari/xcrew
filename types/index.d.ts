@@ -4,7 +4,7 @@ export type BandRun = {
   /** `scheme on destination`, as far as it's known. */
   target?: string
   startedAt: number
-  ended?: { at: number; elapsed: number; ok: boolean; detail?: string; average?: number }
+  ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string }
 }
 
 declare module 'claude-code' {

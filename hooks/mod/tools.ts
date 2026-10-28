@@ -16,14 +16,14 @@ export const REPAIRABLE_XCODE_TOOLS = [
   'XcodeRefreshCodeIssuesInFile',
 ] as const
 
-/** A tool's full name under both registrations: this plugin's server, and the person's own. */
-function bothRegistrations(server: string, tools: readonly string[]): string[] {
-  return tools.flatMap(tool => [`mcp__${server}__${tool}`, `mcp__plugin_xcrew_${server}__${tool}`])
+/** Matches a tool's full name under both registrations: this plugin's server, and the person's own. */
+function bothRegistrations(server: string, tools: readonly string[]): RegExp {
+  return new RegExp(`^mcp__(?:plugin_xcrew_)?${server}__(?:${tools.join('|')})$`)
 }
 
-/** Matcher lists: the engine calls a hook only for the tools its matcher names. */
-export const REPAIRABLE_TOOL_NAMES = bothRegistrations('xcode', REPAIRABLE_XCODE_TOOLS)
-export const PROJECT_REWRITER_NAMES = bothRegistrations('xcode', ['XcodeWrite'])
+/** Matchers: the engine calls a hook only for the tools its matcher matches. */
+export const REPAIRABLE_TOOLS = bothRegistrations('xcode', REPAIRABLE_XCODE_TOOLS)
+export const PROJECT_REWRITER = bothRegistrations('xcode', ['XcodeWrite'])
 
 /** `mcp__<server>__<tool>`, where server is `xcode`, `MobileBuildMCP`, or either under this plugin. */
 const MCP_TOOL = /^mcp__(?:plugin_xcrew_)?(xcode|MobileBuildMCP)__(\w+)$/
@@ -34,7 +34,8 @@ export type XcodeTool = { server: 'xcode' | 'MobileBuildMCP'; tool: string }
 
 export function parseTool(name: string): XcodeTool | undefined {
   const match = MCP_TOOL.exec(name)
-  return match ? { server: match[1] as XcodeTool['server'], tool: match[2] } : undefined
+  const [, server, tool] = match ?? []
+  return server && tool ? { server: server as XcodeTool['server'], tool } : undefined
 }
 
 /**

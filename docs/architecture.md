@@ -7,7 +7,7 @@ All behaviour lives in a dependency-free Swift package. Everything else is a thi
 | Entry point | Calls |
 | --- | --- |
 | Plugin hooks (`hooks/hooks.json`) | `bin/xcrew hook session-start`, `bin/xcrew hook repair-macros` |
-| Mod (`hooks/mod/`) | `bin/xcrew repair-macros`, through `$.process.run` |
+| Mod (`hooks/mod/`) | `bin/xcrew repair-macros` and `bin/xcrew doctor`, through `$.process.run` |
 | Skills (`skills/`) | `xcrew setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
 | mcs (`techpack.yaml`) | `mcs/configure.sh` → `xcrew setup`; `mcs/checks/*.sh` → `xcrew doctor --check <id>` |
 
@@ -52,9 +52,11 @@ Everything that touches the machine goes through `Machine` (environment, home fo
 
 `hooks/mod/register.ts` registers three `tool.call` hooks. Hooks on one event run in registration order, each wrapping the next:
 
-1. **guard**: matched on `XcodeWrite`; refuses it when the project root has a Tuist or XcodeGen manifest, and lets it through in a classic project.
-2. **timing**: the one unmatched hook; times calls `tools.ts` classifies as build, test or run, by name pattern so new tools are timed without a change. Its bookkeeping is best-effort and never fails a build.
-3. **repair**: matched on the Xcode tools that build; on "produced malformed response" it runs `xcrew repair-macros` and calls `next` again.
+1. **guard**: matched on `XcodeWrite`; refuses it when the project root has a Tuist or XcodeGen manifest, and lets it through in a classic project. A `tool.describe` hook on the same tool adds that to its description, so Claude reaches for Write first.
+2. **timing**: the one unmatched hook; times calls `tools.ts` classifies as build, test or run, by name pattern so new tools are timed without a change. It keeps the last ten durations per tool in `$.store`, compares each run with them, and calls out one far slower than usual. Its bookkeeping is best-effort and never fails a build.
+3. **repair**: matched on the Xcode tools that build; on "produced malformed response" it runs `xcrew repair-macros`, calls `next` again, and toasts what it repaired and, when the CLI names one, the cause.
+
+Beside those, **band** (`ui.render` on `AbovePrompt`) draws the run that timing records in `$.state`, and **command** registers `/xcrew` at session start and answers it itself: `doctor` and `repair` run the CLI, `history` reads timing's durations.
 
 Every tool name is matched under both registrations: `mcp__plugin_xcrew_<server>__<tool>` from this plugin, and `mcp__<server>__<tool>` when the person registered the server themselves, which Claude Code then prefers.
 
@@ -65,5 +67,5 @@ Every tool name is matched under both registrations: `mcp__plugin_xcrew_<server>
 | A health check | A `Check` in `Sources/XcrewCore/Doctor/Checks/`, listed in `Doctor.checks` | A wrapper in `mcs/checks/` and an entry in `techpack.yaml`; `ManifestTests` fails until both exist |
 | A CLI command | A `Command` in `Sources/XcrewCLI/`, listed in `CLI.commands` | Tests in `XcrewCLITests` |
 | A setup question | An option in `SetupCommand.mcsKeys` | A prompt in `techpack.yaml`; `ManifestTests` fails until it exists |
-| A mod behaviour | A `register…` function in `hooks/mod/`, called from `register.ts` | Tests in `hooks/mod/mod.test.ts`; at most one unmatched hook per event |
+| A mod behaviour | A `register…` function in `hooks/mod/`, called from `register.ts` | Tests in `hooks/mod/`, calling tools through `testing.ts`; at most one unmatched hook per event; `scripts/typecheck.sh` clean |
 | A repairable Xcode tool | Its name in `REPAIRABLE_XCODE_TOOLS` | The same name in the `PostToolUseFailure` matcher; `ManifestTests` fails until it's there |

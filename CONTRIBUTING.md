@@ -11,6 +11,7 @@ git clone https://github.com/breferrari/xcrew && cd xcrew
 swift test
 claude plugin test .
 claude --plugin-dir .   # try your checkout in a real session
+scripts/typecheck.sh    # the mod's types; needs that session once
 ```
 
 ## How changes are made

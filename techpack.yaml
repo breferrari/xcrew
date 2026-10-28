@@ -25,6 +25,7 @@ ignore:
   - context/
   - types/
   - tsconfig.json
+  - scripts/
   # Run by supplementaryDoctorChecks.
   - mcs/checks/
 
