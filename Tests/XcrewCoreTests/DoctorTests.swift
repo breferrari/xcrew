@@ -17,6 +17,26 @@ import XcrewTestSupport
         #expect(Doctor.worst([entry(.warn), entry(.fail), entry(.pass)]) == .fail)
     }
 
+    static let latestRelease = "curl -fsSL --max-time 5 https://api.github.com/repos/breferrari/xcrew/releases/latest"
+
+    @Test func anOlderXcrewIsToldHowToUpdate() async {
+        let runner = FakeRunner(responses: [Self.latestRelease: .init(status: 0, stdout: #"{"tag_name":"v99.0.0","name":"Xcrew 99.0.0"}"#)])
+        let result = await XcrewUpdateCheck().run(.fake(runner))
+        #expect(result.status == .warn)
+        #expect(result.message == "\(XcrewVersion.current) installed, 99.0.0 released: claude plugin update xcrew@breferrari, or turn on auto-update in /plugin → Marketplaces → breferrari")
+    }
+
+    @Test func theLatestXcrewPasses() async {
+        let runner = FakeRunner(responses: [Self.latestRelease: .init(status: 0, stdout: #"{"tag_name":"v\#(XcrewVersion.current)"}"#)])
+        #expect(await XcrewUpdateCheck().run(.fake(runner)) == .pass("\(XcrewVersion.current), the latest release"))
+    }
+
+    @Test func noNetworkIsASkipNotAFailure() async {
+        #expect(await XcrewUpdateCheck().run(.fake()).status == .skip)
+        let garbled = FakeRunner(responses: [Self.latestRelease: .init(status: 0, stdout: "<html>rate limited</html>")])
+        #expect(await XcrewUpdateCheck().run(.fake(garbled)).status == .skip)
+    }
+
     @Test func versionCheck() async {
         let missing = await MobileBuildMCPVersionCheck().run(.fake())
         #expect(missing.status == .fail)

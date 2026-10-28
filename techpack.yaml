@@ -64,6 +64,11 @@ supplementaryDoctorChecks:
     command: mcs/checks/mobilebuildmcp--version.sh
     fixCommand: "brew upgrade getsentry/xcodebuildmcp/mobilebuildmcp"
   - type: shellScript
+    name: Xcrew is the latest release
+    section: xcrew
+    command: mcs/checks/xcrew--up-to-date.sh
+    fixCommand: "claude plugin update xcrew@breferrari"
+  - type: shellScript
     name: No old xcodebuildmcp on PATH
     section: xcrew
     command: mcs/checks/mobilebuildmcp--no-legacy-binary.sh

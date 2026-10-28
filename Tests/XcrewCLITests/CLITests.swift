@@ -113,6 +113,17 @@ import XcrewTestSupport
         #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
     }
 
+    @Test func problemsLeavesOutChecksThatReachTheNetwork() async {
+        // It runs at every session start; a session shouldn't call GitHub it didn't ask to.
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let latest = "curl -fsSL --max-time 5 https://api.github.com/repos/breferrari/xcrew/releases/latest"
+        let runner = FakeRunner(responses: [latest: .init(status: 0, stdout: #"{"tag_name":"v99.0.0"}"#)])
+        let run = await Run("doctor", "--problems", context: .fake(runner, project: project))
+        #expect(!run.output.contains { $0.contains("xcrew/up-to-date") })
+        let full = await Run("doctor", context: .fake(runner, project: project))
+        #expect(full.output.contains { $0.hasPrefix("warn  xcrew/up-to-date") })
+    }
+
     @Test func problemsIsSilentOutsideApplePlatformProjects() async {
         let run = await Run("doctor", "--problems")
         #expect(run.status == 0)

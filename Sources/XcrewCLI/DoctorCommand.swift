@@ -25,7 +25,9 @@ struct DoctorCommand: Command {
         // The mod shows these at session start; outside an Apple project every project check would fail.
         let onlyProblems = invocation.arguments.has("problems")
         if onlyProblems, !invocation.context.project.isApplePlatformProject { return 0 }
-        let entries = await Doctor.run(in: invocation.context)
+        // It runs at every session start, so it leaves out checks that call the network.
+        let checks = Doctor.checks.filter { !onlyProblems || !$0.reachesNetwork }
+        let entries = await Doctor.run(checks, in: invocation.context)
             .filter { !onlyProblems || $0.result.status == .fail || $0.result.status == .warn }
         let width = entries.map(\.check.id.count).max() ?? 0
         for entry in entries {

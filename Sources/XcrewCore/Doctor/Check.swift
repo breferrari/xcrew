@@ -60,5 +60,11 @@ public protocol Check: Sendable {
     /// `<area>/<name>`. Stable: mcs and scripts address a check by it.
     var id: String { get }
     var title: String { get }
+    /// Whether it calls out to the network, which the session-start `doctor --problems` leaves out.
+    var reachesNetwork: Bool { get }
     func run(_ context: CheckContext) async -> CheckResult
+}
+
+extension Check {
+    public var reachesNetwork: Bool { false }
 }

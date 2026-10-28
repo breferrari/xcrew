@@ -11,6 +11,7 @@ public enum Doctor {
         UnsignedAgentsCheck(),
         MacroPluginsCheck(),
         MacroCopyPhaseCheck(),
+        XcrewUpdateCheck(),
     ]
 
     public static func check(id: String) -> (any Check)? {
