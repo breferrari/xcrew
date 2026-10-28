@@ -5,7 +5,7 @@
     {
       "name": "xcrew",
       "source": "./",
-      "description": "Xcode MCP + MobileBuildMCP + Sosumi for iOS projects in Claude Code"
+      "description": "Xcode, simulators and Apple docs for Claude Code, set up in one command."
     }
   ]
 }

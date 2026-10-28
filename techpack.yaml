@@ -1,7 +1,8 @@
 schemaVersion: 1
 identifier: xcrew
 displayName: Xcrew
-description: Apple's Xcode MCP, Sentry's MobileBuildMCP and Sosumi set up to work together in an iOS project
+description: Xcode, simulators and Apple docs for Claude Code, set up in one command.
+author: Brenno Ferrari
 minMCSVersion: "2026.10.25"
 
 # The Claude Code plugin carries the servers, hooks, skills and mod; this pack installs it with

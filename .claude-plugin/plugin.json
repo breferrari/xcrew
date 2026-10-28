@@ -2,7 +2,7 @@
   "name": "xcrew",
   "displayName": "Xcrew",
   "version": "0.1.0",
-  "description": "Apple's Xcode MCP, Sentry's MobileBuildMCP and Sosumi set up to work together for iOS projects, with build timing, macro-plugin repair and a guard against project-file rewrites",
+  "description": "Xcode, simulators and Apple docs for Claude Code, set up in one command.",
   "author": {
     "name": "Brenno Ferrari",
     "url": "https://github.com/breferrari"
