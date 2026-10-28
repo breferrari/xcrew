@@ -12,45 +12,110 @@
 
 ---
 
-Each of the three servers is good at something different, and side by side they overlap, misroute and bury Claude in output. Xcrew makes them one setup:
+Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and MobileBuildMCP, and read Apple's docs through Sosumi. On their own, the three overlap, misroute and bury Claude in output. **Xcrew turns them into one setup, and adds what none of them has.**
 
-- **The right server for each job.** Every session in an Apple-platform project starts knowing which server builds and tests, which compiles one file or renders a preview, which knows the docs, and which tool never to touch.
-- **Builds and tests you can watch.** A line above the prompt shows the run as it goes: elapsed time, a gauge against how long that scheme usually takes, and the phase (`compiling Payments`, `testing 431 of 959`). When it ends, the same line gives the outcome against recent runs, and a long run sends a notification.
-- **Test results Claude can act on.** A 959-test run's result shrinks from about 122,000 characters to about 1,000: the failures, each with its `file:line`; a crash's exception and top frames; why each test was skipped; the expected failures the counts leave out; and a warning when a filter matched no tests. A compile error is counted once.
-- **The last failures in a pane.** `/xcrew failures` lists every failing test and compile error of the last failing run, beside the chat.
-- **A guard for generated projects.** In a Tuist or XcodeGen project, the Xcode MCP's `XcodeWrite` re-saves the whole generated `.pbxproj`; Xcrew refuses it there and points Claude at its own Write tool.
-- **Setup and doctor.** `/xcrew:setup` writes MobileBuildMCP's per-project profiles from your schemes and installed simulators. `xcrew doctor` checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
+| | On their own | With Xcrew |
+| --- | --- | --- |
+| **Setup** | Three servers to install and register; Claude can pick the wrong one | One install; every session knows which server does what |
+| **A build or test run** | A spinner until it ends | [Live progress](#builds-and-tests-you-can-watch): time, a gauge against the usual, the phase |
+| **A failing 961-test run** | ~80,000 characters, cut short by Claude Code | [~1,000 characters](#test-results-claude-can-act-on): the failures and the summary |
+| **Where a test failed** | Not reported on parallel simulators | The file's absolute path and line |
+| **A crash** | The test's name | The exception and the crashed thread's top frames |
+| **A skipped test** | Counted | Named, with its reason |
+| **A filter that matched nothing** | `SUCCEEDED`, 0 tests | Flagged to you and to Claude |
+| **Last run's failures** | Scrolled past in the transcript | [In a pane](#the-last-failures-beside-the-chat), one command away |
+| **`XcodeWrite` in a Tuist or XcodeGen project** | Re-saves the whole generated `.pbxproj` | [Refused](#a-guard-for-generated-projects); Claude writes the file itself |
+| **Something misconfigured** | Trial and error | [`xcrew doctor`](#setup-and-doctor) prints the fix |
+
+Works in any Apple-platform project: plain Xcode, Tuist or XcodeGen. [Install it in two minutes ↓](#quick-start)
 
 ## Quick start
 
 You need macOS 26 or later, Xcode 27 or later, [Homebrew](https://brew.sh) and [Claude Code](https://claude.com/claude-code).
 
-**As a Claude Code plugin**, in a terminal, from your project:
+1. **Install the plugin** in your project. Use project or local scope, since its servers are only useful in Apple-platform projects:
 
-```sh
-claude plugin marketplace add breferrari/xcrew
-claude plugin install xcrew@breferrari --scope project   # or --scope local: this project, only you
-```
+   ```sh
+   claude plugin marketplace add breferrari/xcrew
+   claude plugin install xcrew@breferrari --scope project   # or --scope local: this project, only you
+   ```
 
-Install it per project, not for your whole user: its servers and tools are only useful in Apple-platform projects, and at user scope they'd start in every session.
+2. **Prepare the Mac**, once:
 
-Then once per Mac, in a terminal:
+   ```sh
+   brew install getsentry/xcodebuildmcp/mobilebuildmcp
+   sudo xcrun mcp-server enable
+   ```
 
-```sh
-brew install getsentry/xcodebuildmcp/mobilebuildmcp
-sudo xcrun mcp-server enable
-```
+3. **Restart Claude Code** in your project and run `/xcrew:setup`. The first run builds Xcrew's small Swift CLI, about ten seconds, once per version.
 
-Restart Claude Code in your project and run `/xcrew:setup`. The first call builds Xcrew's small Swift CLI, about ten seconds, once per version.
+4. **Approve Claude Code in Xcode's dialog** the first time Claude calls the Xcode MCP.
 
-**With [mcs](https://github.com/mcs-cli/mcs)**, which installs the Homebrew package and the plugin together and asks the setup questions:
+With [mcs](https://github.com/mcs-cli/mcs), `mcs pack add breferrari/xcrew && mcs sync` does steps 1 to 3 and asks the setup questions.
 
-```sh
-mcs pack add breferrari/xcrew
-mcs sync
-```
+## What you get
 
-Either way, the last step is approving Claude Code in Xcode's dialog the first time Claude calls the Xcode MCP. `xcrew doctor` tells you when anything is still missing:
+### Builds and tests you can watch
+
+A line above the prompt follows every build and test:
+
+- **While it runs:** elapsed time, a gauge against how long that scheme and test selection usually take, and the phase (`compiling Payments`, `testing 431 of 959`).
+- **When it ends:** the outcome, compared with recent runs, and what failed.
+- **A run of a minute or more** also sends a notification.
+- **Where the line can't draw**, such as VS Code, the status line counts and a toast reports the outcome.
+
+<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
+
+### Test results Claude can act on
+
+A MobileBuildMCP test result can run past 100,000 characters, mostly passing tests. Claude gets the short version:
+
+- **Failures**, each with its file and line, read from the run's result bundle, since xcodebuild logs none for tests on parallel simulators.
+- **A crash's exception and top frames**, from the crash log the result bundle attaches.
+- **Skipped tests with their reasons**, and **expected failures** that MobileBuildMCP's counts leave out.
+- **A warning when a filter matched no tests**, which MobileBuildMCP reports as a success.
+- **Compile errors counted once.**
+- **Passing tests left out**, with the full list a file read away.
+
+<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
+
+### The last failures beside the chat
+
+| Command | What it does |
+| --- | --- |
+| `/xcrew failures` | Opens a pane with every failing test and compile error of the last failing run |
+| `/xcrew close` | Closes it |
+| `/xcrew history` | Each tool's usual duration, per scheme and test selection |
+| `/xcrew doctor` | The doctor's report, below |
+
+They answer at once, without a turn for Claude.
+
+<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
+
+### The right server for each job
+
+Every session in an Apple-platform project starts with this routing, plus anything the project or Mac still lacks:
+
+| Job | Server | Why |
+| --- | --- | --- |
+| Build, test, coverage, simulators, UI automation, LLDB | MobileBuildMCP | Runs `xcodebuild` with its own DerivedData, so it never fights Xcode's; switchable profiles; test filtering |
+| One file's compile errors, SwiftUI previews, code snippets, crash logs, physical devices | Xcode MCP | Uses Xcode's real build settings, which a plain language server can't read in an Xcode project |
+| Apple documentation | Sosumi | Short results with each API's minimum OS version |
+| Writing files | Claude's own tools | `XcodeWrite` rewrites the whole project file; refused in generated projects |
+
+[docs/findings.md](docs/findings.md) has the evidence behind each choice, and what was tried and rejected.
+
+### A guard for generated projects
+
+- **In a Tuist or XcodeGen project:** the Xcode MCP's `XcodeWrite` re-saves the whole generated `.pbxproj`, so Xcrew refuses it and points Claude at its own Write tool.
+- **In a classic Xcode project:** it stays allowed, since that's how a new file joins its target.
+
+### Setup and doctor
+
+- **`/xcrew:setup`** writes MobileBuildMCP's per-project profiles from your schemes and installed simulators.
+- **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
+- **At session start**, anything wrong shows in the line above the prompt until the first run.
+- **`xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
 
 ```
 ok    mobilebuildmcp/version           version 2.7.1
@@ -64,7 +129,9 @@ ok    xcode-mcp/macro-copy-phase       none
 ok    xcrew/up-to-date                 0.7.0, the latest release
 ```
 
-## What you get
+## How it works
+
+<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png" alt="Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
 
 | Piece | What it does |
 | --- | --- |
@@ -74,41 +141,21 @@ ok    xcrew/up-to-date                 0.7.0, the latest release
 | Skills | `/xcrew:setup`, and `xcrew:reference`, which Claude loads when something fails (it isn't in the `/` menu) |
 | CLI | `xcrew setup`, `doctor`, `xcode-skills`; on Claude's `PATH` while the plugin is enabled |
 
-While a build or test runs, a coloured line above the prompt counts it and names the scheme and simulator it's using. When it ends, the same line says how it went, how it compares with recent runs of the same tool, and what failed. Where that line can't draw, such as VS Code, the status line counts and a toast reports the outcome:
+- **One implementation.** All logic lives in one dependency-free Swift package; the plugin, the mod and mcs call its CLI.
+- **No drift.** `Tests/ManifestTests` fails when an install path disagrees with the CLI.
+- **More:** [docs/architecture.md](docs/architecture.md) walks through the layout.
 
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
+## Reference
 
-What Claude reads from a MobileBuildMCP test run is the short version. A failing run keeps its failures and skipped tests and leaves the passing ones out. The location of each failure, a crash's frames and each skip's reason come from the run's result bundle, since xcodebuild logs none of them for tests on parallel simulators. A passing run's per-test list stays in the file Claude Code saved, a read away:
+### Configuration
 
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
+- **Profiles:** `.mobilebuildmcp/config.yaml` holds a `unit` profile, plus `ui` and `app` when you name those schemes.
+  - Rerun `/xcrew:setup` or `xcrew setup` to change them.
+  - A config Xcrew didn't write is left alone, unless you pass `--force`, which keeps a backup.
+  - It holds this Mac's absolute paths, so setup keeps it out of git through `.git/info/exclude`.
+- **Your own server entries:** Claude Code prefers your `xcode` and `MobileBuildMCP` entries over the plugin's. Remove yours with `claude mcp remove <name>`, or keep them: the mod works with either.
 
-A run that takes a minute or more also sends its outcome as a notification, through your own Claude Code notification settings.
-
-`/xcrew doctor`, `/xcrew history` (each tool's usual duration, per scheme and test selection), `/xcrew failures` (a pane listing every failure of the last failing run; `/xcrew close` closes it) answer at once, without a turn for Claude. When a session starts with something wrong, such as Claude Code not yet approved in Xcode, the band says so until the first run.
-
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
-
-`xcrew xcode-skills` copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. It copies whatever the installed Xcode has, so run it again after an Xcode update to pick up new ones.
-
-## Which server does what
-
-The short version Claude gets at session start:
-
-| Job | Server | Why |
-| --- | --- | --- |
-| Build, test, coverage, simulators, UI automation, LLDB | MobileBuildMCP | Runs `xcodebuild` with its own DerivedData, so it never fights Xcode's; switchable profiles; test filtering |
-| One file's compile errors, SwiftUI previews, code snippets, crash logs, physical devices | Xcode MCP | Uses Xcode's real build settings, which a plain language server can't read in an Xcode project |
-| Apple documentation | Sosumi | Short results with each API's minimum OS version |
-| Writing files | Claude's own tools | `XcodeWrite` rewrites the whole project file; refused in generated projects |
-
-[docs/findings.md](docs/findings.md) has the evidence behind each choice, and what was tried and rejected.
-
-## Configuration
-
-- **Profiles.** `.mobilebuildmcp/config.yaml` holds a `unit` profile, plus `ui` and `app` when you name those schemes. Rerun `/xcrew:setup` or `xcrew setup` to change them. A config Xcrew didn't write is left alone unless you pass `--force`, which keeps a backup. The config holds this Mac's absolute paths, so setup keeps it out of git through `.git/info/exclude`, which isn't committed either.
-- **Already registered the servers yourself?** Claude Code prefers your own `xcode` and `MobileBuildMCP` entries over the plugin's. Remove yours (`claude mcp remove <name>`) to use Xcrew's, or keep them: the mod works with either.
-
-## Troubleshooting
+### Troubleshooting
 
 Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 
@@ -117,22 +164,37 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 | Every Xcode MCP call fails with "not approved" | Xcode asks once per agent | Have Claude call `XcodeOpenWorkspace`; allow it in Xcode's dialog |
 | MobileBuildMCP has only simulator tools | No `.mobilebuildmcp/config.yaml` in the project | `/xcrew:setup`, then restart Claude Code |
 | `No such module 'UIKit'` from SourceKit | Claude Code's language server can't read Xcode projects | Ignore it; the Xcode MCP's diagnostics are the real ones |
-| A build fails with "produced malformed response" | Usually a macro plugin macOS killed: Tuist before 4.203 generated a phase that overwrites plugins in place, and `xcrew doctor` names the projects that have it. Otherwise a toolchain mismatch or stale prebuilt macros | Upgrade Tuist to 4.203 or later and regenerate; until then, clean the build folder and rebuild. Check `xcode-select -p` points at the Xcode you build with |
+| A build fails with "produced malformed response" | Usually a macro plugin macOS killed. Tuist before 4.203 generated a phase that overwrites plugins in place; `xcrew doctor` names the projects | Upgrade Tuist to 4.203 or later and regenerate. Until then, clean the build folder and rebuild |
 | A session starts with an `xcrew: building the CLI` error | The Swift toolchain is older than 6.2, or Xcode's command-line tools aren't selected | `xcode-select -p` should point into Xcode 27; `sudo xcode-select -s /Applications/Xcode.app` |
 | `project-config` warns the config points at a missing workspace | The project moved or the workspace was renamed | `/xcrew:setup` |
 
-## Updating and removing
+### Updating and removing
 
-- **Update:** Claude Code doesn't update plugins from a marketplace like this one until you turn it on: `/plugin` → **Marketplaces** → `breferrari` → **Enable auto-update**, and new releases install in the background. Otherwise, `claude plugin marketplace update breferrari && claude plugin update xcrew@breferrari`, or `mcs sync` with mcs. `xcrew doctor` says when a newer release is out. The CLI rebuilds once for the new version and removes the old build.
-- **Remove:** `/plugin uninstall xcrew@breferrari` (or remove the pack with mcs), then, if you like, `rm -rf .mobilebuildmcp` in each project (and its `/.mobilebuildmcp/` line in `.git/info/exclude`), `rm -rf ~/Library/Caches/xcrew`, and `brew uninstall mobilebuildmcp`. To revoke Claude Code's access to Xcode, find its id in `xcrun mcp-server status` and run `sudo xcrun mcp-server deny <id>`; `sudo xcrun mcp-server disable` turns headless mode off.
+**Updating**
 
-## How it works
+- **Automatically:** `/plugin` → **Marketplaces** → `breferrari` → **Enable auto-update**. Claude Code leaves it off for marketplaces like this one.
+- **By hand:** `claude plugin marketplace update breferrari && claude plugin update xcrew@breferrari`, or `mcs sync`.
+- `xcrew doctor` says when a newer release is out. The CLI rebuilds once for the new version.
 
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png" alt="Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
+**Removing**
 
-All logic lives in one dependency-free Swift package. The plugin, the hooks, the mod and mcs call that CLI, so there is one implementation, and `Tests/ManifestTests` fails when an install path drifts from it. [docs/architecture.md](docs/architecture.md) walks through the layout.
+1. `/plugin uninstall xcrew@breferrari`, or remove the pack with mcs.
+2. Optionally, `rm -rf .mobilebuildmcp` in each project (and its line in `.git/info/exclude`), `rm -rf ~/Library/Caches/xcrew`, and `brew uninstall mobilebuildmcp`.
+3. To revoke Claude Code's access to Xcode: find its id in `xcrun mcp-server status`, then `sudo xcrun mcp-server deny <id>`. `sudo xcrun mcp-server disable` turns headless mode off.
 
-## Development
+### What it runs and reaches
+
+| | |
+| --- | --- |
+| **Builds** | Xcrew's CLI, from this repository's Swift source, into `~/Library/Caches/xcrew`, on first use |
+| **Starts** | Three MCP servers: Apple's `xcrun mcpbridge`, the Homebrew `mobilebuildmcp`, and Sosumi over HTTPS |
+| **Reads** | MobileBuildMCP's run logs, and a failing or skipped test run's result bundle, with `xcrun xcresulttool` |
+| **Sends** | One request: `xcrew doctor`'s check for a newer release, against GitHub's API. No telemetry; MobileBuildMCP's is turned off |
+| **Never** | Runs anything with `sudo`. The one `sudo` command, in *Quick start*, is yours to run |
+
+Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
+
+### Development
 
 ```sh
 swift test                     # CLI, core, shim and manifest-parity tests
@@ -142,12 +204,7 @@ mcs pack validate .            # when mcs is installed
 claude --plugin-dir .          # try your checkout in a session
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers the conventions, and how to add a check, a command or a mod behaviour.
-
-## What it runs and reaches
-
-- **On your Mac.** The first session builds Xcrew's command-line tool from this repository's Swift source with `swift build`, into `~/Library/Caches/xcrew`. The plugin starts three MCP servers: Apple's `xcrun mcpbridge`, the Homebrew `mobilebuildmcp`, and Sosumi over HTTPS. The mod reads MobileBuildMCP's run logs and runs `xcrun xcresulttool` on a failing or skipped test run's result bundle. Nothing runs with `sudo`: the one `sudo` command, enabling Xcode's MCP server, is yours to run in *Quick start*.
-- **Over the network.** Xcrew has no telemetry, and it turns MobileBuildMCP's off. Its one request is `xcrew doctor`'s check for a newer release: a GET to GitHub's API for this repository's latest release, which the session-start check leaves out. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the conventions and how to add a check, a command or a mod behaviour.
 
 ## License
 
