@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The doctor's `macro-copy-phase` warning names the installed Tuist and says whether the fix is to upgrade it or only to regenerate the project.
+- The hook spinners read `Preparing Xcode tooling` and `Checking Xcode macro plugins`, without an `xcrew:` prefix.
+
 ## 0.6.1 — 2026-10-28
 
 - A large test result now does reach Claude as its summary: 0.6.0 replaced the result's text but kept the reference to Claude Code's own messages, which Claude Code then showed instead. The mod now answers with its own result.
