@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 — 2026-10-28
 
 - A large test result now does reach Claude as its summary: 0.6.0 replaced the result's text but kept the reference to Claude Code's own messages, which Claude Code then showed instead. The mod now answers with its own result.
 - A MobileBuildMCP run's gauge starts when its log appears, so a pre-build hook's wait no longer shows a normal run as over its usual time. Until then the band says `preparing`.
