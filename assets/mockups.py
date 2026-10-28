@@ -64,23 +64,16 @@ class Canvas:
 
 
 def backdrop(c, width, height):
-    """The banner's gradient, hairline frame and orange corner brackets."""
-    c.add('<defs><radialGradient id="glow" cx="0.22" cy="0.4" r="0.8"><stop offset="0" stop-color="#151a22"/><stop offset="1" stop-color="#0c0f13"/></radialGradient>'
-          '<filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="10"/>'
-          '<feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
+    """Shared definitions. The background stays transparent, so the image sits on GitHub's own page colour."""
+    c.add('<defs><filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur in="SourceAlpha" stdDeviation="10"/><feOffset dy="6"/>'
+          '<feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
           '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#6e7681"/></marker></defs>')
-    c.add(f'<rect width="{width}" height="{height}" fill="url(#glow)"/>')
-    c.add(f'<rect x="2.5" y="2.5" width="{width - 5}" height="{height - 5}" fill="none" stroke="{C["orange"]}" stroke-opacity="0.35" stroke-width="1"/>')
-    k, e = 26, 3.5
-    c.add(f'<g fill="none" stroke="{C["orange"]}" stroke-width="3" stroke-linecap="square">'
-          f'<path d="M{e} {k} V{e} H{k}"/><path d="M{width - k} {e} H{width - e} V{k}"/>'
-          f'<path d="M{e} {height - k} V{height - e} H{k}"/><path d="M{width - k} {height - e} H{width - e} V{height - k}"/></g>')
 
 
 def frame(width, height, title):
     c = Canvas(width, height)
     backdrop(c, width, height)
-    x0, y0, w, h = 48, 40, width - 96, height - 80
+    x0, y0, w, h = 16, 12, width - 32, height - 36
     c.add(f'<g filter="url(#shadow)"><rect x="{x0}" y="{y0}" width="{w}" height="{h}" rx="8" fill="{C["term"]}" stroke="{C["border"]}"/></g>')
     c.add(f'<path d="M{x0 + 0.5} {y0 + 38} v-30 a7.5 7.5 0 0 1 7.5 -7.5 h{w - 16} a7.5 7.5 0 0 1 7.5 7.5 v30 z" fill="{C["bar"]}"/>')
     c.add(f'<line x1="{x0}" y1="{y0 + 38}" x2="{x0 + w}" y2="{y0 + 38}" stroke="{C["border"]}"/>')
@@ -96,7 +89,7 @@ def prompt_box(c, x, y, width):
 
 
 def band():
-    c, x, y = frame(1280, 700, "claude — ~/Developer/MyApp")
+    c, x, y = frame(1280, 650, "claude — ~/Developer/MyApp")
     rows = [
         ("WHILE IT RUNS", [("●", "orange"), (" ", "text"), ("test_sim", "text", "600"), (" · 0:41", "subtle"), (" ", "text"),
                            ("@gauge", 8, 6.5, "success"), (" ~0:04 left", "subtle"), (" · testing 431 of 959", "subtle"), (" · MyApp on iPhone 17", "subtle")]),
@@ -115,7 +108,7 @@ def band():
 
 
 def result():
-    c, x, y = frame(1280, 720, "claude — ~/Developer/MyApp")
+    c, x, y = frame(1280, 650, "claude — ~/Developer/MyApp")
     c.run(x, y, [("⏺", "success"), (" ", "text"), ("MobileBuildMCP - test_sim", "text", "600"), (" (MCP)", "subtle")])
     y += LH
     ind = x + 3 * CW
