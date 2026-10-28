@@ -20,8 +20,8 @@
   <text x="88" y="386" font-family="Helvetica Neue" font-weight="bold" font-size="116" letter-spacing="-2" fill="#f3f4f6">Xcrew</text>
   <line x1="92" y1="424" x2="212" y2="424" stroke="#ec501d" stroke-width="2.5"/>
   <g font-family="Helvetica Neue" font-weight="500" font-size="27" letter-spacing="6" fill="#a9afb9">
-    <text x="92" y="478">XCODE TOOLING</text>
-    <text x="92" y="518">FOR CLAUDE CODE</text>
+    <text x="92" y="478">YOUR XCODE CREW</text>
+    <text x="92" y="518">INSIDE CLAUDE CODE</text>
   </g>
 
   <!-- An Xcode-like editor, drawn rather than captured, coming in from the right. -->

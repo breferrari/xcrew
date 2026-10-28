@@ -14,6 +14,8 @@
 
 Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and MobileBuildMCP, and read Apple's docs through Sosumi. On their own, the three overlap, misroute and bury Claude in output. **Xcrew turns them into one setup, and adds what none of them has.**
 
+<img src="assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
+
 | | On their own | With Xcrew |
 | --- | --- | --- |
 | **Setup** | Three servers to install and register; Claude can pick the wrong one | One install; every session knows which server does what |
@@ -21,11 +23,7 @@ Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and
 | **A failing 961-test run** | ~80,000 characters, cut short by Claude Code | [~1,000 characters](#test-results-claude-can-act-on): the failures and the summary |
 | **Where a test failed** | Not reported on parallel simulators | The file's absolute path and line |
 | **A crash** | The test's name | The exception and the crashed thread's top frames |
-| **A skipped test** | Counted | Named, with its reason |
-| **A filter that matched nothing** | `SUCCEEDED`, 0 tests | Flagged to you and to Claude |
-| **Last run's failures** | Scrolled past in the transcript | [In a pane](#the-last-failures-beside-the-chat), one command away |
 | **`XcodeWrite` in a Tuist or XcodeGen project** | Re-saves the whole generated `.pbxproj` | [Refused](#a-guard-for-generated-projects); Claude writes the file itself |
-| **Something misconfigured** | Trial and error | [`xcrew doctor`](#setup-and-doctor) prints the fix |
 
 Works in any Apple-platform project: plain Xcode, Tuist or XcodeGen. [Install it in two minutes ↓](#quick-start)
 
@@ -64,7 +62,7 @@ A line above the prompt follows every build and test:
 - **A run of a minute or more** also sends a notification.
 - **Where the line can't draw**, such as VS Code, the status line counts and a toast reports the outcome.
 
-<img src="assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
+The [image at the top](#readme) shows all four states.
 
 ### Test results Claude can act on
 

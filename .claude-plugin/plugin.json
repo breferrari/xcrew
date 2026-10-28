@@ -1,7 +1,7 @@
 {
   "name": "xcrew",
   "version": "0.7.0",
-  "description": "Xcode, simulators and Apple docs for Claude Code, set up in one command.",
+  "description": "Your Xcode crew inside Claude Code: three MCP servers working as one, with live build progress and test reports Claude can act on.",
   "author": {
     "name": "Brenno Ferrari",
     "url": "https://github.com/breferrari"
