@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.7 — 2026-10-28
 
 - A MobileBuildMCP test run with expected failures (`XCTExpectFailure`) tells Claude how many ran, and the true total: MobileBuildMCP's counts leave them out.
 

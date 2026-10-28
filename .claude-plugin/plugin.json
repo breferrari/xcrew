@@ -1,6 +1,6 @@
 {
   "name": "xcrew",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "description": "Xcode, simulators and Apple docs for Claude Code, set up in one command.",
   "author": {
     "name": "Brenno Ferrari",
