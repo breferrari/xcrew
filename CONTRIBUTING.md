@@ -39,10 +39,14 @@ scripts/typecheck.sh    # the mod's types; needs that session once
 
 ## Releasing
 
-Claude Code keeps people on a plugin's `version` until it changes, so every release bumps it:
+Claude Code keeps people on a plugin's `version` until it changes, so every release bumps it. `scripts/release.sh <version>` does the whole release; it needs `gh`, signed in with write access:
 
-1. Set the new version in `Sources/XcrewCore/XcrewVersion.swift` and `.claude-plugin/plugin.json`, and turn the changelog's top entry into `## <version> — <date>`. `ManifestTests` fails until all three agree.
-2. Merge it through a pull request, then tag the merge commit: `git tag v<version> && git push --tags`. The release workflow refuses a tag that doesn't match the declared version, or one whose commit isn't exactly what a pull request tested and passed, then publishes the release with its changelog entry. It doesn't test again: CI runs once per change, on its pull request, and the ruleset only merges one that is green and up to date with `main`.
+1. It turns off auto-merge on every other open pull request, and turns it back on when it ends, however it ends. A feature merging between the bump and the tag ships in a version whose changelog doesn't list it, which is how 0.6.5's and 0.6.6's entries once landed under each other's headings.
+2. In a throwaway worktree, so your clone is untouched, it sets the version in `Sources/XcrewCore/XcrewVersion.swift` and `.claude-plugin/plugin.json` and turns `## Unreleased` into `## <version> — <date>`. `ManifestTests` fails until all three agree.
+3. It opens the `chore: release <version>` pull request, merges it once it's green, and brings it up to date whenever `main` moves ahead of it.
+4. It tags the merge commit `v<version>` and waits for the release workflow. The workflow refuses a tag that doesn't match the declared version, or one whose commit isn't exactly what a pull request tested and passed, then publishes the release with its changelog entry. It doesn't test again: CI runs once per change, on its pull request, and the ruleset only merges one that is green and up to date with `main`.
+
+Before a release that changes what Claude sees from a build or test, run the checks in [docs/live-check.md](docs/live-check.md) in a real project.
 
 Between releases, `main` moves ahead of the version people have installed; that's expected, and it's why a release is a version bump.
 

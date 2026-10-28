@@ -24,6 +24,7 @@ They overlap on build, test and run. Xcrew sends those to MobileBuildMCP because
 - **SourceKit can't read Xcode projects.** Claude Code's Swift language server reads settings only from a Swift package, a compilation database or a build server. Without a `Package.swift` it checks each file alone against the macOS SDK, so `import UIKit` and every first-party module show as errors. The Xcode MCP's `XcodeRefreshCodeIssuesInFile` uses the real settings.
 - **The XcodeBuildMCP → MobileBuildMCP rename (2.7.1) has no fallback.** The binary, the `MOBILEBUILDMCP_*` variables and the config folder (`.mobilebuildmcp/`) all changed; an old `.xcodebuildmcp/config.yaml` is ignored silently, leaving only the simulator tools. An old binary on `PATH`, from Homebrew or npm, can shadow the new one.
 - **MobileBuildMCP reads its config from its working directory**, so the plugin starts it in the project root.
+- **MobileBuildMCP's test list can leave out a skipped test.** In a run that also crashed and recorded an expected failure, its text counted `1 skipped` but listed no `⏭️` line for it, though xcodebuild's log and the result bundle both had it. So Xcrew reads skipped tests and their reasons from the result bundle's test list (`xcresulttool get test-results tests`), not from that text. A dropped passing test is reported as getsentry/MobileBuildMCP#563.
 - **`test_sim` takes no scheme argument**; the scheme comes from the session defaults, and `-only-testing:` goes in `extraArgs`.
 - **MobileBuildMCP's command line resolves simulator names on the newest installed iOS only**; the MCP server doesn't have this limit.
 - **LLDB `expr` needs `debuggerBackend: lldb-cli`**; the default backend handles attach, stacks and breakpoints.
@@ -96,4 +97,5 @@ As runners they differ the other way. MobileBuildMCP runs `xcodebuild` on its ow
 | Swift scripts | Compiled on every run, about 0.65 s per call, too slow for hooks |
 | A shell installer as a third install path | The plugin already installs without mcs, and a third path would drift |
 | Counting modules for the build gauge | Nearly every module has a task early in a build, and none says when it's done; see *Build and test progress* |
+| Adding expected failures to MobileBuildMCP's counts | The counts are MobileBuildMCP's own, and a result that disagrees with the server's log and summary is harder to trust than one beside a note. Claude gets the true total from Xcrew's note either way |
 | `swift-subprocess` | A package dependency means a network fetch on every user's first build |

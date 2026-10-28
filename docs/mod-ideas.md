@@ -58,6 +58,7 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Test failures without `file:line`~~ | Shipped in the mod: each failure's location read from the result bundle (`xcresulttool get test-results test-details`), since xcodebuild logs none for tests on parallel clones | | | | |
 | ~~Crash stacks~~ | Shipped: a crash's exception and top frames, from the crash log the result bundle attaches; skipped tests' reasons too | | | | |
 | ~~One compile error counted twice~~ | Handled in the mod: the caret line is dropped and the count corrected | | | | |
+| Shorter compiler warnings | A warning repeated across files, or a long deprecation message, cut to one line with a count: `'oldAPI()' is deprecated: use newAPI() (2×, LoginTests.swift:12, :24)` | Result | The result's Warnings section | S | In a compact test result, two deprecation warnings were ~900 of ~1,500 characters. Keep the first full message so the fix is still named |
 | Restyled tool rows | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
 
 ### Health and setup
