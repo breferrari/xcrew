@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.5 — 2026-10-28
 
 - A crashed test reaches Claude with the crash's exception and the top frames of the thread that crashed, from the crash log its result bundle attaches.
 - A skipped test reaches Claude with why it was skipped, from its result bundle.
