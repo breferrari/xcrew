@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `/xcrew doctor`, `/xcrew repair` and `/xcrew history` now work: the reference skill, named like the plugin, took the `/xcrew` command, so Claude Code refused the mod's. It's `xcrew:reference` now, and out of the `/` menu.
+- `/xcrew history` starts with a heading, so the name Claude Code puts before a command's output doesn't push the first row out of line.
+
 ## 0.2.0 — 2026-10-28
 
 - Where the band draws (the terminal, Desktop), it carries a run's outcome alone; the toast that repeated it now shows only where no band draws.

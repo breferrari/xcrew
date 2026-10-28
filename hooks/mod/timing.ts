@@ -6,7 +6,7 @@ import { summarize } from './results'
 import { kindOf, parseTool } from './tools'
 
 /** How many earlier runs of each tool the average covers. */
-const HISTORY = 10
+export const HISTORY = 10
 export const DURATIONS_PREFIX = 'durations.'
 const historyKey = (tool: string) => `${DURATIONS_PREFIX}${tool}`
 /** Runs at least this long also send a notification. */

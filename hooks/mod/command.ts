@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 import { average, stopwatch } from './format'
-import { DURATIONS_PREFIX } from './timing'
+import { DURATIONS_PREFIX, HISTORY } from './timing'
 
 const USAGE = [
   '/xcrew doctor   check this Mac and project, with the fix for anything wrong',
@@ -42,10 +42,11 @@ async function history($: EngineInterface): Promise<string> {
   const timed = rows.filter(row => row.runs.length > 0).sort((a, b) => average(b.runs) - average(a.runs))
   if (timed.length === 0) return 'No builds or test runs timed yet.'
   const width = Math.max(...timed.map(row => row.tool.length))
-  return timed
-    .map(({ tool, runs }) => {
-      const count = `${runs.length} ${runs.length === 1 ? 'run' : 'runs'}`
-      return `${tool.padEnd(width)}  avg ${stopwatch(average(runs))} · last ${stopwatch(runs.at(-1) ?? 0)} · ${count}`
-    })
-    .join('\n')
+  // Claude Code puts the plugin's name before the first line; a heading keeps the rows aligned.
+  const heading = `usual durations, over the last ${HISTORY} runs of each tool`
+  const lines = timed.map(({ tool, runs }) => {
+    const count = `${runs.length} ${runs.length === 1 ? 'run' : 'runs'}`
+    return `${tool.padEnd(width)}  avg ${stopwatch(average(runs))} · last ${stopwatch(runs.at(-1) ?? 0)} · ${count}`
+  })
+  return [heading, ...lines].join('\n')
 }

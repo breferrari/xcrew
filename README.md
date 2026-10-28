@@ -71,7 +71,7 @@ ok    xcode-mcp/macro-copy-phase       none
 | Session briefing | The routing rules in [`context/routing.md`](context/routing.md), plus what this project or Mac still lacks; silent outside Apple-platform projects |
 | Mod | Macro-plugin repair with retry, build and test timing, the `XcodeWrite` guard and a note in its description (in generated projects), the `/xcrew` command |
 | Hooks | The same repair after a failed Xcode MCP build, for sessions where mods don't run |
-| Skills | `/xcrew:setup`, and the `xcrew` reference Claude loads when something fails |
+| Skills | `/xcrew:setup`, and `xcrew:reference`, which Claude loads when something fails (it isn't in the `/` menu) |
 | CLI | `xcrew setup`, `doctor`, `repair-macros`, `xcode-skills`; on Claude's `PATH` while the plugin is enabled |
 
 While a build or test runs, a coloured line above the prompt counts it and names the scheme and simulator it's using. When it ends, the same line says how it went, how it compares with recent runs of the same tool, and what failed. Where that line can't draw, such as VS Code, the status line counts and a toast reports the outcome:
@@ -135,7 +135,7 @@ Claude Code ──┬── plugin: .mcp.json ─────────── 
               ├── plugin: hooks/hooks.json ──── SessionStart, PostToolUse(Failure) ─┐
               ├── plugin: mod (TypeScript) ──── tool.call: guard · timing · repair ─┤
               │                                 tool.describe · /xcrew              │
-              └── plugin: skills/ ───────────── setup · xcrew reference             │
+              └── plugin: skills/ ───────────── setup · reference                   │
                                                                                     ▼
                                          bin/xcrew ── builds once, then runs ── Swift CLI
                                                                                 (setup, doctor,

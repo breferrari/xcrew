@@ -27,6 +27,18 @@ import XcrewCore
         ["mcp__xcode__\(tool)", "mcp__plugin_xcrew_xcode__\(tool)"]
     }
 
+    // MARK: Commands
+
+    /// A skill named like the plugin takes the bare `/<plugin>` command, and Claude Code then
+    /// refuses the mod's `$.command.register` for it at every session start.
+    @Test func noSkillTakesTheModsCommand() throws {
+        let plugin = try #require(try json(".claude-plugin/plugin.json")["name"] as? String)
+        let skills = try FileManager.default.contentsOfDirectory(atPath: Self.repository.appending(path: "skills").path)
+        #expect(!skills.contains(plugin))
+        let mod = try text("hooks/mod/command.ts")
+        #expect(mod.contains("name: '\(plugin)'"))
+    }
+
     // MARK: Plugin hooks
 
     func hook(_ event: String) throws -> (matcher: String?, command: String) {

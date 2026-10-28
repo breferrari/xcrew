@@ -1,5 +1,6 @@
 ---
-name: xcrew
+name: reference
+user-invocable: false
 description: Reference for the Xcode MCP, MobileBuildMCP and Sosumi setup xcrew installs. Load before configuring either server, and when an Xcode MCP call fails ("not approved", "produced malformed response", "File not found in project structure", a timeout), a MobileBuildMCP tool is missing, LLDB refuses `expr`, or SourceKit reports `No such module`.
 ---
 

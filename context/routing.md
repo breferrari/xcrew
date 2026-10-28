@@ -12,4 +12,4 @@ Three MCP servers serve this project; their tool names carry the server's (`…x
 
 - **Compile errors:** trust the Xcode MCP's `XcodeRefreshCodeIssuesInFile`. In a project without a `Package.swift` (a plain Xcode, Tuist or XcodeGen project), Claude Code's SourceKit `No such module` errors are false: it checks each file alone against the macOS SDK.
 - **After changing a SwiftUI view** with a `#Preview`, render it with `RenderPreview` in light and dark at a large Dynamic Type size.
-- **Something not working** ("not approved", "produced malformed response", a missing tool, LLDB refusing `expr`): load the `xcrew` skill, and run `xcrew doctor`.
+- **Something not working** ("not approved", "produced malformed response", a missing tool, LLDB refusing `expr`): load the `xcrew:reference` skill, and run `xcrew doctor`.
