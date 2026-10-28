@@ -12,7 +12,7 @@ A working list of what Xcrew's mod could show or do. Nothing here is decided; en
 | Denied tool call | `XcodeWrite re-saves the whole generated project file…` | `XcodeWrite` in a Tuist or XcodeGen project |
 | Command output | `/xcrew history` → `build_sim    avg 1:10 · last 1:20 · 2 runs` | `/xcrew doctor`, `repair`, `history`; no Claude turn |
 | Tool description | `XcodeWrite` gains a line saying it's refused here | In a Tuist or XcodeGen project, when Claude first reads the tool |
-| Hook spinner | `xcrew: preparing Xcode tooling` · `xcrew: checking Xcode macro plugins` | Session start; after a build failure with the plugin-kill message |
+| Hook spinner | `Preparing Xcode tooling` · `Checking Xcode macro plugins` | Session start; after a build failure with the plugin-kill message |
 
 ## What a mod can reach
 
@@ -53,15 +53,15 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Failure pane~~ | Shipped: `/xcrew failures` opens every failing test and compile error of the last failing run, with message and location | | | | |
 | Exact Xcode MCP progress | `BuildProject ━━━━━━╸─ 836 / 850` | Band | A proxy between Claude Code and `xcrun mcpbridge` that passes every message through and copies progress notifications to a file the mod reads | L | It sits in every Xcode MCP call's path, so it needs exact forwarding and no added latency. First check the notifications carry `progress` and `total`, not only text |
 | ~~Smaller test results for Claude~~ | Shipped: a result Claude Code saved for being too large reaches Claude without its per-test list (122 KB → 2.5 KB) | | | | |
-| Report: MobileBuildMCP's per-test list is always in its structured result | 127 of a 959-test run's 130 KB; a setting to leave it out, or leaving it out of passing runs, would keep results small at the source | Upstream issue | | S | Its text output already lists tests only when `showTestTiming` is on |
-| Report: MobileBuildMCP drops a test from its list | Its per-test list and the log's count read 958 of 959: xcodebuild writes its own `[MT] IDESchemeActionSDKRecord` message into the middle of a test's result line | Upstream issue | | S | The summary's count comes from the result bundle and is right; the list could come from there too |
+| ~~Report: MobileBuildMCP's per-test list is always in its structured result~~ | Reported: getsentry/MobileBuildMCP#564 | | | | |
+| ~~Report: MobileBuildMCP drops a test from its list~~ | Reported: getsentry/MobileBuildMCP#563 | | | | |
 | Restyled tool rows | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
 
 ### Health and setup
 
 | Idea | Looks like | Surface | Data | Effort | Open questions |
 | --- | --- | --- | --- | --- | --- |
-| Doctor: say which Tuist is installed | `macro-copy-phase` names the installed Tuist and whether it's already 4.203 or later | Doctor | `tuist version` | S | A session misread the fix as changing a team's pinned Tuist |
+| ~~Doctor: say which Tuist is installed~~ | Shipped: `macro-copy-phase` names the installed Tuist, and says to upgrade or only to regenerate | | | | |
 | Doctor pane | Each check as a row with its fix, a button per fix that can run safely | Pane, `/xcrew doctor` | `xcrew doctor` | M | Which fixes are safe to run from a button (none that need sudo) |
 | Setup form | Pickers for workspace, scheme, simulator, filled from `list_schemes` and `simctl` | Pane, `/xcrew setup` | MobileBuildMCP, `simctl` | M | Replaces the skill's question-and-answer flow; keep the skill for `claude -p` |
 | ~~Problem band~~ | Shipped: `xcrew doctor --problems` at session start, the most serious one on the band until the first run | | | | |
