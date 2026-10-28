@@ -84,6 +84,8 @@ test_sim · 0:41 ━━━━━━╸─ ~0:04 left · testing 431 of 959 · My
 ✓ build_sim · 3:40 (2× its usual 1:50)
 ```
 
+A MobileBuildMCP test result too large for the transcript reaches Claude without its per-test list, which Claude Code keeps in a saved file, so a large suite's result stays a few KB.
+
 A run that takes a minute or more also sends the same line as a notification, through your own Claude Code notification settings. After a macro-plugin repair, a toast names what was repaired and the projects that will keep killing plugins until Tuist regenerates them.
 
 `/xcrew doctor`, `/xcrew repair`, `/xcrew history` (each tool's usual duration, per scheme) `/xcrew failures` (a pane listing every failure of the last failing run; `/xcrew close` closes it) answer at once, without a turn for Claude. When a session starts with something wrong, such as Claude Code not yet approved in Xcode, the band says so until the first run.

@@ -180,3 +180,17 @@ function failuresFromMobileBuildMCPText(text: string): Failure[] {
   })
   return failures
 }
+
+/**
+ * A MobileBuildMCP test result without its per-test list, which is nearly all of a large run's
+ * result (127 of 130 KB for 959 tests): the summary, counts, failures and artifacts stay, and the
+ * list is pointed to in `savedPath`. Undefined for anything else.
+ */
+export function compactTestResult(text: string, savedPath: string): string | undefined {
+  const json = parseObject(text)
+  const data = json?.data as Json | undefined
+  if (json?.schema !== 'mobilebuildmcp.output.test-result' || !Array.isArray(data?.testCases)) return undefined
+  // The list's own size, which can be one short of the summary's counts: those come from the result bundle.
+  const note = `per-test list (${data.testCases.length} entries) left out to keep this result short; the full result is in ${savedPath}`
+  return JSON.stringify({ ...json, data: { ...data, testCases: note } })
+}

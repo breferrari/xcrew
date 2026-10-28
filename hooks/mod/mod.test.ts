@@ -232,6 +232,31 @@ test('a result too large for the transcript is read from the file Claude Code sa
   expect(seen.toasts).toEqual(['✓ test_sim · 0:15 · 3 passed'])
 })
 
+test('a test result too large to show reaches Claude as its summary, with the full list a file read away', async ($, on) => {
+  mock.clock(on)
+  watch(on)
+  on('fs.read', () => ({ value: captured.mobileTestsPassed.text }))
+  on('tool.call', () => ({ result: {}, text: TOO_LARGE }))
+
+  const ran = await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
+
+  const shown = JSON.parse(ran.text ?? '{}')
+  expect(shown.data.summary).toEqual({ status: 'SUCCEEDED', durationMs: 14544, counts: { passed: 3, failed: 0, skipped: 0 }, target: 'simulator' })
+  expect(shown.data.diagnostics).toEqual({ warnings: [], errors: [], testFailures: [] })
+  expect(shown.data.testCases).toBe(`per-test list (3 entries) left out to keep this result short; the full result is in ${SAVED}`)
+})
+
+test('a large result that cannot be summarised is handed on as Claude Code saved it', async ($, on) => {
+  mock.clock(on)
+  watch(on)
+  on('fs.read', () => ({ value: 'not json' }))
+  on('tool.call', () => ({ result: {}, text: TOO_LARGE }))
+
+  const ran = await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
+
+  expect(ran.text).toBe(TOO_LARGE)
+})
+
 test('a saved result that cannot be read leaves the outcome without its detail', async ($, on) => {
   mock.clock(on)
   const seen = watch(on)

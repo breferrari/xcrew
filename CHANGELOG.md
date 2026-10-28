@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A MobileBuildMCP test result too large for the transcript reaches Claude as its summary, counts, failures and artifacts, with the per-test list left out and the saved file named for it: a 959-test run's 122 KB becomes about 2.5 KB, and Claude no longer needs a `jq` call to read it.
+
 ## 0.5.2 — 2026-10-28
 
 - The failure pane clears only when the same tool, scheme and test selection passes, since another scheme's pass never re-ran those tests. Clearing also closes the pane, and `/xcrew close` closes it from the prompt: in Claude Code's default layout (`"tui": "default"`) its close mark can't be clicked; in the fullscreen layout it can.

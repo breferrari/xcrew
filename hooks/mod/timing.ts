@@ -4,7 +4,7 @@ import { endRun, setPhase, startRun } from './band'
 import { describe, observe, scopeOf } from './context'
 import { recordRun } from './failures'
 import { phaseOf, findRunLog } from './progress'
-import { reportedDuration, summarize, testTotal } from './results'
+import { compactTestResult, reportedDuration, summarize, testTotal } from './results'
 import { kindOf, parseTool } from './tools'
 
 /** How many earlier runs of each tool the average covers. */
@@ -128,6 +128,11 @@ export function registerTiming(on: On): void {
     }
     // Long enough that the person has likely looked away; their notification settings decide how it arrives.
     if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summary))
-    return result
+    // Claude Code saved a result too large to show and handed on a notice to read it with jq. A test
+    // result is that large because of its per-test list; Claude gets the rest, and the file stays.
+    if (result.deny !== undefined) return result
+    const saved = SAVED_RESULT.exec(result.text ?? '')?.[1]
+    const compact = saved ? compactTestResult(text, saved) : undefined
+    return compact ? { ...result, text: compact } : result
   })
 }
