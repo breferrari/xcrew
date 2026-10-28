@@ -50,16 +50,19 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Slow-run alert~~ | Shipped: `(2× its usual 1:50)` in the toast and the band | | | | |
 | ~~Done while you were away~~ | Shipped: runs of a minute or more notify, through the person's own notification settings | | | | |
 | ~~Durations from the servers~~ | Shipped: runs are timed by MobileBuildMCP's `durationMs` and the Xcode MCP's `elapsedTime` where they report one | | | | |
-| Failure pane | Failing tests with their messages, the first compile errors as code | Pane, `/xcrew failures` | Result text | M | Same parsing as results in the toast |
+| ~~Failure pane~~ | Shipped: `/xcrew failures` opens every failing test and compile error of the last failing run, with message and location | | | | |
+| Exact Xcode MCP progress | `BuildProject ━━━━━━╸─ 836 / 850` | Band | A proxy between Claude Code and `xcrun mcpbridge` that passes every message through and copies progress notifications to a file the mod reads | L | It sits in every Xcode MCP call's path, so it needs exact forwarding and no added latency. First check the notifications carry `progress` and `total`, not only text |
+| Smaller test results for Claude | A 959-test run's 122 KB result trimmed to its summary and failures | `tool.call` | MobileBuildMCP's JSON | M | The mod receives the result after Claude Code has already saved it to a file, so trimming has to happen before: try MobileBuildMCP's `progress: false` or a narrower output first |
 | Restyled tool rows | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
 
 ### Health and setup
 
 | Idea | Looks like | Surface | Data | Effort | Open questions |
 | --- | --- | --- | --- | --- | --- |
+| Doctor: say which Tuist is installed | `macro-copy-phase` names the installed Tuist and whether it's already 4.203 or later | Doctor | `tuist version` | S | A session misread the fix as changing a team's pinned Tuist |
 | Doctor pane | Each check as a row with its fix, a button per fix that can run safely | Pane, `/xcrew doctor` | `xcrew doctor` | M | Which fixes are safe to run from a button (none that need sudo) |
 | Setup form | Pickers for workspace, scheme, simulator, filled from `list_schemes` and `simctl` | Pane, `/xcrew setup` | MobileBuildMCP, `simctl` | M | Replaces the skill's question-and-answer flow; keep the skill for `claude -p` |
-| Problem band | `⚠ Xcode MCP not approved · run /xcrew doctor` | Band | Session-start checks | S | Show once per session, dismissible |
+| ~~Problem band~~ | Shipped: `xcrew doctor --problems` at session start, the most serious one on the band until the first run | | | | |
 | ~~Macro cause hint~~ | Shipped: the repair toast names the projects and the Tuist version that fixes them | | | | |
 
 ### Simulator and app

@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 import type { BandRun } from '../../types'
 import { gauge, remaining, stopwatch } from './format'
+import { clearProblems, readProblems } from './problems'
 
 /** The band keeps showing a finished run's outcome this long. */
 const HIDE_AFTER_MS = 3 * 60_000
@@ -12,7 +13,8 @@ const ORANGE = '#ec501d'
 
 export const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
 
-export function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
+export async function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
+  await clearProblems($)
   return update($, runState, () => run)
 }
 
@@ -61,10 +63,23 @@ export function registerBand(on: On): void {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const run = await read($, runState)
-    if (!run) return next(e)
     const now = await $.clock.now()
-    if (run.ended && now - run.ended.at > HIDE_AFTER_MS) return next(e)
     const { Box, Text } = $.ui.resolve(e)
+    if (!run || (run.ended && now - run.ended.at > HIDE_AFTER_MS)) {
+      const problems = await readProblems($)
+      if (!problems) return next(e)
+      const tone = problems.isFailure ? 'error' : 'warning'
+      const more = problems.more > 0 ? [Text({ color: 'subtle', children: [` (+${problems.more} more)`] })] : []
+      return Box({
+        flexDirection: 'row',
+        children: [
+          Text({ color: tone, children: ['⚠'] }),
+          Text({ color: tone, wrap: 'truncate-end', children: [` ${problems.message}`] }),
+          ...more,
+          Text({ color: 'subtle', children: [' · /xcrew doctor'] }),
+        ],
+      })
+    }
     return Box({
       flexDirection: 'row',
       children: segments(run, now)

@@ -118,3 +118,64 @@ export function testTotal(text: string): number | undefined {
   const tests = /❌ (\d+) tests? failed, (\d+) passed, (\d+) skipped/.exec(text)
   return tests ? tests.slice(1).reduce((sum, count) => sum + Number(count), 0) : undefined
 }
+
+/** One failing test or compile error, for the failure pane. */
+export type Failure = { title: string; message: string; where?: string }
+
+/** Every failure a run reported, from each shape `summarize` reads; none for a passing run. */
+export function failuresOf(text: string): Failure[] {
+  const json = parseObject(text)
+  if (json) return failuresFromXcodeMCP(json)
+  return failuresFromMobileBuildMCPText(text)
+}
+
+function failuresFromXcodeMCP(json: Json): Failure[] {
+  if (Array.isArray(json.errors)) {
+    return (json.errors as { classification?: string; filePath?: string; lineNumber?: number; message?: string }[])
+      .filter(error => error.classification !== 'warning')
+      .map(error => ({ title: error.filePath ? `${basename(error.filePath)}:${error.lineNumber ?? '?'}` : 'error', message: error.message ?? '' }))
+  }
+  if (Array.isArray(json.results)) {
+    return (json.results as { identifier?: string; state?: string; errorMessages?: string[] }[])
+      .filter(result => result.state === 'Failed')
+      .map(result => {
+        // `Tests/PlainTests.swift:5 PlainTests/testConcatenation(): XCTAssertEqual failed: …`
+        const raw = result.errorMessages?.[0] ?? ''
+        const located = /^(\S+?):(\d+) \S+?: (.*)$/s.exec(raw)
+        return located
+          ? { title: result.identifier ?? 'test', message: located[3] ?? '', where: `${basename(located[1] ?? '')}:${located[2]}` }
+          : { title: result.identifier ?? 'test', message: raw }
+      })
+  }
+  return []
+}
+
+/** MobileBuildMCP's text: `✗ Suite / test: message` or `✗ message`, each maybe followed by its `/path:line`. */
+function failuresFromMobileBuildMCPText(text: string): Failure[] {
+  const failures: Failure[] = []
+  const seen = new Set<string>()
+  const lines = text.split('\n')
+  lines.forEach((line, index) => {
+    const entry = /^\s*✗ (.+)$/.exec(line)?.[1]
+    // Its second copy of a compiler error is the source excerpt, drawn with `|`.
+    if (!entry || entry.startsWith('|')) return
+    const path = /^\s+(\/\S+):(\d+)\s*$/.exec(lines[index + 1] ?? '')
+    const where = path ? `${basename(path[1] ?? '')}:${path[2]}` : undefined
+    const test = /^(.+?) \/ (\S+?)(?:\(\))?: (.*)$/.exec(entry)
+    if (test) {
+      const title = `${test[1]}/${test[2]}`
+      // It lists a failing test twice, once with its location; the first is kept.
+      if (seen.has(title)) return
+      seen.add(title)
+      failures.push({ title, message: test[3] ?? '', ...(where ? { where } : {}) })
+      return
+    }
+    if (where) {
+      failures.push({ title: where, message: entry })
+      return
+    }
+    const split = entry.indexOf(': ')
+    failures.push(split > 0 ? { title: entry.slice(0, split), message: entry.slice(split + 2) } : { title: entry, message: '' })
+  })
+  return failures
+}

@@ -407,6 +407,32 @@ test('where no band draws, the status line carries the gauge against the usual t
   expect(seen.statuses).toContain('BuildProject running · 0:21 ━━━━╸─── ~0:15 left')
 })
 
+test('the usual time is kept per scheme, so a small module is not measured against the whole app', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on, '', { 'durations.build_sim · Small': [10_000], 'durations.build_sim · Big': [600_000] })
+  on('tool.call', async () => {
+    await clock.advance(5_000)
+    return { result: {}, text: 'ok' }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__build_sim', { scheme: 'Small' })
+
+  expect(seen.statuses).toContain('build_sim · Small · 0:05 ━━━━──── ~0:05 left')
+})
+
+test('a test run is also kept apart by the tests it selects', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on, '', { 'durations.test_sim · App › SmallTests': [10_000], 'durations.test_sim · App': [600_000] })
+  on('tool.call', async () => {
+    await clock.advance(5_000)
+    return { result: {}, text: 'ok' }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'App', extraArgs: ['-only-testing:SmallTests'] })
+
+  expect(seen.statuses).toContain('test_sim · App · 0:05 ━━━━──── ~0:05 left')
+})
+
 test('tools that neither build, test nor run are not timed', async ($, on) => {
   mock.clock(on)
   const seen = watch(on)

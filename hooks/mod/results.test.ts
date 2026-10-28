@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import * as captured from './fixtures'
-import { reportedDuration, summarize, testTotal } from './results'
+import { failuresOf, reportedDuration, summarize, testTotal } from './results'
 import { callTool } from './testing'
 
 test('MobileBuildMCP test runs: counts when they pass, the first failing test when they fail', () => {
@@ -101,4 +101,47 @@ test('a test run says how many tests it ran, so the next run can show its progre
   expect(testTotal(captured.mobileTestsFailed.text)).toBe(3)
   expect(testTotal(captured.xcodeTestsPassed.text)).toBe(5)
   expect(testTotal(captured.mobileBuildPassed.text)).toBeUndefined()
+})
+
+test('MobileBuildMCP\'s failing tests are listed once each, with the message and where it failed', () => {
+  expect(failuresOf(captured.mobileTestsFailed.text)).toEqual([
+    {
+      title: 'PlainTests/testConcatenation',
+      message: 'XCTAssertEqual failed: ("ab") is not equal to ("ba") - strings join left to right',
+      where: 'PlainTests.swift:5',
+    },
+  ])
+})
+
+test('compile errors are listed by file and line, from either server', () => {
+  expect(failuresOf(captured.mobileBuildFailed.text)).toEqual([
+    { title: 'MacroProbe.swift:13', message: "cannot convert value of type 'String' to specified type 'Int'" },
+  ])
+  expect(failuresOf(captured.xcodeBuildFailed.text)).toEqual([
+    { title: 'MacroProbe.swift:13', message: "Cannot convert value of type 'String' to specified type 'Int'" },
+  ])
+})
+
+test('a test run whose build failed lists why it never ran', () => {
+  const failures = failuresOf(captured.mobileTestsBuildFailed.text)
+  expect(failures.map(failure => failure.title)).toEqual(['LLVM Profile Error', 'Failed to build workspace MacroProbe with scheme MacroProbe-Package.'])
+  expect(failures[1]?.message).toMatch(/^Cannot test target “MacroProbeTests” on “iPhone 16”: Missing test product/)
+})
+
+test('the Xcode MCP\'s failing tests carry their own message and location', () => {
+  expect(failuresOf(captured.xcodeTestsFailed.text)).toEqual([
+    { title: 'MacroProbeTests/testMacro()', message: 'Issue recorded: Macro expansion did not produce the expected expanded source', where: 'MacroProbeTests.swift:19' },
+    {
+      title: 'MacroProbeTests/testMacroWithStringLiteral()',
+      message: 'Issue recorded: Macro expansion did not produce the expected expanded source',
+      where: 'MacroProbeTests.swift:35',
+    },
+    { title: 'PlainTests/testConcatenation()', message: 'XCTAssertEqual failed: ("ab") is not equal to ("ba") - strings join left to right', where: 'PlainTests.swift:5' },
+  ])
+})
+
+test('a passing run has no failures', () => {
+  for (const output of [captured.mobileTestsPassed, captured.mobileBuildPassed, captured.xcodeBuildPassed, captured.xcodeTestsPassed]) {
+    expect(failuresOf(output.text)).toEqual([])
+  }
 })

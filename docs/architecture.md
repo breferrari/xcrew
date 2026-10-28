@@ -56,7 +56,7 @@ Everything that touches the machine goes through `Machine` (environment, home fo
 2. **timing**: the one unmatched hook; times calls `tools.ts` classifies as build, test or run, by name pattern so new tools are timed without a change. It keeps the last ten durations per tool in `$.store`, compares each run with them, and calls out one far slower than usual. Its bookkeeping is best-effort and never fails a build.
 3. **repair**: matched on the Xcode tools that build; on "produced malformed response" it runs `xcrew repair-macros`, calls `next` again, and toasts what it repaired and, when the CLI names one, the cause.
 
-Beside those, **band** (`ui.render` on `AbovePrompt`) draws the run that timing records in `$.state`, and **command** registers `/xcrew` at session start and answers it itself: `doctor` and `repair` run the CLI, `history` reads timing's durations.
+Beside those, **band** (`ui.render` on `AbovePrompt`) draws the run that timing records in `$.state`, its gauge and phase (**progress** reads MobileBuildMCP's log), or, before the first run, the problem **problems** found with `xcrew doctor --problems`. **session** is the one unmatched `session.start` hook: it registers `/xcrew` and starts that look for problems without holding the session up. **command** answers `/xcrew` itself: `doctor` and `repair` run the CLI, `history` reads timing's durations, kept per tool, scheme and test selection, and `failures` opens the **failures** pane, which keeps the last failing run's failures.
 
 Every tool name is matched under both registrations: `mcp__plugin_xcrew_<server>__<tool>` from this plugin, and `mcp__<server>__<tool>` when the person registered the server themselves, which Claude Code then prefers.
 

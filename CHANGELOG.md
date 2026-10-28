@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `/xcrew failures` opens a pane listing every failing test and compile error of the last failing run, with its message and where it failed. A later passing run of the same tool clears it.
+- When a session starts with something wrong (Xcode MCP not approved, MobileBuildMCP missing, a project still killing macro plugins), the band says so until the first run, with `(+N more)` and where to look. `xcrew doctor --problems` prints only what failed or warned, and nothing outside an Apple-platform project.
+- Usual durations, the slow-run note and test totals are kept per scheme and test selection, so testing one module isn't measured against the whole app. Durations recorded before are kept under the tool alone.
 - While a build or test run goes, the band draws a gauge of its time against the tool's usual duration, with the time left: `build_sim · 0:21 ━━━━╸─── ~0:15 left`. Past the usual time it turns to the warning colour and counts how far over. It's an estimate: xcodebuild prints no build percentage a mod can read. The first run of a tool shows its time alone.
 
 ## 0.4.1 — 2026-10-28

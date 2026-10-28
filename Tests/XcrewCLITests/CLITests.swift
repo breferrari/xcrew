@@ -112,6 +112,21 @@ import XcrewTestSupport
         #expect(run.status == CheckStatus.fail.rawValue)
         #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
     }
+
+    @Test func problemsIsSilentOutsideApplePlatformProjects() async {
+        let run = await Run("doctor", "--problems")
+        #expect(run.status == 0)
+        #expect(run.output.isEmpty)
+    }
+
+    @Test func problemsListsOnlyWhatFailedOrWarnedInAnApplePlatformProject() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let run = await Run("doctor", "--problems", context: .fake(project: project))
+        #expect(run.status == 0)
+        #expect(!run.output.isEmpty)
+        #expect(run.output.allSatisfy { $0.hasPrefix("FAIL  ") || $0.hasPrefix("warn  ") })
+        #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
+    }
 }
 
 @Suite struct HookCommandTests {

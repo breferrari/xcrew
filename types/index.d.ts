@@ -11,8 +11,17 @@ export type BandRun = {
   ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string }
 }
 
+/** The last failing run's failures, for the failure pane. */
+export type FailureList = {
+  tool: string
+  items: { title: string; message: string; where?: string }[]
+}
+
+/** The most serious problem `xcrew doctor` found at session start, and how many more there are. */
+export type BandProblems = { isFailure: boolean; message: string; more: number }
+
 declare module 'claude-code' {
   interface PluginState {
-    xcrew: { run: BandRun | null }
+    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null }
   }
 }

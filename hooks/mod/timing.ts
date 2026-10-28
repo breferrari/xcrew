@@ -1,7 +1,8 @@
 import type { EngineInterface, On } from 'claude-code'
 import { average, comparison, gauge, remaining, stopwatch } from './format'
 import { endRun, setPhase, startRun } from './band'
-import { describe, observe } from './context'
+import { describe, observe, scopeOf } from './context'
+import { recordRun } from './failures'
 import { phaseOf, findRunLog } from './progress'
 import { reportedDuration, summarize, testTotal } from './results'
 import { kindOf, parseTool } from './tools'
@@ -62,9 +63,12 @@ export function registerTiming(on: On): void {
     const name = parsed.tool
     const target = describe(parsed, e as unknown as Record<string, unknown>)
     const label = target ? `${name} · ${target}` : `${name} running`
+    const scope = scopeOf(parsed, e as unknown as Record<string, unknown>)
+    // Durations and test totals are kept per scheme and test selection, not only per tool.
+    const history = scope ? `${name} · ${scope}` : name
 
     const started = await quietly(() => $.clock.now())
-    const earlier = ((await quietly(() => $.store.get(historyKey(name)))) as number[] | undefined) ?? []
+    const earlier = ((await quietly(() => $.store.get(historyKey(history)))) as number[] | undefined) ?? []
     // What the gauge measures against; a tool's first run has none and shows its time alone.
     const usual = earlier.length > 0 ? average(earlier) : undefined
     // The band draws in colour where a surface can show it; elsewhere the plain status line carries the run.
@@ -73,7 +77,7 @@ export function registerTiming(on: On): void {
     if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, usual }))
     // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
     const followsLog = parsed.server === 'MobileBuildMCP'
-    const expectedTests = followsLog ? ((await quietly(() => $.store.get(testsKey(name)))) as number | undefined) : undefined
+    const expectedTests = followsLog ? ((await quietly(() => $.store.get(testsKey(history)))) as number | undefined) : undefined
     const writesLog = followsLog && (await quietly(() => $.store.get(logsKey(name)))) === true
     let logPath: string | undefined
     let phase: string | undefined
@@ -108,10 +112,11 @@ export function registerTiming(on: On): void {
     const text = result.deny !== undefined ? '' : await fullText($, result.text ?? '')
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = reportedDuration(text) ?? ended - started
-    await quietly(() => $.store.set(historyKey(name), [...earlier, elapsed].slice(-HISTORY)))
+    await quietly(() => $.store.set(historyKey(history), [...earlier, elapsed].slice(-HISTORY)))
     const outcome = result.deny !== undefined ? { ok: false } : summarize(name, { isError: result.isError === true, text })
+    if (result.deny === undefined) await quietly(() => recordRun($, name, outcome.ok, text))
     const total = testTotal(text)
-    if (total !== undefined) await quietly(() => $.store.set(testsKey(name), total))
+    if (total !== undefined) await quietly(() => $.store.set(testsKey(history), total))
     const compared = comparison(elapsed, earlier)
     const detail = outcome.detail ? ` · ${outcome.detail}` : ''
     const summary = `${outcome.ok ? '✓' : '✗'} ${name} · ${stopwatch(elapsed)}${compared ? ` ${compared}` : ''}${detail}`

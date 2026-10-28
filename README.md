@@ -6,7 +6,7 @@
 
 **Apple's Xcode MCP, Sentry's MobileBuildMCP and Sosumi, set up to work together for iOS projects.**
 
-[![ci](https://img.shields.io/github/actions/workflow/status/breferrari/xcrew/ci.yml?event=pull_request&style=for-the-badge&label=ci&color=3fb950&labelColor=0d1117)](https://github.com/breferrari/xcrew/actions/workflows/ci.yml) [![canary](https://img.shields.io/github/actions/workflow/status/breferrari/xcrew/canary.yml?branch=main&style=for-the-badge&label=canary&color=3fb950&labelColor=0d1117)](https://github.com/breferrari/xcrew/actions/workflows/canary.yml) [![license](https://img.shields.io/badge/license-MIT-e3b341?style=for-the-badge&labelColor=0d1117)](https://github.com/breferrari/xcrew/blob/main/LICENSE) [![swift](https://img.shields.io/badge/swift-6.2%2B-f85149?style=for-the-badge&logo=swift&logoColor=white&labelColor=0d1117)](Package.swift) [![xcode](https://img.shields.io/badge/xcode-27%2B-39c5cf?style=for-the-badge&logo=xcode&logoColor=white&labelColor=0d1117)](https://developer.apple.com/xcode/) [![macos](https://img.shields.io/badge/macos-26%2B-8b949e?style=for-the-badge&logo=apple&logoColor=white&labelColor=0d1117)](#quick-start)
+[![ci](https://img.shields.io/github/actions/workflow/status/breferrari/xcrew/ci.yml?event=pull_request&style=for-the-badge&label=ci&color=3fb950&labelColor=0d1117)](https://github.com/breferrari/xcrew/actions/workflows/ci.yml) [![canary](https://img.shields.io/github/actions/workflow/status/breferrari/xcrew/canary.yml?branch=main&style=for-the-badge&label=canary&color=3fb950&labelColor=0d1117)](https://github.com/breferrari/xcrew/actions/workflows/canary.yml) [![swift](https://img.shields.io/badge/swift-6.2%2B-f85149?style=for-the-badge&logo=swift&logoColor=white&labelColor=0d1117)](Package.swift) [![xcode](https://img.shields.io/badge/xcode-27%2B-39c5cf?style=for-the-badge&logo=xcode&logoColor=white&labelColor=0d1117)](https://developer.apple.com/xcode/) [![macos](https://img.shields.io/badge/macos-26%2B-8b949e?style=for-the-badge&logo=apple&logoColor=white&labelColor=0d1117)](#quick-start)
 
 </div>
 
@@ -86,7 +86,7 @@ test_sim · 0:41 ━━━━━━╸─ ~0:04 left · testing 431 of 959 · My
 
 A run that takes a minute or more also sends the same line as a notification, through your own Claude Code notification settings. After a macro-plugin repair, a toast names what was repaired and the projects that will keep killing plugins until Tuist regenerates them.
 
-`/xcrew doctor`, `/xcrew repair` and `/xcrew history` (each tool's usual duration) answer at once, without a turn for Claude.
+`/xcrew doctor`, `/xcrew repair`, `/xcrew history` (each tool's usual duration, per scheme) and `/xcrew failures` (a pane listing every failure of the last failing run) answer at once, without a turn for Claude. When a session starts with something wrong, such as Claude Code not yet approved in Xcode, the band says so until the first run.
 
 `xcrew xcode-skills` copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. It copies whatever the installed Xcode has, so run it again after an Xcode update to pick up new ones.
 

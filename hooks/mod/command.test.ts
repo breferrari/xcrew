@@ -13,7 +13,8 @@ function engine(on: On, outputs: Record<string, string> = {}) {
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('process.run', (_, e) => {
-    runs.push(e.argv)
+    // The session start's own look for problems isn't a command's run.
+    if (!e.argv.includes('--problems')) runs.push(e.argv)
     return { value: { exitCode: 0, stdout: outputs[e.argv[1] ?? ''] ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return { registered, runs }
@@ -83,4 +84,14 @@ test('/xcrew alone lists what it can do', async ($, on) => {
   const ran = await runCommand($, 'xcrew')
   expect(ran.text).toMatch(/doctor[\s\S]*repair[\s\S]*history/)
   expect(seen.runs).toEqual([])
+})
+
+test('/xcrew history names the scheme and tests each duration belongs to', async ($, on) => {
+  mock.store(on, { 'durations.test_sim · App › SmallTests': [45_000], 'durations.build_sim': [60_000] })
+  engine(on)
+  await start($)
+
+  const ran = await runCommand($, 'xcrew', 'history')
+
+  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\nbuild_sim                    avg 1:00 · last 1:00 · 1 run\ntest_sim · App › SmallTests  avg 0:45 · last 0:45 · 1 run')
 })

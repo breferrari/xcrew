@@ -51,3 +51,15 @@ function parse(text: string): Record<string, unknown> | undefined {
     return undefined
   }
 }
+
+/**
+ * What a run's history is kept under beside its tool: the scheme, and for a test run the tests
+ * `-only-testing` selects (`App › SmallTests`), so a small module isn't measured against the whole app.
+ */
+export function scopeOf(tool: XcodeTool, input: Record<string, unknown>): string | undefined {
+  const scheme = tool.server === 'MobileBuildMCP' ? ((input.scheme as string | undefined) ?? profile()?.scheme ?? undefined) : xcode.scheme
+  const extraArgs = Array.isArray(input.extraArgs) ? (input.extraArgs as unknown[]) : []
+  const tests = extraArgs.filter((arg): arg is string => typeof arg === 'string' && arg.startsWith('-only-testing:')).map(arg => arg.slice('-only-testing:'.length))
+  const selection = tests.length > 0 ? `› ${tests.join(', ')}` : undefined
+  return [scheme, selection].filter(Boolean).join(' ') || undefined
+}
