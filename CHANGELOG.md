@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A compacted failing run keeps its skipped tests' lines (`⏭️`) beside the failing ones; 0.6.2 to 0.6.4 left them out with the passing tests, so a skipped test showed only in the count.
+
 ## 0.6.4 — 2026-10-28
 
 - The plugin list shows the plugin as `xcrew`, its id, like the `xcode` server: the capitalised Xcrew stays for the README and the techpack card.

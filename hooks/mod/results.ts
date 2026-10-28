@@ -204,8 +204,8 @@ const PASSING_LIST_LIMIT = 20
 
 /**
  * MobileBuildMCP's text for a failing test run, with `showTestTiming` on, lists every passing test
- * under `Test Results:`. This keeps the failures, the failing tests' lines and the summary, and
- * counts the passing ones. Undefined when the list is short or the text is another shape.
+ * under `Test Results:`. This keeps the failures, the failing and skipped tests' lines and the
+ * summary, and counts the passing ones. Undefined when the list is short or the text is another shape.
  */
 export function compactTestText(text: string): string | undefined {
   if (!text.startsWith('🧪 Test')) return undefined
@@ -222,6 +222,7 @@ export function compactTestText(text: string): string | undefined {
   if (listed <= PASSING_LIST_LIMIT) return undefined
   // The summary's count, since Claude Code may already have cut the middle of a long list.
   const passed = Number(/❌ \d+ tests? failed, (\d+) passed/.exec(text)?.[1] ?? listed)
-  const failing = section.filter(line => line.includes('❌'))
-  return [...lines.slice(0, start + 1), `  (${passed} passing tests left out)`, ...failing, ...lines.slice(end)].join('\n')
+  // Failing (❌) and skipped (⏭️) tests keep their lines; only passing ones are counted.
+  const kept = section.filter(line => line.includes('❌') || line.includes('⏭'))
+  return [...lines.slice(0, start + 1), `  (${passed} passing tests left out)`, ...kept, ...lines.slice(end)].join('\n')
 }

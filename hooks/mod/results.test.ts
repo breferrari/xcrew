@@ -213,3 +213,8 @@ test('a list Claude Code already cut in the middle is counted whole, its marker 
   expect(compact).not.toContain('truncated')
   expect(compact).not.toContain('test_case20')
 })
+
+test('skipped tests keep their lines: only passing ones are counted', () => {
+  const withSkip = failingRunText(40).replace('  ❌ FormatterTests/test_symbol() (0.010s)', '  ⏭️ FormatterTests/test_skipped() (0.000s)\n  ❌ FormatterTests/test_symbol() (0.010s)')
+  expect(compactTestText(withSkip)).toContain('  (40 passing tests left out)\n  ⏭️ FormatterTests/test_skipped() (0.000s)\n  ❌ FormatterTests/test_symbol() (0.010s)')
+})
