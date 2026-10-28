@@ -1,4 +1,4 @@
-import type { On } from 'claude-code'
+import type { EngineInterface, On } from 'claude-code'
 import { comparison, stopwatch } from './format'
 import { endRun, startRun } from './band'
 import { describe, observe } from './context'
@@ -11,6 +11,16 @@ export const DURATIONS_PREFIX = 'durations.'
 const historyKey = (tool: string) => `${DURATIONS_PREFIX}${tool}`
 /** Runs at least this long also send a notification. */
 const LONG_RUN_MS = 60_000
+
+/** Claude Code's notice for a result over its size limit, naming the file that holds the whole text. */
+const SAVED_RESULT = /Output has been saved to (\/\S+\/tool-results\/\S+?)\.\s/
+
+/** The text to judge a result by: a result Claude Code saved to a file is read back from it. */
+async function fullText($: EngineInterface, text: string): Promise<string> {
+  const saved = SAVED_RESULT.exec(text)?.[1]
+  if (!saved) return text
+  return (await quietly(() => $.fs.read(saved))) ?? text
+}
 
 /** Bookkeeping is best-effort: a clock, store or display failure must never fail a build. */
 async function quietly<T>(work: () => Promise<T> | T): Promise<T | undefined> {
@@ -63,7 +73,8 @@ export function registerTiming(on: On): void {
     const elapsed = ended - started
     const earlier = ((await quietly(() => $.store.get(historyKey(name)))) as number[] | undefined) ?? []
     await quietly(() => $.store.set(historyKey(name), [...earlier, elapsed].slice(-HISTORY)))
-    const outcome = result.deny !== undefined ? { ok: false } : summarize(name, { isError: result.isError === true, text: result.text ?? '' })
+    const outcome =
+      result.deny !== undefined ? { ok: false } : summarize(name, { isError: result.isError === true, text: await fullText($, result.text ?? '') })
     const compared = comparison(elapsed, earlier)
     const detail = outcome.detail ? ` · ${outcome.detail}` : ''
     const summary = `${outcome.ok ? '✓' : '✗'} ${name} · ${stopwatch(elapsed)}${compared ? ` ${compared}` : ''}${detail}`

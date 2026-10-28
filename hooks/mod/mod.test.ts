@@ -210,6 +210,41 @@ test('slowness is only called out once there are five earlier runs to judge by',
   expect(seen.toasts).toEqual(['✓ BuildProject · 0:30 (avg 0:10)'])
 })
 
+/** What Claude Code hands on in place of a result over its size limit; the full text is in the file it names. */
+const SAVED = '/Users/dev/.claude/projects/-Users-dev-App/0000/tool-results/mcp-plugin_xcrew_MobileBuildMCP-test_sim-1.txt'
+const TOO_LARGE = `Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to ${SAVED}.
+Format: JSON with schema: {schema: string, schemaVersion: string, didError: boolean, error: null, data: {summary: {...}}}
+Use jq to make structured queries (find a value, filter by field).`
+
+test('a result too large for the transcript is read from the file Claude Code saved it to', async ($, on) => {
+  mock.clock(on)
+  const seen = watch(on)
+  const reads: string[] = []
+  on('fs.read', (_, e) => {
+    reads.push(e.path)
+    return { value: captured.mobileTestsPassed.text }
+  })
+  on('tool.call', () => ({ result: {}, text: TOO_LARGE }))
+
+  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
+
+  expect(reads).toEqual([SAVED])
+  expect(seen.toasts).toEqual(['✓ test_sim · 0:00 · 3 passed'])
+})
+
+test('a saved result that cannot be read leaves the outcome without its detail', async ($, on) => {
+  mock.clock(on)
+  const seen = watch(on)
+  on('fs.read', () => {
+    throw new Error('ENOENT')
+  })
+  on('tool.call', () => ({ result: {}, text: TOO_LARGE }))
+
+  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
+
+  expect(seen.toasts).toEqual(['✓ test_sim · 0:00'])
+})
+
 test('tools that neither build, test nor run are not timed', async ($, on) => {
   mock.clock(on)
   const seen = watch(on)
@@ -369,4 +404,16 @@ test('with nothing learned yet, the status line stays as it was', async ($, on) 
   const statuses = serve(on, {}, clock)
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
   expect(statuses).toContain('build_sim running · 0:03')
+})
+
+test('switching the Xcode MCP\'s scheme changes what the status line names', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  const statuses = serve(on, { XcodeOpenWorkspace: captured.xcodeWorkspaceOpened, XcodeSwitchScheme: captured.xcodeSchemeSwitched }, clock)
+
+  await callTool($, 'mcp__xcode__XcodeOpenWorkspace', { path: '/Users/dev/MacroProbe' })
+  await callTool($, 'mcp__xcode__XcodeSwitchScheme', { schemeName: 'MacroProbe' })
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect(statuses).toContain('BuildProject · MacroProbe on iPhone 18 Pro · 0:03')
 })

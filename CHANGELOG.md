@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A result too large for the transcript, which Claude Code saves to a file, is read back from that file, so its outcome still carries its detail (a large project's test run lost its count).
+- The status line and band name the scheme after `XcodeSwitchScheme` too, which reports it as `activeSchemeName`.
 - A run far slower than usual says so: `(2× its usual 1:50)` once there are five earlier runs, at 1.5× the average or more.
 - After a macro-plugin repair, the toast names the projects that will keep killing plugins until Tuist 4.203 or later regenerates them.
 - `/xcrew doctor`, `/xcrew repair` and `/xcrew history`, answered by the mod without a turn for Claude.

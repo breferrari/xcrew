@@ -20,7 +20,8 @@ export function observe(tool: XcodeTool, text: string): void {
     if (typeof data?.currentProfile === 'string') mobile.current = data.currentProfile
     return
   }
-  const scheme = typeof json.activeScheme === 'string' ? json.activeScheme : undefined
+  // XcodeOpenWorkspace says activeScheme; XcodeSwitchScheme says activeSchemeName.
+  const scheme = [json.activeScheme, json.activeSchemeName].find(value => typeof value === 'string') as string | undefined
   const destination = [json.activeDestinationDisplayTitle, json.activeRunDestination].find(value => typeof value === 'string') as string | undefined
   if (scheme || destination) xcode = { scheme: scheme ?? xcode.scheme, destination: destination ?? xcode.destination }
 }
