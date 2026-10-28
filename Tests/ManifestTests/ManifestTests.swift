@@ -41,6 +41,14 @@ import XcrewCore
 
     // MARK: Plugin hooks
 
+    /// The spinner text reads like the rest of Claude Code; the hook's name already says it's Xcrew's.
+    @Test func hookSpinnersCarryNoPrefix() throws {
+        let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: [[String: Any]]])
+        let messages = hooks.values.flatMap { $0 }.flatMap { ($0["hooks"] as? [[String: Any]]) ?? [] }.compactMap { $0["statusMessage"] as? String }
+        #expect(!messages.isEmpty)
+        #expect(messages.allSatisfy { !$0.hasPrefix("xcrew:") && $0.first?.isUppercase == true })
+    }
+
     func hook(_ event: String) throws -> (matcher: String?, command: String) {
         let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: [[String: Any]]])
         let group = try #require(hooks[event]?.first)
