@@ -30,6 +30,22 @@ let oldTuistCopyPhase = ##"shellScript = "#  This build phase serves two purpose
         #expect(result.message.contains("Macros") && result.message.contains("4.203"))
     }
 
+    @Test func withAnOldTuistInstalledTheFixIsToUpgrade() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write(oldTuistCopyPhase, to: "Macros/Macros.xcodeproj/project.pbxproj")
+        let runner = FakeRunner(installed: ["tuist"], responses: ["tuist version": .init(status: 0, stdout: "4.202.8\n")])
+        let result = await MacroCopyPhaseCheck().run(.fake(runner, project: project))
+        #expect(result.message.hasSuffix("Tuist 4.202.8 is installed: upgrade to 4.203 or later, then regenerate"))
+    }
+
+    @Test func withANewTuistInstalledOnlyRegeneratingIsLeft() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write(oldTuistCopyPhase, to: "Macros/Macros.xcodeproj/project.pbxproj")
+        let runner = FakeRunner(installed: ["tuist"], responses: ["tuist version": .init(status: 0, stdout: "4.206.0\n")])
+        let result = await MacroCopyPhaseCheck().run(.fake(runner, project: project))
+        #expect(result.message.hasSuffix("Tuist 4.206.0 is installed, which no longer adds it: regenerate (tuist install, then tuist generate)"))
+    }
+
     @Test func aProjectWithoutThePhasePasses() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         #expect(await MacroCopyPhaseCheck().run(.fake(project: project)).status == .pass)

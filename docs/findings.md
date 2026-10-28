@@ -47,6 +47,29 @@ Measured October 2026 (Xcode 27.1, MobileBuildMCP 2.7.1, Claude Code 2.1.312). T
 
 Counting modules from the log was tried and dropped: xcodebuild starts work on nearly every module early (33 of 35 had a task a quarter of the way into a clean build) and prints no line when one finishes, so the count sat near its total for most of the build.
 
+## MobileBuildMCP's upkeep
+
+Measured 2026-10-28. MobileBuildMCP is most of what Xcrew sets up, so how it's kept up decides how much Xcrew can lean on it.
+
+| Since July 2026 | |
+| --- | --- |
+| Commits a month | 70–77 in March and April; 47, 11, 27, 3, 8 from May to September; 2 in October so far |
+| Releases | 2.7.0 (July 23) and 2.7.1 (September 23), after one or two a month before |
+| Issues opened | 42: 20 open, 15 closed as not planned, 7 completed; 19 of the last 23 closures were by a bot |
+| Pull requests | 25 merged, 24 closed unmerged, 13 open; 14 of the merged ones are by one maintainer |
+
+Sentry acquired the project in February 2026, and activity peaked in the two months after; the slowdown began around June. Xcrew's two reports, getsentry/MobileBuildMCP#563 and #564, are open.
+
+What follows from it now: Xcrew works around MobileBuildMCP's problems in the mod and the CLI (compacting results, reading counts from the summary) rather than waiting on fixes, and keeps the Xcode MCP as the second server.
+
+If upkeep keeps falling, the options, cheapest first:
+
+1. **Lean on the Xcode MCP** for builds and tests, with MobileBuildMCP kept for what only it does (simulator control, UI automation, LLDB).
+2. **Fork MobileBuildMCP** (MIT) and carry the fixes Xcrew needs. Cost: keeping up with Xcode and simulator changes ourselves.
+3. **A server of Xcrew's own**, in Swift beside the CLI, covering only build, test and run on a simulator, with results shaped for an agent from the start. Cost: the largest, and it duplicates a working tool.
+
+When to revisit: a new Xcode or iOS release that MobileBuildMCP hasn't followed within a few weeks, a bug that blocks builds or tests with no fix upstream, or #563 and #564 closed unanswered.
+
 ## Tried and rejected
 
 | Option | Why not |
