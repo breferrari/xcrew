@@ -4,7 +4,7 @@ import { endRun, setMeasuredFrom, setPhase, startRun } from './band'
 import { describe, observe, scopeOf } from './context'
 import { recordRun } from './failures'
 import { phaseOf, findRunLog } from './progress'
-import { compactTestResult, reportedDuration, summarize, testTotal } from './results'
+import { compactTestResult, compactTestText, reportedDuration, summarize, testTotal } from './results'
 import { kindOf, parseTool } from './tools'
 
 /** How many earlier runs of each tool the average covers. */
@@ -18,6 +18,9 @@ const logsKey = (tool: string) => `logs.${tool}`
 const PREPARING = 'preparing'
 /** Runs at least this long also send a notification. */
 const LONG_RUN_MS = 60_000
+
+const NO_TESTS_NOTE =
+  'xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names.'
 
 /** Claude Code's notice for a result over its size limit, naming the file that holds the whole text. */
 const SAVED_RESULT = /Output has been saved to (\/\S+\/tool-results\/\S+?)\.\s/
@@ -140,9 +143,10 @@ export function registerTiming(on: On): void {
     // result is that large because of its per-test list; Claude gets the rest, and the file stays.
     if (result.deny !== undefined) return result
     const saved = SAVED_RESULT.exec(result.text ?? '')?.[1]
-    const compact = saved ? compactTestResult(text, saved) : undefined
+    const compact = saved ? compactTestResult(text, saved) : compactTestText(text)
     // Its own `result`, without core's `ref`: with `ref` kept, core shows the model its own messages.
     if (compact) return result.isError ? { result: compact, isError: true } : { result: compact }
+    if (kindOf(parsed) === 'test' && testTotal(text) === 0) return { ...result, context: [...(result.context ?? []), NO_TESTS_NOTE] }
     return result
   })
 }

@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import * as captured from './fixtures'
-import { failuresOf, reportedDuration, summarize, testTotal } from './results'
+import { compactTestText, failuresOf, reportedDuration, summarize, testTotal } from './results'
 import { callTool } from './testing'
 
 test('MobileBuildMCP test runs: counts when they pass, the first failing test when they fail', () => {
@@ -155,4 +155,61 @@ Test Failures (1):
 
 ❌ 1 test failed, 0 passed, 0 skipped (⏱️ 30.7s)`
   expect(failuresOf(text)).toEqual([{ title: 'FormatterTests/test_symbol', message: 'deliberate failure' }])
+})
+
+/** A failing run's text as MobileBuildMCP returns it with `showTestTiming` on: every passing test listed. */
+function failingRunText(passing: number): string {
+  const passed = Array.from({ length: passing }, (_, index) => `  ✅ FormatterTests/test_case${index}() (0.001s)`)
+  return [
+    '🧪 Test',
+    '',
+    'Test Failures (1):',
+    '',
+    '  ✗ FormatterTests / test_symbol(): XCTAssertEqual failed: ("4") is not equal to ("3")',
+    '',
+    'Test Results:',
+    ...passed,
+    '  ❌ FormatterTests/test_symbol() (0.010s)',
+    '',
+    `❌ 1 test failed, ${passing} passed, 0 skipped (⏱️ 65.0s)`,
+    '  └ Files:',
+    '     └── ~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/logs/test_sim.log — Build Logs',
+  ].join('\n')
+}
+
+test('a failing run\'s text keeps its failures and summary, and counts its passing tests instead of listing them', () => {
+  expect(compactTestText(failingRunText(40))).toBe(
+    [
+      '🧪 Test',
+      '',
+      'Test Failures (1):',
+      '',
+      '  ✗ FormatterTests / test_symbol(): XCTAssertEqual failed: ("4") is not equal to ("3")',
+      '',
+      'Test Results:',
+      '  (40 passing tests left out)',
+      '  ❌ FormatterTests/test_symbol() (0.010s)',
+      '',
+      '❌ 1 test failed, 40 passed, 0 skipped (⏱️ 65.0s)',
+      '  └ Files:',
+      '     └── ~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/logs/test_sim.log — Build Logs',
+    ].join('\n'),
+  )
+})
+
+test('a short list of passing tests is left as the server wrote it', () => {
+  expect(compactTestText(failingRunText(5))).toBeUndefined()
+  expect(compactTestText(captured.mobileBuildFailed.text)).toBeUndefined()
+})
+
+test('a test run that ran no tests is not a success, whatever the server says', () => {
+  expect(summarize('test_sim', captured.mobileTestsNoneRan)).toEqual({ ok: false, detail: 'no tests ran' })
+})
+
+test('a list Claude Code already cut in the middle is counted whole, its marker and fragments dropped', () => {
+  const cut = failingRunText(40).replace('  ✅ FormatterTests/test_case20() (0.001s)', '\n... [71437 characters truncated] ...\n\nTests/test_case20() (0.001s)')
+  const compact = compactTestText(cut) ?? ''
+  expect(compact).toContain('Test Results:\n  (40 passing tests left out)\n  ❌ FormatterTests/test_symbol() (0.010s)\n\n❌ 1 test failed, 40 passed')
+  expect(compact).not.toContain('truncated')
+  expect(compact).not.toContain('test_case20')
 })

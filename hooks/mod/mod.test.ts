@@ -260,6 +260,35 @@ test('a large result that cannot be summarised is handed on as Claude Code saved
   expect(ran.text).toBe(TOO_LARGE)
 })
 
+test('a failing run reaches Claude with its failures and summary, not every passing test', async ($, on) => {
+  mock.clock(on)
+  watch(on)
+  const passing = Array.from({ length: 40 }, (_, index) => `  ✅ FormatterTests/test_case${index}() (0.001s)`).join('\n')
+  const text = `🧪 Test\n\nTest Failures (1):\n\n  ✗ FormatterTests / test_symbol(): failed - boom\n\nTest Results:\n${passing}\n  ❌ FormatterTests/test_symbol() (0.010s)\n\n❌ 1 test failed, 40 passed, 0 skipped (⏱️ 65.0s)`
+  on('tool.call', () => ({ result: {}, text, isError: true }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(ran.ref).toBeUndefined()
+  expect(ran.isError).toBe(true)
+  expect(ran.result).toContain('  (40 passing tests left out)')
+  expect(ran.result).toContain('✗ FormatterTests / test_symbol(): failed - boom')
+  expect(ran.result).not.toContain('✅')
+})
+
+test('a test run that ran no tests tells Claude the filter probably matched nothing', async ($, on) => {
+  mock.clock(on)
+  const seen = watch(on)
+  on('tool.call', () => ({ result: {}, text: captured.mobileTestsNoneRan.text }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:Nope'] })
+
+  expect(seen.toasts).toEqual(['✗ test_sim · 0:09 · no tests ran'])
+  expect(ran.context).toEqual([
+    'xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names.',
+  ])
+})
+
 test('a saved result that cannot be read leaves the outcome without its detail', async ($, on) => {
   mock.clock(on)
   const seen = watch(on)

@@ -55,6 +55,9 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Smaller test results for Claude~~ | Shipped: a result Claude Code saved for being too large reaches Claude without its per-test list (122 KB → 2.5 KB) | | | | |
 | ~~Report: MobileBuildMCP's per-test list is always in its structured result~~ | Reported: getsentry/MobileBuildMCP#564 | | | | |
 | ~~Report: MobileBuildMCP drops a test from its list~~ | Reported: getsentry/MobileBuildMCP#563 | | | | |
+| Report: test failures have no `file:line` | MobileBuildMCP's failing tests name the test and message but not where; compile errors do give `file:line` | Upstream issue | | S | The result bundle and the build log both have it |
+| Report: crashes come without a stack | `Crash: xctest at closure #1 in …test_probe_crash()` names the test, not the frames | Upstream issue | | S | The result bundle has the crash's frames |
+| Report: one compile error counted twice | The compiler's caret line (`` `- error: … ``) counts as a second error: `Errors (2)` for one | Upstream issue | | S | Xcrew's failure pane already skips it |
 | Restyled tool rows | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
 
 ### Health and setup

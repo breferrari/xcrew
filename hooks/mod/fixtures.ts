@@ -124,3 +124,9 @@ export const xcodeSchemeSwitched: Captured = {
   isError: false,
   text: '{"activeDestinationDisplayTitle":"iPhone 18 Pro","activeSchemeName":"MacroProbe","message":"Active scheme is now \'MacroProbe\' with run destination \'iPhone 18 Pro\'."}',
 }
+
+/** A `-only-testing` filter that matched nothing: MobileBuildMCP still reports SUCCEEDED, with every count 0. */
+export const mobileTestsNoneRan: Captured = {
+  isError: false,
+  text: '{"schema":"mobilebuildmcp.output.test-result","schemaVersion":"3","didError":false,"error":null,"data":{"summary":{"status":"SUCCEEDED","durationMs":9120,"counts":{"passed":0,"failed":0,"skipped":0},"target":"simulator"},"artifacts":{"buildLogPath":"~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/logs/test_sim.log"},"diagnostics":{"warnings":[],"errors":[],"testFailures":[]}}}',
+}

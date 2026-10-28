@@ -9,6 +9,8 @@ export type Summary = { ok: boolean; detail?: string }
 /** Keeps the toast to one line. */
 const MAX_DETAIL = 100
 const TESTS_DID_NOT_RUN = "build failed, tests didn't run"
+/** A test run whose counts are all 0 reports SUCCEEDED; it's usually a filter that matched nothing. */
+const NO_TESTS_RAN = 'no tests ran'
 
 export function summarize(_tool: string, output: ToolOutput): Summary {
   const json = parseObject(output.text)
@@ -37,6 +39,7 @@ function fromMobileBuildMCP(json: Json): Summary | undefined {
   if (!counts) return { ok }
   const failed = counts.failed ?? 0
   const total = (counts.passed ?? 0) + failed + (counts.skipped ?? 0)
+  if (total === 0) return { ok: false, detail: NO_TESTS_RAN }
   return failed > 0 ? { ok: false, detail: `${failed} of ${total} failed` } : { ok, detail: `${counts.passed ?? 0} passed` }
 }
 
@@ -49,6 +52,7 @@ function fromXcodeMCP(json: Json): Summary | undefined {
   const counts = json.counts as { passed?: number; failed?: number; total?: number } | undefined
   if (counts) {
     const failed = counts.failed ?? 0
+    if ((counts.total ?? (counts.passed ?? 0) + failed) === 0) return { ok: false, detail: NO_TESTS_RAN }
     if (failed === 0) return { ok: true, detail: `${counts.passed ?? 0} passed` }
     const results = (json.results as { identifier?: string; state?: string }[] | undefined) ?? []
     const first = results.find(result => result.state === 'Failed')?.identifier
@@ -193,4 +197,31 @@ export function compactTestResult(text: string, savedPath: string): string | und
   // The list's own size, which can be one short of the summary's counts: those come from the result bundle.
   const note = `per-test list (${data.testCases.length} entries) left out to keep this result short; the full result is in ${savedPath}`
   return JSON.stringify({ ...json, data: { ...data, testCases: note } })
+}
+
+/** Passing tests listed past this many are counted instead: a failing run's list is what pushes it over the limit. */
+const PASSING_LIST_LIMIT = 20
+
+/**
+ * MobileBuildMCP's text for a failing test run, with `showTestTiming` on, lists every passing test
+ * under `Test Results:`. This keeps the failures, the failing tests' lines and the summary, and
+ * counts the passing ones. Undefined when the list is short or the text is another shape.
+ */
+export function compactTestText(text: string): string | undefined {
+  if (!text.startsWith('🧪 Test')) return undefined
+  const lines = text.split('\n')
+  const start = lines.indexOf('Test Results:')
+  if (start === -1) return undefined
+  // The list runs to the summary line; a blank line inside it is where Claude Code cut a long one.
+  const summary = lines.findIndex((line, index) => index > start && /^(❌|✅) \d+ tests? /.test(line))
+  let end = summary === -1 ? start + 1 : summary
+  if (summary === -1) while (end < lines.length && (lines[end] ?? '').trim() !== '') end += 1
+  while (end > start + 1 && (lines[end - 1] ?? '').trim() === '') end -= 1
+  const section = lines.slice(start + 1, end)
+  const listed = section.filter(line => line.trimStart().startsWith('✅')).length
+  if (listed <= PASSING_LIST_LIMIT) return undefined
+  // The summary's count, since Claude Code may already have cut the middle of a long list.
+  const passed = Number(/❌ \d+ tests? failed, (\d+) passed/.exec(text)?.[1] ?? listed)
+  const failing = section.filter(line => line.includes('❌'))
+  return [...lines.slice(0, start + 1), `  (${passed} passing tests left out)`, ...failing, ...lines.slice(end)].join('\n')
 }
