@@ -158,9 +158,10 @@ claude --plugin-dir .          # try your checkout in a session
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the conventions, and how to add a check, a command or a mod behaviour.
 
-## Privacy
+## What it runs and reaches
 
-Xcrew sends nothing anywhere: it has no telemetry, and it turns MobileBuildMCP's off. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
+- **On your Mac.** The first session builds Xcrew's command-line tool from this repository's Swift source with `swift build`, into `~/Library/Caches/xcrew`. The plugin starts three MCP servers: Apple's `xcrun mcpbridge`, the Homebrew `mobilebuildmcp`, and Sosumi over HTTPS. The mod runs `xcrun xcresulttool` on a failing or skipped test run's result bundle, and the repair re-copies macro plugins inside a build's DerivedData folder. Nothing runs with `sudo`: the one `sudo` command, enabling Xcode's MCP server, is yours to run in *Quick start*.
+- **Over the network.** Xcrew has no telemetry, and it turns MobileBuildMCP's off. Its one request is `xcrew doctor`'s check for a newer release: a GET to GitHub's API for this repository's latest release, which the session-start check leaves out. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
 
 ## License
 
