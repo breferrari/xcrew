@@ -1,10 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 import type { BandRun } from '../../types'
-import { stopwatch } from './format'
+import { gauge, remaining, stopwatch } from './format'
 
 /** The band keeps showing a finished run's outcome this long. */
 const HIDE_AFTER_MS = 3 * 60_000
+/** Cells in the gauge: wide enough to move each few seconds, narrow enough to leave room for the rest. */
+const GAUGE_CELLS = 8
 /** The X's orange, the brand colour; everything else follows the person's theme. */
 const ORANGE = '#ec501d'
 
@@ -28,9 +30,10 @@ type Segment = { text: string; color?: string; weight?: 'semibold' }
 export function segments(run: BandRun, now: number): Segment[] {
   const target: Segment[] = run.target ? [{ text: ` · ${run.target}`, color: 'subtle' }] : []
   if (!run.ended) {
+    const elapsed = now - run.startedAt
     const phase: Segment[] = run.phase ? [{ text: ` · ${run.phase}`, color: 'subtle' }] : []
     // What changes comes first, so a narrow terminal cuts the target, which the person already knows.
-    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(now - run.startedAt)}`, color: 'subtle' }, ...phase, ...target]
+    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' }, ...estimate(elapsed, run.usual), ...phase, ...target]
   }
   const { ok, elapsed, comparison, detail } = run.ended
   return [
@@ -44,6 +47,15 @@ export function segments(run: BandRun, now: number): Segment[] {
   ]
 }
 
+/** A gauge of the time so far against the usual time, and how much is left; nothing without a usual time. */
+function estimate(elapsed: number, usual: number | undefined): Segment[] {
+  if (usual === undefined || usual <= 0) return []
+  const { done, rest } = gauge(elapsed / usual, GAUGE_CELLS)
+  const { text, isOver } = remaining(elapsed, usual)
+  const tone = isOver ? 'warning' : 'success'
+  return [{ text: ' ' }, { text: done, color: tone }, { text: rest, color: 'inactive' }, { text: ` ${text}`, color: isOver ? 'warning' : 'subtle' }]
+}
+
 /** Draws the run above the prompt, and nothing when there's none or it ended a while ago. */
 export function registerBand(on: On): void {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -55,7 +67,9 @@ export function registerBand(on: On): void {
     const { Box, Text } = $.ui.resolve(e)
     return Box({
       flexDirection: 'row',
-      children: segments(run, now).map(({ text, color, weight }) => Text({ color, weight, wrap: 'truncate-end', children: [text] })),
+      children: segments(run, now)
+        .filter(({ text }) => text !== '')
+        .map(({ text, color, weight }) => Text({ color, weight, wrap: 'truncate-end', children: [text] })),
     })
   })
 }

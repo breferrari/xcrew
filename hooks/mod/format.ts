@@ -22,3 +22,19 @@ export function comparison(elapsed: number, earlier: readonly number[]): string 
   }
   return `(avg ${stopwatch(usual)})`
 }
+
+/** A gauge drawn like a status line's: heavy cells for the part done, light ones for the rest, to half a cell. */
+export function gauge(fraction: number, cells: number): { done: string; rest: string } {
+  let halves = Math.round(fraction * cells * 2)
+  if (fraction > 0 && halves === 0) halves = 1
+  halves = Math.min(halves, cells * 2)
+  const full = Math.floor(halves / 2)
+  const half = halves % 2
+  return { done: '━'.repeat(full) + (half ? '╸' : ''), rest: '─'.repeat(cells - full - half) }
+}
+
+/** `~0:15 left` while under the usual time (an estimate), `0:08 over` once past it. */
+export function remaining(elapsed: number, usual: number): { text: string; isOver: boolean } {
+  const left = usual - elapsed
+  return left >= 0 ? { text: `~${stopwatch(left)} left`, isOver: false } : { text: `${stopwatch(-left)} over`, isOver: true }
+}

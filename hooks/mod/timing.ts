@@ -1,5 +1,5 @@
 import type { EngineInterface, On } from 'claude-code'
-import { comparison, stopwatch } from './format'
+import { average, comparison, gauge, remaining, stopwatch } from './format'
 import { endRun, setPhase, startRun } from './band'
 import { describe, observe } from './context'
 import { phaseOf, findRunLog } from './progress'
@@ -37,6 +37,13 @@ async function quietly<T>(work: () => Promise<T> | T): Promise<T | undefined> {
   }
 }
 
+/** The status line's gauge, the band's in plain text: ` ━━━━╸─── ~0:15 left`. */
+function plainEstimate(elapsed: number, usual: number | undefined): string {
+  if (usual === undefined || usual <= 0) return ''
+  const { done, rest } = gauge(elapsed / usual, 8)
+  return ` ${done}${rest} ${remaining(elapsed, usual).text}`
+}
+
 /**
  * Times builds, test runs and app runs: the band counts while one runs and then shows its outcome
  * and how it compares with the last runs of the same tool. Where no band draws, the status line
@@ -57,10 +64,13 @@ export function registerTiming(on: On): void {
     const label = target ? `${name} · ${target}` : `${name} running`
 
     const started = await quietly(() => $.clock.now())
+    const earlier = ((await quietly(() => $.store.get(historyKey(name)))) as number[] | undefined) ?? []
+    // What the gauge measures against; a tool's first run has none and shows its time alone.
+    const usual = earlier.length > 0 ? average(earlier) : undefined
     // The band draws in colour where a surface can show it; elsewhere the plain status line carries the run.
     const surfaces = (await quietly(() => $.session.surfaces())) ?? []
     const usesBand = surfaces.some(surface => surface === 'terminal' || surface === 'desktop')
-    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started }))
+    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, usual }))
     // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
     const followsLog = parsed.server === 'MobileBuildMCP'
     const expectedTests = followsLog ? ((await quietly(() => $.store.get(testsKey(name)))) as number | undefined) : undefined
@@ -84,7 +94,7 @@ export function registerTiming(on: On): void {
         if (followsLog) await readPhase(started)
         if (usesBand) return quietly(() => $.ui.invalidate('ui.render'))
         const now = await quietly(() => $.clock.now())
-        if (now !== undefined) await quietly(() => $.ui.status(`${label} · ${stopwatch(now - started)}${phase ? ` · ${phase}` : ''}`))
+        if (now !== undefined) await quietly(() => $.ui.status(`${label} · ${stopwatch(now - started)}${plainEstimate(now - started, usual)}${phase ? ` · ${phase}` : ''}`))
       }),
     )
 
@@ -98,7 +108,6 @@ export function registerTiming(on: On): void {
     const text = result.deny !== undefined ? '' : await fullText($, result.text ?? '')
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = reportedDuration(text) ?? ended - started
-    const earlier = ((await quietly(() => $.store.get(historyKey(name)))) as number[] | undefined) ?? []
     await quietly(() => $.store.set(historyKey(name), [...earlier, elapsed].slice(-HISTORY)))
     const outcome = result.deny !== undefined ? { ok: false } : summarize(name, { isError: result.isError === true, text })
     const total = testTotal(text)

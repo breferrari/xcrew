@@ -46,7 +46,7 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Results in the toast~~ | Shipped: see what the mod shows today | | | | |
 | ~~What's building~~ | Shipped: learned from `session_show_defaults` and the Xcode MCP's workspace and scheme answers | | | | |
 | Build band | `last ✓ build 1:12 ▁▂▂▃▂ · ✗ tests 3 failed · 1 plugin repaired` | Band | `$.store` history | M | Hide when idle? The hamzafer conventions say yes, after a few minutes |
-| Live progress | Shipped for MobileBuildMCP: the phase from its log (`compiling Utility · Formatter.swift`, `testing 431 of 959`). The Xcode MCP's own progress (`Building • 836 / 850`) stays out of reach | Band | | | A mod can't read MCP progress yet: the `ToolProgress` render site carries only the run-in-background hint, and its docs say other kinds join later |
+| Live progress | Shipped: a gauge of the time against the usual duration for every run, and for MobileBuildMCP the phase from its log (`compiling Utility`, `testing 431 of 959`). The Xcode MCP's own progress (`Building • 836 / 850`) stays out of reach | Band | | | A mod can't read MCP progress yet: the `ToolProgress` render site carries only the run-in-background hint, and its docs say other kinds join later |
 | ~~Slow-run alert~~ | Shipped: `(2× its usual 1:50)` in the toast and the band | | | | |
 | ~~Done while you were away~~ | Shipped: runs of a minute or more notify, through the person's own notification settings | | | | |
 | ~~Durations from the servers~~ | Shipped: runs are timed by MobileBuildMCP's `durationMs` and the Xcode MCP's `elapsedTime` where they report one | | | | |

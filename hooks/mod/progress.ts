@@ -16,6 +16,12 @@ export function phaseOf(log: string, expectedTests?: number): string | undefined
     const done = (log.slice(Math.max(testing, 0)).match(TEST_CASE) ?? []).length
     return expectedTests !== undefined && done <= expectedTests ? `testing ${done} of ${expectedTests}` : `testing · ${done} done`
   }
+  // No count for a build: xcodebuild starts work on nearly every module early, and prints no line when one is done.
+  return buildStep(log)
+}
+
+/** The latest task's step: `compiling Utility`, `linking Utility`, or `building Utility`. */
+function buildStep(log: string): string | undefined {
   const lines = log.split('\n')
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const task = TASK.exec(lines[index] ?? '')

@@ -325,7 +325,7 @@ test('a test run remembers how many tests it ran, for the next run\'s count', as
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
-  expect(seen.statuses).toContain('test_sim running · 0:02 · testing 2 of 3')
+  expect(seen.statuses.some(status => status?.startsWith('test_sim running · 0:02 ') && status.endsWith(' · testing 2 of 3'))).toBe(true)
 })
 
 test('a tool that has written a log before says it is waiting until this run\'s log appears', async ($, on) => {
@@ -377,7 +377,7 @@ test('finding a run\'s log teaches the mod that the tool writes one', async ($, 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
   expect(run).toBe(2)
-  expect(seen.statuses).toContain('test_sim running · 0:02 · waiting to start')
+  expect(seen.statuses.some(status => status?.startsWith('test_sim running · 0:02 ') && status.endsWith(' · waiting to start'))).toBe(true)
 })
 
 test('Xcode MCP runs leave the log alone: that server writes none the mod can follow', async ($, on) => {
@@ -392,6 +392,19 @@ test('Xcode MCP runs leave the log alone: that server writes none the mod can fo
   await callTool($, 'mcp__xcode__BuildProject')
 
   expect(disk.listed).toEqual([])
+})
+
+test('where no band draws, the status line carries the gauge against the usual time', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on, '', { 'durations.BuildProject': [36_000] })
+  on('tool.call', async () => {
+    await clock.advance(21_000)
+    return { result: {}, text: 'ok' }
+  })
+
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect(seen.statuses).toContain('BuildProject running · 0:21 ━━━━╸─── ~0:15 left')
 })
 
 test('tools that neither build, test nor run are not timed', async ($, on) => {

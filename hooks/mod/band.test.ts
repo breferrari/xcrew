@@ -178,3 +178,18 @@ test('the time and phase come before the target, so a narrow terminal cuts what 
   const run = { tool: 'build_sim', target: 'App on iPhone 12', startedAt: 0, phase: 'compiling Utility' }
   expect(segments(run, 41_000).map(segment => segment.text)).toEqual(['●', ' ', 'build_sim', ' · 0:41', ' · compiling Utility', ' · App on iPhone 12'])
 })
+
+test('with a usual time to go by, the band draws a gauge and the time left after the clock', () => {
+  const run = { tool: 'build_sim', target: 'App on iPhone 12', startedAt: 0, usual: 36_000, phase: 'compiling Net' }
+  const drawn = segments(run, 21_000)
+  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'build_sim', ' · 0:21', ' ', '━━━━╸', '───', ' ~0:15 left', ' · compiling Net', ' · App on iPhone 12'])
+  expect(drawn[5]?.color).toBe('success')
+  expect(drawn[6]?.color).toBe('inactive')
+})
+
+test('past the usual time the gauge turns to the warning colour and says how far over', () => {
+  const drawn = segments({ tool: 'test_sim', startedAt: 0, usual: 44_000 }, 52_000)
+  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · 0:52', ' ', '━━━━━━━━', '', ' 0:08 over'])
+  expect(drawn[5]?.color).toBe('warning')
+  expect(drawn[7]?.color).toBe('warning')
+})

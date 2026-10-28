@@ -77,7 +77,7 @@ ok    xcode-mcp/macro-copy-phase       none
 While a build or test runs, a coloured line above the prompt counts it and names the scheme and simulator it's using. When it ends, the same line says how it went, how it compares with recent runs of the same tool, and what failed. Where that line can't draw, such as VS Code, the status line counts and a toast reports the outcome:
 
 ```
-test_sim · 0:41 · testing 431 of 959 · MyApp on iPhone 17
+test_sim · 0:41 ━━━━━━╸─ ~0:04 left · testing 431 of 959 · MyApp on iPhone 17
 ✓ test_sim · 1:12 (avg 1:05) · 412 passed
 ✗ test_sim · 2:03 (avg 1:58) · 3 of 412 failed · PaymentsTests/testRefund
 ✗ BuildProject · 0:48 · FooView.swift:12 Cannot find 'bar' in scope

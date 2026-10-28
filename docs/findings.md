@@ -32,6 +32,21 @@ They overlap on build, test and run. Xcrew sends those to MobileBuildMCP because
 - **Sosumi beats `DocumentationSearch` for documentation**: short results with links, WWDC sessions, and each API's minimum OS version. `DocumentationSearch` matches the installed SDK and works offline.
 - **`IDEAllowUnauthenticatedAgents`** lets any unsigned process drive Xcode's tools; leave it off.
 
+## Build and test progress
+
+Measured October 2026 (Xcode 27.1, MobileBuildMCP 2.7.1, Claude Code 2.1.312). The band's gauge is time against the usual duration because no exact count reaches a mod:
+
+| Layer | Exact progress? | What it carries |
+| --- | --- | --- |
+| Apple's build system (swift-build) | Yes | `BUILD_PROGRESS_UPDATED` messages with `percentComplete` and a status line (`Sources/SWBProtocol/BuildOperationMessages.swift`). Xcode draws its progress from them |
+| Xcode MCP | Yes | MCP progress notifications (`Building • 836 / 850`), which Claude Code draws under the tool call |
+| xcodebuild's output, as MobileBuildMCP logs it | No | Task lines naming their module, written as the run goes; one total near the start, `Target dependency graph (35 targets)`. Test results arrive in a few batches as the parallel runners flush |
+| xcodebuild's result stream (`-resultStreamPath`) | No | Task start and end events only: a sample package's build gave 160 of each, no percentage or total |
+| MobileBuildMCP | No | Its parser reports stages (compiling, linking, testing) and counts tests before a run from the test sources, but only its command-line tool receives them; the MCP server sends no progress |
+| Claude Code's mod API | No | The `ToolProgress` render site carries only the run-in-background hint, and `$.mcp.call` returns only a result |
+
+Counting modules from the log was tried and dropped: xcodebuild starts work on nearly every module early (33 of 35 had a task a quarter of the way into a clean build) and prints no line when one finishes, so the count sat near its total for most of the build.
+
 ## Tried and rejected
 
 | Option | Why not |
@@ -41,4 +56,5 @@ They overlap on build, test and run. Xcrew sends those to MobileBuildMCP because
 | Python for Xcrew's logic | Apple's Python is 3.9 and contributors to an iOS tool write Swift; a cached Swift binary also starts faster (about 0.02 s against 0.05 s) |
 | Swift scripts | Compiled on every run, about 0.65 s per call, too slow for hooks |
 | A shell installer as a third install path | The plugin already installs without mcs, and a third path would drift |
+| Counting modules for the build gauge | Nearly every module has a task early in a build, and none says when it's done; see *Build and test progress* |
 | `swift-subprocess` | A package dependency means a network fetch on every user's first build |

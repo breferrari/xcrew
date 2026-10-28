@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- While a build or test run goes, the band draws a gauge of its time against the tool's usual duration, with the time left: `build_sim · 0:21 ━━━━╸─── ~0:15 left`. Past the usual time it turns to the warning colour and counts how far over. It's an estimate: xcodebuild prints no build percentage a mod can read. The first run of a tool shows its time alone.
+
 ## 0.4.1 — 2026-10-28
 
 - Until a MobileBuildMCP run's log appears, the band says `waiting to start`, so a pre-build hook or a permission prompt doesn't look like a stalled build. Only tools that have written a log before say it, so `clean` doesn't.
