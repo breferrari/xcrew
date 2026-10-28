@@ -40,12 +40,11 @@ async function history($: EngineInterface): Promise<string> {
   )
   const timed = rows.filter(row => row.runs.length > 0).sort((a, b) => average(b.runs) - average(a.runs))
   if (timed.length === 0) return 'No builds or test runs timed yet.'
-  const width = Math.max(...timed.map(row => row.tool.length))
   // Claude Code puts the plugin's name before the first line; a heading keeps the rows aligned.
   const heading = `usual durations, over the last ${HISTORY} runs of each tool`
-  const lines = timed.map(({ tool, runs }) => {
-    const count = `${runs.length} ${runs.length === 1 ? 'run' : 'runs'}`
-    return `${tool.padEnd(width)}  avg ${stopwatch(average(runs))} · last ${stopwatch(runs.at(-1) ?? 0)} · ${count}`
-  })
+  // Numbers first: a long scheme and test selection then can't push them out of line.
+  const stats = timed.map(({ runs }) => `avg ${stopwatch(average(runs))} · last ${stopwatch(runs.at(-1) ?? 0)} · ${runs.length} ${runs.length === 1 ? 'run' : 'runs'}`)
+  const width = Math.max(...stats.map(stat => stat.length))
+  const lines = timed.map(({ tool }, index) => `${(stats[index] ?? '').padEnd(width)}  ${tool}`)
   return [heading, ...lines].join('\n')
 }

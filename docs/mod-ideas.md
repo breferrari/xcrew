@@ -53,6 +53,7 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Failure pane~~ | Shipped: `/xcrew failures` opens every failing test and compile error of the last failing run, with message and location | | | | |
 | Exact Xcode MCP progress | `BuildProject ━━━━━━╸─ 836 / 850` | Band | A proxy between Claude Code and `xcrun mcpbridge` that passes every message through and copies progress notifications to a file the mod reads | L | It sits in every Xcode MCP call's path, so it needs exact forwarding and no added latency. First check the notifications carry `progress` and `total`, not only text |
 | Smaller test results for Claude | A 959-test run's 122 KB result trimmed to its summary and failures | `tool.call` | MobileBuildMCP's JSON | M | The mod receives the result after Claude Code has already saved it to a file, so trimming has to happen before: try MobileBuildMCP's `progress: false` or a narrower output first |
+| Report: MobileBuildMCP drops a test from its list | Its per-test list and the log's count read 958 of 959: xcodebuild writes its own `[MT] IDESchemeActionSDKRecord` message into the middle of a test's result line | Upstream issue | | S | The summary's count comes from the result bundle and is right; the list could come from there too |
 | Restyled tool rows | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
 
 ### Health and setup

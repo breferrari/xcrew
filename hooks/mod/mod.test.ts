@@ -328,7 +328,7 @@ test('a test run remembers how many tests it ran, for the next run\'s count', as
   expect(seen.statuses.some(status => status?.startsWith('test_sim running · 0:02 ') && status.endsWith(' · testing 2 of 3'))).toBe(true)
 })
 
-test('a tool that has written a log before says it is waiting until this run\'s log appears', async ($, on) => {
+test('a tool that has written a log before says it is preparing until this run\'s log appears', async ($, on) => {
   const clock = mock.clock(on)
   const seen = watch(on, '', { 'logs.test_sim': true })
   mock.env(on, { HOME: '/Users/dev' })
@@ -341,7 +341,7 @@ test('a tool that has written a log before says it is waiting until this run\'s 
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
-  expect(seen.statuses).toContain('test_sim running · 0:03 · waiting to start')
+  expect(seen.statuses).toContain('test_sim running · 0:03 · preparing')
 })
 
 test('a tool that never writes a log, like clean, shows just its time', async ($, on) => {
@@ -358,7 +358,7 @@ test('a tool that never writes a log, like clean, shows just its time', async ($
   await callTool($, 'mcp__MobileBuildMCP__clean')
 
   expect(seen.statuses).toContain('clean running · 0:03')
-  expect(seen.statuses.some(status => status?.includes('waiting'))).toBe(false)
+  expect(seen.statuses.some(status => status?.includes('preparing'))).toBe(false)
 })
 
 test('finding a run\'s log teaches the mod that the tool writes one', async ($, on) => {
@@ -377,7 +377,7 @@ test('finding a run\'s log teaches the mod that the tool writes one', async ($, 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
   expect(run).toBe(2)
-  expect(seen.statuses.some(status => status?.startsWith('test_sim running · 0:02 ') && status.endsWith(' · waiting to start'))).toBe(true)
+  expect(seen.statuses.some(status => status?.startsWith('test_sim running · 0:02 ') && status.endsWith(' · preparing'))).toBe(true)
 })
 
 test('Xcode MCP runs leave the log alone: that server writes none the mod can follow', async ($, on) => {

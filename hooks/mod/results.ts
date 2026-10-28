@@ -167,7 +167,8 @@ function failuresFromMobileBuildMCPText(text: string): Failure[] {
       // It lists a failing test twice, once with its location; the first is kept.
       if (seen.has(title)) return
       seen.add(title)
-      failures.push({ title, message: test[3] ?? '', ...(where ? { where } : {}) })
+      // XCTest words an XCTFail as `failed - <message>`; the message is what was written.
+      failures.push({ title, message: (test[3] ?? '').replace(/^failed - /, ''), ...(where ? { where } : {}) })
       return
     }
     if (where) {

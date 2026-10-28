@@ -66,7 +66,7 @@ test('/xcrew history lists each tool\'s usual duration, slowest first', async ($
 
   const ran = await runCommand($, 'xcrew', 'history')
 
-  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\nRunAllTests  avg 5:00 · last 5:00 · 1 run\nbuild_sim    avg 1:10 · last 1:20 · 2 runs')
+  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 5:00 · last 5:00 · 1 run   RunAllTests\navg 1:10 · last 1:20 · 2 runs  build_sim')
 })
 
 test('/xcrew history with nothing timed yet says so', async ($, on) => {
@@ -93,5 +93,5 @@ test('/xcrew history names the scheme and tests each duration belongs to', async
 
   const ran = await runCommand($, 'xcrew', 'history')
 
-  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\nbuild_sim                    avg 1:00 · last 1:00 · 1 run\ntest_sim · App › SmallTests  avg 0:45 · last 0:45 · 1 run')
+  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 1:00 · last 1:00 · 1 run  build_sim\navg 0:45 · last 0:45 · 1 run  test_sim · App › SmallTests')
 })

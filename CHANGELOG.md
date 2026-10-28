@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Before a MobileBuildMCP run's log appears, the band says `preparing` rather than `waiting to start`: the server's own preparation, such as counting tests, happens there too, not only a pre-build hook or a permission prompt.
+- The failure pane shows an `XCTFail` as the message it was given, without XCTest's `failed - ` in front.
+- `/xcrew history` puts the numbers first, so a long scheme and test selection doesn't push them out of line.
+
 ## 0.5.0 — 2026-10-28
 
 - `/xcrew failures` opens a pane listing every failing test and compile error of the last failing run, with its message and where it failed. A later passing run of the same tool clears it.

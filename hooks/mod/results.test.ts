@@ -145,3 +145,14 @@ test('a passing run has no failures', () => {
     expect(failuresOf(output.text)).toEqual([])
   }
 })
+
+test('an XCTFail reads as its own message, without XCTest\'s "failed - " in front', () => {
+  const text = `🧪 Test
+
+Test Failures (1):
+
+  ✗ FormatterTests / test_symbol(): failed - deliberate failure
+
+❌ 1 test failed, 0 passed, 0 skipped (⏱️ 30.7s)`
+  expect(failuresOf(text)).toEqual([{ title: 'FormatterTests/test_symbol', message: 'deliberate failure' }])
+})

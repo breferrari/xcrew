@@ -13,9 +13,9 @@ export const DURATIONS_PREFIX = 'durations.'
 const historyKey = (tool: string) => `${DURATIONS_PREFIX}${tool}`
 /** The last test run's total per tool, for the next run's `testing 312 of 959`. */
 const testsKey = (tool: string) => `tests.${tool}`
-/** Whether a tool has written a log before: those say they're waiting until this run's appears; `clean` writes none. */
+/** Whether a tool has written a log before: those say they're preparing until this run's appears; `clean` writes none. */
 const logsKey = (tool: string) => `logs.${tool}`
-const WAITING = 'waiting to start'
+const PREPARING = 'preparing'
 /** Runs at least this long also send a notification. */
 const LONG_RUN_MS = 60_000
 
@@ -87,8 +87,8 @@ export function registerTiming(on: On): void {
         if (logPath !== undefined && !writesLog) await quietly(() => $.store.set(logsKey(name), true))
       }
       const log = logPath === undefined ? undefined : await quietly(() => $.fs.read(logPath as string))
-      // Before its log appears a run hasn't started: a pre-build hook or a permission prompt is holding it.
-      const now = typeof log === 'string' ? phaseOf(log, expectedTests) : writesLog && logPath === undefined ? WAITING : undefined
+      // Before its log appears xcodebuild hasn't started: a pre-build hook, a permission prompt or the server's own preparation.
+      const now = typeof log === 'string' ? phaseOf(log, expectedTests) : writesLog && logPath === undefined ? PREPARING : undefined
       if (now === undefined || now === phase) return
       phase = now
       if (usesBand) await quietly(() => setPhase($, now))
