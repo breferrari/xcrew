@@ -7,7 +7,7 @@
 - A compile error is counted once: MobileBuildMCP also listed the compiler's caret line as an error of its own.
 - A compacted failing run lists its failures once, under Test Failures, rather than again under Test Results, where the parallel runners' log can miss some; and the note for a left-out per-test list no longer gives a count that can disagree with the summary's.
 
-## Unreleased
+## 0.6.6 — 2026-10-28
 
 - A compacted failing run keeps its skipped tests' lines (`⏭️`) beside the failing ones; 0.6.2 to 0.6.4 left them out with the passing tests, so a skipped test showed only in the count.
 
