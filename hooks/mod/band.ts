@@ -29,7 +29,8 @@ export function segments(run: BandRun, now: number): Segment[] {
   const target: Segment[] = run.target ? [{ text: ` · ${run.target}`, color: 'subtle' }] : []
   if (!run.ended) {
     const phase: Segment[] = run.phase ? [{ text: ` · ${run.phase}`, color: 'subtle' }] : []
-    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, ...target, { text: ` · ${stopwatch(now - run.startedAt)}`, color: 'subtle' }, ...phase]
+    // What changes comes first, so a narrow terminal cuts the target, which the person already knows.
+    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(now - run.startedAt)}`, color: 'subtle' }, ...phase, ...target]
   }
   const { ok, elapsed, comparison, detail } = run.ended
   return [

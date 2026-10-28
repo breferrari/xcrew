@@ -271,6 +271,7 @@ Test case 'FormatterTests.test_pound()' passed on 'Clone 1 of iPhone 12 - xctest
 /** MobileBuildMCP's workspace folders and logs, as the mod finds them under the person's home. */
 function logsOnDisk(on: On, clock: { now: () => number }) {
   const listed: string[] = []
+  const disk = { hasLogs: true }
   mock.env(on, { HOME: '/Users/dev' })
   on('session.root', () => ({ value: '/work/App' }))
   on('fs.list', (_, e) => {
@@ -278,7 +279,7 @@ function logsOnDisk(on: On, clock: { now: () => number }) {
     if (e.path === WORKSPACES) {
       return { value: [{ name: 'App-0000', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }, { name: 'Other-1111', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }] }
     }
-    if (e.path === `${WORKSPACES}/App-0000/logs`) {
+    if (e.path === `${WORKSPACES}/App-0000/logs` && disk.hasLogs) {
       return {
         value: [
           { name: 'test_sim_2026-10-28T19-10-02Z_pid1_aaaa.log', kind: 'file', size: 1, mtimeMs: clock.now(), isLink: false },
@@ -294,7 +295,7 @@ function logsOnDisk(on: On, clock: { now: () => number }) {
     reads.push(e.path)
     return { value: TEST_LOG }
   })
-  return { listed, reads }
+  return { listed, reads, disk }
 }
 
 test('while a MobileBuildMCP run goes, the status line says what it is doing, from that run\'s log', async ($, on) => {
@@ -325,6 +326,58 @@ test('a test run remembers how many tests it ran, for the next run\'s count', as
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
   expect(seen.statuses).toContain('test_sim running · 0:02 · testing 2 of 3')
+})
+
+test('a tool that has written a log before says it is waiting until this run\'s log appears', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on, '', { 'logs.test_sim': true })
+  mock.env(on, { HOME: '/Users/dev' })
+  on('session.root', () => ({ value: '/work/App' }))
+  on('fs.list', () => ({ value: [] }))
+  on('tool.call', async () => {
+    await clock.advance(3_000)
+    return { result: {}, text: captured.mobileTestsPassed.text }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(seen.statuses).toContain('test_sim running · 0:03 · waiting to start')
+})
+
+test('a tool that never writes a log, like clean, shows just its time', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on)
+  mock.env(on, { HOME: '/Users/dev' })
+  on('session.root', () => ({ value: '/work/App' }))
+  on('fs.list', () => ({ value: [] }))
+  on('tool.call', async () => {
+    await clock.advance(3_000)
+    return { result: {}, text: 'cleaned' }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__clean')
+
+  expect(seen.statuses).toContain('clean running · 0:03')
+  expect(seen.statuses.some(status => status?.includes('waiting'))).toBe(false)
+})
+
+test('finding a run\'s log teaches the mod that the tool writes one', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on)
+  const { disk } = logsOnDisk(on, clock)
+  let run = 0
+  on('tool.call', async () => {
+    run += 1
+    await clock.advance(2_000)
+    return { result: {}, text: captured.mobileTestsPassed.text }
+  })
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  disk.hasLogs = false
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(run).toBe(2)
+  expect(seen.statuses).toContain('test_sim running · 0:02 · waiting to start')
 })
 
 test('Xcode MCP runs leave the log alone: that server writes none the mod can follow', async ($, on) => {

@@ -21,8 +21,8 @@ Test case 'CurrencyFormatterTests.test_euroFormat()' passed on 'Clone 1 of iPhon
 Test case 'CurrencyFormatterTests.test_poundFormat()' failed on 'Clone 1 of iPhone 12 - xctest (26885)' (0.020 seconds)
 `
 
-test('while compiling, the phase names the module and the file', () => {
-  expect(phaseOf(PREAMBLE + OTHER_TASK + COMPILING)).toBe('compiling Utility · CurrencyFormatter.swift')
+test('while compiling, the phase names the module, which changes slowly enough to read', () => {
+  expect(phaseOf(PREAMBLE + OTHER_TASK + COMPILING)).toBe('compiling Utility')
 })
 
 test('linking and signing are named for their module', () => {

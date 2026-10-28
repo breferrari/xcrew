@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import { callTool } from './testing'
+import { segments } from './band'
 import * as captured from './fixtures'
 
 const BAND = {
@@ -171,4 +172,9 @@ test('the band carries the phase after the time, in the quiet colour', async ($,
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
   expect(phase).toBe('subtle')
+})
+
+test('the time and phase come before the target, so a narrow terminal cuts what you already know', () => {
+  const run = { tool: 'build_sim', target: 'App on iPhone 12', startedAt: 0, phase: 'compiling Utility' }
+  expect(segments(run, 41_000).map(segment => segment.text)).toEqual(['●', ' ', 'build_sim', ' · 0:41', ' · compiling Utility', ' · App on iPhone 12'])
 })

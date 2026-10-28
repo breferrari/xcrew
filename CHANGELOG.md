@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Until a MobileBuildMCP run's log appears, the band says `waiting to start`, so a pre-build hook or a permission prompt doesn't look like a stalled build. Only tools that have written a log before say it, so `clean` doesn't.
+- The phase is shorter and comes before the target: `build_sim · 1:02 · compiling Utility · MyApp on iPhone 17`. The file being compiled is left out, so a narrow terminal cuts the target, which you already know, not the time or the phase.
+
 ## 0.4.0 — 2026-10-28
 
 - While a MobileBuildMCP build or test run goes, the band says what it's doing, from the log it writes as it runs: `compiling Utility · Formatter.swift`, `linking Utility`, `testing 431 of 959` against the last run's total. Test results reach the log in batches, so the count moves in steps. The Xcode MCP writes no log to follow.

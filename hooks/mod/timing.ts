@@ -12,6 +12,9 @@ export const DURATIONS_PREFIX = 'durations.'
 const historyKey = (tool: string) => `${DURATIONS_PREFIX}${tool}`
 /** The last test run's total per tool, for the next run's `testing 312 of 959`. */
 const testsKey = (tool: string) => `tests.${tool}`
+/** Whether a tool has written a log before: those say they're waiting until this run's appears; `clean` writes none. */
+const logsKey = (tool: string) => `logs.${tool}`
+const WAITING = 'waiting to start'
 /** Runs at least this long also send a notification. */
 const LONG_RUN_MS = 60_000
 
@@ -61,12 +64,17 @@ export function registerTiming(on: On): void {
     // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
     const followsLog = parsed.server === 'MobileBuildMCP'
     const expectedTests = followsLog ? ((await quietly(() => $.store.get(testsKey(name)))) as number | undefined) : undefined
+    const writesLog = followsLog && (await quietly(() => $.store.get(logsKey(name)))) === true
     let logPath: string | undefined
     let phase: string | undefined
     const readPhase = async (since: number) => {
-      logPath ??= await quietly(() => findRunLog($, name, since))
+      if (logPath === undefined) {
+        logPath = await quietly(() => findRunLog($, name, since))
+        if (logPath !== undefined && !writesLog) await quietly(() => $.store.set(logsKey(name), true))
+      }
       const log = logPath === undefined ? undefined : await quietly(() => $.fs.read(logPath as string))
-      const now = typeof log === 'string' ? phaseOf(log, expectedTests) : undefined
+      // Before its log appears a run hasn't started: a pre-build hook or a permission prompt is holding it.
+      const now = typeof log === 'string' ? phaseOf(log, expectedTests) : writesLog && logPath === undefined ? WAITING : undefined
       if (now === undefined || now === phase) return
       phase = now
       if (usesBand) await quietly(() => setPhase($, now))

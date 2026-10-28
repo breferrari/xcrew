@@ -21,10 +21,8 @@ export function phaseOf(log: string, expectedTests?: number): string | undefined
     const task = TASK.exec(lines[index] ?? '')
     if (!task) continue
     const [, kind, rest = '', target] = task
-    if (kind === 'SwiftCompile') {
-      const file = /\/([^/\s]+\.swift) /.exec(rest)?.[1]
-      if (file) return `compiling ${target} · ${file}`
-    }
+    // The file changes too fast to read and makes the line too long; the module is what says where the build is.
+    if (kind === 'SwiftCompile' && /\.swift /.test(rest)) return `compiling ${target}`
     if (kind === 'Ld' || kind === 'Libtool') return `linking ${target}`
     if (kind === 'CodeSign') return `signing ${target}`
     return `building ${target}`
