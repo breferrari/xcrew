@@ -76,38 +76,17 @@ ok    xcrew/up-to-date                 0.7.0, the latest release
 
 While a build or test runs, a coloured line above the prompt counts it and names the scheme and simulator it's using. When it ends, the same line says how it went, how it compares with recent runs of the same tool, and what failed. Where that line can't draw, such as VS Code, the status line counts and a toast reports the outcome:
 
-```
-test_sim · 0:41 ━━━━━━╸─ ~0:04 left · testing 431 of 959 · MyApp on iPhone 17
-✓ test_sim · 1:12 (avg 1:05) · 412 passed
-✗ test_sim · 2:03 (avg 1:58) · 3 of 412 failed · PaymentsTests/testRefund
-✗ BuildProject · 0:48 · FooView.swift:12 Cannot find 'bar' in scope
-✓ build_sim · 3:40 (2× its usual 1:50)
-```
+<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
 
 What Claude reads from a MobileBuildMCP test run is the short version. A failing run keeps its failures and skipped tests and leaves the passing ones out. The location of each failure, a crash's frames and each skip's reason come from the run's result bundle, since xcodebuild logs none of them for tests on parallel simulators. A passing run's per-test list stays in the file Claude Code saved, a read away:
 
-```
-Test Failures (2):
-
-  ✗ PaymentsTests / test_crashes(): Crash: xctest at PaymentsTests.test_crashes()
-      crashed: EXC_BREAKPOINT (SIGTRAP)
-      libswiftCore.dylib  Array._checkSubscript(_:wasNativeTypeChecked:)
-      Payments  PaymentsTests.test_crashes()
-
-  ✗ PaymentsTests / test_refund(): XCTAssertEqual failed: ("1") is not equal to ("2")
-    /Users/you/App/Tests/PaymentsTests/PaymentsTests.swift:42
-
-Test Results:
-  (959 passing tests left out; failing tests are listed in full above)
-  ⏭️ PaymentsTests/test_wallet() (0.006s)
-      skipped: waiting on the new API
-
-❌ 2 tests failed, 959 passed, 1 skipped (⏱️ 54.6s)
-```
+<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
 
 A run that takes a minute or more also sends its outcome as a notification, through your own Claude Code notification settings.
 
 `/xcrew doctor`, `/xcrew history` (each tool's usual duration, per scheme and test selection), `/xcrew failures` (a pane listing every failure of the last failing run; `/xcrew close` closes it) answer at once, without a turn for Claude. When a session starts with something wrong, such as Claude Code not yet approved in Xcode, the band says so until the first run.
+
+<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
 
 `xcrew xcode-skills` copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. It copies whatever the installed Xcode has, so run it again after an Xcode update to pick up new ones.
 
@@ -149,17 +128,7 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 
 ## How it works
 
-```
-Claude Code ──┬── plugin: .mcp.json ─────────── MobileBuildMCP · Xcode MCP · Sosumi
-              ├── plugin: hooks/hooks.json ──── SessionStart briefing ──────────────┐
-              ├── plugin: mod (TypeScript) ──── tool.call: guard · timing · results ┤
-              │                                 band · failures pane · /xcrew       │
-              └── plugin: skills/ ───────────── setup · reference                   │
-                                                                                    ▼
-                                         bin/xcrew ── builds once, then runs ── Swift CLI
-                                                                                (setup, doctor,
-mcs ── techpack.yaml ── brew + plugin + prompts ── mcs/configure.sh, mcs/checks ─▶ hooks)
-```
+<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png" alt="Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
 
 All logic lives in one dependency-free Swift package. The plugin, the hooks, the mod and mcs call that CLI, so there is one implementation, and `Tests/ManifestTests` fails when an install path drifts from it. [docs/architecture.md](docs/architecture.md) walks through the layout.
 

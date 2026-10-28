@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+<defs><radialGradient id="glow" cx="0.3" cy="0.3" r="0.9"><stop offset="0" stop-color="#161c25"/><stop offset="1" stop-color="#0b0e12"/></radialGradient><filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="10"/><feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect width="1280" height="720" rx="18" fill="url(#glow)"/>
+<g filter="url(#shadow)"><rect x="40" y="36" width="1200" height="648" rx="12" fill="#1e1e2e" stroke="#313244"/></g>
+<path d="M40 76 v-28 a12 12 0 0 1 12 -12 h1176 a12 12 0 0 1 12 12 v28 z" fill="#181825"/>
+<circle cx="62" cy="56" r="6" fill="#f38ba8"/>
+<circle cx="82" cy="56" r="6" fill="#f9e2af"/>
+<circle cx="102" cy="56" r="6" fill="#a6e3a1"/>
+<text x="546.4" y="61.0" font-family="Helvetica Neue" font-size="12" fill="#7f849c" xml:space="preserve">claude — ~/Developer/MyApp</text>
+<text x="68.0" y="110.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#a6e3a1" xml:space="preserve">⏺</text>
+<text x="78.2" y="110.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#cdd6f4" xml:space="preserve"> </text>
+<text x="88.4" y="110.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#cdd6f4" xml:space="preserve">MobileBuildMCP - test_sim</text>
+<text x="343.4" y="110.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#7f849c" xml:space="preserve"> (MCP)</text>
+<text x="78.2" y="137.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#7f849c" xml:space="preserve">⎿</text>
+<text x="98.6" y="137.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#cdd6f4" xml:space="preserve">Test Failures (2):</text>
+<text x="98.6" y="191.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#f38ba8" xml:space="preserve">  ✗ PaymentsTests / test_crashes(): Crash: xctest at PaymentsTests.test_crashes()</text>
+<text x="98.6" y="218.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#f9e2af" xml:space="preserve">      crashed: EXC_BREAKPOINT (SIGTRAP)</text>
+<text x="98.6" y="245.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#7f849c" xml:space="preserve">      libswiftCore.dylib  Array._checkSubscript(_:wasNativeTypeChecked:)</text>
+<text x="98.6" y="272.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#7f849c" xml:space="preserve">      Payments            PaymentsTests.test_crashes()</text>
+<text x="98.6" y="326.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#f38ba8" xml:space="preserve">  ✗ PaymentsTests / test_refund(): XCTAssertEqual failed: ("1") is not equal to ("2")</text>
+<text x="98.6" y="353.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#89b4fa" xml:space="preserve">    /Users/you/MyApp/Tests/PaymentsTests/PaymentsTests.swift:42</text>
+<text x="98.6" y="407.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#cdd6f4" xml:space="preserve">Test Results:</text>
+<text x="98.6" y="434.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#7f849c" xml:space="preserve">  (959 passing tests left out; failing tests are listed in full above)</text>
+<text x="98.6" y="461.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#cdd6f4" xml:space="preserve">  </text>
+<rect x="120.0" y="447.1" width="16" height="16" rx="4" fill="#89b4fa"/>
+<path d="M123.0 451.1 l4 4 l-4 4z M127.0 451.1 l4 4 l-4 4z" fill="#1e1e2e"/>
+<rect x="131.5" y="451.1" width="1.6" height="8" fill="#1e1e2e"/>
+<text x="139.4" y="461.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#cdd6f4" xml:space="preserve"> PaymentsTests/test_wallet() (0.006s)</text>
+<text x="98.6" y="488.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#f9e2af" xml:space="preserve">      skipped: waiting on the new API</text>
+<path d="M101.6 530.0 l12 12 M113.6 530.0 l-12 12" stroke="#f38ba8" stroke-width="3.2" stroke-linecap="round"/>
+<text x="119.0" y="542.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#cdd6f4" xml:space="preserve"> 2 tests failed, 959 passed, 1 skipped (54.6s)</text>
+<line x1="68" y1="579" x2="1212" y2="579" stroke="#313244"/>
+<text x="68.0" y="607.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#a9afb9" xml:space="preserve">+ a note for Claude:</text>
+<text x="272.0" y="607.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#7f849c" xml:space="preserve"> 1 test also ran as an expected failure; 962 tests ran in all.</text>
+</svg>
