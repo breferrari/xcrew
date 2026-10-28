@@ -110,17 +110,17 @@ test('where no surface draws bands, the plain status line carries the run', asyn
 
 test('a run far slower than usual shows it in the band', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on, { 'durations.build_sim': [100_000, 100_000, 100_000, 100_000, 100_000] })
+  mock.store(on, { 'durations.build_sim': [10_000, 10_000, 10_000, 10_000, 10_000] })
   inTerminal(on)
   on('ui.status', () => ({ value: undefined }))
   on('tool.call', async () => {
-    await clock.advance(150_000)
+    await clock.advance(15_000)
     return { result: {}, text: 'ok' }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
 
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: ' (1.5× its usual 1:40)' }))?.props.color).toBe('#ec501d')
+  expect((await ui.find({ type: 'Text', text: ' (1.5× its usual 0:10)' }))?.props.color).toBe('#ec501d')
   await ui.unmount()
 })

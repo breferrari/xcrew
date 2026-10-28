@@ -8,9 +8,9 @@ const MALFORMED =
 type Seen = { toasts: string[]; statuses: (string | undefined)[]; runs: (readonly string[])[] }
 
 /** Records what the mod shows and runs; `repairOutput` is what `xcrew repair-macros` prints. */
-function watch(on: On, repairOutput = ''): Seen {
+function watch(on: On, repairOutput = '', stored: Record<string, unknown> = {}): Seen {
   const seen: Seen = { toasts: [], statuses: [], runs: [] }
-  mock.store(on)
+  mock.store(on, stored)
   on('ui.toast', (_, e) => {
     seen.toasts.push(e.text)
     return { value: undefined }
@@ -186,30 +186,28 @@ test('later runs compare with the average of earlier ones', async ($, on) => {
 
 test('a run far slower than usual says how much slower', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on)
-  const durations = [110_000, 110_000, 110_000, 110_000, 110_000, 220_000]
+  const seen = watch(on, '', { 'durations.build_sim': [11_000, 11_000, 11_000, 11_000, 11_000] })
   on('tool.call', async () => {
-    await clock.advance(durations.shift() ?? 0)
+    await clock.advance(22_000)
     return { result: {}, text: 'ok' }
   })
 
-  for (let run = 0; run < 6; run += 1) await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
 
-  expect(seen.toasts.at(-1)).toBe('✓ build_sim · 3:40 (2× its usual 1:50)')
+  expect(seen.toasts).toEqual(['✓ build_sim · 0:22 (2× its usual 0:11)'])
 })
 
 test('slowness is only called out once there are five earlier runs to judge by', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on)
-  const durations = [60_000, 60_000, 60_000, 60_000, 180_000]
+  const seen = watch(on, '', { 'durations.BuildProject': [10_000, 10_000, 10_000, 10_000] })
   on('tool.call', async () => {
-    await clock.advance(durations.shift() ?? 0)
+    await clock.advance(30_000)
     return { result: {}, text: 'ok' }
   })
 
-  for (let run = 0; run < 5; run += 1) await callTool($, 'mcp__xcode__BuildProject')
+  await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.toasts.at(-1)).toBe('✓ BuildProject · 3:00 (avg 1:00)')
+  expect(seen.toasts).toEqual(['✓ BuildProject · 0:30 (avg 0:10)'])
 })
 
 test('tools that neither build, test nor run are not timed', async ($, on) => {
