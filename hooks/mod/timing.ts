@@ -114,7 +114,7 @@ export function registerTiming(on: On): void {
     const elapsed = reportedDuration(text) ?? ended - started
     await quietly(() => $.store.set(historyKey(history), [...earlier, elapsed].slice(-HISTORY)))
     const outcome = result.deny !== undefined ? { ok: false } : summarize(name, { isError: result.isError === true, text })
-    if (result.deny === undefined) await quietly(() => recordRun($, name, outcome.ok, text))
+    if (result.deny === undefined) await quietly(() => recordRun($, history, outcome.ok, text))
     const total = testTotal(text)
     if (total !== undefined) await quietly(() => $.store.set(testsKey(history), total))
     const compared = comparison(elapsed, earlier)

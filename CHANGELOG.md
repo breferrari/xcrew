@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The failure pane clears only when the same tool, scheme and test selection passes, since another scheme's pass never re-ran those tests. Clearing also closes the pane, and `/xcrew close` closes it from the prompt, for terminals where its close mark can't be clicked.
+
 ## 0.5.1 — 2026-10-28
 
 - Before a MobileBuildMCP run's log appears, the band says `preparing` rather than `waiting to start`: the server's own preparation, such as counting tests, happens there too, not only a pre-build hook or a permission prompt.

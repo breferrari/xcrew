@@ -13,6 +13,7 @@ export type BandRun = {
 
 /** The last failing run's failures, for the failure pane. */
 export type FailureList = {
+  /** The run that failed: its tool, with the scheme and test selection when known. */
   tool: string
   items: { title: string; message: string; where?: string }[]
 }

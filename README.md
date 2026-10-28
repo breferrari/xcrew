@@ -86,7 +86,7 @@ test_sim · 0:41 ━━━━━━╸─ ~0:04 left · testing 431 of 959 · My
 
 A run that takes a minute or more also sends the same line as a notification, through your own Claude Code notification settings. After a macro-plugin repair, a toast names what was repaired and the projects that will keep killing plugins until Tuist regenerates them.
 
-`/xcrew doctor`, `/xcrew repair`, `/xcrew history` (each tool's usual duration, per scheme) and `/xcrew failures` (a pane listing every failure of the last failing run) answer at once, without a turn for Claude. When a session starts with something wrong, such as Claude Code not yet approved in Xcode, the band says so until the first run.
+`/xcrew doctor`, `/xcrew repair`, `/xcrew history` (each tool's usual duration, per scheme) `/xcrew failures` (a pane listing every failure of the last failing run; `/xcrew close` closes it) answer at once, without a turn for Claude. When a session starts with something wrong, such as Claude Code not yet approved in Xcode, the band says so until the first run.
 
 `xcrew xcode-skills` copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. It copies whatever the installed Xcode has, so run it again after an Xcode update to pick up new ones.
 

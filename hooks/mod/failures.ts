@@ -9,13 +9,20 @@ const NONE = 'No failures in the last runs.'
 const failuresState = atom({ plugin: 'xcrew', key: 'failures' } as const, null as FailureList | null)
 
 /**
- * Keeps the last failing run's failures for the session. A later passing run of the same tool
- * clears them; another tool's passing run leaves them, since they're still unfixed.
+ * Keeps the last failing run's failures for the session. `run` is the tool with its scheme and
+ * test selection (`test_sim · App › AppTests`): only a passing run of that same scope clears them,
+ * since another scheme's or selection's pass never re-ran them. Clearing closes the pane.
  */
-export function recordRun($: EngineInterface, tool: string, ok: boolean, text: string): Promise<unknown> {
-  if (ok) return update($, failuresState, list => (list?.tool === tool ? null : list))
+export async function recordRun($: EngineInterface, run: string, ok: boolean, text: string): Promise<void> {
+  if (ok) {
+    const list = await read($, failuresState)
+    if (list?.tool !== run) return
+    await update($, failuresState, () => null)
+    await $.ui.close({ id: FAILURES_PANE })
+    return
+  }
   const items = failuresOf(text)
-  return items.length === 0 ? Promise.resolve() : update($, failuresState, () => ({ tool, items }))
+  if (items.length > 0) await update($, failuresState, () => ({ tool: run, items }))
 }
 
 /** Opens the pane and says, in one line, what it holds. */
@@ -25,6 +32,12 @@ export async function openFailures($: EngineInterface): Promise<string> {
   if (!list) return NONE
   const count = list.items.length
   return `${count} ${count === 1 ? 'failure' : 'failures'} from ${list.tool}, in the pane.`
+}
+
+/** For terminals where the pane's close mark can't be clicked. */
+export async function closeFailures($: EngineInterface): Promise<string> {
+  await $.ui.close({ id: FAILURES_PANE })
+  return 'Closed the failures pane.'
 }
 
 /** Each failure: its test or file in the error colour, where it failed, and its message. */
