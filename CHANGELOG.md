@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-10-28
 
 - While a MobileBuildMCP build or test run goes, the band says what it's doing, from the log it writes as it runs: `compiling Utility · Formatter.swift`, `linking Utility`, `testing 431 of 959` against the last run's total. Test results reach the log in batches, so the count moves in steps. The Xcode MCP writes no log to follow.
 - Runs are timed by the duration the server reports, so a project's pre-build hook or a permission prompt no longer counts toward a build's time or its average.
