@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A MobileBuildMCP test run with expected failures (`XCTExpectFailure`) tells Claude how many ran, and the true total: MobileBuildMCP's counts leave them out.
+
 ## 0.6.5 — 2026-10-28
 
 - A crashed test reaches Claude with the crash's exception and the top frames of the thread that crashed, from the crash log its result bundle attaches.

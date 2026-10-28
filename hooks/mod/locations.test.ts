@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import * as captured from './fixtures'
-import { crashSummaryOf, resultBundleOf, skipReasonOf, sourceLocationOf, withLocations } from './locations'
+import { crashSummaryOf, expectedFailuresNoteOf, resultBundleOf, skipReasonOf, sourceLocationOf, withLocations } from './locations'
 import { callTool, runCommand } from './testing'
 
 test('a failing test\'s details give the file and line it failed at; a crash\'s give none', () => {
@@ -64,7 +64,7 @@ test('a failure MobileBuildMCP already located is not looked up again', async ($
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
-  expect(runs.filter(argv => argv.includes('xcresulttool'))).toEqual([])
+  expect(runs.filter(argv => argv.includes('test-details'))).toEqual([])
 })
 
 test('a crash log gives the exception and the top frames of the thread that crashed', () => {
@@ -112,4 +112,34 @@ test('a crash reaches Claude with its exception and frames, and a skip with its 
   expect(shown).toContain('Crash: xctest at implicit closure #1 in FormatterTests.test_crash()\n      crashed: EXC_BREAKPOINT (SIGTRAP)\n      libswiftCore.dylib  closure #1 in closure #1 in _assertionFailure')
   expect(shown).toContain('  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API')
   expect(runs).toContainEqual(['rm', '-rf', '/tmp/xcrew-crash'])
+})
+
+test('a run\'s expected failures are named with the true total, since the counts leave them out', () => {
+  expect(expectedFailuresNoteOf(captured.xcresultSummaryWithExpectedFailures)).toBe(
+    'xcrew: 2 tests also ran as expected failures (XCTExpectFailure). They count as neither passed nor failed in the result: 961 tests ran in all.',
+  )
+  expect(expectedFailuresNoteOf('{"totalTestCount":3,"passedTests":3,"expectedFailures":0}')).toBeUndefined()
+  expect(expectedFailuresNoteOf('not json')).toBeUndefined()
+})
+
+test('the result bundle is found in a passing run\'s JSON too', () => {
+  expect(resultBundleOf(captured.mobileTestsPassed.text, '/Users/dev')).toBe('/Users/dev/Library/Developer/MobileBuildMCP/workspaces/sample-0000/result-bundles/test_sim.xcresult')
+})
+
+test('Claude is told about a run\'s expected failures', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  mock.env(on, { HOME: '/Users/dev' })
+  on('session.surfaces', () => ({ value: [] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', (_, e) => {
+    const stdout = e.argv.includes('summary') ? captured.xcresultSummaryWithExpectedFailures : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('tool.call', () => ({ result: {}, text: captured.mobileTestsPassed.text }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(ran.context).toEqual(['xcrew: 2 tests also ran as expected failures (XCTExpectFailure). They count as neither passed nor failed in the result: 961 tests ran in all.'])
 })

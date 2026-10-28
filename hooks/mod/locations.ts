@@ -74,8 +74,10 @@ export function crashSummaryOf(log: string): string[] | undefined {
   return [...exception, ...top]
 }
 
-/** The run's `.xcresult`, from the workspace folder and bundle path its result lists. */
+/** The run's `.xcresult`: from a passing run's JSON, or the workspace folder and bundle path a failing run's text lists. */
 export function resultBundleOf(text: string, home: string): string | undefined {
+  const fromJson = ((parse(text) as { data?: { artifacts?: { xcresultPath?: unknown } } } | undefined)?.data?.artifacts?.xcresultPath)
+  if (typeof fromJson === 'string') return fromJson.replace(/^~/, home)
   const folder = /└── (~?\/\S+\/)\s*$/m.exec(text)?.[1]
   const bundle = /(result-bundles\/\S+\.xcresult) — Result Bundle/.exec(text)?.[1]
   if (!folder || !bundle) return undefined
@@ -184,4 +186,27 @@ export async function locateFailures($: EngineInterface, text: string): Promise<
   }
   if (failureNotes.size === 0 && skipNotes.size === 0) return text
   return annotate(text, { failures: failureNotes, skipped: skipNotes })
+}
+
+/**
+ * A note naming a run's expected failures (`XCTExpectFailure`), from `xcresulttool get test-results
+ * summary`: MobileBuildMCP's counts leave them out, so passed + failed + skipped falls short of the
+ * tests that ran. Undefined when there are none.
+ */
+export function expectedFailuresNoteOf(summary: string): string | undefined {
+  const counts = parse(summary) as { totalTestCount?: number; expectedFailures?: number } | undefined
+  const expected = counts?.expectedFailures ?? 0
+  if (expected === 0) return undefined
+  const tests = expected === 1 ? '1 test also ran as an expected failure' : `${expected} tests also ran as expected failures`
+  const total = counts?.totalTestCount !== undefined ? `: ${counts.totalTestCount} tests ran in all` : ''
+  return `xcrew: ${tests} (XCTExpectFailure). They count as neither passed nor failed in the result${total}.`
+}
+
+/** The expected-failures note for a MobileBuildMCP test run, read from its result bundle. */
+export async function expectedFailuresNote($: EngineInterface, text: string): Promise<string | undefined> {
+  const home = await $.env.get('HOME')
+  const bundle = home ? resultBundleOf(text, home) : undefined
+  if (!bundle) return undefined
+  const ran = await $.process.run(['xcrun', 'xcresulttool', 'get', 'test-results', 'summary', '--path', bundle, '--compact'], { timeoutMs: 15_000 }).catch(() => undefined)
+  return ran ? expectedFailuresNoteOf(ran.stdout) : undefined
 }

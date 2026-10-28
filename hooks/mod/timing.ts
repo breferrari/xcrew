@@ -3,7 +3,7 @@ import { average, comparison, gauge, remaining, stopwatch } from './format'
 import { endRun, setMeasuredFrom, setPhase, startRun } from './band'
 import { describe, observe, scopeOf } from './context'
 import { recordRun } from './failures'
-import { locateFailures } from './locations'
+import { expectedFailuresNote, locateFailures } from './locations'
 import { phaseOf, findRunLog } from './progress'
 import { cleanBuildText, compactTestResult, compactTestText, reportedDuration, summarize, testTotal } from './results'
 import { kindOf, parseTool } from './tools'
@@ -148,9 +148,13 @@ export function registerTiming(on: On): void {
     if (result.deny !== undefined) return result
     const saved = SAVED_RESULT.exec(result.text ?? '')?.[1]
     const compact = (saved ? compactTestResult(text, saved) : compactTestText(text)) ?? (text !== read ? text : undefined)
+    const isTestRun = kindOf(parsed) === 'test'
+    const notes = isTestRun && testTotal(text) === 0 ? [NO_TESTS_NOTE] : []
+    const expected = followsLog && isTestRun ? await quietly(() => expectedFailuresNote($, read)) : undefined
+    if (expected) notes.push(expected)
+    const context = notes.length > 0 ? { context: [...(result.context ?? []), ...notes] } : {}
     // Its own `result`, without core's `ref`: with `ref` kept, core shows the model its own messages.
-    if (compact) return result.isError ? { result: compact, isError: true } : { result: compact }
-    if (kindOf(parsed) === 'test' && testTotal(text) === 0) return { ...result, context: [...(result.context ?? []), NO_TESTS_NOTE] }
-    return result
+    if (compact) return result.isError ? { result: compact, isError: true, ...context } : { result: compact, ...context }
+    return { ...result, ...context }
   })
 }

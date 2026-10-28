@@ -195,3 +195,7 @@ Test Results:
          ├── result-bundles/test_sim_2.xcresult — Result Bundle
          └── test-products/test_sim_2.xctestproducts — Test Products`,
 }
+
+/** \`xcrun xcresulttool get test-results summary\` for a run with two XCTExpectFailure tests, trimmed to the counts. */
+export const xcresultSummaryWithExpectedFailures =
+  '{"result":"Passed","totalTestCount":961,"passedTests":959,"failedTests":0,"skippedTests":0,"expectedFailures":2}'

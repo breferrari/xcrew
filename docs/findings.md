@@ -70,6 +70,22 @@ If upkeep keeps falling, the options, cheapest first:
 
 When to revisit: a new Xcode or iOS release that MobileBuildMCP hasn't followed within a few weeks, a bug that blocks builds or tests with no fix upstream, or #563 and #564 closed unanswered.
 
+## Test reports from the two servers
+
+Measured 2026-10-28 on a modular app's 961-test target (959 passing, 2 expected failures), with one assertion failure, one thrown error, one crash and one skipped test added on purpose, run on parallel simulator clones.
+
+| | MobileBuildMCP alone | Xcode MCP (`RunAllTests`) | MobileBuildMCP with Xcrew |
+| --- | --- | --- | --- |
+| A failing run's result | Text listing every test, ~80 K characters, cut by Claude Code | JSON, ~20 K characters: up to 100 results, the rest in a file | ~1 K characters: failures, skipped tests, the summary |
+| A passing run's result | JSON, ~122 K characters, saved to a file and read back with `jq` | JSON | ~1 K characters, the per-test list pointed to |
+| Failure location | None (xcodebuild logs none for tests on parallel clones) | `file:line` as a project-navigator path | The file's absolute path and line, from the result bundle |
+| Crash | Test and closure | "Test crashed with signal trap" | Test and closure, the exception, the crashed thread's top frames |
+| Skipped test | Counted | Named | Named, with its reason |
+| Expected failures | Left out of the counts | Counted | Named in a note with the true total |
+| A filter matching nothing | `SUCCEEDED` with 0/0/0 | An explicit error | `SUCCEEDED`, flagged in the band and in a note to Claude |
+
+As runners they differ the other way. MobileBuildMCP runs `xcodebuild` on its own, so it leaves the person's Xcode window, its scheme and its DerivedData alone; pins the simulator its profiles name; takes any `-only-testing` or `-skip-testing` filter; and adds coverage, simulator control, UI automation and LLDB. The Xcode MCP switches the IDE's active scheme to run, uses the scheme's own destination, and has no coverage. So Xcrew keeps MobileBuildMCP for builds and tests and makes its reports the smallest of the three, and the Xcode MCP stays the fallback runner in *MobileBuildMCP's upkeep* above, at the cost of those runner features.
+
 ## Tried and rejected
 
 | Option | Why not |
