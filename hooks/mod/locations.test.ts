@@ -143,3 +143,24 @@ test('Claude is told about a run\'s expected failures', async ($, on) => {
 
   expect(ran.context).toEqual(['xcrew: 2 tests also ran as expected failures (XCTExpectFailure). They count as neither passed nor failed in the result: 961 tests ran in all.'])
 })
+
+test('a skip reason survives the compaction of a long failing run', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  mock.env(on, { HOME: '/Users/dev' })
+  on('session.surfaces', () => ({ value: [] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', (_, e) => {
+    const stdout = e.argv.includes('test-details') && e.argv.includes('FormatterTests/test_skipped()') ? captured.xcresultSkipDetails : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  const passing = Array.from({ length: 40 }, (_, index) => `  ✅ FormatterTests/test_case${index}() (0.001s)`).join('\n')
+  const text = captured.mobileTestsCrashedAndSkipped.text.replace('  ✅ FormatterTests/test_euro() (0.001s)', passing)
+  on('tool.call', () => ({ result: {}, text, isError: true }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(ran.result).toContain('passing tests left out')
+  expect(ran.result).toContain('  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API')
+})

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A skipped test's reason reaches Claude in a long failing run too: 0.6.6 and 0.6.7 looked it up, then dropped it when they compacted the Test Results list.
+
 ## 0.6.7 — 2026-10-28
 
 - A MobileBuildMCP test run with expected failures (`XCTExpectFailure`) tells Claude how many ran, and the true total: MobileBuildMCP's counts leave them out.
