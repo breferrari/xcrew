@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.9 — 2026-10-28
 
 - `xcrew doctor` (and `/xcrew doctor`) checks whether a newer Xcrew is out, against the latest GitHub release, and says how to update or turn on auto-update. It's the only check that reaches the network: the session-start look for problems leaves it out, and it skips rather than fails when GitHub can't be reached.
 - The README says how to turn on auto-update, which Claude Code leaves off for third-party marketplaces.
