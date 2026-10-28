@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 — 2026-10-28
 
 - Before a MobileBuildMCP run's log appears, the band says `preparing` rather than `waiting to start`: the server's own preparation, such as counting tests, happens there too, not only a pre-build hook or a permission prompt.
 - The failure pane shows an `XCTFail` as the message it was given, without XCTest's `failed - ` in front.
