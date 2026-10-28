@@ -229,7 +229,7 @@ test('a result too large for the transcript is read from the file Claude Code sa
   await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
 
   expect(reads).toEqual([SAVED])
-  expect(seen.toasts).toEqual(['✓ test_sim · 0:00 · 3 passed'])
+  expect(seen.toasts).toEqual(['✓ test_sim · 0:15 · 3 passed'])
 })
 
 test('a saved result that cannot be read leaves the outcome without its detail', async ($, on) => {
@@ -243,6 +243,102 @@ test('a saved result that cannot be read leaves the outcome without its detail',
   await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
 
   expect(seen.toasts).toEqual(['✓ test_sim · 0:00'])
+})
+
+test('a run is timed by what the server reports, so a pre-build hook or a permission prompt is left out', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on)
+  on('tool.call', async () => {
+    await clock.advance(40_000)
+    return { result: {}, text: captured.mobileTestsPassed.text }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(seen.toasts).toEqual(['✓ test_sim · 0:15 · 3 passed', '✓ test_sim · 0:15 (avg 0:15) · 3 passed'])
+})
+
+// MARK: Live phase
+
+const WORKSPACES = '/Users/dev/Library/Developer/MobileBuildMCP/workspaces'
+const TEST_LOG = `SwiftCompile normal arm64 /work/App/Sources/Utility/Formatter.swift (in target 'Utility' from project 'Foundation')
+Testing started
+Test case 'FormatterTests.test_euro()' passed on 'Clone 1 of iPhone 12 - xctest (1)' (0.004 seconds)
+Test case 'FormatterTests.test_pound()' passed on 'Clone 1 of iPhone 12 - xctest (1)' (0.002 seconds)
+`
+
+/** MobileBuildMCP's workspace folders and logs, as the mod finds them under the person's home. */
+function logsOnDisk(on: On, clock: { now: () => number }) {
+  const listed: string[] = []
+  mock.env(on, { HOME: '/Users/dev' })
+  on('session.root', () => ({ value: '/work/App' }))
+  on('fs.list', (_, e) => {
+    listed.push(e.path ?? '')
+    if (e.path === WORKSPACES) {
+      return { value: [{ name: 'App-0000', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }, { name: 'Other-1111', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }] }
+    }
+    if (e.path === `${WORKSPACES}/App-0000/logs`) {
+      return {
+        value: [
+          { name: 'test_sim_2026-10-28T19-10-02Z_pid1_aaaa.log', kind: 'file', size: 1, mtimeMs: clock.now(), isLink: false },
+          { name: 'test_sim_parser-debug_2026-10-28T19-10-47Z_pid1_bbbb.log', kind: 'file', size: 1, mtimeMs: clock.now(), isLink: false },
+          { name: 'test_sim_2026-10-27T10-00-00Z_pid9_cccc.log', kind: 'file', size: 1, mtimeMs: clock.now() - 86_400_000, isLink: false },
+        ],
+      }
+    }
+    return { value: [] }
+  })
+  const reads: string[] = []
+  on('fs.read', (_, e) => {
+    reads.push(e.path)
+    return { value: TEST_LOG }
+  })
+  return { listed, reads }
+}
+
+test('while a MobileBuildMCP run goes, the status line says what it is doing, from that run\'s log', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on, '', { 'tests.test_sim': 959 })
+  const disk = logsOnDisk(on, clock)
+  on('tool.call', async () => {
+    await clock.advance(3_000)
+    return { result: {}, text: captured.mobileTestsPassed.text }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(seen.statuses).toContain('test_sim running · 0:03 · testing 2 of 959')
+  expect(disk.reads.every(path => path === `${WORKSPACES}/App-0000/logs/test_sim_2026-10-28T19-10-02Z_pid1_aaaa.log`)).toBe(true)
+})
+
+test('a test run remembers how many tests it ran, for the next run\'s count', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on)
+  logsOnDisk(on, clock)
+  on('tool.call', async () => {
+    await clock.advance(2_000)
+    return { result: {}, text: captured.mobileTestsPassed.text }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(seen.statuses).toContain('test_sim running · 0:02 · testing 2 of 3')
+})
+
+test('Xcode MCP runs leave the log alone: that server writes none the mod can follow', async ($, on) => {
+  const clock = mock.clock(on)
+  watch(on)
+  const disk = logsOnDisk(on, clock)
+  on('tool.call', async () => {
+    await clock.advance(3_000)
+    return { result: {}, text: captured.xcodeBuildPassed.text }
+  })
+
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect(disk.listed).toEqual([])
 })
 
 test('tools that neither build, test nor run are not timed', async ($, on) => {

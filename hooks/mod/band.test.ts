@@ -145,3 +145,30 @@ test('where the band draws, it carries the outcome alone, with no toast repeatin
 
   expect(toasts).toEqual([])
 })
+
+test('the band carries the phase after the time, in the quiet colour', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on, { 'tests.test_sim': 959 })
+  mock.env(on, { HOME: '/Users/dev' })
+  inTerminal(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('session.root', () => ({ value: '/work/App' }))
+  on('fs.list', (_, e) =>
+    e.path?.endsWith('/workspaces')
+      ? { value: [{ name: 'App-0000', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }] }
+      : { value: [{ name: 'test_sim_2026-10-28T19-10-02Z_pid1_aaaa.log', kind: 'file', size: 1, mtimeMs: clock.now(), isLink: false }] },
+  )
+  on('fs.read', () => ({ value: "Testing started\nTest case 'A.test_a()' passed on 'Clone 1' (0.001 seconds)\n" }))
+  let phase: unknown
+  on('tool.call', async () => {
+    await clock.advance(3_000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    phase = (await ui.find({ type: 'Text', text: ' · testing 1 of 959' }))?.props.color
+    await ui.unmount()
+    return { result: {}, text: captured.mobileTestsPassed.text }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(phase).toBe('subtle')
+})

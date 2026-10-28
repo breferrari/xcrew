@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import * as captured from './fixtures'
-import { summarize } from './results'
+import { reportedDuration, summarize, testTotal } from './results'
 import { callTool } from './testing'
 
 test('MobileBuildMCP test runs: counts when they pass, the first failing test when they fail', () => {
@@ -81,8 +81,24 @@ test('the toast carries the outcome and its detail', async ($, on) => {
   await callTool($, 'mcp__xcode__RunAllTests')
 
   expect(toasts).toEqual([
-    "✗ BuildProject · 0:00 · MacroProbe.swift:13 Cannot convert value of type 'String' to specified type 'Int'",
-    '✗ test_sim · 0:00 · 1 of 3 failed · PlainTests/testConcatenation',
+    "✗ BuildProject · 0:01 · MacroProbe.swift:13 Cannot convert value of type 'String' to specified type 'Int'",
+    '✗ test_sim · 0:12 · 1 of 3 failed · PlainTests/testConcatenation',
     '✓ RunAllTests · 0:00 · 5 passed',
   ])
+})
+
+test('each server reports how long the run itself took, which leaves out hooks and permission prompts', () => {
+  expect(reportedDuration(captured.mobileTestsPassed.text)).toBe(14_544)
+  expect(reportedDuration(captured.mobileTestsFailed.text)).toBe(12_300)
+  expect(reportedDuration(captured.mobileBuildFailed.text)).toBe(3_200)
+  expect(reportedDuration(captured.xcodeBuildPassed.text)).toBe(3_857)
+  expect(reportedDuration(captured.xcodeTestsPassed.text)).toBeUndefined()
+  expect(reportedDuration('Build succeeded')).toBeUndefined()
+})
+
+test('a test run says how many tests it ran, so the next run can show its progress against that', () => {
+  expect(testTotal(captured.mobileTestsPassed.text)).toBe(3)
+  expect(testTotal(captured.mobileTestsFailed.text)).toBe(3)
+  expect(testTotal(captured.xcodeTestsPassed.text)).toBe(5)
+  expect(testTotal(captured.mobileBuildPassed.text)).toBeUndefined()
 })

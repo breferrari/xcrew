@@ -89,3 +89,32 @@ function basename(path: string): string {
 function shorten(text: string): string {
   return text.length > MAX_DETAIL ? `${text.slice(0, MAX_DETAIL - 1)}…` : text
 }
+
+/**
+ * How long the server says the run took, in milliseconds, which leaves out the hooks and
+ * permission prompts around the call: MobileBuildMCP's `durationMs` or its `(⏱️ 12.3s)`, the
+ * Xcode MCP's `elapsedTime`. The Xcode MCP's test runs report none.
+ */
+export function reportedDuration(text: string): number | undefined {
+  const json = parseObject(text)
+  if (json) {
+    const summary = (json.data as Json | undefined)?.summary as Json | undefined
+    if (typeof summary?.durationMs === 'number') return summary.durationMs
+    if (typeof json.elapsedTime === 'number') return Math.round(json.elapsedTime * 1000)
+    return undefined
+  }
+  const seconds = /\(⏱️ ([\d.]+)s\)/.exec(text)?.[1]
+  return seconds === undefined ? undefined : Math.round(Number(seconds) * 1000)
+}
+
+/** How many tests a test run ran, from either server's counts. */
+export function testTotal(text: string): number | undefined {
+  const json = parseObject(text)
+  const counts = ((json?.data as Json | undefined)?.summary as Json | undefined)?.counts ?? json?.counts
+  if (counts && typeof counts === 'object') {
+    const { passed = 0, failed = 0, skipped = 0, total } = counts as { passed?: number; failed?: number; skipped?: number; total?: number }
+    return total ?? passed + failed + skipped
+  }
+  const tests = /❌ (\d+) tests? failed, (\d+) passed, (\d+) skipped/.exec(text)
+  return tests ? tests.slice(1).reduce((sum, count) => sum + Number(count), 0) : undefined
+}

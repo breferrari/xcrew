@@ -14,6 +14,10 @@ export function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
   return update($, runState, () => run)
 }
 
+export function setPhase($: EngineInterface, phase: string): Promise<unknown> {
+  return update($, runState, run => (run && !run.ended ? { ...run, phase } : run))
+}
+
 export function endRun($: EngineInterface, ended: NonNullable<BandRun['ended']>): Promise<unknown> {
   return update($, runState, run => (run ? { ...run, ended } : run))
 }
@@ -24,7 +28,8 @@ type Segment = { text: string; color?: string; weight?: 'semibold' }
 export function segments(run: BandRun, now: number): Segment[] {
   const target: Segment[] = run.target ? [{ text: ` · ${run.target}`, color: 'subtle' }] : []
   if (!run.ended) {
-    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, ...target, { text: ` · ${stopwatch(now - run.startedAt)}`, color: 'subtle' }]
+    const phase: Segment[] = run.phase ? [{ text: ` · ${run.phase}`, color: 'subtle' }] : []
+    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, ...target, { text: ` · ${stopwatch(now - run.startedAt)}`, color: 'subtle' }, ...phase]
   }
   const { ok, elapsed, comparison, detail } = run.ended
   return [
