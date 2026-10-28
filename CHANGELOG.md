@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A large test result now does reach Claude as its summary: 0.6.0 replaced the result's text but kept the reference to Claude Code's own messages, which Claude Code then showed instead. The mod now answers with its own result.
+- A MobileBuildMCP run's gauge starts when its log appears, so a pre-build hook's wait no longer shows a normal run as over its usual time. Until then the band says `preparing`.
+- `/xcrew history` names a test selection run without a known scheme as `test_sim › AppTests`.
+
 ## 0.6.0 — 2026-10-28
 
 - A MobileBuildMCP test result too large for the transcript reaches Claude as its summary, counts, failures and artifacts, with the per-test list left out and the saved file named for it: a 959-test run's 122 KB becomes about 2.5 KB, and Claude no longer needs a `jq` call to read it.

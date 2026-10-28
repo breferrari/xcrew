@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 import { average, comparison, gauge, remaining, stopwatch } from './format'
-import { endRun, setPhase, startRun } from './band'
+import { endRun, setMeasuredFrom, setPhase, startRun } from './band'
 import { describe, observe, scopeOf } from './context'
 import { recordRun } from './failures'
 import { phaseOf, findRunLog } from './progress'
@@ -65,7 +65,7 @@ export function registerTiming(on: On): void {
     const label = target ? `${name} · ${target}` : `${name} running`
     const scope = scopeOf(parsed, e as unknown as Record<string, unknown>)
     // Durations and test totals are kept per scheme and test selection, not only per tool.
-    const history = scope ? `${name} · ${scope}` : name
+    const history = !scope ? name : scope.startsWith('›') ? `${name} ${scope}` : `${name} · ${scope}`
 
     const started = await quietly(() => $.clock.now())
     const earlier = ((await quietly(() => $.store.get(historyKey(history)))) as number[] | undefined) ?? []
@@ -74,17 +74,25 @@ export function registerTiming(on: On): void {
     // The band draws in colour where a surface can show it; elsewhere the plain status line carries the run.
     const surfaces = (await quietly(() => $.session.surfaces())) ?? []
     const usesBand = surfaces.some(surface => surface === 'terminal' || surface === 'desktop')
-    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, usual }))
     // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
     const followsLog = parsed.server === 'MobileBuildMCP'
     const expectedTests = followsLog ? ((await quietly(() => $.store.get(testsKey(history)))) as number | undefined) : undefined
     const writesLog = followsLog && (await quietly(() => $.store.get(logsKey(name)))) === true
+    // The usual time is the server's own, which leaves out a pre-build hook; for a tool that logs,
+    // the gauge starts when the log appears, before which the run itself hasn't begun.
+    let measuredFrom = writesLog ? undefined : started
     let logPath: string | undefined
+    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }) }))
     let phase: string | undefined
     const readPhase = async (since: number) => {
       if (logPath === undefined) {
         logPath = await quietly(() => findRunLog($, name, since))
         if (logPath !== undefined && !writesLog) await quietly(() => $.store.set(logsKey(name), true))
+        if (logPath !== undefined && measuredFrom === undefined) {
+          measuredFrom = await quietly(() => $.clock.now())
+          const from = measuredFrom
+          if (usesBand && from !== undefined) await quietly(() => setMeasuredFrom($, from))
+        }
       }
       const log = logPath === undefined ? undefined : await quietly(() => $.fs.read(logPath as string))
       // Before its log appears xcodebuild hasn't started: a pre-build hook, a permission prompt or the server's own preparation.
@@ -98,7 +106,7 @@ export function registerTiming(on: On): void {
         if (followsLog) await readPhase(started)
         if (usesBand) return quietly(() => $.ui.invalidate('ui.render'))
         const now = await quietly(() => $.clock.now())
-        if (now !== undefined) await quietly(() => $.ui.status(`${label} · ${stopwatch(now - started)}${plainEstimate(now - started, usual)}${phase ? ` · ${phase}` : ''}`))
+        if (now !== undefined) await quietly(() => $.ui.status(`${label} · ${stopwatch(now - started)}${measuredFrom === undefined ? '' : plainEstimate(now - measuredFrom, usual)}${phase ? ` · ${phase}` : ''}`))
       }),
     )
 
@@ -133,6 +141,8 @@ export function registerTiming(on: On): void {
     if (result.deny !== undefined) return result
     const saved = SAVED_RESULT.exec(result.text ?? '')?.[1]
     const compact = saved ? compactTestResult(text, saved) : undefined
-    return compact ? { ...result, text: compact } : result
+    // Its own `result`, without core's `ref`: with `ref` kept, core shows the model its own messages.
+    if (compact) return result.isError ? { result: compact, isError: true } : { result: compact }
+    return result
   })
 }

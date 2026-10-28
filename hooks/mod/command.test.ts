@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { runCommand } from './testing'
+import { callTool, runCommand } from './testing'
 
 /** Stands for the engine: registers commands, and answers `bin/xcrew` with `outputs[subcommand]`. */
 function engine(on: On, outputs: Record<string, string> = {}) {
@@ -94,4 +94,23 @@ test('/xcrew history names the scheme and tests each duration belongs to', async
   const ran = await runCommand($, 'xcrew', 'history')
 
   expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 1:00 · last 1:00 · 1 run  build_sim\navg 0:45 · last 0:45 · 1 run  test_sim · App › SmallTests')
+})
+
+test('/xcrew history names a test selection without a scheme plainly', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  engine(on)
+  on('session.surfaces', () => ({ value: [] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('tool.call', async () => {
+    await clock.advance(45_000)
+    return { result: {}, text: 'ok' }
+  })
+  await start($)
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:SmallTests'] })
+
+  const ran = await runCommand($, 'xcrew', 'history')
+
+  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 0:45 · last 0:45 · 1 run  test_sim › SmallTests')
 })

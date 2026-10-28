@@ -6,6 +6,8 @@ export type BandRun = {
   startedAt: number
   /** The tool's usual duration, from its earlier runs: what the band's gauge measures against. */
   usual?: number
+  /** When the run itself began, which the gauge measures from: its start, or for a tool that logs, when the log appeared. */
+  measuredFrom?: number
   /** What the run is doing now, read from its log: `compiling Utility · Formatter.swift`, `testing 312 of 959`. */
   phase?: string
   ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string }

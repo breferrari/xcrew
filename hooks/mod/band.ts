@@ -22,6 +22,10 @@ export function setPhase($: EngineInterface, phase: string): Promise<unknown> {
   return update($, runState, run => (run && !run.ended ? { ...run, phase } : run))
 }
 
+export function setMeasuredFrom($: EngineInterface, measuredFrom: number): Promise<unknown> {
+  return update($, runState, run => (run && !run.ended ? { ...run, measuredFrom } : run))
+}
+
 export function endRun($: EngineInterface, ended: NonNullable<BandRun['ended']>): Promise<unknown> {
   return update($, runState, run => (run ? { ...run, ended } : run))
 }
@@ -35,7 +39,7 @@ export function segments(run: BandRun, now: number): Segment[] {
     const elapsed = now - run.startedAt
     const phase: Segment[] = run.phase ? [{ text: ` · ${run.phase}`, color: 'subtle' }] : []
     // What changes comes first, so a narrow terminal cuts the target, which the person already knows.
-    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' }, ...estimate(elapsed, run.usual), ...phase, ...target]
+    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' }, ...(run.measuredFrom === undefined ? [] : estimate(now - run.measuredFrom, run.usual)), ...phase, ...target]
   }
   const { ok, elapsed, comparison, detail } = run.ended
   return [

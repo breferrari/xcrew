@@ -240,7 +240,10 @@ test('a test result too large to show reaches Claude as its summary, with the fu
 
   const ran = await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
 
-  const shown = JSON.parse(ran.text ?? '{}')
+  // Core uses its own messages for the call while `ref` is kept, so the mod answers with its own `result`.
+  expect(ran.ref).toBeUndefined()
+  expect(typeof ran.result).toBe('string')
+  const shown = JSON.parse(ran.result as string)
   expect(shown.data.summary).toEqual({ status: 'SUCCEEDED', durationMs: 14544, counts: { passed: 3, failed: 0, skipped: 0 }, target: 'simulator' })
   expect(shown.data.diagnostics).toEqual({ warnings: [], errors: [], testFailures: [] })
   expect(shown.data.testCases).toBe(`per-test list (3 entries) left out to keep this result short; the full result is in ${SAVED}`)
@@ -456,6 +459,25 @@ test('a test run is also kept apart by the tests it selects', async ($, on) => {
   await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'App', extraArgs: ['-only-testing:SmallTests'] })
 
   expect(seen.statuses).toContain('test_sim · App · 0:05 ━━━━──── ~0:05 left')
+})
+
+test('a MobileBuildMCP run is measured from when its log appears, so a pre-build hook is not counted against its usual time', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on, '', { 'durations.test_sim': [36_000], 'logs.test_sim': true })
+  const { disk } = logsOnDisk(on, clock)
+  disk.hasLogs = false
+  on('tool.call', async () => {
+    await clock.advance(20_000)
+    disk.hasLogs = true
+    await clock.advance(21_000)
+    return { result: {}, text: 'ok' }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(seen.statuses).toContain('test_sim running · 0:10 · preparing')
+  // The log is found on the first tick after it appears, at 0:21, so by 0:41 the run has gone 20 s of its usual 36.
+  expect(seen.statuses).toContain('test_sim running · 0:41 ━━━━╸─── ~0:16 left · testing · 2 done')
 })
 
 test('tools that neither build, test nor run are not timed', async ($, on) => {

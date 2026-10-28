@@ -180,7 +180,7 @@ test('the time and phase come before the target, so a narrow terminal cuts what 
 })
 
 test('with a usual time to go by, the band draws a gauge and the time left after the clock', () => {
-  const run = { tool: 'build_sim', target: 'App on iPhone 12', startedAt: 0, usual: 36_000, phase: 'compiling Net' }
+  const run = { tool: 'build_sim', target: 'App on iPhone 12', startedAt: 0, measuredFrom: 0, usual: 36_000, phase: 'compiling Net' }
   const drawn = segments(run, 21_000)
   expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'build_sim', ' · 0:21', ' ', '━━━━╸', '───', ' ~0:15 left', ' · compiling Net', ' · App on iPhone 12'])
   expect(drawn[5]?.color).toBe('success')
@@ -188,8 +188,18 @@ test('with a usual time to go by, the band draws a gauge and the time left after
 })
 
 test('past the usual time the gauge turns to the warning colour and says how far over', () => {
-  const drawn = segments({ tool: 'test_sim', startedAt: 0, usual: 44_000 }, 52_000)
+  const drawn = segments({ tool: 'test_sim', startedAt: 0, measuredFrom: 0, usual: 44_000 }, 52_000)
   expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · 0:52', ' ', '━━━━━━━━', '', ' 0:08 over'])
   expect(drawn[5]?.color).toBe('warning')
   expect(drawn[7]?.color).toBe('warning')
+})
+
+test('the gauge measures from when the run itself began, while the clock shows the whole wait', () => {
+  const drawn = segments({ tool: 'test_sim', startedAt: 0, measuredFrom: 20_000, usual: 36_000 }, 41_000)
+  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · 0:41', ' ', '━━━━╸', '───', ' ~0:15 left'])
+})
+
+test('before the run itself begins there is no gauge to draw', () => {
+  const drawn = segments({ tool: 'test_sim', startedAt: 0, usual: 36_000, phase: 'preparing' }, 10_000)
+  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · 0:10', ' · preparing'])
 })
