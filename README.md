@@ -64,7 +64,7 @@ A line above the prompt follows every build and test:
 - **A run of a minute or more** also sends a notification.
 - **Where the line can't draw**, such as VS Code, the status line counts and a toast reports the outcome.
 
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
+<img src="assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
 
 ### Test results Claude can act on
 
@@ -77,7 +77,7 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 - **Compile errors counted once.**
 - **Passing tests left out**, with the full list a file read away.
 
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
+<img src="assets/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
 
 ### The last failures beside the chat
 
@@ -90,7 +90,7 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 
 They answer at once, without a turn for Claude.
 
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
+<img src="assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
 
 ### The right server for each job
 
@@ -131,7 +131,7 @@ ok    xcrew/up-to-date                 0.7.0, the latest release
 
 ## How it works
 
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png" alt="Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
+<img src="assets/architecture.png" alt="Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
 
 | Piece | What it does |
 | --- | --- |
