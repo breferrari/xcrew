@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.8 — 2026-10-28
 
 - A skipped test's reason reaches Claude in a long failing run too: 0.6.6 and 0.6.7 looked it up, then dropped it when they compacted the Test Results list.
 
