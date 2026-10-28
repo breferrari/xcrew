@@ -5,18 +5,22 @@
 - `xcrew doctor` (and `/xcrew doctor`) checks whether a newer Xcrew is out, against the latest GitHub release, and says how to update or turn on auto-update. It's the only check that reaches the network: the session-start look for problems leaves it out, and it skips rather than fails when GitHub can't be reached.
 - The README says how to turn on auto-update, which Claude Code leaves off for third-party marketplaces.
 
+## 0.6.8 — 2026-10-28
+
+- A skipped test's reason reaches Claude in a long failing run too: 0.6.6 and 0.6.7 looked it up, then dropped it when they compacted the Test Results list.
+
 ## 0.6.7 — 2026-10-28
 
 - A MobileBuildMCP test run with expected failures (`XCTExpectFailure`) tells Claude how many ran, and the true total: MobileBuildMCP's counts leave them out.
 
-## 0.6.5 — 2026-10-28
+## 0.6.6 — 2026-10-28
 
 - A crashed test reaches Claude with the crash's exception and the top frames of the thread that crashed, from the crash log its result bundle attaches.
 - A skipped test reaches Claude with why it was skipped, from its result bundle.
 - A compile error is counted once: MobileBuildMCP also listed the compiler's caret line as an error of its own.
 - A compacted failing run lists its failures once, under Test Failures, rather than again under Test Results, where the parallel runners' log can miss some; and the note for a left-out per-test list no longer gives a count that can disagree with the summary's.
 
-## 0.6.6 — 2026-10-28
+## 0.6.5 — 2026-10-28
 
 - A compacted failing run keeps its skipped tests' lines (`⏭️`) beside the failing ones; 0.6.2 to 0.6.4 left them out with the passing tests, so a skipped test showed only in the count.
 

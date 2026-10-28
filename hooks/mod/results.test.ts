@@ -230,3 +230,8 @@ test('the note for a left-out list gives no count of its own, so it can\'t disag
   const compact = JSON.parse(compactTestResult(captured.mobileTestsPassed.text, '/saved.txt') ?? '{}')
   expect(compact.data.testCases).toBe('per-test list left out to keep this result short; the counts above are complete, and the full result is in /saved.txt')
 })
+
+test('a skipped test keeps the reason added under it when the list is compacted', () => {
+  const annotated = failingRunText(40).replace('  ❌ FormatterTests/test_symbol() (0.010s)', '  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API')
+  expect(compactTestText(annotated)).toContain('  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API\n')
+})

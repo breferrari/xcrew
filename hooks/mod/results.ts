@@ -225,7 +225,8 @@ export function compactTestText(text: string): string | undefined {
   // Failing tests are listed in full under Test Failures, while this list's ❌ lines come from the
   // parallel runners' log and can miss some, so only skipped tests (⏭️) keep their lines here.
   const listedAbove = lines.some(line => line.startsWith('Test Failures'))
-  const kept = section.filter(line => line.includes('⏭') || (!listedAbove && line.includes('❌')))
+  // A skipped test's line keeps the `skipped: <reason>` line the result bundle adds under it.
+  const kept = section.filter(line => line.includes('⏭') || /^\s+skipped: /.test(line) || (!listedAbove && line.includes('❌')))
   const note = listedAbove ? `  (${passed} passing tests left out; failing tests are listed in full above)` : `  (${passed} passing tests left out)`
   return [...lines.slice(0, start + 1), note, ...kept, ...lines.slice(end)].join('\n')
 }
