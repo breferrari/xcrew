@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A skipped test reaches Claude with its reason even when MobileBuildMCP leaves it out of its Test Results list, which it can in a run that also crashes or records expected failures: the skipped tests and their reasons now come from the result bundle's test list, in one `xcresulttool` call rather than one per test.
+
 ## 0.6.9 — 2026-10-28
 
 - `xcrew doctor` (and `/xcrew doctor`) checks whether a newer Xcrew is out, against the latest GitHub release, and says how to update or turn on auto-update. It's the only check that reaches the network: the session-start look for problems leaves it out, and it skips rather than fails when GitHub can't be reached.

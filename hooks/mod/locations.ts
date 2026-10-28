@@ -52,14 +52,24 @@ export function sourceLocationOf(details: string): string | undefined {
   return undefined
 }
 
-/** Why a skipped test was skipped, from its details' `Test skipped - <reason>`. */
-export function skipReasonOf(details: string): string | undefined {
-  for (const node of nodes(parse(details))) {
-    if (node.result === 'Skipped' && typeof node.name === 'string' && node.name.startsWith('Test skipped - ')) {
-      return node.name.slice('Test skipped - '.length)
-    }
+type Skip = { reason?: string; seconds: number }
+
+/**
+ * Each skipped test in `xcresulttool get test-results tests` output, keyed `Suite/test`, with why it
+ * was skipped (its `Test skipped - <reason>` message) and how long it ran.
+ */
+export function skippedTestsOf(listing: string): Map<string, Skip> {
+  const skips = new Map<string, Skip>()
+  for (const node of nodes(parse(listing))) {
+    if (node.nodeType !== 'Test Case' || node.result !== 'Skipped' || typeof node.nodeIdentifier !== 'string') continue
+    const message = (node.children as { nodeType?: string; name?: string }[] | undefined)?.find(child => child.nodeType === 'Skip Message')?.name
+    const [suite, test] = node.nodeIdentifier.split('/')
+    skips.set(key(suite ?? '', test ?? ''), {
+      reason: message?.startsWith('Test skipped - ') ? message.slice('Test skipped - '.length) : message,
+      seconds: typeof node.durationInSeconds === 'number' ? node.durationInSeconds : 0,
+    })
   }
-  return undefined
+  return skips
 }
 
 /** A crash log's exception and the top frames of the thread that crashed, as `image  symbol`. */
@@ -84,8 +94,14 @@ export function resultBundleOf(text: string, home: string): string | undefined {
   return `${folder.replace(/^~/, home)}${bundle}`
 }
 
-/** Lines to add under each failure (keyed `Suite/test`) and under each skipped test. */
-type Notes = { failures: ReadonlyMap<string, readonly string[]>; skipped: ReadonlyMap<string, readonly string[]> }
+/**
+ * Lines to add under each failure (keyed `Suite/test`) and under each skipped test, and the lines of
+ * skipped tests the text leaves out, which go at the end of its Test Results list.
+ */
+type Notes = { failures: ReadonlyMap<string, readonly string[]>; skipped: ReadonlyMap<string, readonly string[]>; unlisted?: readonly string[] }
+
+/** `❌ 2 tests failed, 959 passed, 1 skipped (⏱️ 47.4s)`, the run's summary line. */
+const SUMMARY = /^(❌|✅) \d+ tests? /
 
 /** Writes the notes: a failure's go after it and its location line, a skipped test's after its line. */
 function annotate(text: string, notes: Notes): string {
@@ -93,6 +109,11 @@ function annotate(text: string, notes: Notes): string {
   const out: string[] = []
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? ''
+    if (SUMMARY.test(line) && notes.unlisted?.length) {
+      const blank = (out.at(-1) ?? '').trim() === '' ? out.pop() : undefined
+      out.push(...notes.unlisted)
+      if (blank !== undefined) out.push(blank)
+    }
     out.push(line)
     const failure = FAILURE.exec(line)
     if (failure) {
@@ -161,11 +182,24 @@ async function details($: EngineInterface, bundle: string, test: string): Promis
   return ran?.stdout ?? ''
 }
 
+/** How many tests the run's summary line counts as skipped. */
+function skippedCountOf(text: string): number {
+  return Number(/^(?:❌|✅) \d+ tests? .*?(\d+) skipped/m.exec(text)?.[1] ?? 0)
+}
+
+/** The run's skipped tests, from the result bundle: MobileBuildMCP's list can leave one out. */
+async function skipsOf($: EngineInterface, bundle: string): Promise<Map<string, Skip>> {
+  const ran = await $.process
+    .run(['xcrun', 'xcresulttool', 'get', 'test-results', 'tests', '--path', bundle, '--compact'], { timeoutMs: 15_000 })
+    .catch(() => undefined)
+  return skippedTestsOf(ran?.stdout ?? '')
+}
+
 /** The failing run's text with what the result bundle adds, or the text as it was when it adds nothing. */
 export async function locateFailures($: EngineInterface, text: string): Promise<string> {
   const failures = failuresIn(text).filter(failure => !failure.isLocated || failure.isCrash).slice(0, MOST_LOOKUPS)
-  const skipped = skippedIn(text).slice(0, MOST_LOOKUPS)
-  if (failures.length === 0 && skipped.length === 0) return text
+  const isSkipping = skippedCountOf(text) > 0 || skippedIn(text).length > 0
+  if (failures.length === 0 && !isSkipping) return text
   const home = await $.env.get('HOME')
   const bundle = home ? resultBundleOf(text, home) : undefined
   if (!bundle) return text
@@ -179,13 +213,16 @@ export async function locateFailures($: EngineInterface, text: string): Promise<
     if (failure.isCrash) notes.push(...((await crashOf($, bundle, failure.test)) ?? []).map(line => `      ${line}`))
     if (notes.length > 0) failureNotes.set(failure.test, notes)
   }
-  const skipNotes = new Map<string, string[]>()
-  for (const test of skipped) {
-    const reason = skipReasonOf(await details($, bundle, test))
-    if (reason) skipNotes.set(test, [`      skipped: ${reason}`])
-  }
-  if (failureNotes.size === 0 && skipNotes.size === 0) return text
-  return annotate(text, { failures: failureNotes, skipped: skipNotes })
+  const skips = isSkipping ? await skipsOf($, bundle) : new Map<string, Skip>()
+  const reasonOf = (skip: Skip): string[] => (skip.reason ? [`      skipped: ${skip.reason}`] : [])
+  const listed = new Set(skippedIn(text))
+  const skipNotes = new Map([...skips].filter(([test]) => listed.has(test)).map(([test, skip]) => [test, reasonOf(skip)]))
+  const unlisted = [...skips]
+    .filter(([test]) => !listed.has(test))
+    .slice(0, MOST_LOOKUPS)
+    .flatMap(([test, skip]) => [`  ⏭️ ${test}() (${skip.seconds.toFixed(3)}s)`, ...reasonOf(skip)])
+  if (failureNotes.size === 0 && [...skipNotes.values()].every(notes => notes.length === 0) && unlisted.length === 0) return text
+  return annotate(text, { failures: failureNotes, skipped: skipNotes, unlisted })
 }
 
 /**

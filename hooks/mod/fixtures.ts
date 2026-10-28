@@ -170,10 +170,6 @@ export const xcresultCrashDetails =
 export const crashLog = `{"app_name":"xctest","bug_type":"309"}
 {"faultingThread":1,"exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"usedImages":[{"name":"libswiftCore.dylib"},{"name":"AppTests"},{"name":"libXCTestSwiftSupport.dylib"}],"threads":[{"frames":[{"imageIndex":0,"symbol":"mach_msg2_trap"}]},{"frames":[{"imageIndex":0,"symbol":"closure #1 in closure #1 in _assertionFailure(_:_:file:line:flags:)"},{"imageIndex":0,"symbol":"_assertionFailure(_:_:file:line:flags:)"},{"imageIndex":1,"symbol":"implicit closure #1 in FormatterTests.test_crash()"},{"imageIndex":1,"symbol":"partial apply for implicit closure #1 in FormatterTests.test_crash()"},{"imageIndex":2,"symbol":"closure #1 in XCTAssertEqual<A>(_:_:_:file:line:)"},{"imageIndex":2,"symbol":"partial apply for closure #1 in XCTAssertEqual<A>(_:_:_:file:line:)"},{"imageIndex":2,"symbol":"closure #1 in _XCTRunThrowableBlock(_:)"}]}]}`
 
-/** \`xcresulttool get test-results test-details\` for a skipped test, trimmed to the fields read. */
-export const xcresultSkipDetails =
-  '{"testIdentifier":"FormatterTests/test_skipped()","testResult":"Skipped","testRuns":[{"children":[{"children":[{"name":"Test skipped - waiting on the new API","nodeType":"Test Case Run","result":"Skipped"}],"name":"Test Scheme Action","nodeType":"Test Plan Configuration","result":"Skipped"}],"name":"iPhone 12","nodeType":"Device","result":"Skipped"}]}'
-
 /** A crash and a skip in one failing run's text, without locations. */
 export const mobileTestsCrashedAndSkipped: Captured = {
   isError: true,
@@ -199,3 +195,18 @@ Test Results:
 /** \`xcrun xcresulttool get test-results summary\` for a run with two XCTExpectFailure tests, trimmed to the counts. */
 export const xcresultSummaryWithExpectedFailures =
   '{"result":"Passed","totalTestCount":961,"passedTests":959,"failedTests":0,"skippedTests":0,"expectedFailures":2}'
+
+/** `xcrun xcresulttool get test-results tests` for the crashed-and-skipped run, trimmed to one suite. */
+export const xcresultTestsWithSkip = JSON.stringify({
+  devices: [],
+  testNodes: [{
+    name: 'FormatterTests', nodeType: 'Test Suite', result: 'Failed',
+    children: [
+      { name: 'test_euro()', nodeIdentifier: 'FormatterTests/test_euro()', nodeType: 'Test Case', result: 'Passed', durationInSeconds: 0.001 },
+      {
+        name: 'test_skipped()', nodeIdentifier: 'FormatterTests/test_skipped()', nodeType: 'Test Case', result: 'Skipped', durationInSeconds: 0,
+        children: [{ name: 'Test skipped - waiting on the new API', nodeType: 'Skip Message' }],
+      },
+    ],
+  }],
+})

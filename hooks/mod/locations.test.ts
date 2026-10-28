@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import * as captured from './fixtures'
-import { crashSummaryOf, expectedFailuresNoteOf, resultBundleOf, skipReasonOf, sourceLocationOf, withLocations } from './locations'
+import { crashSummaryOf, expectedFailuresNoteOf, resultBundleOf, skippedTestsOf, sourceLocationOf, withLocations } from './locations'
 import { callTool, runCommand } from './testing'
 
 test('a failing test\'s details give the file and line it failed at; a crash\'s give none', () => {
@@ -79,9 +79,9 @@ test('a crash log gives the exception and the top frames of the thread that cras
   expect(crashSummaryOf('not a crash log')).toBeUndefined()
 })
 
-test('a skipped test\'s details give the reason it was skipped', () => {
-  expect(skipReasonOf(captured.xcresultSkipDetails)).toBe('waiting on the new API')
-  expect(skipReasonOf(captured.xcresultFailureDetails)).toBeUndefined()
+test('the result bundle\'s test list gives each skipped test and the reason it was skipped', () => {
+  expect([...skippedTestsOf(captured.xcresultTestsWithSkip)]).toEqual([['FormatterTests/test_skipped', { reason: 'waiting on the new API', seconds: 0 }]])
+  expect(skippedTestsOf('not json').size).toBe(0)
 })
 
 test('a crash reaches Claude with its exception and frames, and a skip with its reason', async ($, on) => {
@@ -97,7 +97,7 @@ test('a crash reaches Claude with its exception and frames, and a skip with its 
     const id = e.argv[e.argv.indexOf('--test-id') + 1]
     const stdout =
       e.argv[0] === 'mktemp' ? '/tmp/xcrew-crash\n'
-      : e.argv.includes('test-details') && id === 'FormatterTests/test_skipped()' ? captured.xcresultSkipDetails
+      : e.argv.includes('tests') ? captured.xcresultTestsWithSkip
       : e.argv.includes('test-details') ? captured.xcresultCrashDetails
       : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -152,7 +152,7 @@ test('a skip reason survives the compaction of a long failing run', async ($, on
   on('ui.status', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
   on('process.run', (_, e) => {
-    const stdout = e.argv.includes('test-details') && e.argv.includes('FormatterTests/test_skipped()') ? captured.xcresultSkipDetails : ''
+    const stdout = e.argv.includes('tests') ? captured.xcresultTestsWithSkip : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   const passing = Array.from({ length: 40 }, (_, index) => `  ✅ FormatterTests/test_case${index}() (0.001s)`).join('\n')
@@ -162,5 +162,24 @@ test('a skip reason survives the compaction of a long failing run', async ($, on
   const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
   expect(ran.result).toContain('passing tests left out')
+  expect(ran.result).toContain('  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API')
+})
+
+test('a skipped test MobileBuildMCP left out of its list reaches Claude from the result bundle, with its reason', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  mock.env(on, { HOME: '/Users/dev' })
+  on('session.surfaces', () => ({ value: [] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', (_, e) => {
+    const stdout = e.argv.includes('tests') ? captured.xcresultTestsWithSkip : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  const text = captured.mobileTestsCrashedAndSkipped.text.replace('  ⏭️ FormatterTests/test_skipped() (0.000s)\n', '')
+  on('tool.call', () => ({ result: {}, text, isError: true }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
   expect(ran.result).toContain('  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API')
 })
