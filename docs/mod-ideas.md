@@ -46,9 +46,10 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Results in the toast~~ | Shipped: see what the mod shows today | | | | |
 | ~~What's building~~ | Shipped: learned from `session_show_defaults` and the Xcode MCP's workspace and scheme answers | | | | |
 | Build band | `last ✓ build 1:12 ▁▂▂▃▂ · ✗ tests 3 failed · 1 plugin repaired` | Band | `$.store` history | M | Hide when idle? The hamzafer conventions say yes, after a few minutes |
-| Live progress | `build_sim · compiling 412/1,280 · 0:41` | Status line or band | Stream the build's log while it runs | L | Does MobileBuildMCP send MCP progress, or write a log the mod can follow? The `ToolProgress` render site only exposes `kind` |
+| Live progress | `BuildProject · 836/850 · 0:30` | Band | The Xcode MCP sends MCP progress (`Building • 836 / 850`), which Claude Code draws under the call | L | Blocked: a mod can't read it yet. The `ToolProgress` render site carries only the run-in-background hint; its docs say other kinds join later |
 | ~~Slow-run alert~~ | Shipped: `(2× its usual 1:50)` in the toast and the band | | | | |
 | ~~Done while you were away~~ | Shipped: runs of a minute or more notify, through the person's own notification settings | | | | |
+| Durations from the servers | Averages and slow-run calls that leave out hook and permission time | Band, toast | MobileBuildMCP's `durationMs`, the Xcode MCP's `elapsedTime` | S | The band starts before PreToolUse hooks run, so a project's pre-build hook (one regenerating a Tuist workspace took ~20 s) lands in the first build's time and the average |
 | Failure pane | Failing tests with their messages, the first compile errors as code | Pane, `/xcrew failures` | Result text | M | Same parsing as results in the toast |
 | Restyled tool rows | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
 

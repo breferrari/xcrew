@@ -49,6 +49,10 @@ mcs pack validate .
 - zsh's `noclobber` refuses `>` over an existing file; use `>|` or run the snippet in `bash`.
 - BSD `sed` has no `\b`; use `perl -pi -e`.
 
+## Pull requests and issues
+
+Pull request titles are one imperative clause with a kind prefix (`fix:`, `feat:`, `ci:`, `docs:`, `test:`, `chore:`); issue titles are imperative without one. The PR template's release note line also goes under `## Unreleased` in `CHANGELOG.md`. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
+
 ## This repository is public
 
 No company names, internal project names, personal names or private paths in code, tests, docs or commits; describe a setup generically ("a large modular Tuist app").

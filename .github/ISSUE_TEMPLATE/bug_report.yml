@@ -1,33 +1,28 @@
-name: Bug report
-description: Something in xcrew doesn't work as described
+name: Report something
+description: Something Xcrew did that you didn't expect
 body:
   - type: textarea
     id: what
     attributes:
-      label: What happened, and what you expected
+      label: What you expected, and what happened
+      description: Two lines is enough.
     validations:
       required: true
   - type: textarea
     id: doctor
     attributes:
-      label: Output of `xcrew doctor`
-      description: Run it in the affected project (from Claude Code, or `~/.claude/plugins/…/bin/xcrew doctor`).
+      label: Output of `xcrew doctor` (optional)
+      description: Run `/xcrew doctor` in the affected project, or the CLI under `~/.claude/plugins/…/bin/xcrew`.
       render: text
-    validations:
-      required: true
   - type: input
     id: versions
     attributes:
-      label: Versions
+      label: Versions (optional)
       description: "`sw_vers -productVersion`, `xcodebuild -version`, `claude --version`, `mobilebuildmcp --version`"
-    validations:
-      required: true
   - type: dropdown
     id: install
     attributes:
-      label: Installed through
+      label: Installed through (optional)
       options:
         - Claude Code plugin
         - mcs
-    validations:
-      required: true
