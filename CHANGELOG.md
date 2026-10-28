@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.2 — 2026-10-28
 
 - A failing MobileBuildMCP test run reaches Claude with its failures and summary, its passing tests counted instead of listed (with `showTestTiming` on, a 959-test run listed every one). A list Claude Code already cut in the middle loses its marker and fragments.
 - A test run that ran no tests shows `✗ … no tests ran` instead of a green `✓`, and Claude is told an `-only-testing` filter probably matched nothing: MobileBuildMCP reports such a run as SUCCEEDED.
