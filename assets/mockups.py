@@ -1,4 +1,4 @@
-"""Draws the README's mockups as SVG, in the social preview's frame and Catppuccin Mocha colours.
+"""Draws the README's mockups as SVG, in the banner's frame and colours.
 
 Drawn rather than captured, so they stay sharp and readable at any width. Run from assets/, then
 render each at 2x: python3 mockups.py && for f in band test-result failures-pane architecture; do
@@ -13,10 +13,11 @@ SIZE = 17
 CW = SIZE * 0.6  # monospace advance
 LH = 27
 
+# The banner's graphite and orange, with GitHub's dark-mode accents, as the README's badges use.
 C = {
-    "bg": "#0b0e12", "glow": "#161c25", "term": "#1e1e2e", "bar": "#181825", "border": "#313244",
-    "text": "#cdd6f4", "subtle": "#7f849c", "inactive": "#45475a", "success": "#a6e3a1", "error": "#f38ba8",
-    "warning": "#f9e2af", "orange": "#ec501d", "blue": "#89b4fa", "label": "#a9afb9",
+    "term": "#11151b", "bar": "#0d1015", "border": "#262c35",
+    "text": "#e6e8eb", "subtle": "#8b929c", "inactive": "#323944", "success": "#3fb950", "error": "#f85149",
+    "warning": "#d29922", "orange": "#ec501d", "blue": "#58a6ff", "label": "#a9afb9",
 }
 
 
@@ -62,18 +63,30 @@ class Canvas:
                 + "\n".join(self.parts) + "\n</svg>\n")
 
 
+def backdrop(c, width, height):
+    """The banner's gradient, hairline frame and orange corner brackets."""
+    c.add('<defs><radialGradient id="glow" cx="0.22" cy="0.4" r="0.8"><stop offset="0" stop-color="#151a22"/><stop offset="1" stop-color="#0c0f13"/></radialGradient>'
+          '<filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="10"/>'
+          '<feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
+          '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#6e7681"/></marker></defs>')
+    c.add(f'<rect width="{width}" height="{height}" fill="url(#glow)"/>')
+    c.add(f'<rect x="2.5" y="2.5" width="{width - 5}" height="{height - 5}" fill="none" stroke="{C["orange"]}" stroke-opacity="0.35" stroke-width="1"/>')
+    k, e = 26, 3.5
+    c.add(f'<g fill="none" stroke="{C["orange"]}" stroke-width="3" stroke-linecap="square">'
+          f'<path d="M{e} {k} V{e} H{k}"/><path d="M{width - k} {e} H{width - e} V{k}"/>'
+          f'<path d="M{e} {height - k} V{height - e} H{k}"/><path d="M{width - k} {height - e} H{width - e} V{height - k}"/></g>')
+
+
 def frame(width, height, title):
     c = Canvas(width, height)
-    c.add('<defs><radialGradient id="glow" cx="0.3" cy="0.3" r="0.9"><stop offset="0" stop-color="#161c25"/><stop offset="1" stop-color="#0b0e12"/></radialGradient>'
-          '<filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="10"/>'
-          '<feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>')
-    c.add(f'<rect width="{width}" height="{height}" rx="18" fill="url(#glow)"/>')
-    x0, y0, w, h = 40, 36, width - 80, height - 72
-    c.add(f'<g filter="url(#shadow)"><rect x="{x0}" y="{y0}" width="{w}" height="{h}" rx="12" fill="{C["term"]}" stroke="{C["border"]}"/></g>')
-    c.add(f'<path d="M{x0} {y0 + 40} v-28 a12 12 0 0 1 12 -12 h{w - 24} a12 12 0 0 1 12 12 v28 z" fill="{C["bar"]}"/>')
-    for i, dot in enumerate(["#f38ba8", "#f9e2af", "#a6e3a1"]):
-        c.add(f'<circle cx="{x0 + 22 + i * 20}" cy="{y0 + 20}" r="6" fill="{dot}"/>')
-    c.text(x0 + w / 2 - len(title) * 7.2 / 2, y0 + 25, title, "subtle", size=12, font="Helvetica Neue")
+    backdrop(c, width, height)
+    x0, y0, w, h = 48, 40, width - 96, height - 80
+    c.add(f'<g filter="url(#shadow)"><rect x="{x0}" y="{y0}" width="{w}" height="{h}" rx="8" fill="{C["term"]}" stroke="{C["border"]}"/></g>')
+    c.add(f'<path d="M{x0 + 0.5} {y0 + 38} v-30 a7.5 7.5 0 0 1 7.5 -7.5 h{w - 16} a7.5 7.5 0 0 1 7.5 7.5 v30 z" fill="{C["bar"]}"/>')
+    c.add(f'<line x1="{x0}" y1="{y0 + 38}" x2="{x0 + w}" y2="{y0 + 38}" stroke="{C["border"]}"/>')
+    for i in range(3):
+        c.add(f'<circle cx="{x0 + 20 + i * 18}" cy="{y0 + 19}" r="5" fill="{C["inactive"]}"/>')
+    c.text(x0 + w / 2 - len(title) * 7.2 / 2, y0 + 24, title, "subtle", size=12, font="Helvetica Neue")
     return c, x0 + 28, y0 + 74
 
 
@@ -171,13 +184,11 @@ def pane():
 def arch():
     W, H = 1280, 640
     c = Canvas(W, H)
-    c.add('<defs><radialGradient id="glow" cx="0.3" cy="0.3" r="0.9"><stop offset="0" stop-color="#161c25"/><stop offset="1" stop-color="#0b0e12"/></radialGradient>'
-          '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#7f849c"/></marker></defs>')
-    c.add(f'<rect width="{W}" height="{H}" rx="18" fill="url(#glow)"/>')
+    backdrop(c, W, H)
     sans = "Helvetica Neue"
 
     def box(x, y, w, h, title, sub=None, accent=None, fill=None):
-        c.add(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="10" fill="{fill or C["term"]}" stroke="{accent or C["border"]}" stroke-width="{1.6 if accent else 1}"/>')
+        c.add(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="{fill or C["term"]}" stroke="{accent or C["border"]}" stroke-width="{1.6 if accent else 1}"/>')
         ty = y + (h / 2 + 6 if not sub else h / 2 - 4)
         c.text(x + 18, ty, title, "text", "600", size=17, font=FONT)
         if sub:
@@ -186,10 +197,10 @@ def arch():
     def line(x1, y1, x2, y2, arrow=True, dash=False):
         d = ' stroke-dasharray="5 5"' if dash else ""
         m = ' marker-end="url(#arrow)"' if arrow else ""
-        c.add(f'<path d="M{x1} {y1} L{x2} {y2}" stroke="#7f849c" stroke-width="1.4" fill="none"{d}{m}/>')
+        c.add(f'<path d="M{x1} {y1} L{x2} {y2}" stroke="#6e7681" stroke-width="1.4" fill="none"{d}{m}/>')
 
     def elbow(x1, y1, x2, y2):
-        c.add(f'<path d="M{x1} {y1} H{(x1 + x2) / 2} V{y2} H{x2}" stroke="#7f849c" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>')
+        c.add(f'<path d="M{x1} {y1} H{(x1 + x2) / 2} V{y2} H{x2}" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>')
 
     c.text(60, 64, "HOW IT FITS TOGETHER", "label", "600", size=13, font=sans, spacing="2.5")
     # Claude Code and the four plugin pieces.
@@ -215,7 +226,7 @@ def arch():
     box(860, cy, 360, 80, "Swift CLI (bin/xcrew)", "setup · doctor · hook · xcode-skills", accent=C["success"])
     for i in (1, 2, 3):
         py = 100 + i * 92 + ph / 2
-        c.add(f'<path d="M{px + pw} {py} H830 V{cy + 26} H856" stroke="#7f849c" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>')
+        c.add(f'<path d="M{px + pw} {py} H830 V{cy + 26} H856" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>')
     c.text(870, cy + 112, "built from source on first use, once per version", "subtle", size=13, font=sans)
     # mcs, the other way in.
     box(330, 486, pw, 64, "mcs techpack", "configure.sh · one script per doctor check", fill=C["bar"])
