@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Where the band draws (the terminal, Desktop), it carries a run's outcome alone; the toast that repeated it now shows only where no band draws.
 - A result too large for the transcript, which Claude Code saves to a file, is read back from that file, so its outcome still carries its detail (a large project's test run lost its count).
 - The status line and band name the scheme after `XcodeSwitchScheme` too, which reports it as `activeSchemeName`.
 - A run far slower than usual says so: `(2× its usual 1:50)` once there are five earlier runs, at 1.5× the average or more.

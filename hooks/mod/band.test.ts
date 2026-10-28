@@ -124,3 +124,24 @@ test('a run far slower than usual shows it in the band', async ($, on) => {
   expect((await ui.find({ type: 'Text', text: ' (1.5× its usual 0:10)' }))?.props.color).toBe('#ec501d')
   await ui.unmount()
 })
+
+test('where the band draws, it carries the outcome alone, with no toast repeating it', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  const toasts: string[] = []
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('tool.call', async () => {
+    await clock.advance(5_000)
+    return { result: {}, text: captured.mobileTestsPassed.text }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(toasts).toEqual([])
+})

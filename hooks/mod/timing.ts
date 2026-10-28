@@ -32,9 +32,9 @@ async function quietly<T>(work: () => Promise<T> | T): Promise<T | undefined> {
 }
 
 /**
- * Times builds, test runs and app runs: the band (or, where none draws, the status line) counts
- * while one runs and then shows its outcome, a toast reports the result and how it compares with
- * the last runs of the same tool, and a long run also notifies.
+ * Times builds, test runs and app runs: the band counts while one runs and then shows its outcome
+ * and how it compares with the last runs of the same tool. Where no band draws, the status line
+ * counts and a toast reports the outcome. A long run also notifies.
  */
 export function registerTiming(on: On): void {
   on('tool.call', async ($, e, next) => {
@@ -78,8 +78,12 @@ export function registerTiming(on: On): void {
     const compared = comparison(elapsed, earlier)
     const detail = outcome.detail ? ` · ${outcome.detail}` : ''
     const summary = `${outcome.ok ? '✓' : '✗'} ${name} · ${stopwatch(elapsed)}${compared ? ` ${compared}` : ''}${detail}`
-    if (usesBand) await quietly(() => endRun($, { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: compared }))
-    await quietly(() => $.ui.toast(summary))
+    if (usesBand) {
+      await quietly(() => endRun($, { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: compared }))
+    } else {
+      // The band stays up with this same line where it draws; elsewhere a toast carries it.
+      await quietly(() => $.ui.toast(summary))
+    }
     // Long enough that the person has likely looked away; their notification settings decide how it arrives.
     if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summary))
     return result

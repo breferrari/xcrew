@@ -74,7 +74,7 @@ ok    xcode-mcp/macro-copy-phase       none
 | Skills | `/xcrew:setup`, and the `xcrew` reference Claude loads when something fails |
 | CLI | `xcrew setup`, `doctor`, `repair-macros`, `xcode-skills`; on Claude's `PATH` while the plugin is enabled |
 
-While a build or test runs, a coloured line above the prompt counts it and names the scheme and simulator it's using (the status line does this where that line can't draw, such as VS Code), and a toast reports how it went, how it compares with recent runs of the same tool, and what failed:
+While a build or test runs, a coloured line above the prompt counts it and names the scheme and simulator it's using. When it ends, the same line says how it went, how it compares with recent runs of the same tool, and what failed. Where that line can't draw, such as VS Code, the status line counts and a toast reports the outcome:
 
 ```
 test_sim · MyApp on iPhone 17 · 0:41
@@ -84,7 +84,7 @@ test_sim · MyApp on iPhone 17 · 0:41
 ✓ build_sim · 3:40 (2× its usual 1:50)
 ```
 
-A run that takes a minute or more also sends the same line as a notification, through your own Claude Code notification settings. After a macro-plugin repair, the toast also names the projects that will keep killing plugins until Tuist regenerates them.
+A run that takes a minute or more also sends the same line as a notification, through your own Claude Code notification settings. After a macro-plugin repair, a toast names what was repaired and the projects that will keep killing plugins until Tuist regenerates them.
 
 `/xcrew doctor`, `/xcrew repair` and `/xcrew history` (each tool's usual duration) answer at once, without a turn for Claude.
 
