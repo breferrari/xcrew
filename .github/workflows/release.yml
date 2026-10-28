@@ -8,22 +8,39 @@ on:
 
 permissions:
   contents: write
+  checks: read
+  pull-requests: read
 
 jobs:
   release:
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - name: The tag matches the declared version
         run: |
           tag=${GITHUB_REF_NAME#v}
-          plugin=$(plutil -extract version raw .claude-plugin/plugin.json)
+          plugin=$(jq -r .version .claude-plugin/plugin.json)
           swift=$(sed -n 's/.*current = "\(.*\)".*/\1/p' Sources/XcrewCore/XcrewVersion.swift)
           echo "tag $tag · plugin.json $plugin · XcrewVersion $swift"
           [ "$tag" = "$plugin" ] && [ "$tag" = "$swift" ]
           grep -q "^## $tag — [0-9]" CHANGELOG.md || { echo "CHANGELOG.md needs a dated '## $tag — <date>' entry"; exit 1; }
-      - name: Test
-        run: swift test
+      # main only changes through pull requests that were green and up to date, so this
+      # confirms the tag is that tested code instead of testing it again.
+      - name: The tagged commit is what its pull request tested, and that passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo=$GITHUB_REPOSITORY
+          pr_head=$(gh api "repos/$repo/commits/$GITHUB_SHA/pulls" -q '.[0].head.sha')
+          [ -n "$pr_head" ] || { echo "$GITHUB_SHA didn't come from a pull request"; exit 1; }
+          tagged_tree=$(gh api "repos/$repo/git/commits/$GITHUB_SHA" -q .tree.sha)
+          tested_tree=$(gh api "repos/$repo/git/commits/$pr_head" -q .tree.sha)
+          [ "$tagged_tree" = "$tested_tree" ] || { echo "$GITHUB_SHA differs from what its pull request tested ($pr_head)"; exit 1; }
+          for check in "Swift package" "Plugin and mod" "Shell scripts"; do
+            conclusion=$(gh api "repos/$repo/commits/$pr_head/check-runs" -q "[.check_runs[] | select(.name == \"$check\")][0].conclusion")
+            echo "$check: $conclusion"
+            [ "$conclusion" = success ] || { echo "$check didn't pass on $pr_head"; exit 1; }
+          done
       - name: Publish the release with its changelog entry
         env:
           GH_TOKEN: ${{ github.token }}

@@ -31,6 +31,7 @@ scripts/typecheck.sh    # the mod's types; needs that session once
 
 - **Titles say what to fix or what to build.** One imperative clause, no "because"; the explanation goes in the body. Start a pull request title with its kind: `fix:` for a defect or `feat:` for a new feature that users get, otherwise `ci:`, `docs:`, `test:` or `chore:`. Issue titles are imperative too, without the prefix.
 - **A pull request carries its release note.** The template's last section is one line for someone who has never opened this repository, saying what changed for them, or `none` for internal work. The same line goes under `## Unreleased` in `CHANGELOG.md`.
+- **A Markdown-only pull request skips the test jobs.** They report as skipped, which satisfies the required checks. `CHANGELOG.md`, skills and the session briefing (`context/`) count as code, since the tests read them.
 - **Numbers or it didn't happen.** A test plan says what ran and how it went, with counts and timings; a single green run of something flaky isn't evidence.
 - **Don't hard-wrap prose.** One paragraph is one line in markdown, PR bodies and commit bodies, because GitHub renders a single newline as a line break.
 
@@ -41,7 +42,7 @@ scripts/typecheck.sh    # the mod's types; needs that session once
 Claude Code keeps people on a plugin's `version` until it changes, so every release bumps it:
 
 1. Set the new version in `Sources/XcrewCore/XcrewVersion.swift` and `.claude-plugin/plugin.json`, and turn the changelog's top entry into `## <version> — <date>`. `ManifestTests` fails until all three agree.
-2. Merge to `main` with CI green, then tag it: `git tag v<version> && git push --tags`. The release workflow refuses a tag that doesn't match the declared version, then publishes the release with its changelog entry.
+2. Merge it through a pull request, then tag the merge commit: `git tag v<version> && git push --tags`. The release workflow refuses a tag that doesn't match the declared version, or one whose commit isn't exactly what a pull request tested and passed, then publishes the release with its changelog entry. It doesn't test again: CI runs once per change, on its pull request, and the ruleset only merges one that is green and up to date with `main`.
 
 Between releases, `main` moves ahead of the version people have installed; that's expected, and it's why a release is a version bump.
 
