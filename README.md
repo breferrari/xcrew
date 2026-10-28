@@ -25,6 +25,14 @@ Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and
 | **A crash** | The test's name | The exception and the crashed thread's top frames |
 | **`XcodeWrite` in a Tuist or XcodeGen project** | Re-saves the whole generated `.pbxproj` | [Refused](#a-guard-for-generated-projects); Claude writes the file itself |
 
+**Why three servers?** None of them covers everything on its own:
+
+- **MobileBuildMCP** builds and tests with its own DerivedData, so it never touches your Xcode window, and adds coverage, simulators and LLDB.
+- **The Xcode MCP** has Xcode's real build settings, for one file's errors, SwiftUI previews and physical devices.
+- **Sosumi** answers documentation questions briefly, with each API's minimum OS version.
+
+[docs/findings.md](docs/findings.md) has the measurements.
+
 Works in any Apple-platform project: plain Xcode, Tuist or XcodeGen. [Install it in two minutes ↓](#quick-start)
 
 ## Quick start
@@ -192,17 +200,9 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 
 Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
 
-### Development
+### Contributing
 
-```sh
-swift test                     # CLI, core, shim and manifest-parity tests
-claude plugin test .           # the mod's tests, against Claude Code's own engine
-claude plugin validate .
-mcs pack validate .            # when mcs is installed
-claude --plugin-dir .          # try your checkout in a session
-```
-
-[CONTRIBUTING.md](CONTRIBUTING.md) covers the conventions and how to add a check, a command or a mod behaviour.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the tests and how to add a check, a command or a mod behaviour.
 
 ## License
 
