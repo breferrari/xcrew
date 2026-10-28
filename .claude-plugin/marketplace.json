@@ -1,6 +1,12 @@
 {
-  "name": "xcrew",
-  "owner": { "name": "Brenno Ferrari", "url": "https://github.com/breferrari" },
+  "name": "breferrari",
+  "owner": {
+    "name": "Brenno Ferrari",
+    "url": "https://github.com/breferrari"
+  },
+  "metadata": {
+    "description": "Claude Code plugins by Brenno Ferrari"
+  },
   "plugins": [
     {
       "name": "xcrew",

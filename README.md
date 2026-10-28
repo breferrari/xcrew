@@ -28,7 +28,7 @@ You need macOS 26 or later, Xcode 27 or later, [Homebrew](https://brew.sh) and [
 
 ```sh
 claude plugin marketplace add breferrari/xcrew
-claude plugin install xcrew@xcrew --scope project   # or --scope local: this project, only you
+claude plugin install xcrew@breferrari --scope project   # or --scope local: this project, only you
 ```
 
 Install it per project, not for your whole user: its servers and tools are only useful in Apple-platform projects, and at user scope they'd start in every session.
@@ -125,8 +125,8 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 
 ## Updating and removing
 
-- **Update:** `claude plugin marketplace update xcrew && claude plugin update xcrew@xcrew`, or `mcs sync` with mcs. The CLI rebuilds once for the new version and removes the old build.
-- **Remove:** `/plugin uninstall xcrew@xcrew` (or remove the pack with mcs), then, if you like, `rm -rf .mobilebuildmcp` in each project (and its `/.mobilebuildmcp/` line in `.git/info/exclude`), `rm -rf ~/Library/Caches/xcrew`, and `brew uninstall mobilebuildmcp`. To revoke Claude Code's access to Xcode, find its id in `xcrun mcp-server status` and run `sudo xcrun mcp-server deny <id>`; `sudo xcrun mcp-server disable` turns headless mode off.
+- **Update:** `claude plugin marketplace update breferrari && claude plugin update xcrew@breferrari`, or `mcs sync` with mcs. The CLI rebuilds once for the new version and removes the old build.
+- **Remove:** `/plugin uninstall xcrew@breferrari` (or remove the pack with mcs), then, if you like, `rm -rf .mobilebuildmcp` in each project (and its `/.mobilebuildmcp/` line in `.git/info/exclude`), `rm -rf ~/Library/Caches/xcrew`, and `brew uninstall mobilebuildmcp`. To revoke Claude Code's access to Xcode, find its id in `xcrun mcp-server status` and run `sudo xcrun mcp-server deny <id>`; `sudo xcrun mcp-server disable` turns headless mode off.
 
 ## How it works
 

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The marketplace is named `breferrari`, so the plugin installs as `xcrew@breferrari` rather than `xcrew@xcrew`. An install from 0.2 or earlier is removed and installed again: `claude plugin uninstall xcrew@xcrew`, then `claude plugin install xcrew@breferrari` (the `marketplace add` command is unchanged).
 - `/xcrew doctor`, `/xcrew repair` and `/xcrew history` now work: the reference skill, named like the plugin, took the `/xcrew` command, so Claude Code refused the mod's. It's `xcrew:reference` now, and out of the `/` menu.
 - `/xcrew history` starts with a heading, so the name Claude Code puts before a command's output doesn't push the first row out of line.
 
