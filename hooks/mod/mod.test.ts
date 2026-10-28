@@ -246,7 +246,7 @@ test('a test result too large to show reaches Claude as its summary, with the fu
   const shown = JSON.parse(ran.result as string)
   expect(shown.data.summary).toEqual({ status: 'SUCCEEDED', durationMs: 14544, counts: { passed: 3, failed: 0, skipped: 0 }, target: 'simulator' })
   expect(shown.data.diagnostics).toEqual({ warnings: [], errors: [], testFailures: [] })
-  expect(shown.data.testCases).toBe(`per-test list (3 entries) left out to keep this result short; the full result is in ${SAVED}`)
+  expect(shown.data.testCases).toBe(`per-test list left out to keep this result short; the counts above are complete, and the full result is in ${SAVED}`)
 })
 
 test('a large result that cannot be summarised is handed on as Claude Code saved it', async ($, on) => {
@@ -271,7 +271,7 @@ test('a failing run reaches Claude with its failures and summary, not every pass
 
   expect(ran.ref).toBeUndefined()
   expect(ran.isError).toBe(true)
-  expect(ran.result).toContain('  (40 passing tests left out)')
+  expect(ran.result).toContain('  (40 passing tests left out; failing tests are listed in full above)')
   expect(ran.result).toContain('✗ FormatterTests / test_symbol(): failed - boom')
   expect(ran.result).not.toContain('✅')
 })

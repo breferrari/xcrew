@@ -194,8 +194,8 @@ export function compactTestResult(text: string, savedPath: string): string | und
   const json = parseObject(text)
   const data = json?.data as Json | undefined
   if (json?.schema !== 'mobilebuildmcp.output.test-result' || !Array.isArray(data?.testCases)) return undefined
-  // The list's own size, which can be one short of the summary's counts: those come from the result bundle.
-  const note = `per-test list (${data.testCases.length} entries) left out to keep this result short; the full result is in ${savedPath}`
+  // No count of its own: the list can be one short of the summary's counts, which come from the result bundle.
+  const note = `per-test list left out to keep this result short; the counts above are complete, and the full result is in ${savedPath}`
   return JSON.stringify({ ...json, data: { ...data, testCases: note } })
 }
 
@@ -222,7 +222,30 @@ export function compactTestText(text: string): string | undefined {
   if (listed <= PASSING_LIST_LIMIT) return undefined
   // The summary's count, since Claude Code may already have cut the middle of a long list.
   const passed = Number(/❌ \d+ tests? failed, (\d+) passed/.exec(text)?.[1] ?? listed)
-  // Failing (❌) and skipped (⏭️) tests keep their lines; only passing ones are counted.
-  const kept = section.filter(line => line.includes('❌') || line.includes('⏭'))
-  return [...lines.slice(0, start + 1), `  (${passed} passing tests left out)`, ...kept, ...lines.slice(end)].join('\n')
+  // Failing tests are listed in full under Test Failures, while this list's ❌ lines come from the
+  // parallel runners' log and can miss some, so only skipped tests (⏭️) keep their lines here.
+  const listedAbove = lines.some(line => line.startsWith('Test Failures'))
+  const kept = section.filter(line => line.includes('⏭') || (!listedAbove && line.includes('❌')))
+  const note = listedAbove ? `  (${passed} passing tests left out; failing tests are listed in full above)` : `  (${passed} passing tests left out)`
+  return [...lines.slice(0, start + 1), note, ...kept, ...lines.slice(end)].join('\n')
+}
+
+/**
+ * MobileBuildMCP lists a compile error twice: the message, and the compiler's caret line
+ * (`✗ |   \`- error: …`) as an error of its own. This drops the caret line and corrects the count.
+ */
+export function cleanBuildText(text: string): string | undefined {
+  const lines = text.split('\n')
+  const kept: string[] = []
+  let dropped = 0
+  for (const line of lines) {
+    if (/^\s*✗ \|/.test(line)) {
+      dropped += 1
+      if ((kept.at(-1) ?? '').trim() === '') kept.pop()
+      continue
+    }
+    kept.push(line)
+  }
+  if (dropped === 0) return undefined
+  return kept.join('\n').replace(/^Errors \((\d+)\):/m, (_, count: string) => `Errors (${Math.max(1, Number(count) - dropped)}):`)
 }

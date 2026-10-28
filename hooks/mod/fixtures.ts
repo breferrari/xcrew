@@ -162,3 +162,36 @@ export const xcresultFailureDetails =
 /** The same for a crash: a crash log attached, and no source location. */
 export const xcresultCrashDetails =
   '{"testIdentifier":"FormatterTests/test_crash()","testResult":"Failed","testRuns":[{"children":[{"children":[{"children":[{"name":"Crash Log.ips","nodeType":"Attachment"}],"name":"Crash: xctest at implicit closure #1 in FormatterTests.test_crash()","nodeType":"Test Case Run","result":"Failed"}],"name":"Test Scheme Action","nodeType":"Test Plan Configuration","result":"Failed"}],"name":"iPhone 12","nodeType":"Device","result":"Failed"}]}'
+
+/**
+ * A crash log as `xcresulttool export attachments` writes it: a header line, then the report. Trimmed
+ * to the fields read; the frames are a real force-unwrap crash's, with names replaced.
+ */
+export const crashLog = `{"app_name":"xctest","bug_type":"309"}
+{"faultingThread":1,"exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"usedImages":[{"name":"libswiftCore.dylib"},{"name":"AppTests"},{"name":"libXCTestSwiftSupport.dylib"}],"threads":[{"frames":[{"imageIndex":0,"symbol":"mach_msg2_trap"}]},{"frames":[{"imageIndex":0,"symbol":"closure #1 in closure #1 in _assertionFailure(_:_:file:line:flags:)"},{"imageIndex":0,"symbol":"_assertionFailure(_:_:file:line:flags:)"},{"imageIndex":1,"symbol":"implicit closure #1 in FormatterTests.test_crash()"},{"imageIndex":1,"symbol":"partial apply for implicit closure #1 in FormatterTests.test_crash()"},{"imageIndex":2,"symbol":"closure #1 in XCTAssertEqual<A>(_:_:_:file:line:)"},{"imageIndex":2,"symbol":"partial apply for closure #1 in XCTAssertEqual<A>(_:_:_:file:line:)"},{"imageIndex":2,"symbol":"closure #1 in _XCTRunThrowableBlock(_:)"}]}]}`
+
+/** \`xcresulttool get test-results test-details\` for a skipped test, trimmed to the fields read. */
+export const xcresultSkipDetails =
+  '{"testIdentifier":"FormatterTests/test_skipped()","testResult":"Skipped","testRuns":[{"children":[{"children":[{"name":"Test skipped - waiting on the new API","nodeType":"Test Case Run","result":"Skipped"}],"name":"Test Scheme Action","nodeType":"Test Plan Configuration","result":"Skipped"}],"name":"iPhone 12","nodeType":"Device","result":"Skipped"}]}'
+
+/** A crash and a skip in one failing run's text, without locations. */
+export const mobileTestsCrashedAndSkipped: Captured = {
+  isError: true,
+  text: `🧪 Test
+
+Test Failures (1):
+
+  ✗ FormatterTests / test_crash(): Crash: xctest at implicit closure #1 in FormatterTests.test_crash()
+
+Test Results:
+  ✅ FormatterTests/test_euro() (0.001s)
+  ⏭️ FormatterTests/test_skipped() (0.000s)
+  ❌ FormatterTests/test_crash() (0.000s)
+
+❌ 1 test failed, 1 passed, 1 skipped (⏱️ 40.1s)
+  └ Files:
+     └── ~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/
+         ├── logs/test_sim_2.log — Build Logs
+         ├── result-bundles/test_sim_2.xcresult — Result Bundle
+         └── test-products/test_sim_2.xctestproducts — Test Products`,
+}

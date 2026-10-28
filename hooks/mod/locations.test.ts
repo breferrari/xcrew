@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import * as captured from './fixtures'
-import { resultBundleOf, sourceLocationOf, withLocations } from './locations'
+import { crashSummaryOf, resultBundleOf, skipReasonOf, sourceLocationOf, withLocations } from './locations'
 import { callTool, runCommand } from './testing'
 
 test('a failing test\'s details give the file and line it failed at; a crash\'s give none', () => {
@@ -65,4 +65,51 @@ test('a failure MobileBuildMCP already located is not looked up again', async ($
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
   expect(runs.filter(argv => argv.includes('xcresulttool'))).toEqual([])
+})
+
+test('a crash log gives the exception and the top frames of the thread that crashed', () => {
+  expect(crashSummaryOf(captured.crashLog)).toEqual([
+    'crashed: EXC_BREAKPOINT (SIGTRAP)',
+    'libswiftCore.dylib  closure #1 in closure #1 in _assertionFailure(_:_:file:line:flags:)',
+    'libswiftCore.dylib  _assertionFailure(_:_:file:line:flags:)',
+    'AppTests  implicit closure #1 in FormatterTests.test_crash()',
+    'AppTests  partial apply for implicit closure #1 in FormatterTests.test_crash()',
+    'libXCTestSwiftSupport.dylib  closure #1 in XCTAssertEqual<A>(_:_:_:file:line:)',
+  ])
+  expect(crashSummaryOf('not a crash log')).toBeUndefined()
+})
+
+test('a skipped test\'s details give the reason it was skipped', () => {
+  expect(skipReasonOf(captured.xcresultSkipDetails)).toBe('waiting on the new API')
+  expect(skipReasonOf(captured.xcresultFailureDetails)).toBeUndefined()
+})
+
+test('a crash reaches Claude with its exception and frames, and a skip with its reason', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  mock.env(on, { HOME: '/Users/dev' })
+  const runs: (readonly string[])[] = []
+  on('session.surfaces', () => ({ value: [] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', (_, e) => {
+    runs.push(e.argv)
+    const id = e.argv[e.argv.indexOf('--test-id') + 1]
+    const stdout =
+      e.argv[0] === 'mktemp' ? '/tmp/xcrew-crash\n'
+      : e.argv.includes('test-details') && id === 'FormatterTests/test_skipped()' ? captured.xcresultSkipDetails
+      : e.argv.includes('test-details') ? captured.xcresultCrashDetails
+      : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('fs.list', () => ({ value: [{ name: 'crash.ips', kind: 'file', size: 1, mtimeMs: 0, isLink: false }, { name: 'manifest.json', kind: 'file', size: 1, mtimeMs: 0, isLink: false }] }))
+  on('fs.read', () => ({ value: captured.crashLog }))
+  on('tool.call', () => ({ result: {}, text: captured.mobileTestsCrashedAndSkipped.text, isError: true }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  const shown = ran.result as string
+  expect(shown).toContain('Crash: xctest at implicit closure #1 in FormatterTests.test_crash()\n      crashed: EXC_BREAKPOINT (SIGTRAP)\n      libswiftCore.dylib  closure #1 in closure #1 in _assertionFailure')
+  expect(shown).toContain('  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API')
+  expect(runs).toContainEqual(['rm', '-rf', '/tmp/xcrew-crash'])
 })

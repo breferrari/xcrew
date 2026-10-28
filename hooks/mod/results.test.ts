@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import * as captured from './fixtures'
-import { compactTestText, failuresOf, reportedDuration, summarize, testTotal } from './results'
+import { cleanBuildText, compactTestResult, compactTestText, failuresOf, reportedDuration, summarize, testTotal } from './results'
 import { callTool } from './testing'
 
 test('MobileBuildMCP test runs: counts when they pass, the first failing test when they fail', () => {
@@ -187,8 +187,7 @@ test('a failing run\'s text keeps its failures and summary, and counts its passi
       '  ✗ FormatterTests / test_symbol(): XCTAssertEqual failed: ("4") is not equal to ("3")',
       '',
       'Test Results:',
-      '  (40 passing tests left out)',
-      '  ❌ FormatterTests/test_symbol() (0.010s)',
+      '  (40 passing tests left out; failing tests are listed in full above)',
       '',
       '❌ 1 test failed, 40 passed, 0 skipped (⏱️ 65.0s)',
       '  └ Files:',
@@ -209,12 +208,25 @@ test('a test run that ran no tests is not a success, whatever the server says', 
 test('a list Claude Code already cut in the middle is counted whole, its marker and fragments dropped', () => {
   const cut = failingRunText(40).replace('  ✅ FormatterTests/test_case20() (0.001s)', '\n... [71437 characters truncated] ...\n\nTests/test_case20() (0.001s)')
   const compact = compactTestText(cut) ?? ''
-  expect(compact).toContain('Test Results:\n  (40 passing tests left out)\n  ❌ FormatterTests/test_symbol() (0.010s)\n\n❌ 1 test failed, 40 passed')
+  expect(compact).toContain('Test Results:\n  (40 passing tests left out; failing tests are listed in full above)\n\n❌ 1 test failed, 40 passed')
   expect(compact).not.toContain('truncated')
   expect(compact).not.toContain('test_case20')
 })
 
 test('skipped tests keep their lines: only passing ones are counted', () => {
   const withSkip = failingRunText(40).replace('  ❌ FormatterTests/test_symbol() (0.010s)', '  ⏭️ FormatterTests/test_skipped() (0.000s)\n  ❌ FormatterTests/test_symbol() (0.010s)')
-  expect(compactTestText(withSkip)).toContain('  (40 passing tests left out)\n  ⏭️ FormatterTests/test_skipped() (0.000s)\n  ❌ FormatterTests/test_symbol() (0.010s)')
+  expect(compactTestText(withSkip)).toContain('  (40 passing tests left out; failing tests are listed in full above)\n  ⏭️ FormatterTests/test_skipped() (0.000s)\n\n❌')
+})
+
+test('a compile error is counted once: the compiler\'s caret line is part of it, not a second error', () => {
+  const cleaned = cleanBuildText(captured.mobileBuildFailed.text) ?? ''
+  expect(cleaned).toContain('Errors (1):')
+  expect(cleaned).not.toContain('✗ |')
+  expect(cleaned).toContain("✗ cannot convert value of type 'String' to specified type 'Int'\n    /Users/dev/MacroProbe/Sources/MacroProbe/MacroProbe.swift:13")
+  expect(cleanBuildText(captured.mobileTestsFailed.text)).toBeUndefined()
+})
+
+test('the note for a left-out list gives no count of its own, so it can\'t disagree with the summary\'s', () => {
+  const compact = JSON.parse(compactTestResult(captured.mobileTestsPassed.text, '/saved.txt') ?? '{}')
+  expect(compact.data.testCases).toBe('per-test list left out to keep this result short; the counts above are complete, and the full result is in /saved.txt')
 })

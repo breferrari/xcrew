@@ -5,7 +5,7 @@ import { describe, observe, scopeOf } from './context'
 import { recordRun } from './failures'
 import { locateFailures } from './locations'
 import { phaseOf, findRunLog } from './progress'
-import { compactTestResult, compactTestText, reportedDuration, summarize, testTotal } from './results'
+import { cleanBuildText, compactTestResult, compactTestText, reportedDuration, summarize, testTotal } from './results'
 import { kindOf, parseTool } from './tools'
 
 /** How many earlier runs of each tool the average covers. */
@@ -124,7 +124,7 @@ export function registerTiming(on: On): void {
     const read = result.deny !== undefined ? '' : await fullText($, result.text ?? '')
     // A failing MobileBuildMCP test run gets each failure's file and line from its result bundle.
     const located = followsLog && kindOf(parsed) === 'test' && read.startsWith('🧪') ? await quietly(() => locateFailures($, read)) : undefined
-    const text = located ?? read
+    const text = located ?? (followsLog ? cleanBuildText(read) : undefined) ?? read
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = reportedDuration(text) ?? ended - started
     await quietly(() => $.store.set(historyKey(history), [...earlier, elapsed].slice(-HISTORY)))

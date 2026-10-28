@@ -56,8 +56,8 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Report: MobileBuildMCP's per-test list is always in its structured result~~ | Reported: getsentry/MobileBuildMCP#564 | | | | |
 | ~~Report: MobileBuildMCP drops a test from its list~~ | Reported: getsentry/MobileBuildMCP#563 | | | | |
 | ~~Test failures without `file:line`~~ | Shipped in the mod: each failure's location read from the result bundle (`xcresulttool get test-results test-details`), since xcodebuild logs none for tests on parallel clones | | | | |
-| Crash stacks | `Crash: xctest at closure #1 in …test_crash()` names the test, not the frames | Failure pane | The crash log the result bundle attaches (`.ips`) | M | Export the attachment and keep the top few frames of the crashed thread |
-| Report: one compile error counted twice | The compiler's caret line (`` `- error: … ``) counts as a second error: `Errors (2)` for one | Upstream issue | | S | Xcrew's failure pane already skips it |
+| ~~Crash stacks~~ | Shipped: a crash's exception and top frames, from the crash log the result bundle attaches; skipped tests' reasons too | | | | |
+| ~~One compile error counted twice~~ | Handled in the mod: the caret line is dropped and the count corrected | | | | |
 | Restyled tool rows | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
 
 ### Health and setup
