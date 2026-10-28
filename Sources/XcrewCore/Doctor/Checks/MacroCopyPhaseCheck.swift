@@ -1,7 +1,8 @@
 import Foundation
 
-/// Names the cause behind repeated plugin repairs, when it's the phase older Tuist generated, and
-/// says from the installed Tuist whether the fix is to upgrade or only to regenerate.
+/// Finds projects still generated with the phase older Tuist added, whose in-place copy gets macro
+/// plugins killed ("produced malformed response"), and says from the installed Tuist whether the
+/// fix is to upgrade or only to regenerate.
 struct MacroCopyPhaseCheck: Check {
     let id = "xcode-mcp/macro-copy-phase"
     let title = "No in-place macro copy phase"

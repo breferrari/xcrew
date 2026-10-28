@@ -9,7 +9,6 @@ public enum Doctor {
         HeadlessXcodeMCPCheck(),
         ClaudeApprovedCheck(),
         UnsignedAgentsCheck(),
-        MacroPluginsCheck(),
         MacroCopyPhaseCheck(),
         XcrewUpdateCheck(),
     ]

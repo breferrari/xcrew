@@ -1,5 +1,7 @@
 {
-  "modules": ["./mod/register.ts"],
+  "modules": [
+    "./mod/register.ts"
+  ],
   "hooks": {
     "SessionStart": [
       {
@@ -9,32 +11,6 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook session-start",
             "timeout": 180,
             "statusMessage": "Preparing Xcode tooling"
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "mcp__(plugin_xcrew_)?xcode__(BuildProject|RunAllTests|RunSomeTests|RunProject|RenderPreview|RunCodeSnippet|DeviceInteractionInstallAndRun|XcodeRefreshCodeIssuesInFile)",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook repair-macros",
-            "timeout": 60,
-            "statusMessage": "Checking Xcode macro plugins"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "mcp__(plugin_xcrew_)?xcode__GetBuildLog",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook repair-macros",
-            "timeout": 60,
-            "statusMessage": "Checking Xcode macro plugins"
           }
         ]
       }

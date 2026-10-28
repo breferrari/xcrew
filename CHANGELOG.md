@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The macro-plugin repair is gone: the mod's retry, the hooks after a failed Xcode MCP build, `/xcrew repair`, `xcrew repair-macros` and the doctor's `xcode-mcp/macro-plugins` check. Finding a dead plugin meant launching every macro plugin in DerivedData, and the cause, the in-place copy phase Tuist generated before 4.203, is gone from current Tuist. `xcrew doctor` still names projects generated with that phase, with the fix: upgrade Tuist and regenerate. `XCREW_MACRO_PLUGINS` and `XCREW_DERIVED_DATA` no longer do anything.
+- The README describes Xcrew as it is now: one setup for the three servers, builds and tests you can watch, and test results Claude can act on, for any Apple-platform project.
+
 ## 0.6.10 — 2026-10-28
 
 - A skipped test reaches Claude with its reason even when MobileBuildMCP leaves it out of its Test Results list, which it can in a run that also crashes or records expected failures: the skipped tests and their reasons now come from the result bundle's test list, in one `xcresulttool` call rather than one per test.

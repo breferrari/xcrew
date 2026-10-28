@@ -5,16 +5,15 @@ import { closeFailures, openFailures } from './failures'
 
 const USAGE = [
   '/xcrew doctor   check this Mac and project, with the fix for anything wrong',
-  '/xcrew repair   re-copy macro plugins macOS killed at launch',
   '/xcrew history  how long each build, test and app run usually takes',
   '/xcrew failures every failing test and compile error from the last failing run, in a pane',
   '/xcrew close    close that pane',
 ].join('\n')
 
 /** Subcommands that run the CLI: the person's word, then the CLI's. */
-const CLI_SUBCOMMANDS: Record<string, string> = { doctor: 'doctor', repair: 'repair-macros' }
+const CLI_SUBCOMMANDS: Record<string, string> = { doctor: 'doctor' }
 
-export const COMMAND = { name: 'xcrew', description: 'Xcrew: doctor, repair, history, failures or close', argumentHint: '[doctor|repair|history|failures|close]' }
+export const COMMAND = { name: 'xcrew', description: 'Xcrew: doctor, history, failures or close', argumentHint: '[doctor|history|failures|close]' }
 
 /** `/xcrew`, answered by the mod itself: nothing reaches Claude, and nothing costs a turn. */
 export function registerCommand(on: On): void {

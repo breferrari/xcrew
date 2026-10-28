@@ -7,7 +7,6 @@ struct HookCommand: Command {
     let name = "hook"
     let usage = [
         "hook session-start   (hook) routing rules and what this project still lacks",
-        "hook repair-macros   (hook) repair macro plugins after a failed Xcode MCP build",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -21,11 +20,6 @@ struct HookCommand: Command {
             if let text = SessionBriefing(project: project, machine: machine).text(routing: routing) {
                 invocation.print(HookReply(event: event, context: text).json)
             }
-        case "repair-macros":
-            guard event.mentionsKilledMacroPlugin else { return 0 }
-            let locator = MacroPluginLocator(project: project, machine: machine)
-            let report = await MacroPluginRepairer(locator: locator, probe: CapabilityProbe(runner: machine.runner)).repair()
-            if let reply = HookReply.macroRepair(report, cause: MacroCopyPhase.projects(in: project), event: event) { invocation.print(reply.json) }
         default:
             throw UsageError(description: "unknown hook '\(invocation.arguments.positional.first ?? "")'")
         }

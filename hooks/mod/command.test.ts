@@ -44,17 +44,6 @@ test('/xcrew doctor shows the doctor\'s report without a turn for Claude', async
   expect(ran.context).toBeUndefined()
 })
 
-test('/xcrew repair re-copies dead macro plugins and shows what it did', async ($, on) => {
-  mock.store(on)
-  const seen = engine(on, { 'repair-macros': 'all 12 macro plugins answer\n' })
-  await start($)
-
-  const ran = await runCommand($, 'xcrew', 'repair')
-
-  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['repair-macros']])
-  expect(ran.text).toContain('all 12 macro plugins answer')
-})
-
 test('/xcrew history lists each tool\'s usual duration, slowest first', async ($, on) => {
   mock.store(on, {
     'durations.build_sim': [60_000, 80_000],
@@ -82,7 +71,8 @@ test('/xcrew alone lists what it can do', async ($, on) => {
   const seen = engine(on)
   await start($)
   const ran = await runCommand($, 'xcrew')
-  expect(ran.text).toMatch(/doctor[\s\S]*repair[\s\S]*history/)
+  expect(ran.text).toMatch(/doctor[\s\S]*history[\s\S]*failures/)
+  expect(ran.text).not.toContain('repair')
   expect(seen.runs).toEqual([])
 })
 

@@ -5,9 +5,9 @@ import XcrewTestSupport
 
 @Suite struct HookTests {
     @Test func readsTheEventItNeeds() async {
-        let event = HookEvent(json: Data(#"{"hook_event_name":"PostToolUseFailure","cwd":"/work/App","tool_name":"x"}"#.utf8))
-        #expect(event == HookEvent(name: "PostToolUseFailure", cwd: "/work/App"))
-        #expect(HookEvent(json: Data("not json".utf8)).name == "PostToolUse")
+        let event = HookEvent(json: Data(#"{"hook_event_name":"SessionStart","cwd":"/work/App","source":"startup"}"#.utf8))
+        #expect(event == HookEvent(name: "SessionStart", cwd: "/work/App"))
+        #expect(HookEvent(json: Data("not json".utf8)).name == "SessionStart")
     }
 
     @Test func replyShape() async throws {
@@ -16,12 +16,6 @@ import XcrewTestSupport
         let specific = try #require(object["hookSpecificOutput"] as? [String: String])
         #expect(specific == ["hookEventName": "SessionStart", "additionalContext": "rules"])
         #expect(object["systemMessage"] as? String == "hi")
-    }
-
-    @Test func macroRepairIsSilentWhenNothingWasDead() async {
-        #expect(HookReply.macroRepair(.init(), event: HookEvent(name: "PostToolUseFailure")) == nil)
-        let reply = HookReply.macroRepair(.init(repaired: ["Debug/AMacros"]), event: HookEvent(name: "PostToolUseFailure"))
-        #expect(reply?.context.contains("Retry") == true)
     }
 
     @Test func briefingOnlyInAppleProjects() async {
@@ -38,25 +32,5 @@ import XcrewTestSupport
         let project = Project.temporary()
         project.write("", to: "Project.swift")
         #expect(project.isApplePlatformProject)
-    }
-}
-
-@Suite struct MacroFailureSignatureTests {
-    let killed = "External macro implementation type 'M.M' could not be found; plugin for module 'M' produced malformed response"
-
-    @Test func aFailedBuildWithTheSignatureCounts() {
-        let event = HookEvent(json: Data(#"{"hook_event_name":"PostToolUseFailure","error":"\#(killed)"}"#.utf8))
-        #expect(event.mentionsKilledMacroPlugin)
-    }
-
-    @Test func aBuildLogWithTheSignatureCounts() {
-        let event = HookEvent(json: Data(#"{"hook_event_name":"PostToolUse","tool_response":{"content":[{"type":"text","text":"error: \#(killed)"}]}}"#.utf8))
-        #expect(event.mentionsKilledMacroPlugin)
-    }
-
-    @Test func anyOtherFailureDoesNot() {
-        let event = HookEvent(json: Data(#"{"hook_event_name":"PostToolUseFailure","error":"error: cannot find 'foo' in scope"}"#.utf8))
-        #expect(!event.mentionsKilledMacroPlugin)
-        #expect(!HookEvent(json: Data()).mentionsKilledMacroPlugin)
     }
 }

@@ -40,7 +40,7 @@ mcs pack validate .
 ## Tests
 
 - New behaviour is test-first: one failing test, seen failing for the right reason, then the code that passes it. Report the count of tests seen red then green; a test that never failed is reported as such.
-- Seams: core behaviour through `XcrewCore` with `FakeRunner`; commands in-process through `CLI.run`; the shim by running it against a fake `swift`; the mod with `claude plugin test`; consistency through `ManifestTests`. Macro-plugin tests compile real stub binaries.
+- Seams: core behaviour through `XcrewCore` with `FakeRunner`; commands in-process through `CLI.run`; the shim by running it against a fake `swift`; the mod with `claude plugin test`; consistency through `ManifestTests`.
 - Expected values come from a literal or the spec, never recomputed the way the code computes them.
 
 ## Working on macOS

@@ -17,16 +17,6 @@ import XcrewCore
         try #require(try JSONSerialization.jsonObject(with: Data(text(path).utf8)) as? [String: Any])
     }
 
-    func matches(_ pattern: String, _ name: String) -> Bool {
-        name.range(of: "^(?:\(pattern))$", options: .regularExpression) != nil
-    }
-
-    /// Xcode MCP tool names under both registrations: the plugin's server, and a user's own
-    /// local `xcode` server, which Claude Code prefers when both run the same command.
-    func bothRegistrations(_ tool: String) -> [String] {
-        ["mcp__xcode__\(tool)", "mcp__plugin_xcrew_xcode__\(tool)"]
-    }
-
     // MARK: Commands
 
     /// A skill named like the plugin takes the bare `/<plugin>` command, and Claude Code then
@@ -60,47 +50,15 @@ import XcrewCore
         #expect(try hook("SessionStart").command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start"#)
     }
 
-    @Test func repairHookCoversEveryRepairableToolUnderBothRegistrations() async throws {
-        let failure = try hook("PostToolUseFailure")
-        #expect(failure.command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook repair-macros"#)
-        let matcher = try #require(failure.matcher)
-        for tool in try modRepairableTools() {
-            for name in bothRegistrations(tool) { #expect(matches(matcher, name), "\(name)") }
-        }
-        #expect(!matches(matcher, "mcp__xcode__XcodeRead"))
-        #expect(!matches(matcher, "mcp__plugin_other_xcode__BuildProject"))
-    }
-
-    @Test func buildLogHookCoversBothRegistrations() async throws {
-        let matcher = try #require(try hook("PostToolUse").matcher)
-        for name in bothRegistrations("GetBuildLog") { #expect(matches(matcher, name)) }
+    @Test func sessionStartIsTheOnlyCommandHook() async throws {
+        let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: Any])
+        #expect(Array(hooks.keys) == ["SessionStart"])
     }
 
     @Test func hooksLoadTheMod() async throws {
         let modules = try #require(try json("hooks/hooks.json")["modules"] as? [String])
         #expect(modules == ["./mod/register.ts"])
         #expect(FileManager.default.fileExists(atPath: Self.repository.appending(path: "hooks/mod/register.ts").path))
-    }
-
-    /// The tool names the mod repairs and retries, read from `hooks/mod/tools.ts`.
-    func modRepairableTools() throws -> [String] {
-        let source = try text("hooks/mod/tools.ts")
-        let list = try #require(source.range(of: #"REPAIRABLE_XCODE_TOOLS = \[[^\]]*\]"#, options: .regularExpression))
-        return source[list].matches(of: /'(\w+)'/).map { String($0.1) }
-    }
-
-    @Test func modAndHookRepairTheSameTools() async throws {
-        let tools = try modRepairableTools()
-        #expect(!tools.isEmpty)
-        let matcher = try #require(try hook("PostToolUseFailure").matcher)
-        let alternation = try #require(matcher.firstMatch(of: /__\(([\w|]+)\)$/)).1
-        #expect(Set(alternation.split(separator: "|").map(String.init)) == Set(tools))
-    }
-
-    @Test func modAndHookLookForTheSameFailure() throws {
-        let source = try text("hooks/mod/repair.ts")
-        let constant = try #require(source.firstMatch(of: /MACRO_PLUGIN_KILLED = '([^']+)'/)).1
-        #expect(String(constant) == HookEvent.killedMacroPluginSignature)
     }
 
     // MARK: MCP servers

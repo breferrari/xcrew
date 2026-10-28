@@ -8,11 +8,10 @@ A working list of what Xcrew's mod could show or do. Nothing here is decided; en
 | --- | --- | --- |
 | Band above the prompt, in colour | `● test_sim · MyApp on iPhone 17 · 0:41`, then `✓ test_sim · 1:12 (avg 1:05) · 412 passed` | While a run is going, then its outcome for three minutes; success and failure in the theme's colours. Where no band draws (VS Code), the plain status line carries the run |
 | Toast | `✓ test_sim · 1:12 (avg 1:05) · 412 passed` · `✗ BuildProject · 0:48 · FooView.swift:12 Cannot find 'bar' in scope` | When one ends, only where no band draws (VS Code): in the terminal a toast is one line on the notification bar for 4 s, and the band already shows the same line |
-| Toast | `repaired Debug-iphonesimulator/SwiftMockKitMacros (index build) and retried BuildProject` | After a macro-plugin repair |
 | Denied tool call | `XcodeWrite re-saves the whole generated project file…` | `XcodeWrite` in a Tuist or XcodeGen project |
-| Command output | `/xcrew history` → `build_sim    avg 1:10 · last 1:20 · 2 runs` | `/xcrew doctor`, `repair`, `history`; no Claude turn |
+| Command output | `/xcrew history` → `build_sim    avg 1:10 · last 1:20 · 2 runs` | `/xcrew doctor`, `history`, `failures`; no Claude turn |
 | Tool description | `XcodeWrite` gains a line saying it's refused here | In a Tuist or XcodeGen project, when Claude first reads the tool |
-| Hook spinner | `Preparing Xcode tooling` · `Checking Xcode macro plugins` | Session start; after a build failure with the plugin-kill message |
+| Hook spinner | `Preparing Xcode tooling` | Session start |
 
 ## What a mod can reach
 
@@ -45,7 +44,7 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | --- | --- | --- | --- | --- | --- |
 | ~~Results in the toast~~ | Shipped: see what the mod shows today | | | | |
 | ~~What's building~~ | Shipped: learned from `session_show_defaults` and the Xcode MCP's workspace and scheme answers | | | | |
-| Build band | `last ✓ build 1:12 ▁▂▂▃▂ · ✗ tests 3 failed · 1 plugin repaired` | Band | `$.store` history | M | Hide when idle? The hamzafer conventions say yes, after a few minutes |
+| Build band | `last ✓ build 1:12 ▁▂▂▃▂ · ✗ tests 3 failed` | Band | `$.store` history | M | Hide when idle? The hamzafer conventions say yes, after a few minutes |
 | Live progress | Shipped: a gauge of the time against the usual duration for every run, and for MobileBuildMCP the phase from its log (`compiling Utility`, `testing 431 of 959`). The Xcode MCP's own progress (`Building • 836 / 850`) stays out of reach | Band | | | A mod can't read MCP progress yet: the `ToolProgress` render site carries only the run-in-background hint, and its docs say other kinds join later |
 | ~~Slow-run alert~~ | Shipped: `(2× its usual 1:50)` in the toast and the band | | | | |
 | ~~Done while you were away~~ | Shipped: runs of a minute or more notify, through the person's own notification settings | | | | |
@@ -69,7 +68,6 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | Doctor pane | Each check as a row with its fix, a button per fix that can run safely | Pane, `/xcrew doctor` | `xcrew doctor` | M | Which fixes are safe to run from a button (none that need sudo) |
 | Setup form | Pickers for workspace, scheme, simulator, filled from `list_schemes` and `simctl` | Pane, `/xcrew setup` | MobileBuildMCP, `simctl` | M | Replaces the skill's question-and-answer flow; keep the skill for `claude -p` |
 | ~~Problem band~~ | Shipped: `xcrew doctor --problems` at session start, the most serious one on the band until the first run | | | | |
-| ~~Macro cause hint~~ | Shipped: the repair toast names the projects and the Tuist version that fixes them | | | | |
 
 ### Simulator and app
 
@@ -90,7 +88,7 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 
 | Idea | Looks like | Surface | Effort |
 | --- | --- | --- | --- |
-| ~~`/xcrew`~~ | Shipped: `doctor`, `repair`, `history` as text. `setup` stays the skill, since it needs Claude | | |
+| ~~`/xcrew`~~ | Shipped: `doctor`, `history`, `failures`, `close` as text. `setup` stays the skill, since it needs Claude | | |
 | `/xcrew history` pane | Durations per tool and scheme, as a table with sparklines (today: text, per tool) | Pane | M |
 
 ## Ground rules for anything that ships

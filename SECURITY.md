@@ -1,6 +1,6 @@
 # Security
 
-Xcrew runs on your Mac with your permissions: it starts MCP servers, runs Xcode's tools, copies macro-plugin binaries inside Xcode's DerivedData and writes `.mobilebuildmcp/` in your project. It sends nothing over the network itself.
+Xcrew runs on your Mac with your permissions: it starts MCP servers, runs Xcode's tools and writes `.mobilebuildmcp/` in your project. Its one network request is `xcrew doctor`'s check for a newer release, against GitHub's API.
 
 Please report a vulnerability privately through [GitHub's security advisories](https://github.com/breferrari/xcrew/security/advisories/new) rather than an issue. Expect an answer within a week.
 

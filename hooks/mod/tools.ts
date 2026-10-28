@@ -4,25 +4,12 @@
  * from one the person registered themselves (`mcp__xcode__…`).
  */
 
-/** Xcode MCP tools that build, and so can fail on a macro plugin macOS killed at launch. */
-export const REPAIRABLE_XCODE_TOOLS = [
-  'BuildProject',
-  'RunAllTests',
-  'RunSomeTests',
-  'RunProject',
-  'RenderPreview',
-  'RunCodeSnippet',
-  'DeviceInteractionInstallAndRun',
-  'XcodeRefreshCodeIssuesInFile',
-] as const
-
 /** Matches a tool's full name under both registrations: this plugin's server, and the person's own. */
 function bothRegistrations(server: string, tools: readonly string[]): RegExp {
   return new RegExp(`^mcp__(?:plugin_xcrew_)?${server}__(?:${tools.join('|')})$`)
 }
 
-/** Matchers: the engine calls a hook only for the tools its matcher matches. */
-export const REPAIRABLE_TOOLS = bothRegistrations('xcode', REPAIRABLE_XCODE_TOOLS)
+/** The matcher for the guard: the engine calls a hook only for the tools its matcher matches. */
 export const PROJECT_REWRITER = bothRegistrations('xcode', ['XcodeWrite'])
 
 /** `mcp__<server>__<tool>`, where server is `xcode`, `MobileBuildMCP`, or either under this plugin. */

@@ -5,7 +5,6 @@ public enum CLI {
     public static let commands: [any Command] = [
         SetupCommand(),
         DoctorCommand(),
-        RepairMacrosCommand(),
         XcodeSkillsCommand(),
         HookCommand(),
     ]

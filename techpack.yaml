@@ -94,10 +94,6 @@ supplementaryDoctorChecks:
     command: mcs/checks/xcode-mcp--unsigned-agents-off.sh
     fixCommand: "defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO"
   - type: shellScript
-    name: Macro plugins answer
-    section: xcrew
-    command: mcs/checks/xcode-mcp--macro-plugins.sh
-  - type: shellScript
     name: No in-place macro copy phase
     section: xcrew
     command: mcs/checks/xcode-mcp--macro-copy-phase.sh

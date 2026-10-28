@@ -51,10 +51,4 @@ let oldTuistCopyPhase = ##"shellScript = "#  This build phase serves two purpose
         #expect(await MacroCopyPhaseCheck().run(.fake(project: project)).status == .pass)
     }
 
-    @Test func theRepairReplyNamesTheCause() {
-        let reply = HookReply.macroRepair(.init(repaired: ["Debug-iphonesimulator/AMacros"]), cause: ["Macros"], event: HookEvent(name: "PostToolUseFailure"))
-        #expect(reply?.context.contains("Tuist") == true)
-        #expect(reply?.context.contains("4.203") == true)
-        #expect(HookReply.macroRepair(.init(repaired: ["D/AMacros"]), cause: [], event: HookEvent(name: "x"))?.context.contains("Tuist") == false)
-    }
 }
