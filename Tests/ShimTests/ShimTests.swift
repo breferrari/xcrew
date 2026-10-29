@@ -115,6 +115,19 @@ import Testing
         #expect(after == before)
     }
 
+    /// The plugin's Xcode MCP script starts `xcrun mcpbridge`, as `.mcp.json` did.
+    @Test func theXcodeServerScriptStartsTheBridgeAsTheManifestDid() async throws {
+        try write("#!/bin/sh\necho \"args=$*\"\n", to: "fakemcp/xcrun", executable: true)
+        let process = Process()
+        process.executableURL = repository.appending(path: "libexec/xcode-mcp-server")
+        process.environment = ["PATH": "\(root.appending(path: "fakemcp").path):/usr/bin:/bin"]
+        process.standardInput = FileHandle.nullDevice
+        let output = Pipe()
+        process.standardOutput = output
+        try await Self.runToEnd(process)
+        #expect(String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) == "args=mcpbridge\n")
+    }
+
     func lines(in file: URL) -> Int {
         ((try? String(contentsOf: file, encoding: .utf8)) ?? "").split(separator: "\n").count
     }

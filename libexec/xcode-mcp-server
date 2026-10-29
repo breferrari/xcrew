@@ -1,0 +1,3 @@
+#!/bin/sh
+# Starts the Xcode MCP: Xcode's own bridge to the open workspace.
+exec xcrun mcpbridge

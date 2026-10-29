@@ -81,8 +81,6 @@ import XcrewCore
         #expect(arguments.contains("${CLAUDE_PROJECT_DIR}"), "MobileBuildMCP reads its config from its working directory")
         #expect((mobile["env"] as? [String: String])?["MOBILEBUILDMCP_SENTRY_DISABLED"] == "true")
 
-        #expect(servers["xcode"]?["command"] as? String == "xcrun")
-        #expect(servers["xcode"]?["args"] as? [String] == ["mcpbridge"])
         #expect(servers["sosumi"]?["url"] as? String == "https://sosumi.ai/mcp")
     }
 
@@ -105,6 +103,25 @@ import XcrewCore
         #expect(mobile["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/libexec/mobilebuildmcp-server")
         #expect(mobile["args"] as? [String] == ["${CLAUDE_PROJECT_DIR}"])
         #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: "libexec/mobilebuildmcp-server").path))
+    }
+
+    @Test func theXcodeMCPStartsFromThePluginsScript() throws {
+        let servers = try #require(try json(".mcp.json")["mcpServers"] as? [String: [String: Any]])
+        let xcode = try #require(servers["xcode"])
+        #expect(xcode["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/libexec/xcode-mcp-server")
+        #expect(xcode["args"] == nil)
+        #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: "libexec/xcode-mcp-server").path))
+    }
+
+    /// The directory holds a bundled image the README shows other than in Markdown's image syntax, or from elsewhere.
+    @Test func theREADMEsImagesAreTheRepositorysOwnInMarkdown() throws {
+        let readme = try text("README.md")
+        #expect(!readme.contains("<img"), "an HTML image tag; the directory reads Markdown's ![alt](path)")
+        let sources = readme.matches(of: /!\[[^\]]*\]\(([^)\s]+)/).map { String($0.1) }
+        #expect(!sources.isEmpty)
+        for source in sources where !source.hasPrefix("assets/") {
+            #expect(source.hasPrefix("https://img.shields.io/"), "\(source) isn't a file under assets/")
+        }
     }
 
     /// A flag a command reads but doesn't declare would be refused before the command runs.
@@ -241,6 +258,18 @@ import XcrewCore
     /// Reading named fields of a server's JSON answer is fine where the mod keeps what it learns; parsing text isn't.
     @Test func onlyTheCLIWrapperAndContextReadJSON() throws {
         #expect(try Self.offenders(/JSON\.parse\(/, allowed: ["cli.ts", "context.ts"]) == [])
+    }
+
+    /// The directory resolves a name without regard to scope: a helper that takes `$` named like a variable in a hook
+    /// reads as `$` passed to that hook's own binding.
+    @Test func eachHelperThatTakesTheModsAPIHasAUniqueName() throws {
+        let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
+        let helpers = register.matches(of: /(?m)^(?:async )?function (\w+)\(\$/).map { String($0.1) }
+        #expect(!helpers.isEmpty)
+        for helper in helpers {
+            let bindings = register.matches(of: try Regex("(?:const|let|var|function|class)\\s+\(helper)\\b|[(,]\\s*\(helper)\\s*[,:)=]")).count
+            #expect(bindings == 1, "\(helper) is bound \(bindings) times in register.ts")
+        }
     }
 
     /// One call site starts a process, `start` in the hooks module, and it runs only the shim or the build the shim names;

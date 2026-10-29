@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/banner.png" alt="Xcrew: a brushed-steel screw with a copper-orange X in its head" width="100%">
+![Xcrew: a brushed-steel screw with a copper-orange X in its head](assets/banner.png)
 
 ### Your **Xcode** crew inside **Claude Code**.
 
@@ -14,7 +14,7 @@
 
 Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and MobileBuildMCP, and read Apple's docs through Sosumi. On their own, the three overlap, misroute and bury Claude in output. **Xcrew turns them into one setup, and adds what none of them has.**
 
-<img src="assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
+![The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time](assets/band.png)
 
 | | On their own | With Xcrew |
 | --- | --- | --- |
@@ -83,7 +83,7 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 - **Compile errors counted once.**
 - **Passing tests left out**, with the full list a file read away.
 
-<img src="assets/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
+![What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary](assets/test-result.png)
 
 ### The last failures beside the chat
 
@@ -96,7 +96,7 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 
 They answer at once, without a turn for Claude.
 
-<img src="assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
+![The failures pane beside the chat, listing each failing test with its file, line and message](assets/failures-pane.png)
 
 ### The right server for each job
 
@@ -137,7 +137,7 @@ ok    xcrew/up-to-date                 0.7.0, the latest release
 
 ## How it works
 
-<img src="assets/architecture.png" alt="Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
+![Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too](assets/architecture.png)
 
 | Piece | What it does |
 | --- | --- |
@@ -214,7 +214,7 @@ Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads
 | **Writes** | In `xcrew setup`: `.mobilebuildmcp/config.yaml`, a `.xcrew-managed` marker beside it with the config's fingerprint, a dated backup of a config you edited when you ask it to replace one, and a line in `.git/info/exclude`. In `xcrew xcode-skills`: the skills Xcode ships, into `.claude/skills`. While reading a crashed test, a temporary folder of the crash's attachments, removed once read. Nothing else |
 | **Sends** | One request, and only when you run `xcrew doctor` or `/xcrew doctor` yourself: `curl` asks GitHub's releases API for the latest version. Never at session start, whose look for problems leaves that check out. No telemetry |
 
-**The MCP servers**, which `.mcp.json` starts: Apple's `xcrun mcpbridge`; Homebrew's `mobilebuildmcp`, through `libexec/mobilebuildmcp-server`, which starts it in your project with Homebrew's folders on `PATH`, and with its telemetry turned off; and Sosumi over HTTPS. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
+**The MCP servers**, which `.mcp.json` starts: Apple's `xcrun mcpbridge`, through `libexec/xcode-mcp-server`; Homebrew's `mobilebuildmcp`, through `libexec/mobilebuildmcp-server`, which starts it in your project with Homebrew's folders on `PATH`, and with its telemetry turned off; and Sosumi over HTTPS. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
 
 ### Contributing
 

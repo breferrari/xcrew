@@ -6,8 +6,7 @@
       "env": { "MOBILEBUILDMCP_SENTRY_DISABLED": "true" }
     },
     "xcode": {
-      "command": "xcrun",
-      "args": ["mcpbridge"]
+      "command": "${CLAUDE_PLUGIN_ROOT}/libexec/xcode-mcp-server"
     },
     "sosumi": {
       "type": "http",

@@ -142,7 +142,7 @@ export const register: Register = on => {
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
     if (subcommand === 'doctor') return { text: await cliText($, ['doctor']) }
-    if (subcommand === 'history') return { text: await history($) }
+    if (subcommand === 'history') return { text: await usualDurations($) }
     if (subcommand === 'failures') return { text: await openFailures($) }
     if (subcommand === 'close') return { text: await closeFailures($) }
     return { text: USAGE }
@@ -253,7 +253,8 @@ async function closeFailures($: EngineInterface): Promise<string> {
   return 'Closed the failures pane.'
 }
 
-async function history($: EngineInterface): Promise<string> {
+/** `/xcrew history`. Named unlike any variable here: the plugin directory reads a name without regard to scope. */
+async function usualDurations($: EngineInterface): Promise<string> {
   const keys = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX))
   return historyText(await Promise.all(keys.map(async key => ({ key, runs: (await $.store.get(key)) as number[] | undefined }))))
 }
