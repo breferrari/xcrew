@@ -4,15 +4,22 @@ import Testing
 @testable import XcrewCore
 import XcrewTestSupport
 
-/// The test bed's forms: one app as each project form, at the root and under `ios/` (`scripts/testbed/generate.sh`).
-/// Each is checked against its own `expect.xcrew.json` on a copy, as a repository of its own, with no build.
-@Suite struct TestbedTests {
-    static let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    static let forms = repository.appending(path: "Tests/Testbed/forms")
+/// The test bed's fixtures (breferrari/xcrew-testbed): one app as each project form, at the root and under `ios/`, and
+/// projects shaped to trip xcrew up. Each is checked against its own `expect.xcrew.json` on a copy, as a repository of
+/// its own, with no build. CI checks the test bed out at a pinned commit and names it in `XCREW_TESTBED`; on a Mac,
+/// a clone beside this repository's is the default, and without one the suite is skipped.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed: clone breferrari/xcrew-testbed beside this repository, or set XCREW_TESTBED"))
+struct TestbedTests {
+    static let testbed = Testbed.root
+    static let forms = testbed.appending(path: "forms")
 
-    static var names: [String] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: forms.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+    static func names(in folder: String) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: testbed.appending(path: folder).path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
     }
+
+    static var names: [String] { names(in: "forms") }
+    /// Projects shaped to trip xcrew up: a `Project.swift` source file, and the old macro copy phase in the JSON format.
+    static var adversarial: [String] { names(in: "adversarial") }
 
     /// What `expect.xcrew.json` states, and what the checks below find.
     struct Outcome: Codable, Hashable {
@@ -35,9 +42,9 @@ import XcrewTestSupport
 
     /// A copy of the fixture with a `.git` of its own, so its root is a repository's; setup writes into it.
     static func copy(_ name: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-testbed-\(UUID().uuidString)/\(name)")
+        let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-testbed-\(UUID().uuidString)/\(URL(fileURLWithPath: name).lastPathComponent)")
         try FileManager.default.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: forms.appending(path: name), to: root)
+        try FileManager.default.copyItem(at: testbed.appending(path: name), to: root)
         try FileManager.default.createDirectory(at: root.appending(path: ".git"), withIntermediateDirectories: true)
         return root
     }
@@ -77,16 +84,17 @@ import XcrewTestSupport
             .compactMap { $0.firstMatch(of: /^\s+scheme: ["']?([^"']+)["']?$/).map { String($0.1) } }.first
     }
 
+    /// `name` is the fixture's path in the test bed, as in `forms/classic`.
     static func expected(_ name: String) throws -> Outcome {
-        try JSONDecoder().decode(Outcome.self, from: Data(contentsOf: forms.appending(path: "\(name)/expect.xcrew.json")))
+        try JSONDecoder().decode(Outcome.self, from: Data(contentsOf: testbed.appending(path: "\(name)/expect.xcrew.json")))
     }
 
     @Test func everyFormIsHere() {
         #expect(Self.names == ["classic", "classic-ios", "folders", "folders-ios", "json", "json-ios", "tuist", "tuist-ios", "tuist-ungenerated", "tuist-ungenerated-ios", "xcodegen", "xcodegen-ios"])
     }
 
-    @Test(arguments: names)
-    func eachFormIsWhatItsExpectationSays(_ name: String) async throws {
+    @Test(arguments: names.map { "forms/\($0)" } + adversarial.map { "adversarial/\($0)" })
+    func eachFixtureIsWhatItsExpectationSays(_ name: String) async throws {
         let expected = try Self.expected(name)
         var actual = try await Self.outcome(of: name)
         if let problem = expected.containerProblem {
@@ -99,7 +107,7 @@ import XcrewTestSupport
     /// The forms hold one app, so they differ only where a form must: its generator, and where the project sits.
     @Test func theFormsDifferOnlyInTheirGeneratorAndPlace() throws {
         let built = try Self.names.filter { !$0.hasPrefix("tuist-ungenerated") }.map { name in
-            var outcome = try Self.expected(name)
+            var outcome = try Self.expected("forms/\(name)")
             (outcome.generator, outcome.generatorRoot, outcome.isGenerated) = (nil, nil, false)
             outcome.container = outcome.container.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent }
             return outcome
@@ -111,7 +119,7 @@ import XcrewTestSupport
     /// after the folder (docs/findings.md, *Making the test bed's projects*).
     @Test func theJSONFormsExcludeNothing() throws {
         for name in Self.names where name.hasPrefix("json") {
-            let container = try #require(try Self.expected(name).container)
+            let container = try #require(try Self.expected("forms/\(name)").container)
             let project = try String(contentsOf: Self.forms.appending(path: "\(name)/\(container)/project.xcproj"), encoding: .utf8)
             #expect(!project.contains("membership-exceptions"), "\(name)")
         }
@@ -131,5 +139,21 @@ import XcrewTestSupport
             let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: Self.forms.appending(path: "\(name)/fixture.json"))) as? [String: String]
             #expect((fixture?["generatorVersion"] ?? "") == version, "\(name)")
         }
+    }
+}
+
+/// Where the test bed is checked out: `XCREW_TESTBED`, else a clone beside this repository's.
+enum Testbed {
+    static let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    static let root = ProcessInfo.processInfo.environment["XCREW_TESTBED"].map { URL(fileURLWithPath: $0) }
+        ?? repository.deletingLastPathComponent().appending(path: "xcrew-testbed")
+    static var isCheckedOut: Bool { FileManager.default.fileExists(atPath: root.appending(path: "forms").path) }
+}
+
+/// CI runs the test bed's suite or fails: a missing checkout there is a broken workflow, not a Mac without the clone.
+@Suite struct TestbedCheckoutTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == "true"))
+    func ciHasTheTestBed() {
+        #expect(Testbed.isCheckedOut, "XCREW_TESTBED names no test bed: \(Testbed.root.path)")
     }
 }

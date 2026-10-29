@@ -234,6 +234,16 @@ import Testing
         #expect(named.isSubset(of: Set(ConfigRenderer.simEnvTools)), "\(named.subtracting(ConfigRenderer.simEnvTools).sorted())")
     }
 
+    /// Both Swift jobs run every test, so both check the test bed out, at one commit, named in full: a tag can move.
+    @Test func bothSwiftJobsPinTheSameTestBed() throws {
+        let ci = try text(".github/workflows/ci.yml")
+        let pins = ci.matches(of: /repository: breferrari\/xcrew-testbed\n\s+ref: ([0-9a-f]+)/).map { String($0.1) }
+        #expect(pins.count == 2)
+        #expect(Set(pins).count == 1)
+        #expect(pins.allSatisfy { $0.count == 40 })
+        #expect(ci.components(separatedBy: "XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed").count - 1 == 2)
+    }
+
     /// Only the weekly canary can tell an install pull request that's pending from one that was abandoned, and only the
     /// newest Claude Code can say xcrew still reads its saved-result notice, whose wording isn't documented.
     @Test(arguments: ["scripts/marketplace-ref.sh ", "scripts/saved-notice.sh "])

@@ -48,12 +48,20 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
+      # The test bed's fixtures, at the commit these tests expect: bump the SHA on purpose, with the tag beside it.
+      - uses: actions/checkout@v5
+        with:
+          repository: breferrari/xcrew-testbed
+          ref: 05b4388ab5bfcfa15a0b4abe0f7d441f4aa72cb6 # v0.1.0
+          path: xcrew-testbed
       - name: Use the newest Xcode on the runner
         run: |
           sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_*.app | sort -V | tail -1)"
           swift --version
       - name: Test, with warnings as errors
         run: swift test -Xswiftc -warnings-as-errors
+        env:
+          XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed
 
   # The oldest Swift Package.swift accepts, which a person's first build may use. Plain `swift test`: an older
   # compiler's warnings don't stop their build either.
@@ -64,6 +72,12 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
+      # The test bed's fixtures, at the commit these tests expect: bump the SHA on purpose, with the tag beside it.
+      - uses: actions/checkout@v5
+        with:
+          repository: breferrari/xcrew-testbed
+          ref: 05b4388ab5bfcfa15a0b4abe0f7d441f4aa72cb6 # v0.1.0
+          path: xcrew-testbed
       - name: Use the oldest Xcode whose Swift is the one swift-tools-version names
         run: |
           floor=$(sed -n 's|^// swift-tools-version:||p' Package.swift)
@@ -76,6 +90,8 @@ jobs:
           swift --version
       - name: Test
         run: swift test
+        env:
+          XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed
 
   plugin:
     name: Plugin and mod

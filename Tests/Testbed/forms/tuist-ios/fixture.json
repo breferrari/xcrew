@@ -1,7 +1,0 @@
-{
-  "definition": "pbxproj-groups",
-  "generator": "tuist",
-  "generatorVersion": "4.214.0",
-  "layout": "ios",
-  "xcode": "27.2"
-}
