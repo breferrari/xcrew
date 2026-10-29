@@ -32,6 +32,13 @@ D. Doctor. Find the plugin's `bin/xcrew` (under ~/.claude/plugins/cache) and run
    2. `xcrew doctor --problems`: only failures and warnings, or `No problems.`, with no `xcrew/up-to-date` line.
    3. `HTTPS_PROXY=http://10.255.255.1:9 xcrew doctor`: `xcrew/up-to-date` is skipped with "couldn't reach GitHub to compare", within about 5 seconds.
 
+E. The CLI's shim, with the same `bin/xcrew`:
+   1. `bin/xcrew --binary-path` prints the path of a built `xcrew`, and that path's `--version` is the version under test.
+   2. Run `bin/xcrew --version` twice and time the second: well under 100 ms, since the shim keeps its key and doesn't hash the sources again.
+   3. `bin/xcrew report --server other --kind build </dev/null` exits 64, and its message names `MobileBuildMCP or xcode`.
+
+F. Profiles. Switch MobileBuildMCP's session profile with its `session_` tools, to another scheme or simulator and back, and report each answer.
+
 End with `git status` (clean) and a short list of anything that looked wrong or unclear.
 ```
 
@@ -43,3 +50,5 @@ While the session runs A to C:
 - The status line shows the estimate.
 - After A, the band ends with `/xcrew failures`, which opens the pane with the probe's failures; `/xcrew close` closes it.
 - After C, `/xcrew history` lists the target's runs, and `/xcrew doctor` matches D1.
+- During F, the band follows each switch: the next run shows the scheme and simulator the profile names.
+- Deny one build at the permission prompt. It leaves no `/xcrew history` entry and no outcome line.
