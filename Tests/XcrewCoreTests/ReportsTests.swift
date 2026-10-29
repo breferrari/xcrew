@@ -62,8 +62,8 @@ enum Captured {
     }
 
     @Test func aFieldOfAnotherTypeLosesOnlyItself() {
-        let build = #"{"buildResult":"The build failed","errors":[{"classification":"error","filePath":"/a/B.swift","lineNumber":"12","message":"problem"}]}"#
-        #expect(ToolOutput(text: build, server: .xcode).failures == [.init(title: "B.swift:?", message: "problem")])
+        let build = #"{"buildResult":"The build failed","errors":[{"classification":"error","filePath":"/a/B.swift","lineNumber":12,"message":5}]}"#
+        #expect(ToolOutput(text: build, server: .xcode).failures == [.init(title: "B.swift:12", message: "")])
         let tests = #"{"schema":"mobilebuildmcp.output.test-result","data":{"summary":{"status":"SUCCEEDED","durationMs":"soon","counts":{"passed":3,"failed":0,"skipped":0}}}}"#
         #expect(ToolOutput(text: tests, server: .mobileBuildMCP).summary == .init(ok: true, detail: "3 passed"))
         #expect(ToolOutput(text: tests, server: .mobileBuildMCP).reportedDuration == nil)
@@ -183,7 +183,7 @@ func failingRunText(passing: Int) -> String {
 
     @Test func aLeftOutListIsPointedToWithoutACountOfItsOwn() throws {
         let compact = try #require(Captured.output("mobileTestsPassed").compactTestResult(savedPath: "/saved.txt"))
-        let json = try #require(ToolOutput.object(compact)?["data"] as? [String: Any])
+        let json = try #require((ResultBundle.parse(compact) as? [String: Any])?["data"] as? [String: Any])
         #expect(json["testCases"] as? String == "per-test list left out to keep this result short; the counts above are complete, and the full result is in /saved.txt")
         #expect(Captured.output("mobileBuildPassed").compactTestResult(savedPath: "/saved.txt") == nil)
     }
@@ -480,5 +480,57 @@ extension FailureNotes {
     /// The notes on a text as text, as the assertions above read them.
     static func addingText(to text: String, from bundle: ResultBundle) async -> String {
         await adding(to: MobileText(text), from: bundle)?.text ?? text
+    }
+}
+
+/// Each case is a report main's binary wrote differently from a first version of the typed model.
+@Suite struct SameAsBeforeTests {
+    static let listingPath = "/b.xcresult"
+
+    static func bundle(listing: String) -> ResultBundle {
+        ResultBundle(path: listingPath, runner: FakeRunner(responses: [
+            "xcrun xcresulttool get test-results tests --path \(listingPath) --compact": .init(status: 0, stdout: listing),
+        ]))
+    }
+
+    @Test func notesWithNowhereToGoLeaveTheTextAsItWas() async {
+        // A skipped test the text leaves out goes before the summary line; with none, nothing is added.
+        let text = MobileText("🧪 Test\n\nTest Results:\n  ⏭️ OtherTests/test_other() (0.000s)\n")
+        #expect(await FailureNotes.adding(to: text, from: Self.bundle(listing: Captured.text("xcresultTestsWithSkip"))) == nil)
+    }
+
+    @Test func aNoteOfSeveralLinesIsReadAsSeveralLines() async throws {
+        let listing = Captured.text("xcresultTestsWithSkip").replacingOccurrences(of: "waiting on the new API", with: #"waiting\nsee the ticket"#)
+        let text = MobileText(Captured.text("mobileTestsCrashedAndSkipped"))
+        let added = try #require(await FailureNotes.adding(to: text, from: Self.bundle(listing: listing)))
+        #expect(added.lines.map(\.text) == MobileText(added.text).lines.map(\.text))
+    }
+
+    @Test func anXcodeLineNumberIsWrittenWhateverItsType() {
+        let build = { (line: String) in #"{"buildResult":"failed","errors":[{"classification":"error","filePath":"/a/B.swift","lineNumber":\#(line),"message":"problem"}]}"# }
+        #expect(ToolOutput(text: build(#""12""#), server: .xcode).failures.first?.title == "B.swift:12")
+        #expect(ToolOutput(text: build("12"), server: .xcode).failures.first?.title == "B.swift:12")
+        #expect(ToolOutput(text: build("null"), server: .xcode).failures.first?.title == "B.swift:<null>")
+    }
+
+    @Test func anXcodeErrorWhoseDataIsNotTextStillSaysWhatFailed() {
+        #expect(ToolOutput(text: #"{"type":"error","data":{"message":"Build action failed"}}"#, server: .xcode).summary == .init(ok: false, detail: "build failed, tests didn't run"))
+        #expect(ToolOutput(text: #"{"type":"error","data":5}"#, server: .xcode).summary == .init(ok: false, detail: "5"))
+    }
+
+    @Test func onlyATestRunsTextIsCompacted() {
+        let passing = (1...30).map { "  ✅ Suite/test_\($0)() (0.001s)" }.joined(separator: "\n")
+        let text = "🧪 Something else\n\nTest Results:\n\(passing)\n\n❌ 1 test failed, 30 passed, 0 skipped (⏱️ 1.0s)"
+        #expect(ToolOutput(text: text, server: .mobileBuildMCP).compactTestText == nil)
+    }
+
+    @Test func aDurationTooLargeForAnIntIsLeftOut() {
+        let text = #"{"schema":"mobilebuildmcp.output.build-result","data":{"summary":{"status":"SUCCEEDED","durationMs":1e300}}}"#
+        #expect(ToolOutput(text: text, server: .mobileBuildMCP).reportedDuration == nil)
+    }
+
+    @Test func mobileBuildMCPJSONWithoutItsSchemaStillCountsItsTests() {
+        let text = #"{"data":{"summary":{"counts":{"passed":3,"failed":0,"skipped":1}}}}"#
+        #expect(ToolOutput(text: text, server: .mobileBuildMCP).testTotal == 4)
     }
 }

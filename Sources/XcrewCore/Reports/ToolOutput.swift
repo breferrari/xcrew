@@ -11,7 +11,7 @@ public struct ToolOutput: Sendable {
         /// MobileBuildMCP's text, which it returns instead when one fails.
         case mobileBuildMCPText(MobileText)
         case xcodeMCPJSON(XcodeMCPResult)
-        /// Output no reader knows.
+        /// Anything but a JSON object from the Xcode MCP.
         case unrecognized
     }
 
@@ -40,7 +40,7 @@ public struct ToolOutput: Sendable {
         switch server {
         case .mobileBuildMCP:
             guard let result = try? JSONDecoder().decode(MobileBuildMCPResult.self, from: data) else { return .mobileBuildMCPText(MobileText(text)) }
-            return result.schema?.hasPrefix(MobileBuildMCPResult.schemaPrefix) == true ? .mobileBuildMCPJSON(result) : .unrecognized
+            return .mobileBuildMCPJSON(result)
         case .xcode:
             return (try? JSONDecoder().decode(XcodeMCPResult.self, from: data)).map(Shape.xcodeMCPJSON) ?? .unrecognized
         }
@@ -139,7 +139,7 @@ public struct ToolOutput: Sendable {
     public func compactTestResult(savedPath: String) -> String? {
         // Everything else is written back as it came, so this edits the JSON object rather than the model.
         guard case let .mobileBuildMCPJSON(result) = shape, result.schema == MobileBuildMCPResult.testResultSchema,
-              var json = Self.object(text), var data = json["data"] as? [String: Any], data["testCases"] is [Any]
+              var json = ResultBundle.parse(text) as? [String: Any], var data = json["data"] as? [String: Any], data["testCases"] is [Any]
         else { return nil }
         // No count of its own: the list can be one short of the summary's counts, which come from the result bundle.
         data["testCases"] = "per-test list left out to keep this result short; the counts above are complete, and the full result is in \(savedPath)"
@@ -150,10 +150,6 @@ public struct ToolOutput: Sendable {
 
     /// A failing test run's text without the passing tests it lists, which it counts instead.
     public var compactTestText: String? { mobileText?.compacted()?.text }
-
-    static func object(_ text: String) -> [String: Any]? {
-        (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any]
-    }
 
     static func milliseconds(_ seconds: Double) -> Int {
         Int((seconds * 1000).rounded())

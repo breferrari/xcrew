@@ -1,11 +1,5 @@
 import Foundation
 
-/// The server a result came from, as the mod names it.
-public enum Server: String, Sendable {
-    case mobileBuildMCP = "MobileBuildMCP"
-    case xcode
-}
-
 /// Everything the mod shows and hands on for one finished build, test or run call, worked out from
 /// the server's output: the outcome for the band, the failures for the pane, the duration and test
 /// count for the history, and the shorter result and notes Claude reads.
@@ -53,7 +47,8 @@ public struct Report: Sendable, Equatable, Codable {
         let summary = final.summary
 
         var notes: [String] = []
-        if isTest, final.testTotal == 0 { notes.append(noTestsNote) }
+        let tests = final.testTotal
+        if isTest, tests == 0 { notes.append(noTestsNote) }
         if let bundle, let summary = await bundleSummary {
             // The test list is only asked for when the summary counts expected failures to name.
             let names = ResultBundle.expectedFailureCount(summary: summary) > 0 ? ResultBundle.expectedFailures(listing: await bundle.tests()) : []
@@ -65,7 +60,7 @@ public struct Report: Sendable, Equatable, Codable {
             ok: summary.ok,
             detail: summary.detail,
             durationMs: final.reportedDuration,
-            tests: final.testTotal,
+            tests: tests,
             failures: summary.ok ? [] : final.failures,
             result: compact ?? (edited ? final.text : nil),
             notes: notes

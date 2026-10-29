@@ -4,9 +4,14 @@ import Foundation
 /// Its emoji markers are matched by scalar: `⏭️` is `⏭` and a variation selector, one character
 /// that a character-level match misses.
 enum MobileBuildMCPLine {
-    /// `🧪 Test`, the first line of a test run's text.
+    /// `🧪 …`, the first line of a test run's text, whatever follows the marker.
     static func isTestRunHeader(_ line: String) -> Bool {
         line.hasPrefix("🧪")
+    }
+
+    /// `🧪 Test`, the header of the test run whose list compaction knows.
+    static func isTestHeader(_ line: String) -> Bool {
+        line.hasPrefix("🧪 Test")
     }
 
     enum Heading: Equatable {

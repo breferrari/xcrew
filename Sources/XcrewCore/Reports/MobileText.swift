@@ -176,7 +176,7 @@ struct MobileText: Sendable {
     /// This keeps the failures, the failing and skipped tests' lines and the summary, and counts the
     /// passing ones. Nil when the list is short or the text is another shape.
     func compacted() -> MobileText? {
-        guard isTestRun, let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
+        guard lines.first.map({ MobileBuildMCPLine.isTestHeader($0.text) }) == true, let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
         // The list runs to the summary line; a blank line inside it is where Claude Code cut a long one.
         let summary = lines.indices.first { $0 > start && lines[$0].isSummary }
         var end = summary ?? start + 1

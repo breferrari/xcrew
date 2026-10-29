@@ -35,16 +35,24 @@ public enum FailureNotes {
         var isEmpty: Bool { failures.isEmpty && skipped.values.allSatisfy(\.isEmpty) && unlisted.isEmpty }
     }
 
-    /// Writes the notes: a failure's go after it and its location line, a skipped test's after its line.
-    static func annotate(_ text: MobileText, with notes: Notes) -> MobileText {
+    /// Writes the notes: a failure's go after it and its location line, a skipped test's after its
+    /// line. Nil when none of them has a place in the text.
+    static func annotate(_ text: MobileText, with notes: Notes) -> MobileText? {
         let lines = text.lines
         var out: [MobileText.Line] = []
+        var added = false
+        // A note can span lines, a skip reason the test wrote over several; each is read as its own.
+        func add(_ notes: [String]) {
+            let split = notes.flatMap { $0.components(separatedBy: "\n") }.map(MobileText.Line.init)
+            added = added || !split.isEmpty
+            out += split
+        }
         var index = 0
         while index < lines.count {
             let line = lines[index]
             if line.isSummary, !notes.unlisted.isEmpty {
                 let blank = out.last?.isBlank == true ? out.removeLast() : nil
-                out += notes.unlisted.map(MobileText.Line.init)
+                add(notes.unlisted)
                 if let blank { out.append(blank) }
             }
             out.append(line)
@@ -53,13 +61,13 @@ public enum FailureNotes {
                     index += 1
                     out.append(lines[index])
                 }
-                out += (notes.failures[failing.test] ?? []).map(MobileText.Line.init)
+                add(notes.failures[failing.test] ?? [])
             } else if case let .skipped(test?) = line.kind {
-                out += (notes.skipped[test] ?? []).map(MobileText.Line.init)
+                add(notes.skipped[test] ?? [])
             }
             index += 1
         }
-        return MobileText(lines: out)
+        return added ? MobileText(lines: out) : nil
     }
 
     /// The failing run's text with what the result bundle adds; nil when it adds nothing.
