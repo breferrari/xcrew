@@ -19,7 +19,8 @@ public enum FailureNotes {
 
     /// `⏭️ Suite/test() (0.000s)`, as it lists a skipped one.
     static func skipped(_ line: String) -> String? {
-        line.firstMatch(of: #/^\s*⏭\x{FE0F}? (\S+?)\/(\S+?) \(/#).map { key(String($0.1), String($0.2)) }
+        // By scalar: `⏭️` is `⏭` and a variation selector, one character that a character-level match misses.
+        line.firstMatch(of: #/^\s*⏭\x{FE0F}? (\S+?)\/(\S+?) \(/#.matchingSemantics(.unicodeScalar)).map { key(String($0.1), String($0.2)) }
     }
 
     /// `0.006`, as MobileBuildMCP writes a test's time: three decimals, whatever the Mac's locale.

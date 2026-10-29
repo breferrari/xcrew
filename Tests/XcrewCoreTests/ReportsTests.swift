@@ -368,3 +368,11 @@ func failingRunText(passing: Int) -> String {
         #expect(FailureNotes.seconds(12.3) == "12.300")
     }
 }
+
+@Suite struct SkipListedOnceTests {
+    @Test func aSkippedTestTheTextAlreadyListsGetsItsReasonAndIsNotListedAgain() async {
+        let added = await FailureNotes.adding(to: Captured.text("mobileTestsCrashedAndSkipped"), from: FailureNotesTests.crashedAndSkipped())
+        #expect(added.components(separatedBy: "FormatterTests/test_skipped()").count - 1 == 1)
+        #expect(added.contains("  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API"))
+    }
+}
