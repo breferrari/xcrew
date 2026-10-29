@@ -1,17 +1,18 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import type { BandProblems, BandRun, CliBuild, FailureList, ResultRow } from '../../types'
+import type { BandProblems, BandRun, CliBuild, FailureList, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, isGeneratedOf, knownBuild, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
+import { answerOf, couldntRun, generateOf, isGeneratedOf, knownBuild, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, isStale, keptHistory, USAGE } from './command'
 import { describe, historyOf, observe } from './context'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
 import { describedForGenerated, REASON } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
-import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey } from './timing'
+import { editedNote, letThroughNote, refusal } from './regenerate'
+import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
-import { kindOf, MCP_TOOL, parseTool, PROJECT_REWRITER, runsSetup } from './tools'
+import { buildsProject, FILE_EDITOR, kindOf, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -23,6 +24,8 @@ const FAILURES_PANE = 'xcrew-failures'
 const buildState = atom({ plugin: 'xcrew', key: 'build' } as const, null as CliBuild | null)
 /** Each run's outcome for its result row in the transcript, by the call's `tool_use_id`: the row's own `requestId`. */
 const rowState = atom({ plugin: 'xcrew', key: 'row' } as const, null as ResultRow | null)
+/** A manifest edit the project hasn't been generated since, for the session. */
+const staleState = atom({ plugin: 'xcrew', key: 'stale' } as const, null as StaleProject | null)
 
 /**
  * xcrew's mod: the only file that touches `$` or registers a hook. The plugin directory reads `$`
@@ -41,6 +44,27 @@ export const register: Register = on => {
     const described = await next(e)
     return (await isGeneratedProject($)) ? { ...described, description: describedForGenerated(described.description) } : described
   })
+  // After a manifest edit, the first call that builds the project is refused with the generate command; the next goes through.
+  on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
+    const parsed = parseTool(e.tool)
+    const stale = parsed && buildsProject(parsed) ? await quietly(() => read($, staleState)) : undefined
+    if (!stale) return next(e)
+    if (!stale.refused) {
+      // Refused only once the mark says so: a refusal it can't record would repeat for good.
+      if (await markStale($, { ...stale, refused: true })) return { deny: refusal(stale.generate) }
+      return next(e)
+    }
+    await markStale($, null)
+    const result = await next(e)
+    return result.deny === undefined ? withContext(result, letThroughNote(stale.generate)) : result
+  }).catch(async ($, e, next) => next(e))
+  on('tool.call', { tool: FILE_EDITOR }, async ($, e, next) => {
+    const result = await next(e)
+    if ((e.tool !== 'Write' && e.tool !== 'Edit') || result.deny !== undefined || result.isError || !mayBeManifest(e.file_path)) return result
+    const generate = generateOf(await answer($, ['project', '--manifest', e.file_path], 10_000))
+    if (!generate) return result
+    return (await markStale($, { generate, refused: false })) ? withContext(result, editedNote(generate)) : result
+  }).catch(async ($, e, next) => next(e))
   on('tool.call', async ($, e, next) => {
     const parsed = parseTool(e.tool)
     if (!parsed) return next(e)
@@ -194,12 +218,20 @@ export const register: Register = on => {
     })().catch(() => undefined)
     return next(e)
   })
-  // Setup may have written the config: look at once whether MobileBuildMCP now needs a restart.
+  // Setup may have written the config: look at once whether MobileBuildMCP now needs a restart. A generate that finished
+  // brings the project up to its manifests.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
-    if (e.tool === 'Bash' && runsSetup(e.command)) void loadProblems($, true).catch(() => undefined)
+    if (e.tool !== 'Bash') return result
+    if (runsSetup(e.command)) void loadProblems($, true).catch(() => undefined)
+    if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, null)
     return result
   }).catch(async ($, e, next) => next(e))
+}
+
+/** Records whether the project is stale; false when the state couldn't be written. */
+function markStale($: EngineInterface, stale: StaleProject | null): Promise<boolean> {
+  return quietly(() => update($, staleState, () => stale).then(() => true)).then(Boolean)
 }
 
 /** Starts a program of the CLI's: the mod's one process. */

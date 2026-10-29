@@ -34,8 +34,11 @@ export type BandProblems = { isFailure: boolean; message: string; more: number; 
 /** The CLI build the shim named, and when it was asked: `path` is null when it named none. */
 export type CliBuild = { path: string | null; at: number }
 
+/** A manifest edit the project hasn't been generated since: the command that generates it, and whether a build was refused for it. */
+export type StaleProject = { generate: string; refused: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
-    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null> }
+    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null }
   }
 }

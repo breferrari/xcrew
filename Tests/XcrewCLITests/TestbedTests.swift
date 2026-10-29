@@ -104,6 +104,31 @@ struct TestbedTests {
         #expect(actual == expected, "found \(actual)")
     }
 
+    /// An edit to each file, and the command that regenerates the project after it: none for a file no generator reads.
+    static let edits: [(file: String, generate: String?)] = [
+        ("forms/tuist/Project.swift", "tuist generate --no-open"),
+        ("forms/tuist/Tuist.swift", "tuist generate --no-open"),
+        ("forms/tuist/App/ContentView.swift", nil),
+        ("forms/tuist-ios/ios/Project.swift", "tuist generate --no-open --path ios"),
+        ("forms/tuist-ungenerated-ios/ios/Project.swift", "tuist generate --no-open --path ios"),
+        ("forms/xcodegen/project.yml", "xcodegen generate"),
+        ("forms/xcodegen-ios/ios/project.yml", "xcodegen generate --spec ios/project.yml"),
+        ("forms/classic/App/ContentView.swift", nil),
+        ("adversarial/project-swift-trap/App/Models/Project.swift", nil),
+    ]
+
+    @Test(arguments: edits.map(\.file))
+    func anEditNamesTheCommandThatRegenerates(_ file: String) async throws {
+        let fixture = file.split(separator: "/").prefix(2).joined(separator: "/")
+        let root = try Self.copy(fixture)
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let edited = root.appending(path: String(file.dropFirst(fixture.count + 1)))
+        #expect(FileManager.default.fileExists(atPath: edited.path), "the test bed has no \(file)")
+        let context = CheckContext.fake(project: Project(root: root, home: root.appending(path: "home")))
+        let answer = try JSONDecoder().decode(ProjectCommand.Answer.self, from: Data(await Run("project", "--manifest", edited.path, context: context).text.utf8))
+        #expect(answer.generate == Self.edits.first { $0.file == file }?.generate)
+    }
+
     /// The forms hold one app, so they differ only where a form must: its generator, and where the project sits.
     @Test func theFormsDifferOnlyInTheirGeneratorAndPlace() throws {
         let built = try Self.names.filter { !$0.hasPrefix("tuist-ungenerated") }.map { name in
@@ -128,6 +153,20 @@ struct TestbedTests {
     /// Whether a program is installed: the generators are on the Mac that makes the fixtures, never on CI.
     static func isInstalled(_ program: String) -> Bool {
         SystemCommandRunner().which(program) != nil
+    }
+
+    /// Tuist rewrites only files whose content changes, so a project's file times can't say whether it's stale: the mod
+    /// marks it from the edits it sees instead (docs/findings.md, *When a generated project is stale*).
+    @Test(.enabled(if: isInstalled("tuist")))
+    func tuistLeavesAnUnchangedProjectFileAlone() async throws {
+        let root = try Self.copy("forms/tuist")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let file = root.appending(path: "App.xcodeproj/project.pbxproj")
+        let past = Date(timeIntervalSince1970: 1_577_836_800)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: file.path)
+        let generated = await SystemCommandRunner().run(["/bin/sh", "-c", "cd '\(root.path)' && tuist generate --no-open"], stdin: nil, timeout: .seconds(120))
+        #expect(generated.status == 0, "\(generated.stdout)\(generated.stderr)")
+        #expect(try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date == past)
     }
 
     /// A regeneration with another Tuist or XcodeGen shows here, on the Mac that has them; CI has neither and skips.

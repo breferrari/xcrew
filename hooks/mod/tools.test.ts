@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { kindOf, parseTool, runsSetup } from './tools'
+import { buildsProject, kindOf, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
 
 const kind = (name: string) => {
   const tool = parseTool(name)
@@ -52,6 +52,42 @@ test('tools that only read or inspect are not timed', () => {
 test('other servers are not Xcode tools', () => {
   expect(kind('mcp__plugin_other_xcode__BuildProject')).toBe('not an Xcode tool')
   expect(kind('Bash')).toBe('not an Xcode tool')
+})
+
+test('a file a generator may read is recognised by its name, in any case, and other files are not', () => {
+  // The names ProjectLayout gives Tuist's markers and manifests and XcodeGen's spec, and Tuist's own folder.
+  for (const path of ['/a/Tuist.swift', '/a/Project.swift', '/a/Workspace.swift', '/a/project.yml', '/a/ios/PROJECT.SWIFT', '/a/Tuist/ProjectDescriptionHelpers/Targets.swift', '/a/Tuist/Package.swift', 'Project.swift']) {
+    expect([path, mayBeManifest(path)]).toEqual([path, true])
+  }
+  for (const path of ['/a/ContentView.swift', '/a/MyProject.swift', '/a/project.yml.orig', '/a/Tuistery/Package.swift', '/a/Package.swift']) expect([path, mayBeManifest(path)]).toEqual([path, false])
+})
+
+test('a shell command that regenerates the project is recognised, alone or among others', () => {
+  // The commands `xcrew project --manifest` names, and the generators' shorter spellings.
+  for (const command of ['tuist generate --no-open', 'tuist generate --no-open --path ios', 'xcodegen generate', 'xcodegen generate --spec ios/project.yml', 'cd ios && tuist generate', 'xcodegen', 'xcodegen --spec ios/project.yml', 'mise exec -- tuist generate --no-open']) {
+    expect([command, runsGenerate(command)]).toEqual([command, true])
+  }
+  for (const command of ['tuist install', 'tuist edit', 'xcodegen dump', 'xcodegen version', 'echo generate', 'mytuist generate']) expect([command, runsGenerate(command)]).toEqual([command, false])
+})
+
+test('a generate counts only when its exit status is the command\'s, by any path to the generator', () => {
+  for (const command of ['tuist install && tuist generate --no-open', 'tuist install --path ios && tuist generate --no-open --path ios', '/opt/homebrew/bin/tuist generate --no-open', './bin/xcodegen generate', 'xcodegen generate 2>&1', 'tuist generate --no-open > generate.log 2>&1', 'tuist generate && echo done']) {
+    expect([command, runsGenerate(command)]).toEqual([command, true])
+  }
+  // A later command's status hides the generate's: a failed generate would read as a success.
+  for (const command of ['tuist generate --no-open 2>&1 | tail -5', 'tuist generate; echo done', 'tuist generate || true', 'tuist generate &', 'tuist generate\necho done']) {
+    expect([command, runsGenerate(command)]).toEqual([command, false])
+  }
+})
+
+test('only tools that build the project are held back after a manifest edit', () => {
+  const builds = (name: string) => {
+    const tool = parseTool(name)
+    return tool ? buildsProject(tool) : 'not an Xcode tool'
+  }
+  // RunProject builds before it launches; a launch alone runs what was built.
+  for (const name of ['mcp__MobileBuildMCP__build_sim', 'mcp__MobileBuildMCP__build_run_sim', 'mcp__MobileBuildMCP__test_sim', 'mcp__xcode__BuildProject', 'mcp__xcode__RunAllTests', 'mcp__xcode__RunProject']) expect([name, builds(name)]).toEqual([name, true])
+  for (const name of ['mcp__MobileBuildMCP__clean', 'mcp__MobileBuildMCP__launch_app_sim', 'mcp__MobileBuildMCP__launch_mac_app', 'mcp__xcode__GetBuildLog']) expect([name, builds(name)]).toEqual([name, false])
 })
 
 test('a shell command that runs xcrew setup is recognised, by any path, quoted or not', () => {

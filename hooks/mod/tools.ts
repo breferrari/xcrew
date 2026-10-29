@@ -16,6 +16,33 @@ export function runsSetup(command: string): boolean {
   return SETUP_COMMAND.test(command)
 }
 
+/** The built-in tools that change a file's text; an edit to a manifest leaves the generated project behind it. */
+export const FILE_EDITOR = /^(?:Write|Edit)$/
+
+/**
+ * A name a generator may read: Tuist's markers and manifests, any file in its `Tuist/` folder, and XcodeGen's spec. In
+ * any case, as the file system matches names. Only a first look, so most edits never start the CLI, which decides.
+ */
+const MANIFEST_NAME = /(?:^|\/)(?:(?:Tuist|Project|Workspace)\.swift|project\.yml|Tuist\/.+)$/i
+
+export function mayBeManifest(path: string): boolean {
+  return MANIFEST_NAME.test(path)
+}
+
+/** `tuist generate`, or `xcodegen` with its default `generate` or none, by any path to the program. */
+const GENERATE_COMMAND = /(?:^|[\s;&|(])["']?(?:[^\s"']*\/)?(?:tuist["']?\s+generate|xcodegen["']?(?:\s+generate)?(?!\s+[a-z]))(?=[\s;&|)]|$)/
+
+/**
+ * Whether a shell command regenerates the project, and its exit status says whether that worked: nothing after the
+ * generate but redirections and `&&`, since a later command's status, in a pipe or after `;`, would hide a failure.
+ */
+export function runsGenerate(command: string): boolean {
+  const match = GENERATE_COMMAND.exec(command)
+  if (!match) return false
+  const rest = command.slice(match.index + match[0].length).replace(/\d*>&\d+|&&/g, ' ')
+  return !/[|;&\n]/.test(rest)
+}
+
 /** The matcher for the guard: the engine calls a hook only for the tools its matcher matches. */
 export const PROJECT_REWRITER = bothRegistrations('xcode', ['XcodeWrite'])
 
@@ -63,3 +90,15 @@ export function kindOf(tool: XcodeTool): ToolKind | undefined {
   return undefined
 }
 
+
+/**
+ * Whether a call builds the project, so a stale one would build it as it was: a build, a test run, or a run that builds
+ * first (`RunProject`); not a clean, nor a launch of what was built.
+ */
+export function buildsProject(tool: XcodeTool): boolean {
+  const kind = kindOf(tool)
+  const words = wordsOf(tool.tool)
+  if (kind === 'build') return !/\bclean\b/.test(words)
+  if (kind === 'run') return !/\blaunch\b/.test(words)
+  return kind === 'test'
+}

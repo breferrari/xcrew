@@ -85,3 +85,8 @@ export function resultFor<Result extends { context?: readonly string[]; isError?
   if (outcome.result !== undefined) return result.isError ? { result: outcome.result, isError: true as const, ...context } : { result: outcome.result, ...context }
   return { ...result, ...context }
 }
+
+/** A tool's result with lines for Claude after it. */
+export function withContext<Result extends { context?: readonly string[] }>(result: Result, ...lines: string[]): Result {
+  return { ...result, context: [...(result.context ?? []), ...lines] }
+}

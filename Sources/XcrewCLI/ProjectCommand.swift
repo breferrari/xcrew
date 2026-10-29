@@ -4,22 +4,32 @@ import XcrewCore
 
 /// What kind of project this is, as JSON: whether a generator writes it, for the mod's `XcodeWrite` guard, and
 /// with `--setup` the container setup would build, for the setup skill. The guard runs it on every call, so only
-/// the skill pays for the container's search.
+/// the skill pays for the container's search. The mod asks with `--manifest` after each edit to a manifest's name.
 struct ProjectCommand: Command {
     let name = "project"
     let flags: Set<String> = ["setup"]
+    let valuedOptions: Set<String> = ["manifest"]
     let usage = [
-        "project [--setup]   whether a generator writes this project, as JSON; --setup adds the container setup would use",
+        "project [--setup] [--manifest <file>]   whether a generator writes this project, as JSON; --setup adds the container setup would use, and --manifest the command that regenerates the project after an edit to <file>, when the generator reads it",
     ]
 
     struct Answer: Codable, Equatable {
         let isGenerated: Bool
         var container: String?
         var containerProblem: String?
+        /// The command to run before the next build, when the file `--manifest` names is one the generator reads.
+        var generate: String?
     }
 
     func run(_ invocation: Invocation) async throws -> Int32 {
-        var answer = Answer(isGenerated: invocation.context.project.isGenerated)
+        let project = invocation.context.project
+        let layout = project.layout(.anywhereButHome)
+        let nearest = layout.generator
+        var answer = Answer(isGenerated: nearest != nil)
+        if let manifest = invocation.arguments["manifest"], let nearest {
+            let file = manifest.hasPrefix("/") ? URL(fileURLWithPath: manifest) : project.root.appending(path: manifest)
+            answer.generate = layout.command(after: file, nearest: nearest)
+        }
         if invocation.arguments.has("setup") {
             do {
                 answer.container = try SetupCommand.container(in: invocation.context)

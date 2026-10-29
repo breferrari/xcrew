@@ -33,12 +33,36 @@ public struct ProjectLayout: Sendable {
         public let folder: URL
         /// The folder's path relative to the root; empty for the root itself.
         public let path: String
+
+        /// The shell command that regenerates the project from these manifests, run from the root. Without `--no-open`
+        /// Tuist opens the workspace in Xcode after every generate.
+        public var generateCommand: String {
+            switch generator {
+            case .tuist: return path.isEmpty ? "tuist generate --no-open" : "tuist generate --no-open --path \(argument)"
+            case .xcodeGen: return path.isEmpty ? "xcodegen generate" : "xcodegen generate --spec \(argument)/project.yml"
+            }
+        }
+
+        /// Tuist's command that resolves the dependencies its manifests declare.
+        public var installCommand: String { path.isEmpty ? "tuist install" : "tuist install --path \(argument)" }
+
+        /// After a change to Tuist's dependencies: a generate alone keeps the ones resolved before.
+        public var installAndGenerateCommand: String { installCommand + " && " + generateCommand }
+
+        /// The path as one shell word.
+        var argument: String {
+            path.allSatisfy { $0.isLetter || $0.isNumber || "/._-".contains($0) } ? path : "'" + path.replacing("'", with: #"'\''"#) + "'"
+        }
     }
 
     /// How many folders below the root a walk looks: a repository often keeps its app in `ios/` or `apps/ios/`.
     static let searchDepth = 2
+    /// The folder Tuist keeps its helpers, dependencies and settings in, beside its manifests.
+    static let tuistFolder = "Tuist"
     /// Names that mark Tuist wherever they stand.
-    static let tuistMarkers = ["Tuist.swift", "Tuist"]
+    static let tuistMarkers = ["Tuist.swift", tuistFolder]
+    /// The manifest of a Tuist app's dependencies, which `tuist install` resolves before a generate can use them.
+    static let tuistDependencies = "\(tuistFolder)/Package.swift"
     /// Tuist's manifests whose names are also ordinary source-file names. At the root they count by name; below it, only
     /// when they import ProjectDescription, since Tuist may find its root by `.git` alone.
     static let tuistManifests = ["Project.swift", "Workspace.swift"]
@@ -81,8 +105,44 @@ public struct ProjectLayout: Sendable {
     /// The manifests nearest the root, Tuist's before XcodeGen's at the same level.
     public var generator: Manifests? {
         first { entries, level in
-            if let tuist = entries.first(where: { isTuistManifest($0, level: level) }) { return manifests(.tuist, beside: tuist) }
+            if let tuist = entries.first(where: { isTuistManifest($0.url, countsByName: level == 0) }) { return manifests(.tuist, beside: tuist) }
             return entries.first { named($0.url.lastPathComponent, Self.xcodeGenMarkers) }.map { manifests(.xcodeGen, beside: $0) }
+        }
+    }
+
+    /// What to run after an edit to `file` before the next build, when the generator reads it; `nearest` is the
+    /// project's manifests. Tuist reads a manifest below its app's folder by the rule detection uses, taking that folder as
+    /// the root, and every file in its own folder; XcodeGen reads the spec beside its project.
+    public func command(after file: URL, nearest: Manifests) -> String? {
+        let manifests = nearest.generator == .tuist ? tuistApp(holding: file) ?? nearest : nearest
+        let folder = Self.canonical(manifests.folder) + "/"
+        let path = Self.canonical(file)
+        guard path.hasPrefix(folder) else { return nil }
+        let relative = String(path.dropFirst(folder.count))
+        let isBeside = !relative.contains("/")
+        switch manifests.generator {
+        case .xcodeGen:
+            return isBeside && named(file.lastPathComponent, Self.xcodeGenMarkers) ? manifests.generateCommand : nil
+        case .tuist:
+            if named(relative, [Self.tuistDependencies]) { return manifests.installAndGenerateCommand }
+            let isInTuistFolder = !isBeside && named(String(relative.prefix { $0 != "/" }), [Self.tuistFolder])
+            return isInTuistFolder || isTuistManifest(file, countsByName: isBeside) ? manifests.generateCommand : nil
+        }
+    }
+
+    /// The Tuist app `file` is part of: the nearest folder above it, up to the root, holding one of Tuist's markers. A
+    /// module's `Project.swift` is the app's to generate, not a project of its own.
+    func tuistApp(holding file: URL) -> Manifests? {
+        let rootPath = Self.canonical(root)
+        var folder = file.deletingLastPathComponent()
+        while true {
+            let folderPath = Self.canonical(folder)
+            guard folderPath == rootPath || folderPath.hasPrefix(rootPath + "/") else { return nil }
+            if Self.tuistMarkers.contains(where: { FileManager.default.fileExists(atPath: folder.appending(path: $0).path) }) {
+                return Manifests(generator: .tuist, folder: folder, path: String(folderPath.dropFirst(rootPath.count).drop { $0 == "/" }))
+            }
+            if folderPath == rootPath { return nil }
+            folder.deleteLastPathComponent()
         }
     }
 
@@ -90,7 +150,7 @@ public struct ProjectLayout: Sendable {
     public var tuistFolders: [URL] {
         var found: [URL] = []
         _ = first { entries, level -> Bool? in
-            found += entries.filter { isTuistManifest($0, level: level) }.map { $0.url.deletingLastPathComponent() }
+            found += entries.filter { isTuistManifest($0.url, countsByName: level == 0) }.map { $0.url.deletingLastPathComponent() }
             return nil
         }
         return found.reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
@@ -101,7 +161,7 @@ public struct ProjectLayout: Sendable {
         first { entries, level in
             entries.contains {
                 let name = $0.url.lastPathComponent
-                return Project.isXcodeContainer(name) || isTuistManifest($0, level: level) || named(name, Self.xcodeGenMarkers)
+                return Project.isXcodeContainer(name) || isTuistManifest($0.url, countsByName: level == 0) || named(name, Self.xcodeGenMarkers)
                     || (level == 0 && named(name, Self.packageMarkers))
             } ? true : nil
         } ?? false
@@ -111,11 +171,12 @@ public struct ProjectLayout: Sendable {
         markers.contains { ignoresCase ? $0.caseInsensitiveCompare(name) == .orderedSame : $0 == name }
     }
 
-    func isTuistManifest(_ entry: (url: URL, path: String), level: Int) -> Bool {
-        let name = entry.url.lastPathComponent
+    /// Whether `file` is Tuist's: a marker, or a manifest name that counts by itself where `countsByName`, else by its import.
+    func isTuistManifest(_ file: URL, countsByName: Bool) -> Bool {
+        let name = file.lastPathComponent
         if named(name, Self.tuistMarkers) { return true }
         guard named(name, Self.tuistManifests) else { return false }
-        return level == 0 || Self.importsProjectDescription(entry.url)
+        return countsByName || Self.importsProjectDescription(file)
     }
 
     func manifests(_ generator: Generator, beside entry: (url: URL, path: String)) -> Manifests {

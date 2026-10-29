@@ -182,6 +182,18 @@ The plugin's root is the repository's, so a `.mcp.json` there is two things at o
 
 Recordings of real runs have to be the results Claude reads, which come through MCP. MobileBuildMCP's CLI runs the same tools, and its documentation (xcodebuildmcp.com, *Output Formats* and *CLI*, read October 29, 2026) says it "exposes the same tool results through the CLI and MCP server", but presents them differently. In CLI output, next steps "render as shell commands; in MCP output they render as MCP tool-call hints". `--style minimal` gives only "compact MCP-like" text. CLI text lists file artifacts as rows where "MCP text defaults to `tree`". `--output json --style minimal` "keeps the structured-output envelope but omits request/frontmatter fields", and nothing says it equals the MCP `structuredContent`. So the test bed records nothing through the CLI: its recordings come from a session where the servers connect.
 
+## When a generated project is stale
+
+After Claude edits a manifest, the generated project changes only when the generator runs again. File times can't say whether that happened. On October 29, 2026, with Tuist 4.214.0 on the test bed's Tuist fixture, `tuist generate` kept the workspace's and `project.pbxproj`'s modification times in two cases:
+- after `touch Project.swift`;
+- after an edit that produced the same project.
+
+Tuist writes only files whose content changes. Comparing a manifest's time with the project's would therefore read "stale" forever after a generate that changed nothing. So the mod marks the project from what it sees this session: an edit to a manifest marks it, and a `tuist generate` or `xcodegen generate` that succeeds clears the mark. A test runs a generate on a copy of the fixture wherever Tuist is installed, so a Tuist that starts rewriting unchanged files shows up red.
+
+The mod can tell a failed generate only by the Bash result's `isError`. The engine's types say it's set when the tool "reported an error", without naming an exit status. In this repository's session transcripts (Claude Code 2.1.312, October 29, 2026), every Bash command that exited non-zero is stored as an error result whose text starts `Exit code 1`. The mod's tests stand on that. A shell reports a pipe's or a list's last command, so a generate piped into `tail` or followed by `; echo` would look like a success even when it failed. Such a command clears nothing, and the build is refused once more.
+
+A person may regenerate in their own terminal, which the mod can't see. So the mark refuses one build and then lets the next one through, with a line saying why.
+
 ## Toolchains
 
 On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The `macos-26` runner image (version 20261013.0424.1) carries Xcode 26.0.1 to 26.6, and Apple's [Xcode system requirements](https://developer.apple.com/xcode/system-requirements/) put Swift 6.2 in Xcode 26.0 and 26.0.1, 6.2.1 to 6.2.3 in 26.1 to 26.3, and 6.3 in 26.4.1 to 26.6. So CI's newest toolchain was Swift 6.3, older than the contributor's 6.4.2. Each Swift job now prints its toolchain, and a floor job builds and tests on the oldest Xcode whose Swift is the version `Package.swift`'s `swift-tools-version` names.

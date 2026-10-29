@@ -32,6 +32,7 @@ Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and
 | **Where a test failed** | Not reported on parallel simulators | The file's absolute path and line |
 | **A crash** | The test's name | The exception and the crashed thread's top frames |
 | **`XcodeWrite` in a Tuist or XcodeGen project** | Re-saves the whole generated `.pbxproj` | [Refused](#a-guard-for-generated-projects); Claude writes the file itself |
+| **A build after a manifest edit** | Builds the project as it was, with errors that don't say why | [Refused once](#a-guard-for-generated-projects), with the generate command to run first |
 
 **Why three servers?** None of them covers everything on its own:
 
@@ -131,6 +132,7 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 
 - **In a Tuist or XcodeGen project:** the Xcode MCP's `XcodeWrite` re-saves the whole generated `.pbxproj`, so Xcrew refuses it and points Claude at its own Write tool.
 - **In a classic Xcode project:** it stays allowed, since that's how a new file joins its target.
+- **After Claude edits a manifest** (`Project.swift`, `Tuist.swift`, `project.yml` and the like): the next build or test, or a run that builds first, is refused once, with the command that regenerates the project, such as `tuist generate --no-open`. Once that command succeeds, builds run again. If you generated in your own terminal, the next attempt goes through.
 
 ### Setup and doctor
 
@@ -218,9 +220,9 @@ Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads
 
 | | |
 | --- | --- |
-| **Reads** | Every tool call Claude makes, with its arguments and result, because it hooks `tool.call`. It acts only on the Xcode MCP's and MobileBuildMCP's tools, by their names, and passes every other call on untouched. It keeps each build, test and run's recent durations in Claude Code's own store, and the last failing run's failures for the session |
-| **Hooks** | `tool.call`: the `XcodeWrite` guard, and timing for builds, tests and runs. `tool.describe`: the guard's line in `XcodeWrite`'s description. `ui.render`: the line above the prompt and the failures pane. `command.run`: `/xcrew`. `session.start`: registers `/xcrew` and asks the doctor what's missing |
-| **Changes** | In a Tuist or XcodeGen project, it refuses `XcodeWrite` and says so in that tool's description. After a build or test call, Claude reads the CLI's shorter result and notes in place of the server's. Nothing else |
+| **Reads** | Every tool call Claude makes, with its arguments and result, because it hooks `tool.call`. It acts only on the Xcode MCP's and MobileBuildMCP's tools by their names, on Write and Edit calls to a file a generator may read, and on Bash commands that run setup or a generate, and passes every other call on untouched. It keeps each build, test and run's recent durations in Claude Code's own store, and the last failing run's failures for the session |
+| **Hooks** | `tool.call`: the `XcodeWrite` guard, the refusal of a build after a manifest edit, and timing for builds, tests and runs. `tool.describe`: the guard's line in `XcodeWrite`'s description. `ui.render`: the line above the prompt and the failures pane. `command.run`: `/xcrew`. `session.start`: registers `/xcrew` and asks the doctor what's missing |
+| **Changes** | In a Tuist or XcodeGen project, it refuses `XcodeWrite` and says so in that tool's description. After Claude edits a manifest, it refuses the next build or test, or a run that builds first, once, and adds a line to the edit's result naming the generate command. After a build or test call, Claude reads the CLI's shorter result and notes in place of the server's. Nothing else |
 | **Shows** | The line above the prompt, the failures pane, a toast or the status line where the line can't draw, and a notification after a run of a minute or more |
 | **Starts** | Only Xcrew's CLI: `bin/xcrew`, or the build it names |
 | **Sends** | Nothing. The mod makes no network request |
