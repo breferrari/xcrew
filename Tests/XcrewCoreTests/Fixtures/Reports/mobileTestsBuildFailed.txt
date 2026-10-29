@@ -1,0 +1,14 @@
+🧪 Test
+
+Errors (2):
+
+  ✗ LLVM Profile Error: Failed to write file "default.profraw": Operation not permitted
+
+  ✗ Failed to build workspace MacroProbe with scheme MacroProbe-Package.: Cannot test target “MacroProbeTests” on “iPhone 16”: Missing test product at /Users/dev/Library/Developer/MobileBuildMCP/workspaces/sample-0000/test-products/test_sim.xctestproducts/Tests/0/Debug-iphonesimulator/MacroProbeTests.xctest
+
+❌ Test failed. (⏱️ 14.8s)
+  └ Files:
+     └── ~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/
+         ├── logs/test_sim.log — Build Logs
+         ├── result-bundles/test_sim.xcresult — Result Bundle
+         └── test-products/test_sim.xctestproducts — Test Products

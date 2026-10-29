@@ -122,3 +122,46 @@ import XcrewCore
         #expect(plugins.first?["source"] as? String == "./")
     }
 }
+
+/// The mod's boundary (docs/architecture.md, *The mod's boundary*): it hooks, draws, keeps state
+/// and times calls, and hands everything it reads to the Swift CLI. These fail when logic drifts
+/// back into TypeScript.
+@Suite struct ModBoundaryTests {
+    /// The mod's own sources: tests and their fixtures and helpers aren't the mod.
+    static func sources() throws -> [(name: String, text: String)] {
+        let folder = ManifestTests.repository.appending(path: "hooks/mod")
+        return try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+            .filter { $0.hasSuffix(".ts") && !$0.hasSuffix(".test.ts") && !["fixtures.ts", "testing.ts"].contains($0) }
+            .map { ($0, try String(contentsOf: folder.appending(path: $0), encoding: .utf8)) }
+    }
+
+    /// Files using `pattern` other than those allowed it.
+    static func offenders(_ pattern: some RegexComponent, allowed: Set<String>) throws -> [String] {
+        try sources().filter { !allowed.contains($0.name) && $0.text.contains(pattern) }.map(\.name)
+    }
+
+    @Test func onlyTheCLIWrapperRunsProcesses() throws {
+        #expect(try Self.offenders(/\$\.process\./, allowed: ["cli.ts"]) == [])
+    }
+
+    /// Reading named fields of a server's JSON answer is fine where the mod keeps what it learns; parsing text isn't.
+    @Test func onlyTheCLIWrapperAndContextReadJSON() throws {
+        #expect(try Self.offenders(/JSON\.parse\(/, allowed: ["cli.ts", "context.ts"]) == [])
+    }
+
+    @Test func theModRunsNoProgramButTheCLI() throws {
+        let wrapper = try #require(try Self.sources().first { $0.name == "cli.ts" }).text
+        let runs = wrapper.matches(of: /\$\.process\.run\(\[([^,\]]+)/).map { String($0.1) }
+        #expect(!runs.isEmpty)
+        #expect(runs.allSatisfy { $0 == "`${$.plugin.root}/bin/xcrew`" })
+    }
+
+    @Test func onlyToolNamesAreMatchedByPattern() throws {
+        #expect(try Self.offenders(/\.exec\(|\.test\(|\.match\(|\.matchAll\(|new RegExp|\.replace\(\//, allowed: ["tools.ts"]) == [])
+    }
+
+    @Test func theModReadsNoFilesOnlyChecksTheyExist() throws {
+        #expect(try Self.offenders(/\$\.fs\.(?!exists\()/, allowed: []) == [])
+        #expect(try Self.offenders(/\$\.fs\./, allowed: ["guard.ts"]) == [])
+    }
+}

@@ -138,6 +138,15 @@ import XcrewTestSupport
         #expect(run.output.allSatisfy { $0.hasPrefix("FAIL  ") || $0.hasPrefix("warn  ") })
         #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
     }
+
+    @Test func problemsAsJSONGiveEachChecksStatusIdAndMessage() async throws {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let run = await Run("doctor", "--problems", "--json", context: .fake(project: project))
+        let lines = try JSONDecoder().decode([[String: String]].self, from: Data(run.text.utf8))
+        #expect(!lines.isEmpty)
+        #expect(lines.allSatisfy { $0["status"] == "fail" || $0["status"] == "warn" })
+        #expect(lines.contains { $0["id"] == "mobilebuildmcp/version" && $0["status"] == "fail" && $0["message"]?.isEmpty == false })
+    }
 }
 
 @Suite struct HookCommandTests {
@@ -209,5 +218,37 @@ import XcrewTestSupport
     @Test func withAnAppSchemeItDoesNot() async {
         let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: .temporary(containing: ["App.xcworkspace"])))
         #expect(!run.text.contains("/xcrew:setup adds"))
+    }
+}
+
+@Suite struct ReportCommandTests {
+    @Test func aFailedBuildIsReportedAsJSONTheModReads() async throws {
+        let text = "🔨 Build\n\nErrors (1):\n\n  ✗ cannot find 'total' in scope\n    /work/App/CheckoutView.swift:12\n\n❌ Build failed. (⏱️ 3.2s)"
+        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "build", "--error", stdin: text)
+        #expect(run.status == 0)
+        let report = try JSONDecoder().decode(Report.self, from: Data(run.text.utf8))
+        #expect(report.ok == false)
+        #expect(report.detail == "CheckoutView.swift:12 cannot find 'total' in scope")
+        #expect(report.durationMs == 3_200)
+        #expect(report.failures.map(\.title) == ["CheckoutView.swift:12"])
+    }
+
+    @Test func itNeedsAServerAndAKind() async {
+        #expect(await Run("report", "--kind", "build").status == 64)
+        #expect(await Run("report", "--server", "xcode", "--kind", "deploy").status == 64)
+    }
+}
+
+@Suite struct PhaseCommandTests {
+    @Test func aRunsPhaseComesFromTheLogItWasGiven() async throws {
+        let project = Project.temporary()
+        project.write("SwiftCompile normal arm64 /w/A.swift (in target 'Payments' from project 'App')\n", to: "test_sim_1.log")
+        let log = project.root.appending(path: "test_sim_1.log").path
+        let run = await Run("phase", "--tool", "test_sim", "--since", "0", "--log", log)
+        #expect(run.text == #"{"log":"\#(log)","phase":"compiling Payments"}"#)
+    }
+
+    @Test func beforeTheLogAppearsThereIsNeitherLogNorPhase() async {
+        #expect(await Run("phase", "--tool", "test_sim", "--since", "0").text == "{}")
     }
 }

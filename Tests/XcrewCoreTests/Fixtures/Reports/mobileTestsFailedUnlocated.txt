@@ -1,0 +1,16 @@
+🧪 Test
+
+Test Failures (1):
+
+  ✗ FormatterTests / test_symbol(): failed - deliberate failure
+
+Test Results:
+  ✅ FormatterTests/test_euro() (0.001s)
+  ❌ FormatterTests/test_symbol() (4.774s)
+
+❌ 1 test failed, 1 passed, 0 skipped (⏱️ 38.6s)
+  └ Files:
+     └── ~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/
+         ├── logs/test_sim_1.log — Build Logs
+         ├── result-bundles/test_sim_1.xcresult — Result Bundle
+         └── test-products/test_sim_1.xctestproducts — Test Products

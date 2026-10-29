@@ -2,10 +2,8 @@ import type { EngineInterface, On } from 'claude-code'
 import { average, comparison, gauge, remaining, stopwatch } from './format'
 import { endRun, setMeasuredFrom, setPhase, startRun } from './band'
 import { describe, observe, scopeOf } from './context'
+import { phase as readRunPhase, report } from './cli'
 import { recordRun } from './failures'
-import { expectedFailuresNote, locateFailures } from './locations'
-import { phaseOf, findRunLog } from './progress'
-import { cleanBuildText, compactTestResult, compactTestText, reportedDuration, summarize, testTotal } from './results'
 import { kindOf, parseTool } from './tools'
 
 /** How many earlier runs of each tool the average covers. */
@@ -19,19 +17,6 @@ const logsKey = (tool: string) => `logs.${tool}`
 const PREPARING = 'preparing'
 /** Runs at least this long also send a notification. */
 const LONG_RUN_MS = 60_000
-
-const NO_TESTS_NOTE =
-  'xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names.'
-
-/** Claude Code's notice for a result over its size limit, naming the file that holds the whole text. */
-const SAVED_RESULT = /Output has been saved to (\/\S+\/tool-results\/\S+?)\.\s/
-
-/** The text to judge a result by: a result Claude Code saved to a file is read back from it. */
-async function fullText($: EngineInterface, text: string): Promise<string> {
-  const saved = SAVED_RESULT.exec(text)?.[1]
-  if (!saved) return text
-  return (await quietly(() => $.fs.read(saved))) ?? text
-}
 
 /** Bookkeeping is best-effort: a clock, store or display failure must never fail a build. */
 async function quietly<T>(work: () => Promise<T> | T): Promise<T | undefined> {
@@ -58,13 +43,14 @@ export function registerTiming(on: On): void {
   on('tool.call', async ($, e, next) => {
     const parsed = parseTool(e.tool)
     if (!parsed) return next(e)
-    if (!kindOf(parsed)) {
+    const name = parsed.tool
+    const kind = kindOf(parsed)
+    if (!kind) {
       // Not timed, but its answer may say what the next build will use.
       const result = await next(e)
       observe(parsed, result.text ?? '')
       return result
     }
-    const name = parsed.tool
     const target = describe(parsed, e as unknown as Record<string, unknown>)
     const label = target ? `${name} · ${target}` : `${name} running`
     const scope = scopeOf(parsed, e as unknown as Record<string, unknown>)
@@ -89,18 +75,18 @@ export function registerTiming(on: On): void {
     if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }) }))
     let phase: string | undefined
     const readPhase = async (since: number) => {
-      if (logPath === undefined) {
-        logPath = await quietly(() => findRunLog($, name, since))
-        if (logPath !== undefined && !writesLog) await quietly(() => $.store.set(logsKey(name), true))
-        if (logPath !== undefined && measuredFrom === undefined) {
+      const found = (await quietly(() => readRunPhase($, name, since, expectedTests, logPath))) ?? {}
+      if (logPath === undefined && found.log !== undefined) {
+        logPath = found.log
+        if (!writesLog) await quietly(() => $.store.set(logsKey(name), true))
+        if (measuredFrom === undefined) {
           measuredFrom = await quietly(() => $.clock.now())
           const from = measuredFrom
           if (usesBand && from !== undefined) await quietly(() => setMeasuredFrom($, from))
         }
       }
-      const log = logPath === undefined ? undefined : await quietly(() => $.fs.read(logPath as string))
       // Before its log appears xcodebuild hasn't started: a pre-build hook, a permission prompt or the server's own preparation.
-      const now = typeof log === 'string' ? phaseOf(log, expectedTests) : writesLog && logPath === undefined ? PREPARING : undefined
+      const now = found.phase ?? (writesLog && logPath === undefined ? PREPARING : undefined)
       if (now === undefined || now === phase) return
       phase = now
       if (usesBand) await quietly(() => setPhase($, now))
@@ -121,17 +107,14 @@ export function registerTiming(on: On): void {
     const ended = await quietly(() => $.clock.now())
     if (started === undefined || ended === undefined) return result
 
-    const read = result.deny !== undefined ? '' : await fullText($, result.text ?? '')
-    // A failing MobileBuildMCP test run gets each failure's file and line from its result bundle.
-    const located = followsLog && kindOf(parsed) === 'test' && read.startsWith('🧪') ? await quietly(() => locateFailures($, read)) : undefined
-    const text = located ?? (followsLog ? cleanBuildText(read) : undefined) ?? read
+    // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
+    const reported = result.deny === undefined ? await quietly(() => report($, parsed.server, kind, result.text ?? '', result.isError === true)) : undefined
+    const outcome = reported ?? { ok: result.deny === undefined && result.isError !== true, failures: [], notes: [] }
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
-    const elapsed = reportedDuration(text) ?? ended - started
+    const elapsed = outcome.durationMs ?? ended - started
     await quietly(() => $.store.set(historyKey(history), [...earlier, elapsed].slice(-HISTORY)))
-    const outcome = result.deny !== undefined ? { ok: false } : summarize(name, { isError: result.isError === true, text })
-    if (result.deny === undefined) await quietly(() => recordRun($, history, outcome.ok, text))
-    const total = testTotal(text)
-    if (total !== undefined) await quietly(() => $.store.set(testsKey(history), total))
+    if (result.deny === undefined) await quietly(() => recordRun($, history, outcome.ok, outcome.failures))
+    if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(history), outcome.tests))
     const compared = comparison(elapsed, earlier)
     const detail = outcome.detail ? ` · ${outcome.detail}` : ''
     const summary = `${outcome.ok ? '✓' : '✗'} ${name} · ${stopwatch(elapsed)}${compared ? ` ${compared}` : ''}${detail}`
@@ -143,18 +126,10 @@ export function registerTiming(on: On): void {
     }
     // Long enough that the person has likely looked away; their notification settings decide how it arrives.
     if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summary))
-    // Claude Code saved a result too large to show and handed on a notice to read it with jq. A test
-    // result is that large because of its per-test list; Claude gets the rest, and the file stays.
     if (result.deny !== undefined) return result
-    const saved = SAVED_RESULT.exec(result.text ?? '')?.[1]
-    const compact = (saved ? compactTestResult(text, saved) : compactTestText(text)) ?? (text !== read ? text : undefined)
-    const isTestRun = kindOf(parsed) === 'test'
-    const notes = isTestRun && testTotal(text) === 0 ? [NO_TESTS_NOTE] : []
-    const expected = followsLog && isTestRun ? await quietly(() => expectedFailuresNote($, read)) : undefined
-    if (expected) notes.push(expected)
-    const context = notes.length > 0 ? { context: [...(result.context ?? []), ...notes] } : {}
+    const context = outcome.notes.length > 0 ? { context: [...(result.context ?? []), ...outcome.notes] } : {}
     // Its own `result`, without core's `ref`: with `ref` kept, core shows the model its own messages.
-    if (compact) return result.isError ? { result: compact, isError: true, ...context } : { result: compact, ...context }
+    if (outcome.result !== undefined) return result.isError ? { result: outcome.result, isError: true, ...context } : { result: outcome.result, ...context }
     return { ...result, ...context }
   })
 }

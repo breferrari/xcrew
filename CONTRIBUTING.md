@@ -35,6 +35,7 @@ scripts/typecheck.sh      # the mod's types; needs that session once
 - **A pull request carries its release note.** The template's last section is one line for someone who has never opened this repository, saying what changed for them, or `none` for internal work. The same line goes under `## Unreleased` in `CHANGELOG.md`.
 - **A Markdown-only pull request skips the test jobs.** They report as skipped, which satisfies the required checks. `CHANGELOG.md`, skills and the session briefing (`context/`) count as code, since the tests read them.
 - **Numbers or it didn't happen.** A test plan says what ran and how it went, with counts and timings; a single green run of something flaky isn't evidence.
+- **Logic goes in Swift, not in the mod.** The mod hooks, draws and keeps state; anything that parses what the servers print as text, reads a file or runs a program is a Swift command the mod calls. [docs/architecture.md](docs/architecture.md) (*The mod's boundary*) has the line, and `ModBoundaryTests` holds it.
 - **Don't hard-wrap prose.** One paragraph is one line in markdown, PR bodies and commit bodies, because GitHub renders a single newline as a line break.
 
 [docs/architecture.md](docs/architecture.md) shows where things live and how to add a check, a command, a setup question or a mod behaviour.

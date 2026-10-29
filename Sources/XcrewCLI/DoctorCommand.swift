@@ -3,12 +3,19 @@ import Foundation
 import XcrewCore
 
 struct DoctorCommand: Command {
+    struct JSONLine: Codable, Equatable {
+        let status: String
+        let id: String
+        let message: String
+    }
+
     let name = "doctor"
     let valuedOptions: Set<String> = ["check"]
     let usage = [
         "doctor [--check ID]   run the health checks (exit: 0 ok, 1 failed, 2 warned, 3 skipped)",
         "doctor --list         list the check ids",
         "doctor --problems     only what failed or warned, and nothing outside an Apple-platform project (exit 0)",
+        "doctor --json         the same, as JSON: each check's status, id and message (the mod reads it)",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -29,6 +36,11 @@ struct DoctorCommand: Command {
         let checks = Doctor.checks.filter { !onlyProblems || !$0.reachesNetwork }
         let entries = await Doctor.run(checks, in: invocation.context)
             .filter { !onlyProblems || $0.result.status == .fail || $0.result.status == .warn }
+        if invocation.arguments.has("json") {
+            let lines = entries.map { JSONLine(status: $0.result.status.tag.lowercased(), id: $0.check.id, message: $0.result.message) }
+            invocation.print(String(decoding: try JSONEncoder.sorted.encode(lines), as: UTF8.self))
+            return onlyProblems ? 0 : Doctor.worst(entries).rawValue
+        }
         let width = entries.map(\.check.id.count).max() ?? 0
         for entry in entries {
             let tag = entry.result.status.tag.padding(toLength: 4, withPad: " ", startingAt: 0)

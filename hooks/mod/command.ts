@@ -2,6 +2,7 @@ import type { EngineInterface, On } from 'claude-code'
 import { average, stopwatch } from './format'
 import { DURATIONS_PREFIX, HISTORY } from './timing'
 import { closeFailures, openFailures } from './failures'
+import { text } from './cli'
 
 const USAGE = [
   '/xcrew doctor   check this Mac and project, with the fix for anything wrong',
@@ -20,13 +21,7 @@ export function registerCommand(on: On): void {
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
     const cli = CLI_SUBCOMMANDS[subcommand]
-    if (cli) {
-      const output = await $.process.run([`${$.plugin.root}/bin/xcrew`, cli], { timeoutMs: 120_000 }).then(
-        ran => `${ran.stdout}${ran.stderr}`.trimEnd(),
-        error => `xcrew ${cli} couldn't run: ${error instanceof Error ? error.message : String(error)}`,
-      )
-      return { text: output }
-    }
+    if (cli) return { text: await text($, [cli]) }
     if (subcommand === 'history') return { text: await history($) }
     if (subcommand === 'failures') return { text: await openFailures($) }
     if (subcommand === 'close') return { text: await closeFailures($) }

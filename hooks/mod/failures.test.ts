@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import * as captured from './fixtures'
-import { callTool, runCommand } from './testing'
+import type { Report } from './cli'
+import { callTool, runCommand, stubCli } from './testing'
 
 const PANE = {
   plugin: 'xcrew',
@@ -10,8 +10,21 @@ const PANE = {
   props: { title: 'Failures', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
 } as const
 
-/** Stands for the engine: answers each call with the next captured result, and records the panes opened. */
-function engine(on: On, answers: { isError: boolean; text: string }[]) {
+const XCODE_TESTS_FAILED: Partial<Report> = {
+  ok: false,
+  detail: '3 of 5 failed · MacroProbeTests/testMacro()',
+  failures: [
+    { title: 'MacroProbeTests/testMacro()', message: 'Issue recorded: Macro expansion did not produce the expected expanded source', where: 'MacroProbeTests.swift:19' },
+    { title: 'MacroProbeTests/testMacroWithStringLiteral()', message: 'Issue recorded: Macro expansion did not produce the expected expanded source', where: 'MacroProbeTests.swift:35' },
+    { title: 'PlainTests/testConcatenation()', message: 'XCTAssertEqual failed: ("ab") is not equal to ("ba") - strings join left to right', where: 'PlainTests.swift:5' },
+  ],
+}
+const BUILD_FAILED: Partial<Report> = { ok: false, failures: [{ title: 'MacroProbe.swift:13', message: "cannot convert value of type 'String' to specified type 'Int'" }] }
+const TESTS_FAILED: Partial<Report> = { ok: false, failures: [{ title: 'PlainTests/testConcatenation', message: 'XCTAssertEqual failed', where: 'PlainTests.swift:5' }] }
+const PASSED: Partial<Report> = { ok: true, detail: '5 passed' }
+
+/** Stands for the engine and the CLI: each call's report is the next of `reports`; records the panes opened. */
+function engine(on: On, reports: Partial<Report>[]) {
   const opened: string[] = []
   const closed: string[] = []
   mock.clock(on)
@@ -28,15 +41,13 @@ function engine(on: On, answers: { isError: boolean; text: string }[]) {
     closed.push(e.id)
     return { value: undefined }
   })
-  on('tool.call', () => {
-    const next = answers.shift()!
-    return { result: {}, text: next.text, ...(next.isError ? { isError: true } : {}) }
-  })
+  stubCli(on, { reports })
+  on('tool.call', () => ({ result: {}, text: 'the server\'s result' }))
   return { opened, closed }
 }
 
 test('/xcrew failures opens a pane listing every failure of the last failing run', async ($, on) => {
-  const seen = engine(on, [captured.xcodeTestsFailed])
+  const seen = engine(on, [XCODE_TESTS_FAILED])
   await callTool($, 'mcp__xcode__RunAllTests')
 
   const ran = await runCommand($, 'xcrew', 'failures')
@@ -51,7 +62,7 @@ test('/xcrew failures opens a pane listing every failure of the last failing run
 })
 
 test('a passing run of the same tool clears the list', async ($, on) => {
-  engine(on, [captured.xcodeTestsFailed, captured.xcodeTestsPassed])
+  engine(on, [XCODE_TESTS_FAILED, PASSED])
   await callTool($, 'mcp__xcode__RunAllTests')
   await callTool($, 'mcp__xcode__RunAllTests')
 
@@ -64,7 +75,7 @@ test('a passing run of the same tool clears the list', async ($, on) => {
 })
 
 test('another tool passing leaves the list from the one that failed', async ($, on) => {
-  engine(on, [captured.mobileBuildFailed, captured.xcodeTestsPassed])
+  engine(on, [BUILD_FAILED, PASSED])
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
   await callTool($, 'mcp__xcode__RunAllTests')
 
@@ -74,7 +85,7 @@ test('another tool passing leaves the list from the one that failed', async ($, 
 })
 
 test('a passing run on another scheme leaves the failures it never re-ran', async ($, on) => {
-  engine(on, [captured.mobileTestsFailed, captured.mobileTestsPassed])
+  engine(on, [TESTS_FAILED, PASSED])
   await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'Payments' })
   await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'Profile' })
 
@@ -84,7 +95,7 @@ test('a passing run on another scheme leaves the failures it never re-ran', asyn
 })
 
 test('once the failing run passes, the pane closes: it has nothing left to show', async ($, on) => {
-  const seen = engine(on, [captured.mobileTestsFailed, captured.mobileTestsPassed])
+  const seen = engine(on, [TESTS_FAILED, PASSED])
   await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'Payments' })
   await runCommand($, 'xcrew', 'failures')
   await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'Payments' })
@@ -93,7 +104,7 @@ test('once the failing run passes, the pane closes: it has nothing left to show'
 })
 
 test('/xcrew close closes the pane from the prompt, where its mark can\'t be clicked', async ($, on) => {
-  const seen = engine(on, [captured.mobileTestsFailed])
+  const seen = engine(on, [TESTS_FAILED])
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
   await runCommand($, 'xcrew', 'failures')
 

@@ -29,6 +29,7 @@ let package = Package(
         .testTarget(
             name: "XcrewCoreTests",
             dependencies: ["XcrewCore", "XcrewTestSupport"],
+            resources: [.copy("Fixtures")],
             swiftSettings: swiftSettings
         ),
         .testTarget(name: "ShimTests", swiftSettings: swiftSettings),

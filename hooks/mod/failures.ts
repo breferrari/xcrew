@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 import type { FailureList } from '../../types'
-import { failuresOf } from './results'
+import type { Failure } from './cli'
 
 export const FAILURES_PANE = 'xcrew-failures'
 const NONE = 'No failures in the last runs.'
@@ -13,7 +13,7 @@ const failuresState = atom({ plugin: 'xcrew', key: 'failures' } as const, null a
  * test selection (`test_sim · App › AppTests`): only a passing run of that same scope clears them,
  * since another scheme's or selection's pass never re-ran them. Clearing closes the pane.
  */
-export async function recordRun($: EngineInterface, run: string, ok: boolean, text: string): Promise<void> {
+export async function recordRun($: EngineInterface, run: string, ok: boolean, items: Failure[]): Promise<void> {
   if (ok) {
     const list = await read($, failuresState)
     if (list?.tool !== run) return
@@ -21,7 +21,6 @@ export async function recordRun($: EngineInterface, run: string, ok: boolean, te
     await $.ui.close({ id: FAILURES_PANE })
     return
   }
-  const items = failuresOf(text)
   if (items.length > 0) await update($, failuresState, () => ({ tool: run, items }))
 }
 

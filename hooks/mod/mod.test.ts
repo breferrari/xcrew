@@ -1,15 +1,15 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { callTool } from './testing'
+import { callTool, stubCli, type CliCall } from './testing'
 
 const MALFORMED =
   "External macro implementation type 'MockableMacros.MockableMacro' could not be found; plugin for module 'MockableMacros' produced malformed response"
 
-type Seen = { toasts: string[]; statuses: (string | undefined)[]; runs: (readonly string[])[] }
+type Seen = { toasts: string[]; statuses: (string | undefined)[]; cli: CliCall[] }
 
-/** Records what the mod shows and runs; `processOutput` is what any process it runs prints. */
-function watch(on: On, processOutput = '', stored: Record<string, unknown> = {}): Seen {
-  const seen: Seen = { toasts: [], statuses: [], runs: [] }
+/** Records what the mod shows and asks the CLI; `cli` is how the stand-in CLI answers. */
+function watch(on: On, stored: Record<string, unknown> = {}, cli: Parameters<typeof stubCli>[1] = {}): Seen {
+  const seen: Seen = { toasts: [], statuses: [], cli: stubCli(on, cli) }
   mock.store(on, stored)
   on('ui.toast', (_, e) => {
     seen.toasts.push(e.text)
@@ -18,12 +18,6 @@ function watch(on: On, processOutput = '', stored: Record<string, unknown> = {})
   on('ui.status', (_, e) => {
     seen.statuses.push(e.text)
     return { value: undefined }
-  })
-  on('process.run', (_, e) => {
-    seen.runs.push(e.argv)
-    return {
-      value: { exitCode: 0, stdout: processOutput, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
-    }
   })
   return seen
 }
@@ -78,11 +72,21 @@ test('other Xcode file tools pass', async ($, on) => {
   expect(ran.isError).toBeUndefined()
 })
 
-// MARK: Build failures
+// MARK: Handing the result to the CLI
 
-test('a build failing on a killed macro plugin reaches Claude as the server reported it, with nothing run or retried', async ($, on) => {
+test('a finished run hands the server\'s text to the CLI, saying which server and kind of run', async ($, on) => {
   mock.clock(on)
   const seen = watch(on)
+  on('tool.call', () => ({ result: {}, isError: true, text: MALFORMED }))
+
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect(seen.cli).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED }])
+})
+
+test('a build failing on a killed macro plugin reaches Claude as the server reported it, with nothing retried', async ($, on) => {
+  mock.clock(on)
+  watch(on, {}, { reports: [{ ok: false }] })
   let calls = 0
   on('tool.call', () => {
     calls += 1
@@ -93,7 +97,52 @@ test('a build failing on a killed macro plugin reaches Claude as the server repo
 
   expect(calls).toBe(1)
   expect(ran.text).toBe(MALFORMED)
-  expect(seen.runs).toHaveLength(0)
+})
+
+test('when the CLI has a shorter result, Claude reads that one, still marked as an error', async ($, on) => {
+  mock.clock(on)
+  watch(on, {}, { reports: [{ ok: false, detail: '1 of 41 failed', result: 'the short version', notes: ['a note'] }] })
+  on('tool.call', () => ({ result: {}, isError: true, text: 'the long version' }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  // Core uses its own messages for the call while `ref` is kept, so the mod answers with its own `result`.
+  expect(ran.ref).toBeUndefined()
+  expect(ran.result).toBe('the short version')
+  expect(ran.isError).toBe(true)
+  expect(ran.context).toEqual(['a note'])
+})
+
+test('the CLI\'s notes reach Claude beside a result it left alone', async ($, on) => {
+  mock.clock(on)
+  const seen = watch(on, {}, { reports: [{ ok: false, detail: 'no tests ran', notes: ['xcrew: this test run ran no tests'] }] })
+  on('tool.call', () => ({ result: {}, text: 'SUCCEEDED' }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:Nope'] })
+
+  expect(ran.text).toBe('SUCCEEDED')
+  expect(ran.context).toEqual(['xcrew: this test run ran no tests'])
+  expect(seen.toasts).toEqual(['✗ test_sim · 0:00 · no tests ran'])
+})
+
+test('without the CLI, the outcome is whether the server reported an error', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const toasts: string[] = []
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('ui.status', () => ({ value: undefined }))
+  on('process.run', () => {
+    throw new Error('xcrew not built')
+  })
+  on('tool.call', () => ({ result: {}, isError: true, text: 'failed' }))
+
+  const ran = await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(toasts).toEqual(['✗ build_sim · 0:00'])
+  expect(ran.text).toBe('failed')
 })
 
 // MARK: Build and test timing
@@ -140,7 +189,7 @@ test('later runs compare with the average of earlier ones', async ($, on) => {
 
 test('a run far slower than usual says how much slower', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, '', { 'durations.build_sim': [11_000, 11_000, 11_000, 11_000, 11_000] })
+  const seen = watch(on, { 'durations.build_sim': [11_000, 11_000, 11_000, 11_000, 11_000] })
   on('tool.call', async () => {
     await clock.advance(22_000)
     return { result: {}, text: 'ok' }
@@ -153,7 +202,7 @@ test('a run far slower than usual says how much slower', async ($, on) => {
 
 test('slowness is only called out once there are five earlier runs to judge by', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, '', { 'durations.BuildProject': [10_000, 10_000, 10_000, 10_000] })
+  const seen = watch(on, { 'durations.BuildProject': [10_000, 10_000, 10_000, 10_000] })
   on('tool.call', async () => {
     await clock.advance(30_000)
     return { result: {}, text: 'ok' }
@@ -164,104 +213,12 @@ test('slowness is only called out once there are five earlier runs to judge by',
   expect(seen.toasts).toEqual(['✓ BuildProject · 0:30 (avg 0:10)'])
 })
 
-/** What Claude Code hands on in place of a result over its size limit; the full text is in the file it names. */
-const SAVED = '/Users/dev/.claude/projects/-Users-dev-App/0000/tool-results/mcp-plugin_xcrew_MobileBuildMCP-test_sim-1.txt'
-const TOO_LARGE = `Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to ${SAVED}.
-Format: JSON with schema: {schema: string, schemaVersion: string, didError: boolean, error: null, data: {summary: {...}}}
-Use jq to make structured queries (find a value, filter by field).`
-
-test('a result too large for the transcript is read from the file Claude Code saved it to', async ($, on) => {
-  mock.clock(on)
-  const seen = watch(on)
-  const reads: string[] = []
-  on('fs.read', (_, e) => {
-    reads.push(e.path)
-    return { value: captured.mobileTestsPassed.text }
-  })
-  on('tool.call', () => ({ result: {}, text: TOO_LARGE }))
-
-  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
-
-  expect(reads).toEqual([SAVED])
-  expect(seen.toasts).toEqual(['✓ test_sim · 0:15 · 3 passed'])
-})
-
-test('a test result too large to show reaches Claude as its summary, with the full list a file read away', async ($, on) => {
-  mock.clock(on)
-  watch(on)
-  on('fs.read', () => ({ value: captured.mobileTestsPassed.text }))
-  on('tool.call', () => ({ result: {}, text: TOO_LARGE }))
-
-  const ran = await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
-
-  // Core uses its own messages for the call while `ref` is kept, so the mod answers with its own `result`.
-  expect(ran.ref).toBeUndefined()
-  expect(typeof ran.result).toBe('string')
-  const shown = JSON.parse(ran.result as string)
-  expect(shown.data.summary).toEqual({ status: 'SUCCEEDED', durationMs: 14544, counts: { passed: 3, failed: 0, skipped: 0 }, target: 'simulator' })
-  expect(shown.data.diagnostics).toEqual({ warnings: [], errors: [], testFailures: [] })
-  expect(shown.data.testCases).toBe(`per-test list left out to keep this result short; the counts above are complete, and the full result is in ${SAVED}`)
-})
-
-test('a large result that cannot be summarised is handed on as Claude Code saved it', async ($, on) => {
-  mock.clock(on)
-  watch(on)
-  on('fs.read', () => ({ value: 'not json' }))
-  on('tool.call', () => ({ result: {}, text: TOO_LARGE }))
-
-  const ran = await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
-
-  expect(ran.text).toBe(TOO_LARGE)
-})
-
-test('a failing run reaches Claude with its failures and summary, not every passing test', async ($, on) => {
-  mock.clock(on)
-  watch(on)
-  const passing = Array.from({ length: 40 }, (_, index) => `  ✅ FormatterTests/test_case${index}() (0.001s)`).join('\n')
-  const text = `🧪 Test\n\nTest Failures (1):\n\n  ✗ FormatterTests / test_symbol(): failed - boom\n\nTest Results:\n${passing}\n  ❌ FormatterTests/test_symbol() (0.010s)\n\n❌ 1 test failed, 40 passed, 0 skipped (⏱️ 65.0s)`
-  on('tool.call', () => ({ result: {}, text, isError: true }))
-
-  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim')
-
-  expect(ran.ref).toBeUndefined()
-  expect(ran.isError).toBe(true)
-  expect(ran.result).toContain('  (40 passing tests left out; failing tests are listed in full above)')
-  expect(ran.result).toContain('✗ FormatterTests / test_symbol(): failed - boom')
-  expect(ran.result).not.toContain('✅')
-})
-
-test('a test run that ran no tests tells Claude the filter probably matched nothing', async ($, on) => {
-  mock.clock(on)
-  const seen = watch(on)
-  on('tool.call', () => ({ result: {}, text: captured.mobileTestsNoneRan.text }))
-
-  const ran = await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:Nope'] })
-
-  expect(seen.toasts).toEqual(['✗ test_sim · 0:09 · no tests ran'])
-  expect(ran.context).toEqual([
-    'xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names.',
-  ])
-})
-
-test('a saved result that cannot be read leaves the outcome without its detail', async ($, on) => {
-  mock.clock(on)
-  const seen = watch(on)
-  on('fs.read', () => {
-    throw new Error('ENOENT')
-  })
-  on('tool.call', () => ({ result: {}, text: TOO_LARGE }))
-
-  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
-
-  expect(seen.toasts).toEqual(['✓ test_sim · 0:00'])
-})
-
 test('a run is timed by what the server reports, so a pre-build hook or a permission prompt is left out', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on)
+  const seen = watch(on, {}, { reports: [{ ok: true, detail: '3 passed', durationMs: 15_000 }] })
   on('tool.call', async () => {
     await clock.advance(40_000)
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: 'ok' }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
@@ -272,82 +229,45 @@ test('a run is timed by what the server reports, so a pre-build hook or a permis
 
 // MARK: Live phase
 
-const WORKSPACES = '/Users/dev/Library/Developer/MobileBuildMCP/workspaces'
-const TEST_LOG = `SwiftCompile normal arm64 /work/App/Sources/Utility/Formatter.swift (in target 'Utility' from project 'Foundation')
-Testing started
-Test case 'FormatterTests.test_euro()' passed on 'Clone 1 of iPhone 12 - xctest (1)' (0.004 seconds)
-Test case 'FormatterTests.test_pound()' passed on 'Clone 1 of iPhone 12 - xctest (1)' (0.002 seconds)
-`
+const LOG = '/Users/dev/Library/Developer/MobileBuildMCP/workspaces/App-0000/logs/test_sim_1.log'
 
-/** MobileBuildMCP's workspace folders and logs, as the mod finds them under the person's home. */
-function logsOnDisk(on: On, clock: { now: () => number }) {
-  const listed: string[] = []
-  const disk = { hasLogs: true }
-  mock.env(on, { HOME: '/Users/dev' })
-  on('session.root', () => ({ value: '/work/App' }))
-  on('fs.list', (_, e) => {
-    listed.push(e.path ?? '')
-    if (e.path === WORKSPACES) {
-      return { value: [{ name: 'App-0000', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }, { name: 'Other-1111', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }] }
-    }
-    if (e.path === `${WORKSPACES}/App-0000/logs` && disk.hasLogs) {
-      return {
-        value: [
-          { name: 'test_sim_2026-10-28T19-10-02Z_pid1_aaaa.log', kind: 'file', size: 1, mtimeMs: clock.now(), isLink: false },
-          { name: 'test_sim_parser-debug_2026-10-28T19-10-47Z_pid1_bbbb.log', kind: 'file', size: 1, mtimeMs: clock.now(), isLink: false },
-          { name: 'test_sim_2026-10-27T10-00-00Z_pid9_cccc.log', kind: 'file', size: 1, mtimeMs: clock.now() - 86_400_000, isLink: false },
-        ],
-      }
-    }
-    return { value: [] }
-  })
-  const reads: string[] = []
-  on('fs.read', (_, e) => {
-    reads.push(e.path)
-    return { value: TEST_LOG }
-  })
-  return { listed, reads, disk }
-}
-
-test('while a MobileBuildMCP run goes, the status line says what it is doing, from that run\'s log', async ($, on) => {
+test('while a MobileBuildMCP run goes, the status line says what the CLI reads from its log', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, '', { 'tests.test_sim': 959 })
-  const disk = logsOnDisk(on, clock)
+  const seen = watch(on, { 'tests.test_sim': 959 }, { phase: () => ({ log: LOG, phase: 'testing 2 of 959' }) })
   on('tool.call', async () => {
     await clock.advance(3_000)
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: 'ok' }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
   expect(seen.statuses).toContain('test_sim running · 0:03 · testing 2 of 959')
-  expect(disk.reads.every(path => path === `${WORKSPACES}/App-0000/logs/test_sim_2026-10-28T19-10-02Z_pid1_aaaa.log`)).toBe(true)
+  const asked = seen.cli.filter(call => call.args[0] === 'phase').map(call => call.args)
+  expect(asked[0]).toEqual(['phase', '--tool', 'test_sim', '--since', '0', '--expected', '959'])
+  // Once found, the log is passed back, which saves the CLI looking again.
+  expect(asked.at(-1)).toEqual(['phase', '--tool', 'test_sim', '--since', '0', '--expected', '959', '--log', LOG])
 })
 
 test('a test run remembers how many tests it ran, for the next run\'s count', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on)
-  logsOnDisk(on, clock)
+  const seen = watch(on, {}, { reports: [{ ok: true, tests: 3 }], phase: () => ({ log: LOG }) })
   on('tool.call', async () => {
     await clock.advance(2_000)
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: 'ok' }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
-  expect(seen.statuses.some(status => status?.startsWith('test_sim running · 0:02 ') && status.endsWith(' · testing 2 of 3'))).toBe(true)
+  expect(seen.cli.filter(call => call.args[0] === 'phase').at(-1)?.args).toContain('3')
 })
 
 test('a tool that has written a log before says it is preparing until this run\'s log appears', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, '', { 'logs.test_sim': true })
-  mock.env(on, { HOME: '/Users/dev' })
-  on('session.root', () => ({ value: '/work/App' }))
-  on('fs.list', () => ({ value: [] }))
+  const seen = watch(on, { 'logs.test_sim': true })
   on('tool.call', async () => {
     await clock.advance(3_000)
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: 'ok' }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
@@ -358,9 +278,6 @@ test('a tool that has written a log before says it is preparing until this run\'
 test('a tool that never writes a log, like clean, shows just its time', async ($, on) => {
   const clock = mock.clock(on)
   const seen = watch(on)
-  mock.env(on, { HOME: '/Users/dev' })
-  on('session.root', () => ({ value: '/work/App' }))
-  on('fs.list', () => ({ value: [] }))
   on('tool.call', async () => {
     await clock.advance(3_000)
     return { result: {}, text: 'cleaned' }
@@ -374,40 +291,36 @@ test('a tool that never writes a log, like clean, shows just its time', async ($
 
 test('finding a run\'s log teaches the mod that the tool writes one', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on)
-  const { disk } = logsOnDisk(on, clock)
-  let run = 0
+  const disk = { hasLog: true }
+  const seen = watch(on, {}, { phase: () => (disk.hasLog ? { log: LOG } : {}) })
   on('tool.call', async () => {
-    run += 1
     await clock.advance(2_000)
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: 'ok' }
   })
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
-  disk.hasLogs = false
+  disk.hasLog = false
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
-  expect(run).toBe(2)
-  expect(seen.statuses.some(status => status?.startsWith('test_sim running · 0:02 ') && status.endsWith(' · preparing'))).toBe(true)
+  expect(seen.statuses.some(status => status?.startsWith('test_sim running · 0:02') && status.endsWith(' · preparing'))).toBe(true)
 })
 
-test('Xcode MCP runs leave the log alone: that server writes none the mod can follow', async ($, on) => {
+test('Xcode MCP runs ask for no phase: that server writes no log to follow', async ($, on) => {
   const clock = mock.clock(on)
-  watch(on)
-  const disk = logsOnDisk(on, clock)
+  const seen = watch(on)
   on('tool.call', async () => {
     await clock.advance(3_000)
-    return { result: {}, text: captured.xcodeBuildPassed.text }
+    return { result: {}, text: 'ok' }
   })
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(disk.listed).toEqual([])
+  expect(seen.cli.map(call => call.args[0])).toEqual(['report'])
 })
 
 test('where no band draws, the status line carries the gauge against the usual time', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, '', { 'durations.BuildProject': [36_000] })
+  const seen = watch(on, { 'durations.BuildProject': [36_000] })
   on('tool.call', async () => {
     await clock.advance(21_000)
     return { result: {}, text: 'ok' }
@@ -420,7 +333,7 @@ test('where no band draws, the status line carries the gauge against the usual t
 
 test('the usual time is kept per scheme, so a small module is not measured against the whole app', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, '', { 'durations.build_sim · Small': [10_000], 'durations.build_sim · Big': [600_000] })
+  const seen = watch(on, { 'durations.build_sim · Small': [10_000], 'durations.build_sim · Big': [600_000] })
   on('tool.call', async () => {
     await clock.advance(5_000)
     return { result: {}, text: 'ok' }
@@ -433,7 +346,7 @@ test('the usual time is kept per scheme, so a small module is not measured again
 
 test('a test run is also kept apart by the tests it selects', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, '', { 'durations.test_sim · App › SmallTests': [10_000], 'durations.test_sim · App': [600_000] })
+  const seen = watch(on, { 'durations.test_sim · App › SmallTests': [10_000], 'durations.test_sim · App': [600_000] })
   on('tool.call', async () => {
     await clock.advance(5_000)
     return { result: {}, text: 'ok' }
@@ -446,12 +359,11 @@ test('a test run is also kept apart by the tests it selects', async ($, on) => {
 
 test('a MobileBuildMCP run is measured from when its log appears, so a pre-build hook is not counted against its usual time', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, '', { 'durations.test_sim': [36_000], 'logs.test_sim': true })
-  const { disk } = logsOnDisk(on, clock)
-  disk.hasLogs = false
+  const disk = { hasLog: false }
+  const seen = watch(on, { 'durations.test_sim': [36_000], 'logs.test_sim': true }, { phase: () => (disk.hasLog ? { log: LOG, phase: 'testing · 2 done' } : {}) })
   on('tool.call', async () => {
     await clock.advance(20_000)
-    disk.hasLogs = true
+    disk.hasLog = true
     await clock.advance(21_000)
     return { result: {}, text: 'ok' }
   })
@@ -500,8 +412,9 @@ test('a run of a minute or more sends a notification with its outcome', async ($
   })
   on('tool.call', async () => {
     await clock.advance(61_000)
-    return { result: {}, text: '{"counts":{"failed":0,"passed":5,"total":5}}' }
+    return { result: {}, text: 'ok' }
   })
+  stubCli(on, { reports: [{ ok: true, detail: '5 passed' }] })
 
   await callTool($, 'mcp__xcode__RunAllTests')
 

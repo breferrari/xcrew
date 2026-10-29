@@ -1,26 +1,18 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { BandProblems } from '../../types'
+import { problems } from './cli'
 
 export const problemsState = atom({ plugin: 'xcrew', key: 'problems' } as const, null as BandProblems | null)
 
-/** `FAIL  xcode-mcp/claude-approved  <message>`, as `xcrew doctor` prints a check. */
-const LINE = /^(FAIL|warn)\s+\S+\s+(.+)$/
-
 /**
- * Runs `xcrew doctor --problems` and keeps the most serious one for the band. The CLI prints
+ * Asks the doctor what's wrong and keeps the most serious problem for the band. The doctor reports
  * nothing outside an Apple-platform project, so other projects stay quiet.
  */
 export async function loadProblems($: EngineInterface): Promise<void> {
-  const ran = await $.process.run([`${$.plugin.root}/bin/xcrew`, 'doctor', '--problems'], { timeoutMs: 60_000 })
-  const found = ran.stdout
-    .split('\n')
-    .map(line => LINE.exec(line.trim()))
-    .filter(match => match !== null)
-    .map(match => ({ isFailure: match[1] === 'FAIL', message: match[2] ?? '' }))
-    .sort((a, b) => Number(b.isFailure) - Number(a.isFailure))
-  const [first] = found
-  if (first) await update($, problemsState, () => ({ ...first, more: found.length - 1 }))
+  const found = await problems($)
+  const [first] = [...found].sort((a, b) => Number(b.status === 'fail') - Number(a.status === 'fail'))
+  if (first) await update($, problemsState, () => ({ isFailure: first.status === 'fail', message: first.message, more: found.length - 1 }))
 }
 
 /** The band shows problems only until the first run, which then has the band to itself. */

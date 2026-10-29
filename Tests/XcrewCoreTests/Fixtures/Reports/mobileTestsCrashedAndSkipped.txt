@@ -1,0 +1,17 @@
+🧪 Test
+
+Test Failures (1):
+
+  ✗ FormatterTests / test_crash(): Crash: xctest at implicit closure #1 in FormatterTests.test_crash()
+
+Test Results:
+  ✅ FormatterTests/test_euro() (0.001s)
+  ⏭️ FormatterTests/test_skipped() (0.000s)
+  ❌ FormatterTests/test_crash() (0.000s)
+
+❌ 1 test failed, 1 passed, 1 skipped (⏱️ 40.1s)
+  └ Files:
+     └── ~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/
+         ├── logs/test_sim_2.log — Build Logs
+         ├── result-bundles/test_sim_2.xcresult — Result Bundle
+         └── test-products/test_sim_2.xctestproducts — Test Products
