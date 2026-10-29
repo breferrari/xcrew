@@ -89,9 +89,9 @@ import Testing
         for await _ in exit {}
     }
 
-    /// What a fake `mobilebuildmcp` saw when a command started it: its folder, arguments and PATH.
-    func startMobileBuildMCP(_ executable: String, _ arguments: [String]) async throws -> String {
-        try write("#!/bin/sh\necho \"cwd=$(pwd -P) args=$* path=$PATH\"\n", to: "fakemcp/mobilebuildmcp", executable: true)
+    /// What a fake `program` printed when `executable` started it: a server script, or the inline command it replaced.
+    func startServer(_ executable: String, _ arguments: [String], faking program: String, as fake: String) async throws -> String {
+        try write("#!/bin/sh\n\(fake)\n", to: "fakemcp/\(program)", executable: true)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
@@ -108,8 +108,9 @@ import Testing
         let project = root.appending(path: "project")
         try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
         let inline = #"cd "$1" && PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" exec mobilebuildmcp mcp"#
-        let before = try await startMobileBuildMCP("/bin/sh", ["-c", inline, "mobilebuildmcp", project.path])
-        let after = try await startMobileBuildMCP(repository.appending(path: "libexec/mobilebuildmcp-server").path, [project.path])
+        let fake = #"echo "cwd=$(pwd -P) args=$* path=$PATH""#
+        let before = try await startServer("/bin/sh", ["-c", inline, "mobilebuildmcp", project.path], faking: "mobilebuildmcp", as: fake)
+        let after = try await startServer(repository.appending(path: "libexec/mobilebuildmcp-server").path, [project.path], faking: "mobilebuildmcp", as: fake)
         #expect(before.contains("cwd=\(try await physicalPath(project)) args=mcp path="))
         #expect(before.hasSuffix(":/opt/homebrew/bin:/usr/local/bin\n"))
         #expect(after == before)
@@ -117,15 +118,8 @@ import Testing
 
     /// The plugin's Xcode MCP script starts `xcrun mcpbridge`, as `.mcp.json` did.
     @Test func theXcodeServerScriptStartsTheBridgeAsTheManifestDid() async throws {
-        try write("#!/bin/sh\necho \"args=$*\"\n", to: "fakemcp/xcrun", executable: true)
-        let process = Process()
-        process.executableURL = repository.appending(path: "libexec/xcode-mcp-server")
-        process.environment = ["PATH": "\(root.appending(path: "fakemcp").path):/usr/bin:/bin"]
-        process.standardInput = FileHandle.nullDevice
-        let output = Pipe()
-        process.standardOutput = output
-        try await Self.runToEnd(process)
-        #expect(String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) == "args=mcpbridge\n")
+        let started = try await startServer(repository.appending(path: "libexec/xcode-mcp-server").path, [], faking: "xcrun", as: #"echo "args=$*""#)
+        #expect(started == "args=mcpbridge\n")
     }
 
     func lines(in file: URL) -> Int {

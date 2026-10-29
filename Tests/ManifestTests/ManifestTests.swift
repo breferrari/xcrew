@@ -97,20 +97,13 @@ import XcrewCore
     }
 
     /// The directory reads a server started as a file of the plugin with plain arguments, not through a shell's `-c`.
-    @Test func mobileBuildMCPStartsFromThePluginsScript() throws {
+    @Test(arguments: [("MobileBuildMCP", "libexec/mobilebuildmcp-server", ["${CLAUDE_PROJECT_DIR}"]), ("xcode", "libexec/xcode-mcp-server", nil)])
+    func aLocalServerStartsFromThePluginsScript(server: String, script: String, arguments: [String]?) throws {
         let servers = try #require(try json(".mcp.json")["mcpServers"] as? [String: [String: Any]])
-        let mobile = try #require(servers["MobileBuildMCP"])
-        #expect(mobile["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/libexec/mobilebuildmcp-server")
-        #expect(mobile["args"] as? [String] == ["${CLAUDE_PROJECT_DIR}"])
-        #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: "libexec/mobilebuildmcp-server").path))
-    }
-
-    @Test func theXcodeMCPStartsFromThePluginsScript() throws {
-        let servers = try #require(try json(".mcp.json")["mcpServers"] as? [String: [String: Any]])
-        let xcode = try #require(servers["xcode"])
-        #expect(xcode["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/libexec/xcode-mcp-server")
-        #expect(xcode["args"] == nil)
-        #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: "libexec/xcode-mcp-server").path))
+        let entry = try #require(servers[server])
+        #expect(entry["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/\(script)")
+        if let arguments { #expect(entry["args"] as? [String] == arguments) } else { #expect(entry["args"] == nil) }
+        #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: script).path))
     }
 
     /// The directory holds a bundled image the README shows other than in Markdown's image syntax, or from elsewhere.
@@ -119,6 +112,9 @@ import XcrewCore
         #expect(!readme.contains("<img"), "an HTML image tag; the directory reads Markdown's ![alt](path)")
         let sources = readme.matches(of: /!\[[^\]]*\]\(([^)\s]+)/).map { String($0.1) }
         #expect(!sources.isEmpty)
+        for source in sources where source.hasPrefix("assets/") {
+            #expect(FileManager.default.fileExists(atPath: Self.repository.appending(path: source).path), "\(source) doesn't exist")
+        }
         for source in sources where !source.hasPrefix("assets/") {
             #expect(source.hasPrefix("https://img.shields.io/"), "\(source) isn't a file under assets/")
         }
@@ -264,10 +260,12 @@ import XcrewCore
     /// reads as `$` passed to that hook's own binding.
     @Test func eachHelperThatTakesTheModsAPIHasAUniqueName() throws {
         let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
-        let helpers = register.matches(of: /(?m)^(?:async )?function (\w+)\(\$/).map { String($0.1) }
+        let helpers = register.matches(of: /(?m)^(?:export )?(?:async )?function (\w+)\(\$|^(?:export )?const (\w+) = (?:async )?\(\$/).map { String($0.1 ?? $0.2 ?? "") }
         #expect(!helpers.isEmpty)
         for helper in helpers {
-            let bindings = register.matches(of: try Regex("(?:const|let|var|function|class)\\s+\(helper)\\b|[(,]\\s*\(helper)\\s*[,:)=]")).count
+            // Declarations, parameters and arrow parameters; a regular expression can't see every rebinding, so this
+            // guards against the common ones.
+            let bindings = register.matches(of: try Regex("\\b(?:const|let|var|function|class)\\s+\(helper)\\b|[(,]\\s*\(helper)\\s*[:)=]|\\b\(helper)\\s*=>")).count
             #expect(bindings == 1, "\(helper) is bound \(bindings) times in register.ts")
         }
     }

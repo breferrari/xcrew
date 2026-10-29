@@ -11,6 +11,8 @@ All behaviour lives in a dependency-free Swift package. Everything else is a thi
 | Skills (`skills/`) | `xcrew setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
 | mcs (`techpack.yaml`) | `mcs/configure.sh` → `xcrew setup`; `mcs/checks/*.sh` → `xcrew doctor --check <id>` |
 
+The two local MCP servers start from scripts in `libexec/`, `mobilebuildmcp-server` and `xcode-mcp-server`, rather than inline in `.mcp.json`: the plugin directory reads a server command only as a file of the plugin with plain arguments. `libexec/` stays off Claude's `PATH`, which `bin/` is on.
+
 `bin/xcrew` builds the package on first use, keyed by a hash of its sources, so a plugin update rebuilds once, and Swift's ABI stability keeps a build working across Xcode updates. It keeps that key in its cache and hashes again only when a source changes. One build runs at a time, and a build no checkout has run for two weeks is removed, so the installed plugin and a development clone each keep theirs.
 
 ## Why a CLI
@@ -41,7 +43,7 @@ Sources/
 Tests/
   XcrewCoreTests/       behaviour, through FakeRunner
   XcrewCLITests/        commands, in-process, with output captured
-  ShimTests/            bin/xcrew against a fake swift
+  ShimTests/            bin/xcrew against a fake swift, and the libexec/ server scripts against fake servers
   ManifestTests/        the plugin, the mod and the techpack agree with the Swift code
   XcrewTestSupport/     FakeRunner and temporary projects, shared by the suites
 ```
@@ -85,7 +87,7 @@ The mod does what only TypeScript can reach, and hands everything else to the CL
 
 Reading a few named fields of a JSON answer is fine: **context** learns the scheme and simulator that way. So in `hooks/mod/`:
 
-- Only `register.ts` touches `$` or registers a hook, and passes `$` only to its own top-level functions.
+- Only `register.ts` touches `$` or registers a hook, and passes `$` only to its own top-level functions, each named unlike any other binding in the file: the plugin directory reads a name without regard to scope (`docs/findings.md`).
 - One call site starts a process, `start` in `register.ts`, and it runs only the CLI: the build `bin/xcrew --binary-path` names, or the shim. `cli.ts` decides which, with what arguments and time, and reads the answer.
 - Only `cli.ts` and `context.ts` parse JSON, only `tools.ts` matches a pattern, and nothing touches the file system.
 

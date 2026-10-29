@@ -52,16 +52,16 @@ export const register: Register = on => {
     const target = describe(parsed, e as unknown as Record<string, unknown>)
     const label = labelOf(name, target)
     // Durations and test totals are kept per scheme and test selection, not only per tool.
-    const history = historyOf(parsed, e as unknown as Record<string, unknown>)
+    const scope = historyOf(parsed, e as unknown as Record<string, unknown>)
 
     const started = await quietly(() => $.clock.now())
-    const earlier = ((await quietly(() => $.store.get(historyKey(history)))) as number[] | undefined) ?? []
+    const earlier = ((await quietly(() => $.store.get(historyKey(scope)))) as number[] | undefined) ?? []
     // What the gauge measures against; a tool's first run has none and shows its time alone.
     const usual = earlier.length > 0 ? average(earlier) : undefined
     const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
     // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
     const followsLog = parsed.server === 'MobileBuildMCP'
-    const expectedTests = followsLog ? ((await quietly(() => $.store.get(testsKey(history)))) as number | undefined) : undefined
+    const expectedTests = followsLog ? ((await quietly(() => $.store.get(testsKey(scope)))) as number | undefined) : undefined
     const writesLog = followsLog && (await quietly(() => $.store.get(logsKey(name)))) === true
     // The usual time is the server's own, which leaves out a pre-build hook; for a tool that logs,
     // the gauge starts when the log appears, before which the run itself hasn't begun.
@@ -115,9 +115,9 @@ export const register: Register = on => {
     const outcome = reportOf(await answer($, reportArgs(parsed.server, kind, result.isError === true), 120_000, result.text ?? ''), result.isError === true)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
-    await quietly(() => $.store.set(historyKey(history), [...earlier, elapsed].slice(-HISTORY)))
-    await quietly(() => recordRun($, history, outcome.ok, outcome.failures))
-    if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(history), outcome.tests))
+    await quietly(() => $.store.set(historyKey(scope), [...earlier, elapsed].slice(-HISTORY)))
+    await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
+    if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
     const ending = endingOf(outcome, ended, elapsed, earlier)
     const summaryLine = outcomeLine(name, ending)
     if (usesBand) {
@@ -142,7 +142,7 @@ export const register: Register = on => {
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
     if (subcommand === 'doctor') return { text: await cliText($, ['doctor']) }
-    if (subcommand === 'history') return { text: await usualDurations($) }
+    if (subcommand === 'history') return { text: await history($) }
     if (subcommand === 'failures') return { text: await openFailures($) }
     if (subcommand === 'close') return { text: await closeFailures($) }
     return { text: USAGE }
@@ -253,8 +253,8 @@ async function closeFailures($: EngineInterface): Promise<string> {
   return 'Closed the failures pane.'
 }
 
-/** `/xcrew history`. Named unlike any variable here: the plugin directory reads a name without regard to scope. */
-async function usualDurations($: EngineInterface): Promise<string> {
+/** `/xcrew history`. */
+async function history($: EngineInterface): Promise<string> {
   const keys = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX))
   return historyText(await Promise.all(keys.map(async key => ({ key, runs: (await $.store.get(key)) as number[] | undefined }))))
 }
