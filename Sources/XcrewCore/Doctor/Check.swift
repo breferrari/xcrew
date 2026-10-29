@@ -62,9 +62,13 @@ public protocol Check: Sendable {
     var title: String { get }
     /// Whether it calls out to the network, which the session-start `doctor --problems` leaves out.
     var reachesNetwork: Bool { get }
+    /// Whether mcs does this itself, so the techpack leaves it out: `mcs check-updates` already says
+    /// when a pack has a newer version.
+    var isCoveredByMCS: Bool { get }
     func run(_ context: CheckContext) async -> CheckResult
 }
 
 extension Check {
     public var reachesNetwork: Bool { false }
+    public var isCoveredByMCS: Bool { false }
 }
