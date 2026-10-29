@@ -2,8 +2,9 @@ import type { ElementConstructor, RenderElement } from 'claude-code'
 import type { BandProblems, BandRun } from '../../types'
 import { estimate, stopwatch } from './format'
 
-/** The band keeps showing a finished run's outcome this long. */
-const HIDE_AFTER_MS = 3 * 60_000
+/** How long a finished run stays on the band: a pass asks for nothing, a failure asks to be looked at. */
+export const PASSED_FOR_MS = 3 * 60_000
+export const FAILED_FOR_MS = 30 * 60_000
 /** The X's orange, the brand colour; everything else follows the person's theme. */
 const ORANGE = '#ec501d'
 
@@ -74,9 +75,18 @@ export function outcomeLine(tool: string, ended: NonNullable<BandRun['ended']>):
 /** The two elements of a `ui.render` hook's element table that this mod's trees use. */
 export type Elements = { Box: ElementConstructor<any>; Text: ElementConstructor<any> }
 
-/** Whether the band shows a run: one is going, or ended less than a few minutes ago. */
+export function shownFor(ended: NonNullable<BandRun['ended']>): number {
+  return ended.ok ? PASSED_FOR_MS : FAILED_FOR_MS
+}
+
+/** Whether the band shows a run: one is going, or ended within the time its outcome stays. */
 export function showsRun(run: BandRun | null, now: number): run is BandRun {
-  return run !== null && !(run.ended && now - run.ended.at > HIDE_AFTER_MS)
+  return run !== null && !(run.ended && now - run.ended.at > shownFor(run.ended))
+}
+
+/** After setup writes the config: the one step left. */
+export function restartTree(elements: Elements): RenderElement {
+  return line(elements, [segment('↻', 'warning'), segment(' restart Claude Code to load the new config')])
 }
 
 /** A row of pieces, each separator drawn inside its value's text. */
@@ -101,7 +111,7 @@ export function runTree(elements: Elements, run: BandRun, now: number): RenderEl
   return line(elements, segments(run, now))
 }
 
-/** Before the first run, or once one has hidden: the doctor's most serious problem. */
+/** While no run shows and no restart is due: the doctor's most serious problem. */
 export function problemsTree(elements: Elements, problems: BandProblems): RenderElement {
   return line(elements, problemSegments(problems))
 }

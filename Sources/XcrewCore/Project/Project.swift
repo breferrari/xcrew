@@ -20,6 +20,13 @@ public struct Project: Sendable, Equatable {
     public var mobileBuildMCPConfig: URL { root.appending(path: ".mobilebuildmcp/config.yaml") }
     /// Whether MobileBuildMCP has its per-project config; the doctor and the session briefing both ask.
     public var hasMobileBuildMCPConfig: Bool { FileManager.default.fileExists(atPath: mobileBuildMCPConfig.path) }
+    /// Whether mcs configured xcrew here: `xcrew` is in `.claude/.mcs-project`'s `configuredPacks`.
+    public var isConfiguredByMCS: Bool {
+        struct State: Decodable { let configuredPacks: [String]? }
+        guard let data = try? Data(contentsOf: root.appending(path: ".claude/.mcs-project")),
+              let state = try? JSONDecoder().decode(State.self, from: data) else { return false }
+        return state.configuredPacks?.contains("xcrew") == true
+    }
     /// Marks the config as xcrew's: setup rewrites a marked config and leaves an unmarked one alone.
     public var managedMarker: URL { root.appending(path: ".mobilebuildmcp/.xcrew-managed") }
     /// Where XcodeBuildMCP kept its config before the rename; no longer read by anything.

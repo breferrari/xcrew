@@ -5,6 +5,8 @@ import XcrewCore
 public struct FakeRunner: CommandRunning {
     public var installed: Set<String> = []
     public var responses: [String: CommandResult] = [:]
+    /// Where `which` finds a program, for one that must be a real file; others sit in a folder that doesn't exist.
+    public var paths: [String: String] = [:]
 
     public init(installed: Set<String> = [], responses: [String: CommandResult] = [:]) {
         self.installed = installed
@@ -16,7 +18,7 @@ public struct FakeRunner: CommandRunning {
     }
 
     public func which(_ name: String) -> String? {
-        installed.contains(name) ? "/opt/homebrew/bin/\(name)" : nil
+        paths[name] ?? (installed.contains(name) ? "/nonexistent/bin/\(name)" : nil)
     }
 }
 

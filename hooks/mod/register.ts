@@ -1,16 +1,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList } from '../../types'
-import { changedRun, endedRun, outcomeLine, problemsTree, runTree, showsRun } from './band'
-import { answerOf, couldntRun, isGeneratedOf, knownBuild, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Ran } from './cli'
+import { changedRun, endedRun, outcomeLine, problemsTree, restartTree, runTree, shownFor, showsRun } from './band'
+import { answerOf, couldntRun, isGeneratedOf, knownBuild, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, USAGE } from './command'
 import { describe, historyOf, observe } from './context'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
 import { describedForGenerated, REASON } from './guard'
-import { mostSerious } from './problems'
+import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey } from './timing'
-import { kindOf, parseTool, PROJECT_REWRITER } from './tools'
+import { kindOf, parseTool, PROJECT_REWRITER, runsSetup, SETUP_WROTE } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -18,6 +18,8 @@ const failuresState = atom({ plugin: 'xcrew', key: 'failures' } as const, null a
 const problemsState = atom({ plugin: 'xcrew', key: 'problems' } as const, null as BandProblems | null)
 /** The failures pane's id: a literal here, so the loader can read the pane hook's matcher. */
 const FAILURES_PANE = 'xcrew-failures'
+/** Set once setup writes the config: MobileBuildMCP reads it only when Claude Code starts. */
+const restartState = atom({ plugin: 'xcrew', key: 'restart' } as const, null as boolean | null)
 /** The shim's last answer, for the session: the build to run, or none. */
 const buildState = atom({ plugin: 'xcrew', key: 'build' } as const, null as CliBuild | null)
 
@@ -122,6 +124,8 @@ export const register: Register = on => {
     const summaryLine = outcomeLine(name, ending)
     if (usesBand) {
       await quietly(() => update($, runState, run => endedRun(run, ending)))
+      // The outcome leaves the band on its own; a later run has replaced it by then, or it's this one.
+      await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
     } else {
       // The band stays up with this same line where it draws; elsewhere a toast carries it.
       await quietly(() => $.ui.toast(summaryLine))
@@ -134,6 +138,9 @@ export const register: Register = on => {
     if (e.props.hasSurvey) return next(e)
     const run = await read($, runState)
     const now = await $.clock.now()
+    // A run going has the band; then the restart, which fixes most of what a finished run or a problem shows.
+    if (run && !run.ended) return runTree($.ui.resolve(e), run, now)
+    if (await read($, restartState)) return restartTree($.ui.resolve(e))
     if (showsRun(run, now)) return runTree($.ui.resolve(e), run, now)
     // Problems show only while no run does, so the redraws during a run don't read them.
     const problems = await read($, problemsState)
@@ -143,8 +150,14 @@ export const register: Register = on => {
     const subcommand = (e.args ?? '').trim()
     if (subcommand === 'doctor') return { text: await cliText($, ['doctor']) }
     if (subcommand === 'history') return { text: await history($) }
-    if (subcommand === 'failures') return { text: await openFailures($) }
-    if (subcommand === 'close') return { text: await closeFailures($) }
+    if (subcommand === 'failures') {
+      await dismissFailedRun($)
+      return { text: await openFailures($) }
+    }
+    if (subcommand === 'close') {
+      await dismissFailedRun($)
+      return { text: await closeFailures($) }
+    }
     return { text: USAGE }
   }).catch(async ($, e, next) => ({ text: `/xcrew ${(e.args ?? '').trim()} couldn't answer: ${next.error?.message ?? 'it failed'}` }))
   on('ui.render', { component: 'Pane', requestId: FAILURES_PANE }, async ($, e) => paneTree($.ui.resolve(e), await read($, failuresState)))
@@ -152,9 +165,25 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register(COMMAND)
+    // A cleared conversation is a new session: its warnings show again.
+    found = []
+    seenAt = {}
     void loadProblems($).catch(() => undefined)
     return started
   })
+  // The one unmatched prompt hook: a problem fixed any way at all leaves the band by the next prompt. Never awaited.
+  on('prompt.submit', async ($, e, next) => {
+    void (async () => {
+      if (!drawsBand((await quietly(() => $.session.surfaces())) ?? [])) return
+      if ((await $.clock.now()) - lastRead >= REREAD_EVERY_MS) await loadProblems($)
+    })().catch(() => undefined)
+    return next(e)
+  })
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const result = await next(e)
+    if (e.tool === 'Bash' && runsSetup(e.command) && result.text?.includes(SETUP_WROTE)) await quietly(() => update($, restartState, () => true))
+    return result
+  }).catch(async ($, e, next) => next(e))
 }
 
 /** Starts a program of the CLI's: the mod's one process. */
@@ -222,16 +251,50 @@ function cliText($: EngineInterface, args: string[]): Promise<string> {
   return xcrew($, args, 120_000).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
 }
 
-/** The band shows problems only until the first run, which then has the band to itself. */
-async function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
-  await update($, problemsState, () => null)
+/** A run has the band while it shows; the problems wait beneath it. */
+function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
   return update($, runState, () => run)
 }
 
-/** Asks the doctor what's wrong and keeps the most serious problem for the band. */
-async function loadProblems($: EngineInterface): Promise<void> {
-  const found = mostSerious(problemsOf(await answer($, ['doctor', '--problems', '--json'])))
-  if (found) await update($, problemsState, () => found)
+/** The doctor's last answer, and when each problem was first found: bookkeeping a reload may start over. */
+let found: Problem[] = []
+let seenAt: Record<string, number> = {}
+let lastRead = Number.NEGATIVE_INFINITY
+
+/** The doctor's run in flight, which a prompt meanwhile shares, so an older answer never lands after a newer one. */
+let reading: Promise<void> | undefined
+
+/** Asks the doctor what's wrong and keeps what the band shows, with a redraw when new warnings' time ends. */
+function loadProblems($: EngineInterface): Promise<void> {
+  reading ??= readProblems($).finally(() => {
+    reading = undefined
+  })
+  return reading
+}
+
+async function readProblems($: EngineInterface): Promise<void> {
+  const now = await $.clock.now()
+  lastRead = now
+  const answered = await answer($, ['doctor', '--problems', '--json'])
+  // A doctor that couldn't run says nothing about what's fixed: the band stays as it was.
+  if (answered === undefined) return
+  found = problemsOf(answered)
+  seenAt = noticed(found, seenAt, now)
+  await showVisibleProblems($)
+  // New warnings were all found now, so one redraw ends their time together.
+  if (found.some(problem => problem.status === 'warn' && seenAt[problem.id] === now)) {
+    await quietly(() => $.clock.after(WARNING_FOR_MS + 1, () => void quietly(() => showVisibleProblems($))))
+  }
+}
+
+async function showVisibleProblems($: EngineInterface): Promise<void> {
+  const now = await $.clock.now()
+  await update($, problemsState, () => mostSerious(visible(found, seenAt, now)))
+}
+
+/** Looking at the failures, or closing them, takes the failed run off the band. */
+async function dismissFailedRun($: EngineInterface): Promise<void> {
+  await quietly(() => update($, runState, run => (run?.ended && !run.ended.ok ? null : run)))
 }
 
 async function recordRun($: EngineInterface, run: string, ok: boolean, items: Failure[]): Promise<void> {

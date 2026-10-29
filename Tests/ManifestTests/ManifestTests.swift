@@ -223,6 +223,13 @@ import Testing
         }
     }
 
+    /// The band shows "restart Claude Code" once setup reports writing the config; a reworded message mustn't
+    /// silently stop that.
+    @Test func theModRecognisesSetupsWrittenLine() throws {
+        let tools = try text("hooks/mod/tools.ts")
+        #expect(tools.contains("export const SETUP_WROTE = '\(SetupCommand.wroteMarker)'"))
+    }
+
     /// The setup skill takes the container from `xcrew project --setup` instead of searching, by the answer's own keys.
     @Test func theSetupSkillAsksTheCLI() throws {
         let skill = try text("skills/setup/SKILL.md")

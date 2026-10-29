@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { callTool, stubCli } from './testing'
+import { callTool, runCommand, stubCli } from './testing'
 import { segments } from './band'
 import * as captured from './fixtures'
 
@@ -234,4 +234,67 @@ test('the gauge measures from when the run itself began, while the clock shows t
 test('before the run itself begins there is no gauge to draw', () => {
   const drawn = segments({ tool: 'test_sim', startedAt: 0, usual: 36_000, phase: 'preparing' }, 10_000)
   expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · ', '0:10', ' · ', 'preparing'])
+})
+
+// MARK: How long a finished run stays
+
+test('a passed run leaves the band three minutes after it ends, with nothing else happening', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  inTerminal(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return Text({ children: ['engine'] })
+  })
+  on('tool.call', () => ({ result: {}, text: captured.xcodeBuildPassed.text }))
+
+  await callTool($, 'mcp__xcode__BuildProject')
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await clock.advance(179_000)
+  expect(await ui.find({ type: 'Text', text: /BuildProject/ })).toBeDefined()
+  await clock.advance(2_000)
+  expect(await ui.find({ type: 'Text', text: /BuildProject/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a failed run stays for up to half an hour, since it asks for action', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  inTerminal(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return Text({ children: ['engine'] })
+  })
+  stubCli(on, { reports: [{ ok: false, detail: 'App.swift:3 Cannot find Foo in scope' }] })
+  on('tool.call', () => ({ result: {}, isError: true, text: 'the server\'s result' }))
+
+  await callTool($, 'mcp__xcode__BuildProject')
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await clock.advance(29 * 60_000)
+  expect(await ui.find({ type: 'Text', text: /BuildProject/ })).toBeDefined()
+  await clock.advance(2 * 60_000)
+  expect(await ui.find({ type: 'Text', text: /BuildProject/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('/xcrew close takes a failed run off the band', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  inTerminal(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return Text({ children: ['engine'] })
+  })
+  stubCli(on, { reports: [{ ok: false, detail: 'App.swift:3 Cannot find Foo in scope' }] })
+  on('tool.call', () => ({ result: {}, isError: true, text: 'the server\'s result' }))
+
+  await callTool($, 'mcp__xcode__BuildProject')
+  await runCommand($, 'xcrew', 'close')
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /BuildProject/ })).toBeUndefined()
+  await ui.unmount()
 })

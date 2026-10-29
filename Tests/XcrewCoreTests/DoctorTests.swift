@@ -83,14 +83,39 @@ import XcrewTestSupport
         #expect(await MobileBuildMCPVersionCheck().run(.fake(new)) == .pass("version 2.10.0"))
     }
 
+    /// `mobilebuildmcp --version` is most of what the doctor costs, and the band reads the doctor after every prompt.
+    @Test func theVersionIsKeptUntilTheBinaryChanges() async throws {
+        let project = Project.temporary()
+        project.write("", to: "bin/mobilebuildmcp")
+        let binary = project.root.appending(path: "bin/mobilebuildmcp").path
+        let environment = ["XCREW_CACHE": project.root.appending(path: "cache").path]
+        var answering = FakeRunner(responses: ["mobilebuildmcp --version": .init(status: 0, stdout: "2.10.0\n")])
+        answering.paths["mobilebuildmcp"] = binary
+        var silent = FakeRunner()
+        silent.paths["mobilebuildmcp"] = binary
+        #expect(await MobileBuildMCPVersionCheck().run(.fake(answering, project: project, environment: environment)) == .pass("version 2.10.0"))
+        #expect(await MobileBuildMCPVersionCheck().run(.fake(silent, project: project, environment: environment)) == .pass("version 2.10.0"))
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: 60)], ofItemAtPath: binary)
+        #expect(await MobileBuildMCPVersionCheck().run(.fake(silent, project: project, environment: environment)).status == .fail)
+    }
+
     @Test func legacyBinaryWarns() async {
         #expect(await LegacyBinaryCheck().run(.fake(FakeRunner(installed: ["xcodebuildmcp"]))).status == .warn)
         #expect(await LegacyBinaryCheck().run(.fake()).status == .pass)
     }
 
+    /// mcs records the packs it configured in `.claude/.mcs-project`; only a project set up through it hears of mcs.
+    @Test func theFixNamesMCSOnlyWhereMCSConfiguredXcrew() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        project.write(#"{"configuredPacks":["other"]}"#, to: ".claude/.mcs-project")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup"))
+        project.write(#"{"configuredPacks":["xcrew"],"mcsVersion":"2.0.0"}"#, to: ".claude/.mcs-project")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup (or, with the mcs CLI, mcs sync)"))
+    }
+
     @Test func projectConfigCheck() async {
         let project = Project.temporary(containing: ["A.xcworkspace"])
-        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup (or, with the mcs CLI, mcs sync)"))
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup"))
 
         project.write("enabledWorkflows:\n  - simulator\n", to: ".mobilebuildmcp/config.yaml")
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .warn)

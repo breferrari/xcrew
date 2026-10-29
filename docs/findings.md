@@ -99,6 +99,10 @@ Where Apple's docs are silent, the project search rests on these probes, taken o
 | What is standard input: a file, a pipe or a device? | Silent | `FileManager.attributesOfItem(atPath: "/dev/fd/0")` reports `NSFileTypeRegular` for a file, `NSFileTypeUnknown` for a pipe and `NSFileTypeCharacterSpecial` for `/dev/null`; `/dev/stdin` itself reads as a symbolic link. A file is read to its end at once, since waiting on it for more input never ends |
 | Which folders are packages? | `isPackageKey`: a package by its extension or by its own flag | True for `.xcodeproj`, `.xcworkspace`, `.app`, `.bundle`, `.playground`, `.xcdatamodeld`; false for `.xcassets`, `.framework`, `.xcframework`, `.lproj`, `.docc`, `.xctestplan` and dotted folders such as `MyApp.iOS`. The search skips a package or an `.xc…` folder, and enters the rest |
 
+## How mcs marks a project
+
+mcs records each project it set up in `<project>/.claude/.mcs-project`, a JSON file that `mcs sync` writes, with the packs it configured under `configuredPacks` (mcs's `docs/architecture.md`, *Project State*, and `Sources/mcs/Core/ProjectState.swift`, read on October 29, 2026). A fix text names mcs only when that list holds `xcrew`, the techpack's identifier.
+
 ## How the plugin directory reads a plugin
 
 From the directory's validation of `main` at two commits on October 29, 2026, beyond what its checklist states. Each is pinned by a test in `Tests/ManifestTests`.
@@ -128,6 +132,8 @@ MobileBuildMCP 2.7.1 documents none of this, upstream or in its Homebrew install
 - **A named profile stands alone.** `session-store.js` reads a profile as `profiles[name] ?? {}`, with nothing from the global `sessionDefaults`. So an active profile without a scheme can't build or test, whether it's empty or absent.
 - **`simulatorId` is filled at startup, for the active profile only.** `bootstrap-runtime.js` resolves the active profile's `simulatorName` to an ID. `session_use_defaults_profile` never does, so after a switch, tools that need an ID, such as `screenshot`, fail with `simulatorId is required`. Setup writes each profile's ID itself, from `simctl`.
 - **`session_set_defaults` with a `simulatorId` clears `simulatorName`**, and **`screenshot` takes no display parameter**, so it fails on a simulator with two displays. Both were seen with Xcode 27.2 beta 3.
+
+`mobilebuildmcp --version` takes about 0.5 s, most of what `xcrew doctor --problems` costs (0.51 to 0.56 s in a one-project tree on October 29, 2026, M1 Max, macOS 27.0.1). The band asks the doctor again after prompts, so the CLI keeps the answer in its cache folder, keyed by the binary's resolved path and modification time. Homebrew links the command into a folder named for the version, so an upgrade changes the key.
 
 Setup reads the unit-test scheme from the project instead of asking. Apple documents schemes in Xcode's interface, not the `.xcscheme` file, so the reading follows the files Xcode 27.2 beta 3 writes:
 

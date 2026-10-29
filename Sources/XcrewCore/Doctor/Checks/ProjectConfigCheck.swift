@@ -9,7 +9,7 @@ struct ProjectConfigCheck: Check {
         guard project.hasMobileBuildMCPConfig, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else {
             // Its fix writes a MobileBuildMCP config, which only an Apple-platform project has a use for.
             guard project.layout(.anywhereButHome).isApplePlatform else { return .skip("not an Apple project") }
-            return .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup (or, with the mcs CLI, mcs sync)")
+            return .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup" + (project.isConfiguredByMCS ? " (or, with the mcs CLI, mcs sync)" : ""))
         }
         if FileManager.default.fileExists(atPath: project.legacyConfigFolder.path) {
             return .warn(".xcodebuildmcp/ predates MobileBuildMCP 2.7.1 and is no longer read: delete it")

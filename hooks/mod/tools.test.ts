@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { kindOf, parseTool } from './tools'
+import { kindOf, parseTool, runsSetup } from './tools'
 
 const kind = (name: string) => {
   const tool = parseTool(name)
@@ -52,4 +52,9 @@ test('tools that only read or inspect are not timed', () => {
 test('other servers are not Xcode tools', () => {
   expect(kind('mcp__plugin_other_xcode__BuildProject')).toBe('not an Xcode tool')
   expect(kind('Bash')).toBe('not an Xcode tool')
+})
+
+test('a shell command that runs xcrew setup is recognised, by any path, quoted or not', () => {
+  for (const command of ['xcrew setup', '"/plugins/xcrew/bin/xcrew" setup --app-scheme App', 'cd ios && ~/xcrew/bin/xcrew setup', "'/a b/bin/xcrew' setup", '(xcrew setup)', 'xcrew setup;echo done']) expect(runsSetup(command)).toBe(true)
+  for (const command of ['xcrew doctor', 'xcrewsetup', 'echo xcrew setups', 'myxcrew setup']) expect(runsSetup(command)).toBe(false)
 })

@@ -15,6 +15,11 @@ export function runCommand($: Engine, command: string, args = '') {
   return $.command.run({ command, args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
 }
 
+/** The person typing `text` at the prompt and pressing return. */
+export function submitPrompt($: Engine, text: string) {
+  return $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
+}
+
 /** One call the mod made to the Swift CLI: its arguments, what it piped in, and the program when it wasn't the shim. */
 export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number }
 
@@ -33,6 +38,8 @@ export function stubCli(
     reports?: Partial<Report>[]
     phase?: (args: readonly string[]) => Phase
     problems?: Problem[]
+    /** The doctor can't run: the shim is building, or it timed out. */
+    doctorFails?: () => boolean
     project?: { isGenerated: boolean }
     noBuild?: boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
@@ -45,6 +52,7 @@ export function stubCli(
     const program = e.argv[0] ?? ''
     const timeoutMs = e.init?.timeoutMs
     calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
+    if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (program === BUILT_BINARY && answers.build) {
       if (answers.build.fails === 'by timing out') await answers.build.clock.advance(timeoutMs ?? 30_000)
       throw new Error(answers.build.fails === 'to start' ? 'spawn ENOENT' : 'timed out')

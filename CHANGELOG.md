@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The line above the prompt keeps itself current. A passed run leaves after 3 minutes, a failed one when you look at it or after 30. A failing check stays until it's fixed, however you fix it; a warning shows for two minutes.
+- After `/xcrew:setup` writes the config, the line above the prompt asks you to restart Claude Code.
+- A fix text mentions mcs only in a project set up through mcs.
 - `/xcrew:setup` now asks which folder to use when two qualify, or tells you to generate a Tuist project first, and no longer mistakes a doctor warning for a failed setup.
 
 ## 0.8.2 — 2026-10-29

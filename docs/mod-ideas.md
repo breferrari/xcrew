@@ -67,7 +67,7 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Doctor: say which Tuist is installed~~ | Shipped: `macro-copy-phase` names the installed Tuist, and says to upgrade or only to regenerate | | | | |
 | Doctor pane | Each check as a row with its fix, a button per fix that can run safely | Pane, `/xcrew doctor` | `xcrew doctor` | M | Which fixes are safe to run from a button (none that need sudo) |
 | Setup form | Pickers for workspace, scheme, simulator, filled from `list_schemes` and `simctl` | Pane, `/xcrew setup` | MobileBuildMCP, `simctl` | M | Replaces the skill's question-and-answer flow; keep the skill for `claude -p` |
-| ~~Problem band~~ | Shipped: `xcrew doctor --problems` at session start, the most serious one on the band until the first run | | | | |
+| ~~Problem band~~ | Shipped: `xcrew doctor --problems` at session start and after prompts, the most serious one on the band while no run shows | | | | |
 
 ### Simulator and app
 

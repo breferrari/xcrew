@@ -9,6 +9,16 @@ function bothRegistrations(server: string, tools: readonly string[]): RegExp {
   return new RegExp(`^mcp__(?:plugin_xcrew_)?${server}__(?:${tools.join('|')})$`)
 }
 
+/** A shell command that runs `xcrew setup`, by any path to the CLI, quoted or not, alone or among other commands. */
+const SETUP_COMMAND = /(?:^|[\s;&|(])["']?(?:[^\s"']*\/)?xcrew["']?\s+setup(?:[\s;&|)]|$)/
+
+/** What `xcrew setup` prints once it wrote the config (`SetupCommand.wroteMarker`; ManifestTests pairs them). */
+export const SETUP_WROTE = 'xcrew: wrote .mobilebuildmcp/config.yaml'
+
+export function runsSetup(command: string): boolean {
+  return SETUP_COMMAND.test(command)
+}
+
 /** The matcher for the guard: the engine calls a hook only for the tools its matcher matches. */
 export const PROJECT_REWRITER = bothRegistrations('xcode', ['XcodeWrite'])
 

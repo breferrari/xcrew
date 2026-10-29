@@ -136,7 +136,7 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 
 - **`/xcrew:setup`** writes MobileBuildMCP's per-project profiles from your schemes and installed simulators.
 - **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
-- **At session start**, anything wrong shows in the line above the prompt until the first run.
+- **Anything wrong** shows in the line above the prompt: a failing check until it's fixed, however you fix it, and a warning for a short while. After `/xcrew:setup` writes the config, the line asks you to restart Claude Code.
 - **`xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
 
 ```
