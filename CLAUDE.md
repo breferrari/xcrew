@@ -8,7 +8,7 @@ A Claude Code plugin (with a mod) and an mcs techpack that set up Apple's Xcode 
 swift test                              # all Swift suites
 swift test -Xswiftc -warnings-as-errors # what CI runs
 claude plugin test .                    # the mod's tests
-scripts/typecheck.sh                    # the mod's types, after one `claude --plugin-dir .`; not in CI
+scripts/typecheck.sh                    # the mod's types, after one interactive `claude --plugin-dir .` (not -p); not in CI
 claude plugin validate .
 mcs pack validate .
 ```

@@ -28,7 +28,7 @@ claude --plugin-dir .     # try your checkout in a real session
 scripts/typecheck.sh      # the mod's types; needs that session once
 ```
 
-`scripts/typecheck.sh` runs the TypeScript compiler at the version it pins, which `npx` fetches from npm on its first run.
+`scripts/typecheck.sh` runs the TypeScript compiler at the version it pins, which `npx` fetches from npm on its first run. It needs the API types an interactive session writes into `.claude-plugin/types/` (`claude -p` doesn't): start `claude --plugin-dir .` once, wait for the prompt, then quit.
 
 ## How changes are made
 
