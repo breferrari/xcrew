@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.4 — 2026-10-29
 
 - A build or test call's row in the transcript shows its outcome, as the line above the prompt does: `✓ test_sim · 1:12 · 959 passed`, or the first failures and how many more. ctrl+o shows the result Claude read, which is unchanged.
 - The line above the prompt asks you to restart Claude Code whenever setup or `mcs sync` wrote the config after MobileBuildMCP started, and stops once you have. `xcrew doctor` has the check: `mobilebuildmcp/config-loaded`. A hand edit still needs a restart by hand. Setup no longer rewrites a config that hasn't changed.
