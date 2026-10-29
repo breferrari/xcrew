@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.5 — 2026-10-29
 
 - The line above the prompt follows only its own run, so two sessions building in one checkout, or in two checkouts of folders with the same name, no longer show each other's progress.
 - `xcrew doctor` finds the in-place macro copy phase older Tuist generated in a project saved in Xcode 27.2's JSON format too, not only in `project.pbxproj`, and warns as it does there.
