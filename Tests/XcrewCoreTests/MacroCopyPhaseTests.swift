@@ -29,6 +29,14 @@ let oldTuistCopyPhase = ##"shellScript = "#  This build phase serves two purpose
         #expect(MacroCopyPhase.projects(in: project) == ["Macros"])
     }
 
+    /// Two projects of one name are two projects to regenerate, whichever format each is in.
+    @Test func namesEachProjectThatHasThePhase() {
+        let project = Project.temporary(containing: ["Tuist"])
+        project.write(oldTuistCopyPhase, to: "Packages/Macros/Macros.xcodeproj/project.pbxproj")
+        project.write(oldTuistCopyPhase, to: "Tuist/.build/tuist-derived/Projects/Macros/Macros.xcodeproj/project.xcproj")
+        #expect(MacroCopyPhase.projects(in: project) == ["Macros", "Macros"])
+    }
+
     @Test func findsTheDerivedProjectsOfANestedTuistApp() {
         let project = Project.temporary(containing: [".git", "ios/Tuist"])
         project.write(oldTuistCopyPhase, to: "ios/Tuist/.build/tuist-derived/Projects/SomeMacros/SomeMacros.xcodeproj/project.pbxproj")

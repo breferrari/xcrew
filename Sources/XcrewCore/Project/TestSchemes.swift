@@ -110,13 +110,13 @@ public enum TestSchemes {
 
     /// Target name → product type, from whichever project file the project has.
     static func productTypes(of project: URL) -> [String: String] {
-        if let data = try? Data(contentsOf: project.appending(path: "project.pbxproj")),
+        if let data = try? Data(contentsOf: project.appending(path: ProjectLayout.pbxproj)),
            let plist = try? PropertyListDecoder().decode(PBXProject.self, from: data) {
             return plist.objects.values.filter { $0.isa == "PBXNativeTarget" }.reduce(into: [:]) { types, target in
                 if let name = target.name, let type = target.productType { types[name] = type }
             }
         }
-        if let data = try? Data(contentsOf: project.appending(path: "project.xcproj")),
+        if let data = try? Data(contentsOf: project.appending(path: ProjectLayout.jsonProject)),
            let json = try? JSONSerialization.jsonObject(with: data) {
             var types: [String: String] = [:]
             collectTargets(json, into: &types)
