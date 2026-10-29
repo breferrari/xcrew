@@ -534,3 +534,80 @@ extension FailureNotes {
         #expect(ToolOutput(text: text, server: .mobileBuildMCP).testTotal == 4)
     }
 }
+
+@Suite struct RepeatedWarningTests {
+    static let message = "'oldAPI()' is deprecated: use newAPI() instead, which handles every locale and time zone the old one quietly ignored [#DeprecatedDeclaration]"
+
+    /// The captured text or JSON with the message of each warning from the `from`th on replaced by its own.
+    static func distinct(_ name: String, from: Int = 0) -> String {
+        let parts = Captured.text(name).components(separatedBy: message)
+        return parts.dropFirst().enumerated().reduce(parts[0]) { text, part in
+            text + (part.offset < from ? message : "another warning \(part.offset)") + part.element
+        }
+    }
+
+    static func report(_ text: String) async -> Report {
+        await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
+    }
+
+    @Test func aRepeatedWarningInTheTextIsListedOnceWithItsCountAndEveryPlace() async throws {
+        let result = try #require(await ReportTests.report("mobileTestsPassedWithWarnings").result)
+        #expect(result.count < Captured.text("mobileTestsPassedWithWarnings").count)
+        #expect(result.contains("Warnings (3):\n\n  ⚠ \(Self.message) (3×, /Users/dev/Warn/Sources/Warn/Warn.swift:4, :5, :6)\n\n✅ 1 test passed, 0 failed, 0 skipped (⏱️ 8.0s)"))
+    }
+
+    @Test func aRepeatedWarningInTheJSONIsListedOnceWithItsCountAndEveryPlace() async throws {
+        let result = try #require(await ReportTests.report("mobileTestsPassedWithWarningsJSON").result)
+        #expect(result.count < Captured.text("mobileTestsPassedWithWarningsJSON").count)
+        let data = try #require((ResultBundle.parse(result) as? [String: Any])?["data"] as? [String: Any])
+        let warnings = try #require((data["diagnostics"] as? [String: Any])?["warnings"] as? [[String: Any]])
+        #expect(warnings.count == 1)
+        #expect(warnings.first?["message"] as? String == Self.message)
+        #expect(warnings.first?["count"] as? Int == 3)
+        #expect(warnings.first?["location"] as? String == "/Users/dev/Warn/Sources/Warn/Warn.swift:4, :5, :6")
+        #expect((data["summary"] as? [String: Any])?["status"] as? String == "SUCCEEDED")
+    }
+
+    @Test func distinctWarningsAreLeftAsTheServerWroteThem() async {
+        #expect(await Self.report(Self.distinct("mobileTestsPassedWithWarnings")).result == nil)
+        #expect(await Self.report(Self.distinct("mobileTestsPassedWithWarningsJSON")).result == nil)
+    }
+
+    @Test func aWarningListedOnceKeepsItsOwnLinesBesideARepeatedOne() async throws {
+        let text = try #require(await Self.report(Self.distinct("mobileTestsPassedWithWarnings", from: 2)).result)
+        #expect(text.contains("  ⚠ \(Self.message) (2×, /Users/dev/Warn/Sources/Warn/Warn.swift:4, :5)\n\n  ⚠ another warning 2\n    /Users/dev/Warn/Sources/Warn/Warn.swift:6\n\n✅"))
+        let json = try #require(await Self.report(Self.distinct("mobileTestsPassedWithWarningsJSON", from: 2)).result)
+        let warnings = try #require(((ResultBundle.parse(json) as? [String: Any])?["data"] as? [String: Any]).flatMap { ($0["diagnostics"] as? [String: Any])?["warnings"] as? [[String: Any]] })
+        #expect(warnings.map { $0["location"] as? String } == ["/Users/dev/Warn/Sources/Warn/Warn.swift:4, :5", "/Users/dev/Warn/Sources/Warn/Warn.swift:6"])
+        #expect(warnings.last?["count"] == nil)
+    }
+
+    @Test func aPathWithASpaceKeepsItsPlaces() async throws {
+        let text = Captured.text("mobileTestsPassedWithWarnings").replacingOccurrences(of: "/Users/dev/Warn/", with: "/Users/dev/My Warn/")
+        let result = try #require(await Self.report(text).result)
+        #expect(result.contains("(3×, /Users/dev/My Warn/Sources/Warn/Warn.swift:4, :5, :6)\n\n✅"))
+    }
+
+    @Test func aSavedResultTheCollapseAloneWouldEditStaysSaved() async {
+        let folder = Project.temporary()
+        folder.write(Captured.text("mobileTestsPassedWithWarningsJSON").replacingOccurrences(of: "output.test-result", with: "output.build-result"), to: "tool-results/mcp-build_macos-1.txt")
+        let saved = folder.root.appending(path: "tool-results/mcp-build_macos-1.txt").path
+        let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
+        let report = await Report.make(kind: .build, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
+        #expect(report.ok)
+        #expect(report.result == nil)
+    }
+
+    @Test func aColumnStaysWithItsLine() {
+        #expect(RepeatedWarnings.locations(["/a/A.swift:4:12", "/a/A.swift:4:30", "/a/A.swift:9"].map(RepeatedWarnings.Location.init)) == "/a/A.swift:4:12, :4:30, :9")
+    }
+
+    @Test func aPlaceListedTwiceIsListedOnce() {
+        let warning = RepeatedWarnings.Warning(message: "m", location: RepeatedWarnings.Location("/a/A.swift:4"))
+        #expect(RepeatedWarnings.grouped([warning, warning])?.first.map(RepeatedWarnings.line) == "m (2×, /a/A.swift:4)")
+    }
+
+    @Test func eachFilesPathIsWrittenOnceBeforeItsLines() {
+        #expect(RepeatedWarnings.locations(["/a/A.swift:4", "/a/A.swift:5", "/b/B.swift:9", "/a/A.swift:7", "/c/C.swift"].map(RepeatedWarnings.Location.init)) == "/a/A.swift:4, :5, /b/B.swift:9, /a/A.swift:7, /c/C.swift")
+    }
+}

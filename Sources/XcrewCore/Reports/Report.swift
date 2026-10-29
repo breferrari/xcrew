@@ -37,7 +37,9 @@ public struct Report: Sendable, Equatable, Codable {
         async let bundleSummary: String? = { await bundle?.summary() }()
         var final = read
         var edited = false
-        if let text = read.mobileText {
+        // A saved result stays saved unless it's compacted below: Claude Code saved it for its size, which the collapse alone may not cut enough.
+        if let collapsed = read.collapsingWarnings() { (final, edited) = (collapsed, saved == nil) }
+        if let text = final.mobileText {
             if let bundle, text.isTestRun {
                 if let annotated = await FailureNotes.adding(to: text, from: bundle) { (final, edited) = (ToolOutput(annotated, isError: output.isError), true) }
             } else if let cleaned = text.withoutExcerpts() {

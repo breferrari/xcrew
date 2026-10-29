@@ -49,6 +49,11 @@ enum MobileBuildMCPLine {
         line.firstMatch(of: #/^\s*✗ (.+)$/#).map { String($0.1) }
     }
 
+    /// `⚠ <message> [#Group]`, a compiler warning as the Warnings section lists it.
+    static func warning(_ line: String) -> (indent: String, message: String)? {
+        line.firstMatch(of: #/^(\s*)⚠ (.+)$/#).map { (String($0.1), String($0.2)) }
+    }
+
     /// `| \`- error: …`, the compiler's excerpt of an error listed just above, as an entry of its own.
     static func isExcerpt(_ entry: String) -> Bool {
         entry.hasPrefix("|")
@@ -59,9 +64,14 @@ enum MobileBuildMCPLine {
         entry.firstMatch(of: #/^(.+?) \/ (\S+?): (.*)$/#).map { (TestID(suite: $0.1, name: $0.2), String($0.3)) }
     }
 
-    /// `    /path/File.swift:12`, the line after a failure or an error that says where it happened.
+    /// `    /path/File.swift:12`, the line after a failure, an error or a warning that says where it happened.
     static func location(_ line: String) -> (path: String, line: String)? {
-        line.firstMatch(of: #/^\s+(\/\S+):(\d+)\s*$/#).map { (String($0.1), String($0.2)) }
+        line.firstMatch(of: #/^\s+(\/.*\S)\s*$/#).flatMap { place(String($0.1)) }
+    }
+
+    /// `/path/File.swift:12`, or `:12:5` with a column, which stays with the line; the path may hold spaces.
+    static func place(_ text: String) -> (path: String, line: String)? {
+        text.firstMatch(of: #/^(.+?):(\d+(?::\d+)?)$/#).map { (String($0.1), String($0.2)) }
     }
 
     /// `⏭️ Suite/test() (0.000s)`, a skipped test.

@@ -13,9 +13,19 @@ struct MobileBuildMCPResult: Decodable, Sendable {
         @Lenient var xcresultPath: String?
     }
 
+    struct Warning: Decodable, Sendable {
+        let message: String
+        let location: String?
+    }
+
+    struct Diagnostics: Decodable, Sendable {
+        @Lenient var warnings: [Warning]?
+    }
+
     struct Payload: Decodable, Sendable {
         @Lenient var summary: Summary?
         @Lenient var artifacts: Artifacts?
+        @Lenient var diagnostics: Diagnostics?
     }
 
     static let schemaPrefix = "mobilebuildmcp.output."

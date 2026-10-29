@@ -16,6 +16,8 @@ struct MobileText: Sendable {
     enum Kind: Sendable {
         case entry(Entry)
         case location(path: String, line: String)
+        /// `⚠ <message>`, a compiler warning, with the spaces before it.
+        case warning(indent: String, message: String)
         case heading(MobileBuildMCPLine.Heading)
         /// A skipped test's line, naming the test when it has the usual shape.
         case skipped(TestID?)
@@ -46,6 +48,8 @@ struct MobileText: Sendable {
                 kind = .skipReason
             } else if MobileBuildMCPLine.isPassed(text) {
                 kind = .passed
+            } else if let warning = MobileBuildMCPLine.warning(text) {
+                kind = .warning(indent: warning.indent, message: warning.message)
             } else {
                 kind = .other
             }
@@ -60,6 +64,11 @@ struct MobileText: Sendable {
 
         var location: (path: String, line: String)? {
             if case let .location(path, line) = kind { return (path, line) }
+            return nil
+        }
+
+        var warning: (indent: String, message: String)? {
+            if case let .warning(indent, message) = kind { return (indent, message) }
             return nil
         }
 
@@ -216,6 +225,32 @@ struct MobileText: Sendable {
         guard dropped > 0 else { return nil }
         if let index = kept.firstIndex(where: { $0.isHeading(.errors) }), let header = MobileBuildMCPLine.errorCount(in: kept[index].text) {
             kept[index] = Line(kept[index].text.replacingCharacters(in: header.range, with: "Errors (\(max(1, header.count - dropped))):"))
+        }
+        return MobileText(lines: kept)
+    }
+
+    /// A warning that fires in several places is listed once for each, its message and then its
+    /// location; this lists it once, with how many times and every place, where it was first listed.
+    func collapsingWarnings() -> MobileText? {
+        let warnings = lines.indices.compactMap { index in
+            lines[index].warning.map { RepeatedWarnings.Warning(message: $0.message, location: location(after: index).map { RepeatedWarnings.Location(path: $0.path, line: $0.line) }) }
+        }
+        guard let groups = RepeatedWarnings.grouped(warnings) else { return nil }
+        let repeated = Dictionary(uniqueKeysWithValues: groups.filter { $0.count > 1 }.map { ($0.message, $0) })
+        var listed: Set<String> = []
+        var kept: [Line] = []
+        var placeOfDropped: Int?
+        for (index, line) in lines.enumerated() where index != placeOfDropped {
+            guard let warning = line.warning, let group = repeated[warning.message] else {
+                kept.append(line)
+                continue
+            }
+            placeOfDropped = location(after: index) != nil ? index + 1 : nil
+            if listed.insert(warning.message).inserted {
+                kept.append(Line(warning.indent + "⚠ " + RepeatedWarnings.line(group)))
+            } else if kept.last?.isBlank == true {
+                kept.removeLast()
+            }
         }
         return MobileText(lines: kept)
     }

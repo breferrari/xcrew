@@ -137,12 +137,46 @@ public struct ToolOutput: Sendable {
     /// result (127 of 130 KB for 959 tests): the summary, counts, failures and artifacts stay, and the
     /// list is pointed to in `savedPath`. Nil for anything else.
     public func compactTestResult(savedPath: String) -> String? {
-        // Everything else is written back as it came, so this edits the JSON object rather than the model.
-        guard case let .mobileBuildMCPJSON(result) = shape, result.schema == MobileBuildMCPResult.testResultSchema,
-              var json = ResultBundle.parse(text) as? [String: Any], var data = json["data"] as? [String: Any], data["testCases"] is [Any]
-        else { return nil }
-        // No count of its own: the list can be one short of the summary's counts, which come from the result bundle.
-        data["testCases"] = "per-test list left out to keep this result short; the counts above are complete, and the full result is in \(savedPath)"
+        guard case let .mobileBuildMCPJSON(result) = shape, result.schema == MobileBuildMCPResult.testResultSchema else { return nil }
+        return editingData { data in
+            guard data["testCases"] is [Any] else { return false }
+            // No count of its own: the list can be one short of the summary's counts, which come from the result bundle.
+            data["testCases"] = "per-test list left out to keep this result short; the counts above are complete, and the full result is in \(savedPath)"
+            return true
+        }
+    }
+
+    /// The output with each repeated warning listed once, with its count and every place; nil when none repeats.
+    func collapsingWarnings() -> ToolOutput? {
+        switch shape {
+        case let .mobileBuildMCPText(text):
+            return text.collapsingWarnings().map { ToolOutput($0, isError: isError) }
+        case let .mobileBuildMCPJSON(result):
+            guard let warnings = result.data?.diagnostics?.warnings,
+                  let groups = RepeatedWarnings.grouped(warnings.map { RepeatedWarnings.Warning(message: $0.message, location: $0.location.map(RepeatedWarnings.Location.init)) })
+            else { return nil }
+            return editingData { data in
+                guard var diagnostics = data["diagnostics"] as? [String: Any], let listed = diagnostics["warnings"] as? [[String: Any]], listed.count == warnings.count else { return false }
+                let first = Dictionary(zip(warnings.map(\.message), listed)) { first, _ in first }
+                diagnostics["warnings"] = groups.map { group in
+                    var warning = first[group.message] ?? [:]
+                    guard group.count > 1 else { return warning }
+                    warning["count"] = group.count
+                    warning["location"] = group.locations.isEmpty ? nil : RepeatedWarnings.locations(group.locations)
+                    return warning
+                }
+                data["diagnostics"] = diagnostics
+                return true
+            }.map { ToolOutput(text: $0, server: server, isError: isError) }
+        case .xcodeMCPJSON, .unrecognized:
+            return nil
+        }
+    }
+
+    /// The JSON with `edit` made to its `data` and everything else written back as it came, which editing
+    /// the object rather than the model keeps; nil when `edit` makes none.
+    private func editingData(_ edit: (inout [String: Any]) -> Bool) -> String? {
+        guard var json = ResultBundle.parse(text) as? [String: Any], var data = json["data"] as? [String: Any], edit(&data) else { return nil }
         json["data"] = data
         guard let encoded = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys, .withoutEscapingSlashes]) else { return nil }
         return String(decoding: encoded, as: UTF8.self)
