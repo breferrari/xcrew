@@ -7,7 +7,7 @@ rsvg-convert -z 2 $f.svg -o $f.png; done
 import sys
 from xml.sax.saxutils import escape
 
-# `--light` draws only the band, in a light theme's colours, as band-light.svg: a check that it reads on either.
+# `--light` draws every picture in a light theme's colours, as <name>-light.svg, for readers on a light theme.
 IS_LIGHT = "--light" in sys.argv
 OUT = next((arg for arg in sys.argv[1:] if not arg.startswith("--")), ".")
 FONT = "JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace"
@@ -20,6 +20,7 @@ C = {
     "term": "#11151b", "bar": "#0d1015", "border": "#262c35",
     "text": "#e6e8eb", "subtle": "#8b929c", "inactive": "#323944", "success": "#3fb950", "error": "#f85149",
     "warning": "#d29922", "orange": "#ec501d", "blue": "#58a6ff", "label": "#a9afb9",
+    "glowInner": "#151a22", "glowOuter": "#0c0f13", "wordmark": "#f3f4f6",
 }
 
 
@@ -28,6 +29,7 @@ LIGHT = {
     "term": "#ffffff", "bar": "#f6f8fa", "border": "#d0d7de",
     "text": "#1f2328", "subtle": "#6e7781", "inactive": "#d0d7de", "success": "#1a7f37", "error": "#cf222e",
     "warning": "#9a6700", "orange": "#ec501d", "blue": "#0969da", "label": "#57606a",
+    "glowInner": "#ffffff", "glowOuter": "#eef0f3", "wordmark": "#1f2328",
 }
 
 if IS_LIGHT:
@@ -102,6 +104,44 @@ def frame(width, height, title):
 def prompt_box(c, x, y, width):
     c.add(f'<rect x="{x - 8:.1f}" y="{y:.1f}" width="{width:.1f}" height="38" rx="8" fill="none" stroke="{C["inactive"]}" stroke-width="1.3"/>')
     c.text(x + 6, y + 25, ">", "subtle")
+
+
+def banner():
+    """The README's banner: the screw render beside the wordmark, in a frame with the X's orange corners."""
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="2080" height="400" viewBox="0 0 2080 400">
+  <defs>
+    <radialGradient id="glow" cx="0.22" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="{C['glowInner']}"/>
+      <stop offset="1" stop-color="{C['glowOuter']}"/>
+    </radialGradient>
+  </defs>
+  <rect width="2080" height="400" fill="url(#glow)"/>
+  <!-- Hairline frame, then heavier corner brackets, all in the X's orange. -->
+  <rect x="5" y="5" width="2070" height="390" fill="none" stroke="{C['orange']}" stroke-opacity="0.35" stroke-width="2"/>
+  <g fill="none" stroke="{C['orange']}" stroke-width="6" stroke-linecap="square">
+    <path d="M7 55 V7 H55"/>
+    <path d="M2025 7 H2073 V55"/>
+    <path d="M7 345 V393 H55"/>
+    <path d="M2025 393 H2073 V345"/>
+  </g>
+  <image x="70" y="30" width="340" height="340" xlink:href="screw.png"/>
+  <text x="430" y="272" font-family="Helvetica Neue" font-weight="bold" font-size="196" letter-spacing="-4" fill="{C['wordmark']}">Xcrew</text>
+  <line x1="1150" y1="200" x2="1440" y2="200" stroke="{C['orange']}" stroke-opacity="0.75" stroke-width="2"/>
+  <g font-family="Helvetica Neue" font-weight="500" font-size="33" letter-spacing="7" fill="{C['label']}" text-anchor="end">
+    <text x="1975" y="186">XCODE TOOLING</text>
+    <text x="1975" y="242">FOR CLAUDE CODE</text>
+  </g>
+</svg>
+"""
+
+
+class Text:
+    """A drawing already written as SVG text, with the same `svg()` as a Canvas."""
+    def __init__(self, svg):
+        self.text = svg
+
+    def svg(self):
+        return self.text
 
 
 def band():
@@ -245,7 +285,8 @@ def arch():
     return c
 
 
-drawings = [("band-light", band)] if IS_LIGHT else [("band", band), ("test-result", result), ("failures-pane", pane), ("architecture", arch)]
+DRAWINGS = [("banner", lambda: Text(banner())), ("band", band), ("test-result", result), ("failures-pane", pane), ("architecture", arch)]
+drawings = [(f"{name}-light", make) for name, make in DRAWINGS] if IS_LIGHT else DRAWINGS
 for name, make in drawings:
     with open(f"{OUT}/{name}.svg", "w") as f:
         f.write(make().svg())
