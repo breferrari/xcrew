@@ -128,6 +128,27 @@ import XcrewCore
         #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: script).path))
     }
 
+    // MARK: CI
+
+    /// The toolchain `Package.swift` promises is the one a CI job tests: the floor job picks Xcode by the Swift version
+    /// it reports, read from `swift-tools-version`, never by an Xcode name that ages.
+    @Test func ciTestsTheSwiftToolsVersionFloor() throws {
+        let ci = try text(".github/workflows/ci.yml")
+        let floor = try #require(ci.firstMatch(of: /(?s)\n  swift-floor:\n.*?(?=\n  [a-z-]+:\n|\z)/)).output
+        #expect(floor.contains("swift-tools-version"), "the floor job reads its version from Package.swift")
+        #expect(floor.contains("swift --version"))
+        #expect(!floor.contains(/Xcode_\d/), "an Xcode named by version")
+        #expect(floor.contains("swift test"))
+    }
+
+    /// Every job that builds Swift says which toolchain it used, so a failure on CI names the compiler that said no.
+    @Test func everySwiftJobLogsItsToolchain() throws {
+        for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml"] {
+            let text = try text(workflow)
+            #expect(text.matches(of: /swift test/).count <= text.matches(of: /swift --version/).count, "\(workflow)")
+        }
+    }
+
     /// The README's band picture is drawn by `assets/mockups.py`, which can't import the mod. It follows the mod's
     /// colour rule (only the ` · ` separators are faint) through one `SEP` that names the same text and theme key.
     @Test func theBandMockupDrawsTheModsColourRule() throws {

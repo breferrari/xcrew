@@ -49,9 +49,33 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Use the newest Xcode on the runner
-        run: sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_*.app | sort -V | tail -1)"
+        run: |
+          sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_*.app | sort -V | tail -1)"
+          swift --version
       - name: Test, with warnings as errors
         run: swift test -Xswiftc -warnings-as-errors
+
+  # The oldest Swift Package.swift accepts, which a person's first build may use. Plain `swift test`: an older
+  # compiler's warnings don't stop their build either.
+  swift-floor:
+    name: Swift package, oldest toolchain
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Use the oldest Xcode whose Swift is the one swift-tools-version names
+        run: |
+          floor=$(sed -n 's|^// swift-tools-version:||p' Package.swift)
+          for app in $(printf '%s\n' /Applications/Xcode_*.app | sort -V); do
+            version=$(DEVELOPER_DIR="$app/Contents/Developer" xcrun swift --version 2>/dev/null | sed -n 's/.*Swift version \([0-9.]*\).*/\1/p' | head -1)
+            case $version in "$floor" | "$floor".*) chosen=$app; break ;; esac
+          done
+          if [ -z "${chosen:-}" ]; then echo "No Xcode on this runner has Swift $floor" >&2; exit 1; fi
+          sudo xcode-select -s "$chosen"
+          swift --version
+      - name: Test
+        run: swift test
 
   plugin:
     name: Plugin and mod
