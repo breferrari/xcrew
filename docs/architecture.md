@@ -11,7 +11,7 @@ All behaviour lives in a dependency-free Swift package. Everything else is a thi
 | Skills (`skills/`) | `xcrew setup`, `xcrew project --setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
 | mcs (`techpack.yaml`) | `mcs/configure.sh` → `xcrew setup`; `mcs/checks/*.sh` → `xcrew doctor --check <id>` |
 
-The two local MCP servers start from scripts in `libexec/`, `mobilebuildmcp-server` and `xcode-mcp-server`, rather than inline in `.mcp.json`: the plugin directory reads a server command only as a file of the plugin with plain arguments. `libexec/` stays off Claude's `PATH`, which `bin/` is on.
+The two local MCP servers start from scripts in `libexec/`, `mobilebuildmcp-server` and `xcode-mcp-server`, rather than inline in `plugin.json`'s `mcpServers`: the plugin directory reads a server command only as a file of the plugin with plain arguments. `libexec/` stays off Claude's `PATH`, which `bin/` is on. The servers are declared in `plugin.json`, not a root `.mcp.json`, because the plugin's root is this repository's, where Claude Code would read that file as the project's own.
 
 `bin/xcrew` builds the package on first use, keyed by a hash of its sources, so a plugin update rebuilds once, and Swift's ABI stability keeps a build working across Xcode updates. It keeps that key in its cache and hashes again only when a source changes. One build runs at a time, and a build no checkout has run for two weeks is removed, so the installed plugin and a development clone each keep theirs.
 

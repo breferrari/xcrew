@@ -156,7 +156,7 @@ ok    xcrew/up-to-date                 0.7.0, the latest release
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture-light.png">
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png">
-  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png" alt="Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png" alt="Claude Code loads the plugin's four pieces: the manifest starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
 </picture>
 
 | Piece | What it does |
@@ -235,7 +235,7 @@ Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads
 | **Writes** | In `xcrew setup`: `.mobilebuildmcp/config.yaml`, a `.xcrew-managed` marker beside it with the config's fingerprint, a dated backup of a config you edited when you ask it to replace one, and a line in `.git/info/exclude`. In `xcrew xcode-skills`: the skills Xcode ships, into `.claude/skills`. While reading a crashed test, a temporary folder of the crash's attachments, removed once read. Nothing else |
 | **Sends** | One request, and only when you run `xcrew doctor` or `/xcrew doctor` yourself: `curl` asks GitHub's releases API for the latest version. Never at session start, whose look for problems leaves that check out. No telemetry |
 
-**The MCP servers**, which `.mcp.json` starts: Apple's `xcrun mcpbridge`, through `libexec/xcode-mcp-server`; Homebrew's `mobilebuildmcp`, through `libexec/mobilebuildmcp-server`, which starts it in your project with Homebrew's folders on `PATH`, and with its telemetry turned off; and Sosumi over HTTPS. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
+**The MCP servers**, which the plugin's manifest (`plugin.json`) starts: Apple's `xcrun mcpbridge`, through `libexec/xcode-mcp-server`; Homebrew's `mobilebuildmcp`, through `libexec/mobilebuildmcp-server`, which starts it in your project with Homebrew's folders on `PATH`, and with its telemetry turned off; and Sosumi over HTTPS. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
 
 ### Contributing
 
