@@ -103,3 +103,19 @@ jobs:
       - uses: actions/checkout@v5
       - name: ShellCheck
         run: shellcheck bin/xcrew libexec/* mcs/*.sh mcs/checks/*.sh scripts/*.sh
+
+  # The one check the ruleset and the release require. It needs every job above, so adding or renaming one never
+  # touches either. Only the code jobs may be skipped, for a Markdown-only change: a failed or cancelled job fails it,
+  # and so does `changes` not succeeding, which would otherwise skip everything.
+  ci:
+    name: CI
+    needs: [changes, swift, swift-floor, plugin, shell]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed, or was skipped for a Markdown-only change
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e '.changes.result == "success" and ([to_entries[] | select(.key != "changes") | .value.result] | all(. == "success" or . == "skipped"))' >/dev/null

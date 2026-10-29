@@ -36,7 +36,7 @@ jobs:
           tagged_tree=$(gh api "repos/$repo/git/commits/$GITHUB_SHA" -q .tree.sha)
           tested_tree=$(gh api "repos/$repo/git/commits/$pr_head" -q .tree.sha)
           [ "$tagged_tree" = "$tested_tree" ] || { echo "$GITHUB_SHA differs from what its pull request tested ($pr_head)"; exit 1; }
-          for check in "Swift package" "Plugin and mod" "Shell scripts"; do
+          for check in "CI"; do
             conclusion=$(gh api "repos/$repo/commits/$pr_head/check-runs" -q "[.check_runs[] | select(.name == \"$check\")][0].conclusion")
             echo "$check: $conclusion"
             [ "$conclusion" = success ] || { echo "$check didn't pass on $pr_head"; exit 1; }

@@ -141,6 +141,24 @@ import XcrewCore
         #expect(floor.contains("swift test"))
     }
 
+    /// The ruleset and the release require one check, `CI`, which needs every other job: adding or renaming a job never
+    /// touches them, and a job left out of `needs` fails here.
+    @Test func oneCheckNeedsEveryJob() throws {
+        let ci = try text(".github/workflows/ci.yml")
+        let jobs = Set(ci.matches(of: /(?m)^  ([a-z][a-z-]*):$/).map { String($0.1) })
+        let aggregate = try #require(ci.firstMatch(of: /(?s)\n  ci:\n(.*?)(?=\n  [a-z-]+:\n|\z)/)).output.1
+        #expect(aggregate.contains("name: CI\n"))
+        #expect(aggregate.contains("if: always()"))
+        #expect(aggregate.contains("runs-on: ubuntu-latest"))
+        #expect(!aggregate.contains("checkout"), "it reads results only")
+        let needs = try #require(aggregate.firstMatch(of: /needs: \[([^\]]*)\]/)).output.1
+        #expect(Set(needs.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) == jobs.subtracting(["ci"]))
+        #expect(aggregate.contains(#".changes.result == "success""#), "a failed changes job must fail CI, not skip everything")
+        let release = try text(".github/workflows/release.yml")
+        let checks = try #require(release.firstMatch(of: /for check in ([^;]+); do/)).output.1
+        #expect(checks.trimmingCharacters(in: .whitespaces) == #""CI""#)
+    }
+
     /// Every job that builds Swift says which toolchain it used, so a failure on CI names the compiler that said no.
     @Test func everySwiftJobLogsItsToolchain() throws {
         for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml"] {
