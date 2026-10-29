@@ -60,6 +60,8 @@ Claude Code keeps people on a plugin's `version` until it changes, so every rele
 
 Every step can run again: after a failure, run `scripts/release.sh <version>` again, and it finds the tag and goes on from the release workflow.
 
+After a release, check that a fresh install lands on the tag without touching your own install: run `claude plugin marketplace add breferrari/xcrew` and `claude plugin install xcrew@breferrari --scope user` with `CLAUDE_CONFIG_DIR` set to a new temporary folder, and compare `gitCommitSha` in that folder's `plugins/installed_plugins.json` with the tag's commit.
+
 Before a release that changes what Claude sees from a build or test, run the checks in [docs/live-check.md](docs/live-check.md) in a real project.
 
 Between releases, `main` moves ahead of the version people have installed; that's expected. The marketplace installs the tagged release, never `main`.

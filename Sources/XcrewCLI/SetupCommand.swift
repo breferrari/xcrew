@@ -26,6 +26,11 @@ struct SetupCommand: Command {
         "      and the test scheme to the shared scheme that runs unit tests",
     ]
 
+    /// The container setup builds when no option names one: mcs's answer, else the default below.
+    static func container(in context: CheckContext) throws -> String {
+        try mcsKeys["container"].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } ?? defaultContainer(in: context.project)
+    }
+
     /// The container to build when none is named: the nearest, and in a generated project the one beside its manifests,
     /// since a module's own project isn't the app. Below the root, two folders' containers equally near are a question.
     static func defaultContainer(in project: Project) throws -> String {
@@ -52,7 +57,7 @@ struct SetupCommand: Command {
         func answer(_ option: String) -> String? {
             invocation.arguments[option] ?? Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") }
         }
-        let container = try answer("container") ?? Self.defaultContainer(in: context.project)
+        let container = try invocation.arguments["container"] ?? Self.container(in: context)
         let catalog = await SimulatorCatalog.load(using: context.runner)
         guard let testSimulator = answer("test-simulator") ?? catalog.defaultIPhone else {
             throw UsageError(description: "no iPhone simulator installed: add one in Xcode, or pass --test-simulator")

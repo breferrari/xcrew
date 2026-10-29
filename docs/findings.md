@@ -119,6 +119,8 @@ The entry now names the release tag (`"ref": "v<version>"` on a `github` source)
 
 The ref moves in a pull request of its own, after the tag is pushed and the release workflow has published it. If the release pull request moved it instead, the catalog would name a tag that doesn't exist yet from the merge until the push, and installs would fail meanwhile. It would also still name the tag if the workflow refused it. Pinning a `sha` doesn't help either, since the squash merge makes the release commit and its hash isn't known before. A release branch added with `#release` would avoid the gap, but every existing user would have to add the marketplace again. So a test allows the ref to be this version or the previous release, and only a version the changelog has released.
 
+The first release through this flow, 0.8.2 on October 29, 2026, was checked without touching anyone's install: `CLAUDE_CONFIG_DIR=$(mktemp -d) claude plugin marketplace add breferrari/xcrew`, then `claude plugin install xcrew@breferrari --scope user` with the same variable. The temporary `plugins/installed_plugins.json` recorded `version` `0.8.2` and `gitCommitSha` `1273068`, the tag's commit, while `main` had moved on to the install pull request (`da128b3`).
+
 ## MobileBuildMCP's profiles
 
 MobileBuildMCP 2.7.1 documents none of this, upstream or in its Homebrew install, so it comes from its source (`build/` in the install), read on October 29, 2026:

@@ -8,7 +8,7 @@ All behaviour lives in a dependency-free Swift package. Everything else is a thi
 | --- | --- |
 | Plugin hooks (`hooks/hooks.json`) | `bin/xcrew hook session-start` |
 | Mod (`hooks/mod/`) | `report`, `phase`, `project` and `doctor`, through `cli.ts`, on the build `bin/xcrew --binary-path` names |
-| Skills (`skills/`) | `xcrew setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
+| Skills (`skills/`) | `xcrew setup`, `xcrew project --setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
 | mcs (`techpack.yaml`) | `mcs/configure.sh` → `xcrew setup`; `mcs/checks/*.sh` → `xcrew doctor --check <id>` |
 
 The two local MCP servers start from scripts in `libexec/`, `mobilebuildmcp-server` and `xcode-mcp-server`, rather than inline in `.mcp.json`: the plugin directory reads a server command only as a file of the plugin with plain arguments. `libexec/` stays off Claude's `PATH`, which `bin/` is on.

@@ -397,8 +397,28 @@ import XcrewTestSupport
         #expect(await Run("project", context: .fake(project: project)).text == #"{"isGenerated":true}"#)
     }
 
-    @Test func aClassicProjectIsNot() async {
+    @Test func aTuistProjectWithoutItsWorkspaceSaysToGenerateIt() async {
+        let project = Project.temporary(containing: [".git", "Tuist.swift", "Projects/Feature/Feature.xcodeproj"])
+        #expect(await Run("project", "--setup", context: .fake(project: project)).text == #"{"containerProblem":"no workspace beside the manifests in the project root yet: generate it first, or pass --container","isGenerated":true}"#)
+    }
+
+    @Test func aClassicProjectNamesItsContainer() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         #expect(await Run("project", context: .fake(project: project)).text == #"{"isGenerated":false}"#)
+        #expect(await Run("project", "--setup", context: .fake(project: project)).text == #"{"container":"App.xcodeproj","isGenerated":false}"#)
+    }
+
+    /// Setup builds the container mcs resolved, so the answer the skill reads names the same one.
+    @Test func anMCSAnswerIsTheContainerSetupWillBuild() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let text = await Run("project", "--setup", context: .fake(project: project, environment: ["MCS_RESOLVED_PROJECT": "Other.xcworkspace"])).text
+        #expect(text == #"{"container":"Other.xcworkspace","isGenerated":false}"#)
+    }
+
+    @Test func projectsEquallyNearAreAQuestion() async {
+        let project = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj", "apps/macos/App.xcodeproj"])
+        let text = await Run("project", "--setup", context: .fake(project: project)).text
+        #expect(text.contains(#""containerProblem":"several projects a folder or two down"#))
+        #expect(!text.contains(#""container":"#))
     }
 }

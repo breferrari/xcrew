@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `/xcrew:setup` now asks which folder to use when two qualify, or tells you to generate a Tuist project first, and no longer mistakes a doctor warning for a failed setup.
+
 ## 0.8.2 — 2026-10-29
 
 - `xcrew setup` writes only profiles that have a scheme, finds your unit-test scheme itself, and writes each profile's simulator ID, so `screenshot` works after a profile switch. `xcrew doctor` flags configs from 0.8.1 and earlier: rerun `/xcrew:setup`.

@@ -223,6 +223,17 @@ import Testing
         }
     }
 
+    /// The setup skill takes the container from `xcrew project --setup` instead of searching, by the answer's own keys.
+    @Test func theSetupSkillAsksTheCLI() throws {
+        let skill = try text("skills/setup/SKILL.md")
+        let answer = ProjectCommand.Answer(isGenerated: false, container: "A.xcworkspace", containerProblem: "why")
+        let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(answer)) as? [String: Any]).keys
+        #expect(skill.contains("`xcrew project --setup`"))
+        for key in keys where key != "isGenerated" {
+            #expect(skill.contains("`\(key)`"), "the skill doesn't name `\(key)`")
+        }
+    }
+
     /// The setup skill hands Claude a command line; an option `xcrew setup` doesn't declare would be refused.
     @Test func theSetupSkillPassesOnlyOptionsSetupDeclares() throws {
         let line = try #require(try text("skills/setup/SKILL.md").firstMatch(of: /`xcrew setup [^`]*`/)?.0)
