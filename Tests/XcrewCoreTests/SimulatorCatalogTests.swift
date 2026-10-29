@@ -85,9 +85,20 @@ import XcrewTestSupport
         return names.sorted().first { $0.range(of: #"^iPhone \d+\.simdevicetype$"#, options: .regularExpression) != nil }.map { "\(folder)/\($0)" }
     }()
 
+    /// Whether that profile lists its displays at all: Xcode 27's do, Xcode 26's (CI's runner) don't.
+    static let profileListsDisplays: Bool = {
+        struct Profile: Decodable {
+            struct Capabilities: Decodable { let displays: [SimulatorCatalog.Display]? }
+            let capabilities: Capabilities?
+        }
+        guard let plain = plainIPhoneProfile,
+              let data = FileManager.default.contents(atPath: "\(plain)/Contents/Resources/capabilities.plist") else { return false }
+        return (try? PropertyListDecoder().decode(Profile.self, from: data))?.capabilities?.displays != nil
+    }()
+
     /// Pins the undocumented profile shape the catalog reads (docs/findings.md, *The simulator setup picks*), on
     /// this Mac's own Xcode: a platform change that moves or renames it turns this red.
-    @Test(.enabled(if: plainIPhoneProfile != nil))
+    @Test(.enabled(if: profileListsDisplays))
     func aPlainIPhonesInstalledProfileHasOneBuiltInDisplay() async throws {
         let plain = try #require(Self.plainIPhoneProfile)
         let read = await SystemCommandRunner().run("plutil", "-extract", "capabilities.displays", "json", "-o", "-", "\(plain)/Contents/Resources/capabilities.plist")
