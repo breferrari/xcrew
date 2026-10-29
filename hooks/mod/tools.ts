@@ -34,22 +34,25 @@ export function parseTool(name: string): XcodeTool | undefined {
   return server && tool ? { server: server as XcodeTool['server'], tool } : undefined
 }
 
-/** A tool name's words, lowercased: split at `_` and where a lowercase letter or digit meets a capital (`RunSomeTests` → run, some, tests). */
-function wordsOf(name: string): string[] {
-  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split('_')
+/**
+ * A tool name's words, lowercased and spaced: split at `_`, where a lowercase letter or digit meets a
+ * capital, and before the last capital of an acronym (`RunUITests` → `run ui tests`).
+ */
+function wordsOf(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase()
 }
 
 /**
  * Whether a call is a build, a test run or an app run worth timing. Matched by whole words rather
- * than a list, so tools either server adds later are timed without a change here, and a word that
- * only reads (get, list, show, settings, log) keeps a tool untimed whatever else its name says.
+ * than a list, so tools either server adds later are timed without a change here. A tool that only
+ * reads, by its verb, or that names what the next build uses, isn't timed whatever else its name says.
  */
 export function kindOf(tool: XcodeTool): ToolKind | undefined {
-  const words = wordsOf(tool.tool).join(' ')
-  if (/\b(get|list|show|settings|logs?)\b/.test(words)) return undefined
-  if (/\btests?\b/.test(words)) return 'test'
-  if (/^(build|clean)\b/.test(words)) return 'build'
-  if (/^run (project|app)\b|\blaunch app\b|\binstall and run\b/.test(words)) return 'run'
+  const words = wordsOf(tool.tool)
+  if (namesTarget(tool) || /\b(get|list|show|read|describe|status|settings)\b/.test(words)) return undefined
+  if (/\btest(s|ing)?\b/.test(words)) return 'test'
+  if (/\b(build|clean)\b/.test(words)) return 'build'
+  if (/\brun (project|app)\b|\blaunch\b|\binstall and run\b/.test(words)) return 'run'
   return undefined
 }
 
