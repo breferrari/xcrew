@@ -39,7 +39,7 @@ public struct ProjectLayout: Sendable {
         public var generateCommand: String {
             switch generator {
             case .tuist: return path.isEmpty ? "tuist generate --no-open" : "tuist generate --no-open --path \(argument)"
-            case .xcodeGen: return path.isEmpty ? "xcodegen generate" : "xcodegen generate --spec \(argument)/project.yml"
+            case .xcodeGen: return path.isEmpty ? "xcodegen generate" : "xcodegen generate --spec \(argument)/\(ProjectLayout.xcodeGenSpec)"
             }
         }
 
@@ -66,7 +66,9 @@ public struct ProjectLayout: Sendable {
     /// Tuist's manifests whose names are also ordinary source-file names. At the root they count by name; below it, only
     /// when they import ProjectDescription, since Tuist may find its root by `.git` alone.
     static let tuistManifests = ["Project.swift", "Workspace.swift"]
-    static let xcodeGenMarkers = ["project.yml"]
+    /// XcodeGen's spec, by the name it reads unless told another.
+    static let xcodeGenSpec = "project.yml"
+    static let xcodeGenMarkers = [xcodeGenSpec]
     /// Below the root a package is more often a tool or a server than an app, so it counts at the root only.
     static let packageMarkers = ["Package.swift"]
     /// Folders that hold other projects' code, never this one's manifests.
@@ -117,8 +119,10 @@ public struct ProjectLayout: Sendable {
     public func command(after file: URL, nearest: Manifests) -> (manifests: Manifests, command: String)? {
         let path = Self.canonical(file)
         if nearest.generator == .xcodeGen {
-            let specs = XcodeGenSpec.files(from: nearest.folder.appending(path: Self.xcodeGenMarkers[0])).map(Self.canonical)
-            return specs.contains(path) ? (nearest, nearest.generateCommand) : nil
+            // The spec as detection found it, in whatever case the volume allows.
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: nearest.folder.path)) ?? []
+            let spec = nearest.folder.appending(path: names.first { named($0, Self.xcodeGenMarkers) } ?? Self.xcodeGenSpec)
+            return XcodeGenSpec.reads(path, for: spec) ? (nearest, nearest.generateCommand) : nil
         }
         let manifests = tuistApp(holding: file) ?? nearest
         let folder = Self.canonical(manifests.folder) + "/"

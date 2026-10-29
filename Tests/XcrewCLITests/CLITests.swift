@@ -498,7 +498,6 @@ import XcrewTestSupport
         #expect(text == #"{"app":"apps/b","generate":"tuist generate --no-open --path apps/b","isGenerated":true}"#)
     }
 
-    /// Claude may edit another project's manifests from this one: that changes nothing this project builds.
     /// XcodeGen reads every spec its spec includes, at any depth, resolved as its loader does: a top-level include from the
     /// root spec's folder, a nested one from the folder of the spec that includes it, or with `relativePaths: false` from
     /// that spec's own base (docs/findings.md, *XcodeGen's included specs*).
@@ -513,6 +512,31 @@ import XcrewTestSupport
             let text = await Run("project", "--manifest", project.root.appending(path: spec).path, context: .fake(project: project)).text
             #expect(text == #"{"app":"ios","generate":"xcodegen generate --spec ios/project.yml","isGenerated":true}"#, "\(spec)")
         }
+    }
+
+    /// An absolute include is read where it says, and its own includes resolve from there, as XcodeGen's path joining does.
+    @Test func anAbsoluteIncludeIsReadWhereItSays() async {
+        let project = Project.temporary(containing: [])
+        let shared = Project.temporary(containing: [])
+        project.write("include: \(shared.root.appending(path: "specs/base.yml").path)\n", to: "project.yml")
+        shared.write("include: inner.yml\n", to: "specs/base.yml")
+        shared.write("settings: {}\n", to: "specs/inner.yml")
+        for spec in ["specs/base.yml", "specs/inner.yml"] {
+            let text = await Run("project", "--manifest", shared.root.appending(path: spec).path, context: .fake(project: project)).text
+            #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true}"#, "\(spec)")
+        }
+    }
+
+    /// XcodeGen reads includes depth first, in the order written, and reads each spec once: the first route to a spec
+    /// decides where its own includes resolve.
+    @Test func aSpecReachedTwiceResolvesFromItsFirstRoute() async {
+        let project = Project.temporary(containing: [])
+        project.write("include:\n  - x/common.yml\n  - path: y/next.yml\n", to: "project.yml")
+        project.write("include: inner.yml\n", to: "x/common.yml")
+        project.write("include:\n  - path: x/common.yml\n    relativePaths: false\n", to: "y/next.yml")
+        project.write("settings: {}\n", to: "x/inner.yml")
+        let text = await Run("project", "--manifest", project.root.appending(path: "x/inner.yml").path, context: .fake(project: project)).text
+        #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true}"#)
     }
 
     @Test func aYAMLFileNoSpecIncludesRegeneratesNothing() async {
@@ -530,6 +554,7 @@ import XcrewTestSupport
         #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true}"#)
     }
 
+    /// Claude may edit another project's manifests from this one: that changes nothing this project builds.
     @Test func aManifestOutsideTheManifestsFolderRegeneratesNothing() async {
         let project = Project.temporary(containing: ["ios/Tuist.swift"])
         let other = Project.temporary(containing: ["Tuist.swift"])

@@ -203,9 +203,15 @@ XcodeGen reads every spec its spec includes, so an edit to one marks the project
 - "Include can either be a list of includes or a single include. An include can be provided via a string (the path) or an object". The object has `path`, `relativePaths` and `enable`, both flags defaulting to true.
 - "Included specs can also include other specs and so on." The loader reads each file once.
 - Where an include resolves isn't in the docs. The source keeps a base folder and a relative folder for each spec and reads an include at the base joined with its path. A top-level include therefore resolves from the root spec's folder. A nested one resolves from the folder of the spec that includes it, or, with `relativePaths: false`, from that spec's base.
+- An absolute include path stands alone: XcodeGen joins paths with PathKit, whose `+` returns an absolute right-hand side unchanged.
+- The loader walks includes depth first, in the order written, and keeps the first spec it reads at each path. A spec reached twice therefore resolves its own includes from its first route.
+- A flag is read by `resolveBoolean`: `dictionary[key] as? Bool ?? (dictionary[key] as? NSString)?.boolValue`.
+  - Yams, XcodeGen's YAML library, resolves `yes`, `true` and `on`, their negatives, and each in lower, capitalized or upper case, to booleans (its `Resolver.default`, read October 30, 2026).
+  - Any other text goes through `NSString.boolValue`.
+  - A number resolves to neither a Bool nor a String, so the flag keeps its default, true.
 - A disabled include is never read (`.filter(\.enable)` comes before the file is loaded). `${NAME}` in a spec, an include's path among them, expands from the variables the loader is given: the environment.
 
-xcrew reads only the top-level `include` key, in those documented forms, with no YAML dependency. It resolves includes the same way. An include whose path holds a variable, or whose `enable` isn't a literal, is left out, since it depends on the environment at generate time. JSON specs (`project.json`) are out of scope, as detection doesn't find them either. The CLI tests pin each case. Since a spec can include another by any name, the mod asks the CLI about every YAML file edited.
+xcrew reads only the top-level `include` key, in those documented forms, with no YAML dependency. It resolves includes the same way. An include whose path holds a variable, or whose `enable` isn't a literal, is left out, since it depends on the environment at generate time. JSON specs are out of scope: detection doesn't find a `project.json`, and the mod doesn't ask about a JSON spec a YAML spec includes. The CLI tests pin each case. Since a spec can include another by any name, the mod asks the CLI about every YAML file edited.
 
 ## Toolchains
 
