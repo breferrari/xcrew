@@ -12,6 +12,7 @@
 - The project search never walks your home folder, however its path is spelled and wherever it sits below the folder Claude Code started in.
 - Build, test and run tools are recognised by whole words in their names: a tool with *latest* in its name is no longer timed as a test run, while `RunTargetTests`, `RunUITests`, `swift_package_build` and `launch_mac_app` are timed. Switching the test plan (`XcodeSwitchTestPlan`) and tools that only read, such as `build_settings`, aren't timed.
 - The README's new *Privacy* section lists everything Xcrew reads, runs, changes and sends, and the plugin's privacy link opens it. The mod and the MobileBuildMCP server now start in the form the plugin directory reads, with no change to what they do.
+- A build or test call that fails beneath Xcrew, such as one that's interrupted, no longer leaves the line above the prompt or the status line counting.
 
 ## 0.7.3 — 2026-10-29
 

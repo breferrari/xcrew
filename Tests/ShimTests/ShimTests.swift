@@ -8,6 +8,7 @@ import Testing
     let cache: URL
     let log: URL
     let hashLog: URL
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
     init() throws {
         let base = FileManager.default.temporaryDirectory.appending(path: "xcrew-shim-\(UUID().uuidString)")
@@ -15,7 +16,6 @@ import Testing
         cache = base.appending(path: "cache")
         log = base.appending(path: "builds.log")
         hashLog = base.appending(path: "hashes.log")
-        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         try FileManager.default.createDirectory(at: root.appending(path: "bin"), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: repository.appending(path: "bin/xcrew"), to: root.appending(path: "bin/xcrew"))
         try write("// swift-tools-version:6.0\n", to: "Package.swift")
@@ -89,8 +89,8 @@ import Testing
         for await _ in exit {}
     }
 
-    /// What a fake `mobilebuildmcp` saw when a command started it in `project`: its folder, arguments and PATH.
-    func startMobileBuildMCP(_ executable: String, _ arguments: [String], in project: URL) async throws -> String {
+    /// What a fake `mobilebuildmcp` saw when a command started it: its folder, arguments and PATH.
+    func startMobileBuildMCP(_ executable: String, _ arguments: [String]) async throws -> String {
         try write("#!/bin/sh\necho \"cwd=$(pwd -P) args=$* path=$PATH\"\n", to: "fakemcp/mobilebuildmcp", executable: true)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
@@ -105,12 +105,11 @@ import Testing
 
     /// The plugin's server script starts MobileBuildMCP exactly as the `sh -c` line in `.mcp.json` did.
     @Test func theServerScriptStartsMobileBuildMCPAsTheInlineCommandDid() async throws {
-        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let project = root.appending(path: "project")
         try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
         let inline = #"cd "$1" && PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" exec mobilebuildmcp mcp"#
-        let before = try await startMobileBuildMCP("/bin/sh", ["-c", inline, "mobilebuildmcp", project.path], in: project)
-        let after = try await startMobileBuildMCP(repository.appending(path: "libexec/mobilebuildmcp-server").path, [project.path], in: project)
+        let before = try await startMobileBuildMCP("/bin/sh", ["-c", inline, "mobilebuildmcp", project.path])
+        let after = try await startMobileBuildMCP(repository.appending(path: "libexec/mobilebuildmcp-server").path, [project.path])
         #expect(before.contains("cwd=\(try await physicalPath(project)) args=mcp path="))
         #expect(before.hasSuffix(":/opt/homebrew/bin:/usr/local/bin\n"))
         #expect(after == before)

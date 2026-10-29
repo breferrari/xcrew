@@ -16,6 +16,7 @@ Clone the repository, then work from its folder:
 
 ```sh
 git clone https://github.com/breferrari/xcrew
+cd xcrew
 ```
 
 ```sh
@@ -27,7 +28,7 @@ claude --plugin-dir .     # try your checkout in a real session
 scripts/typecheck.sh      # the mod's types; needs that session once
 ```
 
-`scripts/typecheck.sh` runs TypeScript 5.6.3, which `npx` fetches from npm on its first run.
+`scripts/typecheck.sh` runs the TypeScript compiler at the version it pins, which `npx` fetches from npm on its first run.
 
 ## How changes are made
 

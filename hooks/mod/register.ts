@@ -31,6 +31,8 @@ const buildState = atom({ plugin: 'xcrew', key: 'build' } as const, null as CliB
  * refuses before anything starts, so timing never counts a refused call.
  */
 export const register: Register = on => {
+  // The two tool.call hooks fail open, as the engine would without a handler; it's stated so validate reads it, and so
+  // a later change can't turn either into a refusal by accident. Nothing below them throws today.
   on('tool.call', { tool: PROJECT_REWRITER }, async ($, e, next) => ((await isGeneratedProject($)) ? { deny: REASON } : next(e))).catch(async ($, e, next) => next(e))
   on('tool.describe', { tool: PROJECT_REWRITER }, async ($, e, next) => {
     const described = await next(e)
@@ -90,10 +92,16 @@ export const register: Register = on => {
       }),
     )
 
+    // However the call ends, the run stops counting; one that failed beneath leaves the band too.
     const result = await next(e)
-
-    ticker?.cancel()
-    if (!usesBand) await quietly(() => $.ui.status(undefined))
+      .catch(async (error: unknown) => {
+        if (usesBand) await quietly(() => update($, runState, () => null))
+        throw error
+      })
+      .finally(async () => {
+        ticker?.cancel()
+        if (!usesBand) await quietly(() => $.ui.status(undefined))
+      })
     const ended = await quietly(() => $.clock.now())
     if (started === undefined || ended === undefined) return result
     // A denied call never ran: it has no outcome to show and no time that says how long a run takes.
@@ -138,7 +146,7 @@ export const register: Register = on => {
     if (subcommand === 'failures') return { text: await openFailures($) }
     if (subcommand === 'close') return { text: await closeFailures($) }
     return { text: USAGE }
-  }).catch(async ($, e, next) => (next.called ? next(e) : { text: `/xcrew ${(e.args ?? '').trim()} couldn't answer: ${next.error?.message ?? 'it failed'}` }))
+  }).catch(async ($, e, next) => ({ text: `/xcrew ${(e.args ?? '').trim()} couldn't answer: ${next.error?.message ?? 'it failed'}` }))
   on('ui.render', { component: 'Pane', requestId: FAILURES_PANE }, async ($, e) => paneTree($.ui.resolve(e), await read($, failuresState)))
   // The one unmatched session start hook: offers `/xcrew`, and looks for problems without holding the session up.
   on('session.start', async ($, e, next) => {
