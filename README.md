@@ -105,6 +105,7 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 | `/xcrew failures` | Opens a pane with every failing test and compile error of the last failing run. After a failing run the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw |
 | `/xcrew close` | Closes it |
 | `/xcrew history` | Each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped |
+| `/xcrew ledger` | The tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan |
 | `/xcrew doctor` | The doctor's report, below |
 
 They answer at once, without a turn for Claude.
@@ -220,8 +221,8 @@ Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads
 
 | | |
 | --- | --- |
-| **Reads** | Every tool call Claude makes, with its arguments and result, because it hooks `tool.call`. It acts only on the Xcode MCP's and MobileBuildMCP's tools by their names, on Write and Edit calls to a file a generator may read, and on Bash commands that run setup or a generate, and passes every other call on untouched. It keeps each build, test and run's recent durations in Claude Code's own store, and the last failing run's failures for the session |
-| **Hooks** | `tool.call`: the `XcodeWrite` guard, the refusal of a build after a manifest edit, and timing for builds, tests and runs. `tool.describe`: the guard's line in `XcodeWrite`'s description. `ui.render`: the line above the prompt and the failures pane. `command.run`: `/xcrew`. `session.start`: registers `/xcrew` and asks the doctor what's missing |
+| **Reads** | Every tool call Claude makes, with its arguments and result, because it hooks `tool.call`. It acts only on the Xcode MCP's and MobileBuildMCP's tools by their names, on Write and Edit calls to a file a generator may read, and on Bash commands that run setup or a generate, and passes every other call on untouched. It keeps each build, test and run's recent durations in Claude Code's own store, each branch's red-to-green ledger of tests there too, dropped after two weeks unwritten, and the last failing run's failures for the session |
+| **Hooks** | `tool.call`: the `XcodeWrite` guard, the refusal of a build after a manifest edit, the ledger tool's answer, and timing for builds, tests and runs. `tool.describe`: the guard's line in `XcodeWrite`'s description. `ui.render`: the line above the prompt and the failures pane. `command.run`: `/xcrew`. `session.start`: registers `/xcrew` and the ledger tool Claude reads, and asks the doctor what's missing |
 | **Changes** | In a Tuist or XcodeGen project, it refuses `XcodeWrite` and says so in that tool's description. After Claude edits a manifest, it refuses the next build or test, or a run that builds first, once, and adds a line to the edit's result naming the generate command. After a build or test call, Claude reads the CLI's shorter result and notes in place of the server's. Nothing else |
 | **Shows** | The line above the prompt, the failures pane, a toast or the status line where the line can't draw, and a notification after a run of a minute or more |
 | **Starts** | Only Xcrew's CLI: `bin/xcrew`, or the build it names |
@@ -232,7 +233,7 @@ Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads
 | | |
 | --- | --- |
 | **Builds** | Itself, from this repository's Swift source, with `swift build` into `~/Library/Caches/xcrew`, on first use. It has no dependencies, so the build needs no network |
-| **Starts** | `xcrun`, to list simulators (`simctl`), check the Xcode MCP (`mcp-server status`), read a test run's result bundle (`xcresulttool`) and find the skills Xcode ships (`mcpbridge`). `defaults`, to read whether Xcode accepts unsigned agents. `git`, to find `.git/info/exclude`, and in a git checkout of Xcrew to show its commit beside the version. `mobilebuildmcp --version` and `tuist version`, for the doctor's checks. `curl`, for the one request below |
+| **Starts** | `xcrun`, to list simulators (`simctl`), check the Xcode MCP (`mcp-server status`), read a test run's result bundle (`xcresulttool`) and find the skills Xcode ships (`mcpbridge`). `defaults`, to read whether Xcode accepts unsigned agents. `git`, to find `.git/info/exclude`, to name the branch or commit checked out, for the ledger, and in a git checkout of Xcrew to show its commit beside the version. `mobilebuildmcp --version` and `tuist version`, for the doctor's checks. `curl`, for the one request below |
 | **Reads** | MobileBuildMCP's run logs, a failing or skipped test run's result bundle, `.mobilebuildmcp/config.yaml`, and your project's manifests and Xcode project files, to tell what kind of project it is |
 | **Writes** | In `xcrew setup`: `.mobilebuildmcp/config.yaml`, a `.xcrew-managed` marker beside it with the config's fingerprint, a dated backup of a config you edited when you ask it to replace one, and a line in `.git/info/exclude`. In `xcrew xcode-skills`: the skills Xcode ships, into `.claude/skills`. While reading a crashed test, a temporary folder of the crash's attachments, removed once read. Nothing else |
 | **Sends** | One request, and only when you run `xcrew doctor` or `/xcrew doctor` yourself: `curl` asks GitHub's releases API for the latest version. Never at session start, whose look for problems leaves that check out. No telemetry |

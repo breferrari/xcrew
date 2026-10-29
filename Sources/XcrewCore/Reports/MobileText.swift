@@ -164,7 +164,7 @@ struct MobileText: Sendable {
                 guard seen.insert(failing.test).inserted else { continue }
                 // XCTest words an XCTFail as `failed - <message>`; the message is what was written.
                 let message = failing.message.replacing(#/^failed - /#, with: "")
-                failures.append(ToolOutput.Failure(title: failing.test.shown, message: message, where: location))
+                failures.append(ToolOutput.Failure(title: failing.test.shown, message: message, where: location, isTest: true))
             } else if let location {
                 failures.append(ToolOutput.Failure(title: location, message: entry.text))
             } else if let split = entry.text.range(of: ": "), split.lowerBound > entry.text.startIndex {

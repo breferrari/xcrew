@@ -100,7 +100,7 @@ enum Captured {
 @Suite struct FailureListTests {
     @Test func mobileBuildMCPFailingTestsAreListedOnceEachWithMessageAndPlace() {
         #expect(Captured.output("mobileTestsFailed").failures == [
-            .init(title: "PlainTests/testConcatenation", message: #"XCTAssertEqual failed: ("ab") is not equal to ("ba") - strings join left to right"#, where: "PlainTests.swift:5"),
+            .init(title: "PlainTests/testConcatenation", message: #"XCTAssertEqual failed: ("ab") is not equal to ("ba") - strings join left to right"#, where: "PlainTests.swift:5", isTest: true),
         ])
     }
 
@@ -118,10 +118,20 @@ enum Captured {
     @Test func theXcodeMCPFailingTestsCarryTheirOwnMessageAndLocation() {
         let expansion = "Issue recorded: Macro expansion did not produce the expected expanded source"
         #expect(Captured.output("xcodeTestsFailed").failures == [
-            .init(title: "MacroProbeTests/testMacro()", message: expansion, where: "MacroProbeTests.swift:19"),
-            .init(title: "MacroProbeTests/testMacroWithStringLiteral()", message: expansion, where: "MacroProbeTests.swift:35"),
-            .init(title: "PlainTests/testConcatenation()", message: #"XCTAssertEqual failed: ("ab") is not equal to ("ba") - strings join left to right"#, where: "PlainTests.swift:5"),
+            .init(title: "MacroProbeTests/testMacro()", message: expansion, where: "MacroProbeTests.swift:19", isTest: true),
+            .init(title: "MacroProbeTests/testMacroWithStringLiteral()", message: expansion, where: "MacroProbeTests.swift:35", isTest: true),
+            .init(title: "PlainTests/testConcatenation()", message: #"XCTAssertEqual failed: ("ab") is not equal to ("ba") - strings join left to right"#, where: "PlainTests.swift:5", isTest: true),
         ])
+    }
+
+    /// Only a failing test can later pass: the ledger keeps tests, never compile errors.
+    @Test func onlyAFailingTestIsMarkedATest() {
+        #expect(Captured.output("mobileTestsFailed").failures.map(\.isTest) == [true])
+        #expect(Captured.output("xcodeTestsFailed").failures.map(\.isTest) == [true, true, true])
+        #expect(ToolOutput(text: "🧪 Test\n\nTest Failures (1):\n\n  ✗ FormatterTests / test_symbol(): failed - deliberate failure\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 30.7s)", server: .mobileBuildMCP).failures.map(\.isTest) == [true])
+        for name in ["mobileBuildFailed", "xcodeBuildFailed", "mobileTestsBuildFailed"] {
+            #expect(Captured.output(name).failures.allSatisfy { !$0.isTest }, "\(name)")
+        }
     }
 
     @Test func aPassingRunHasNoFailures() {
@@ -132,7 +142,7 @@ enum Captured {
 
     @Test func anXCTFailReadsAsItsOwnMessage() {
         let text = "🧪 Test\n\nTest Failures (1):\n\n  ✗ FormatterTests / test_symbol(): failed - deliberate failure\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 30.7s)"
-        #expect(ToolOutput(text: text, server: .mobileBuildMCP).failures == [.init(title: "FormatterTests/test_symbol", message: "deliberate failure")])
+        #expect(ToolOutput(text: text, server: .mobileBuildMCP).failures == [.init(title: "FormatterTests/test_symbol", message: "deliberate failure", isTest: true)])
     }
 }
 

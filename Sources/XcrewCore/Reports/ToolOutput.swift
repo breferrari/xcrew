@@ -61,11 +61,14 @@ public struct ToolOutput: Sendable {
         public let title: String
         public let message: String
         public let `where`: String?
+        /// Whether it is a failing test, which a later run can pass, rather than a compile error.
+        public let isTest: Bool
 
-        public init(title: String, message: String, where location: String? = nil) {
+        public init(title: String, message: String, where location: String? = nil, isTest: Bool = false) {
             self.title = title
             self.message = message
             self.where = location
+            self.isTest = isTest
         }
     }
 

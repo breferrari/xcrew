@@ -57,6 +57,9 @@ public struct Project: Sendable, Equatable {
     /// Whether Tuist or XcodeGen generates this project, so its project files are rewritten on each generate.
     public var isGenerated: Bool { layout(.anywhereButHome).generator != nil }
 
+    /// The root as the file system spells it: symlinks resolved, `/private` kept, in the volume's own case.
+    public var canonicalRoot: String { ProjectLayout.canonical(root) }
+
     /// Whether this is an Apple-platform project: what session start asks before briefing Claude.
     public var isApplePlatformProject: Bool { layout(.repository).isApplePlatform }
 }

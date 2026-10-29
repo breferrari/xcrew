@@ -68,8 +68,8 @@ struct XcodeMCPResult: Decodable, Sendable {
             let title = result.identifier ?? "test"
             // `Tests/PlainTests.swift:5 PlainTests/testConcatenation(): XCTAssertEqual failed: …`
             let raw = result.errorMessages?.first ?? ""
-            guard let located = raw.firstMatch(of: #/(?s)^(\S+?):(\d+) \S+?: (.*)$/#) else { return ToolOutput.Failure(title: title, message: raw) }
-            return ToolOutput.Failure(title: title, message: String(located.3), where: "\(ToolOutput.basename(String(located.1))):\(located.2)")
+            guard let located = raw.firstMatch(of: #/(?s)^(\S+?):(\d+) \S+?: (.*)$/#) else { return ToolOutput.Failure(title: title, message: raw, isTest: true) }
+            return ToolOutput.Failure(title: title, message: String(located.3), where: "\(ToolOutput.basename(String(located.1))):\(located.2)", isTest: true)
         }
     }
 }

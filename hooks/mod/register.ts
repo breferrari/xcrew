@@ -5,6 +5,7 @@ import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree
 import { answerOf, couldntRun, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, isStale, keptHistory, USAGE } from './command'
 import { describe, historyOf, observe } from './context'
+import { afterTestRun, headOf, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
 import { describedForGenerated, REASON } from './guard'
@@ -150,6 +151,7 @@ export const register: Register = on => {
     await quietly(() => $.store.set(historyKey(scope), [...earlier, elapsed].slice(-HISTORY)))
     await quietly(() => $.store.set(updatedKey(scope), ended))
     await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
+    if (kind === 'test') await quietly(() => recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures }))
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
     const ending = endingOf(outcome, ended, elapsed, earlier)
     const summaryLine = outcomeLine(name, ending)
@@ -187,10 +189,13 @@ export const register: Register = on => {
     const row = await read($, memberOf(rowState, e))
     return row ? resultTree($.ui.resolve(e), parsed.tool, row) : next(e)
   })
+  // Claude's read of the ledger, for a pull request's test plan.
+  on('tool.call', { tool: LEDGER_TOOL_NAME }, async $ => ({ result: await ledgerNow($) }))
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
     if (subcommand === 'doctor') return { text: await cliText($, ['doctor']) }
     if (subcommand === 'history') return { text: await history($) }
+    if (subcommand === 'ledger') return { text: await ledgerNow($) }
     if (subcommand === 'failures') {
       await dismissFailedRun($)
       return { text: await openFailures($) }
@@ -206,6 +211,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register(COMMAND)
+    await quietly(() => $.tool.register(LEDGER_TOOL))
     // A cleared conversation is a new session: its warnings show again.
     found = []
     seenAt = {}
@@ -366,6 +372,24 @@ async function openFailures($: EngineInterface): Promise<string> {
 async function closeFailures($: EngineInterface): Promise<string> {
   await $.ui.close({ id: FAILURES_PANE })
   return 'Closed the failures pane.'
+}
+
+/** Writes a finished test run into its branch's ledger, and drops the ledgers no run has written for as long as the history is kept. */
+async function recordLedger($: EngineInterface, run: Parameters<typeof afterTestRun>[1]): Promise<void> {
+  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  if (!head) return
+  const key = ledgerKey(head)
+  await $.store.set(key, afterTestRun(ledgerOf(await $.store.get(key)), run))
+  const others = (await $.store.keys()).filter(stored => stored.startsWith(LEDGER_PREFIX) && stored !== key)
+  const stored = Object.fromEntries(await Promise.all(others.map(async other => [other, await $.store.get(other)] as const)))
+  await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))
+}
+
+/** The ledger of the branch checked out now, as text. */
+async function ledgerNow($: EngineInterface): Promise<string> {
+  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  if (!head) return LEDGER_UNAVAILABLE
+  return ledgerText(ledgerOf(await $.store.get(ledgerKey(head))), head)
 }
 
 /** `/xcrew history`. */

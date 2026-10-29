@@ -7,10 +7,10 @@ import XcrewCore
 /// the skill pays for the container's search. The mod asks with `--manifest` after each edit to a manifest's name.
 struct ProjectCommand: Command {
     let name = "project"
-    let flags: Set<String> = ["setup"]
+    let flags: Set<String> = ["setup", "branch"]
     let valuedOptions: Set<String> = ["manifest"]
     let usage = [
-        "project [--setup] [--manifest <file>]   whether a generator writes this project, as JSON; --setup adds the container setup would use, and --manifest the command that regenerates the project after an edit to <file>, when the generator reads it",
+        "project [--setup] [--manifest <file>] [--branch]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, and --branch the real root with the branch or commit checked out",
     ]
 
     struct Answer: Codable, Equatable {
@@ -21,6 +21,10 @@ struct ProjectCommand: Command {
         var generate: String?
         /// The app that command regenerates, as the path of its manifests' folder from the root: empty for the root.
         var app: String?
+        /// With `--branch`: the project's real root, and the branch checked out there, or the commit when HEAD is detached.
+        var root: String?
+        var branch: String?
+        var commit: String?
     }
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -32,6 +36,14 @@ struct ProjectCommand: Command {
             let file = manifest.hasPrefix("/") ? URL(fileURLWithPath: manifest) : project.root.appending(path: manifest)
             let found = layout.command(after: file, nearest: nearest)
             (answer.generate, answer.app) = (found?.command, found?.manifests.path)
+        }
+        if invocation.arguments.has("branch") {
+            answer.root = project.canonicalRoot
+            switch await GitHead.of(project, using: invocation.context.machine.runner) {
+            case let .branch(name): answer.branch = name
+            case let .commit(sha): answer.commit = sha
+            case nil: break
+            }
         }
         if invocation.arguments.has("setup") {
             do {

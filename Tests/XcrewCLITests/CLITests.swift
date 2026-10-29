@@ -569,3 +569,34 @@ import XcrewTestSupport
         #expect(!text.contains(#""container":"#))
     }
 }
+
+/// The key a branch's red-to-green ledger is kept under: the project's real root, and its branch, or the commit when HEAD
+/// is detached.
+@Suite struct ProjectBranchTests {
+    func realPath(_ project: Project) async -> String {
+        await SystemCommandRunner().run(["/bin/realpath", project.root.path], stdin: nil, timeout: .seconds(10)).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @Test func aBranchIsNamedWithTheRealRoot() async {
+        let project = Project.temporary()
+        let runner = FakeRunner(responses: ["git -C \(project.root.path) symbolic-ref --short -q HEAD": .init(status: 0, stdout: "feat/ledger\n")])
+        let text = await Run("project", "--branch", context: .fake(runner, project: project)).text
+        #expect(text == #"{"branch":"feat/ledger","isGenerated":false,"root":"\#(await realPath(project))"}"#)
+    }
+
+    @Test func aDetachedHeadIsNamedByItsCommit() async {
+        let project = Project.temporary()
+        let runner = FakeRunner(responses: [
+            "git -C \(project.root.path) symbolic-ref --short -q HEAD": .init(status: 1),
+            "git -C \(project.root.path) rev-parse HEAD": .init(status: 0, stdout: "0123456789abcdef0123456789abcdef01234567\n"),
+        ])
+        let text = await Run("project", "--branch", context: .fake(runner, project: project)).text
+        #expect(text == #"{"commit":"0123456789abcdef0123456789abcdef01234567","isGenerated":false,"root":"\#(await realPath(project))"}"#)
+    }
+
+    @Test func outsideARepositoryOnlyTheRootIsNamed() async {
+        let project = Project.temporary()
+        let text = await Run("project", "--branch", context: .fake(project: project)).text
+        #expect(text == #"{"isGenerated":false,"root":"\#(await realPath(project))"}"#)
+    }
+}
