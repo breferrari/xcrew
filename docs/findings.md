@@ -111,6 +111,10 @@ From the directory's validation of `main` at two commits on October 29, 2026, be
 | Its listing preview shows the README away from the repository: an image at a relative `assets/` path appeared as its alt text | The README's images are absolute `raw.githubusercontent.com` URLs to this repository's `assets/`, and a test fails on any other image source |
 | Without `documentationUrl`, the listing took the README's first link, Sosumi's site, as the plugin's documentation | `plugin.json` sets `documentationUrl` and `supportUrl`, and a test fails on a field the manifest reference doesn't document |
 
+## Toolchains
+
+On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The jobs don't yet log their toolchain or test the 6.2 floor (#115).
+
 ## Tried and rejected
 
 | Option | Why not |

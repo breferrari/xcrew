@@ -109,7 +109,7 @@ def band():
     rows = [
         # Only the separators are faint, as in hooks/mod/band.ts: every value reads in the theme's text colour.
         ("WHILE IT RUNS", [("●", "orange"), (" ", "text"), ("test_sim", "text", "600"), SEP, ("0:41", "text"), (" ", "text"),
-                           ("@gauge", 8, 6.5, "success"), (" ", "text"), ("~0:04 left", "text"), SEP, ("testing 431 of 959", "text"), SEP, ("MyApp on iPhone 17", "text")]),
+                           ("@gauge", 8, 5, "success"), (" ", "text"), ("~0:24 left", "text"), SEP, ("testing 575 of 959", "text"), SEP, ("MyApp on iPhone 17", "text")]),
         ("WHEN IT PASSES", [("✓", "success"), (" ", "text"), ("test_sim", "text", "600"), SEP, ("1:12", "text"), (" (avg 1:05)", "orange"), SEP, ("959 passed", "text")]),
         ("WHEN IT FAILS", [("✗", "error"), (" ", "text"), ("test_sim", "text", "600"), SEP, ("2:03", "text"), (" (avg 1:58)", "orange"), SEP,
                            ("3 of 961 failed · PaymentsTests/test_refund()", "error")]),

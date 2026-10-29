@@ -15,11 +15,11 @@
 <text x="176.6" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#e6e8eb" xml:space="preserve">0:41</text>
 <text x="217.4" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#e6e8eb" xml:space="preserve"> </text>
 <rect x="227.6" y="113.9" width="81.6" height="2" fill="#323944"/>
-<rect x="227.6" y="112.9" width="66.3" height="4" rx="1" fill="#3fb950"/>
+<rect x="227.6" y="112.9" width="51.0" height="4" rx="1" fill="#3fb950"/>
 <text x="309.2" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#e6e8eb" xml:space="preserve"> </text>
-<text x="319.4" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#e6e8eb" xml:space="preserve">~0:04 left</text>
+<text x="319.4" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#e6e8eb" xml:space="preserve">~0:24 left</text>
 <text x="421.4" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#8b929c" xml:space="preserve"> · </text>
-<text x="452.0" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#e6e8eb" xml:space="preserve">testing 431 of 959</text>
+<text x="452.0" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#e6e8eb" xml:space="preserve">testing 575 of 959</text>
 <text x="635.6" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#8b929c" xml:space="preserve"> · </text>
 <text x="666.2" y="120.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" fill="#e6e8eb" xml:space="preserve">MyApp on iPhone 17</text>
 <rect x="36.0" y="136.0" width="1192.0" height="38" rx="8" fill="none" stroke="#323944" stroke-width="1.3"/>

@@ -128,6 +128,30 @@ import XcrewCore
         #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: script).path))
     }
 
+    /// The README's band picture is drawn by `assets/mockups.py`, which can't import the mod. It follows the mod's
+    /// colour rule (only the ` · ` separators are faint) through one `SEP` that names the same text and theme key.
+    @Test func theBandMockupDrawsTheModsColourRule() throws {
+        let script = try text("assets/mockups.py")
+        let mod = try text("hooks/mod/band.ts")
+        #expect(script.contains(#"SEP = (" · ", "subtle")"#))
+        #expect(mod.contains("const SEPARATOR = segment(' · ', 'subtle')"))
+        let band = try #require(script.firstMatch(of: /(?s)def band\(\):.*?\n\n\n/)).output
+        #expect(!band.contains(#""subtle")"#), "a value drawn faint in the band mockup")
+    }
+
+    /// The running line's time and time left add up to the usual time the passing line shows beside it.
+    @Test func theBandMockupsRunningLineAgreesWithItsHistory() throws {
+        let band = try #require(try text("assets/mockups.py").firstMatch(of: /(?s)def band\(\):.*?\n\n\n/)).output
+        let seconds = { (clock: Substring) -> Int in
+            let parts = clock.split(separator: ":").compactMap { Int($0) }
+            return parts[0] * 60 + parts[1]
+        }
+        let elapsed = try #require(band.firstMatch(of: /"WHILE IT RUNS".*?\("(\d+:\d\d)", "text"\)/)).output.1
+        let left = try #require(band.firstMatch(of: /"~(\d+:\d\d) left"/)).output.1
+        let usual = try #require(band.firstMatch(of: /"WHEN IT PASSES".*?\(avg (\d+:\d\d)\)/)).output.1
+        #expect(seconds(elapsed) + seconds(left) == seconds(usual), "\(elapsed) + \(left) isn't the usual \(usual)")
+    }
+
     /// The directory holds a bundled image the README shows other than in Markdown's image syntax, or from elsewhere.
     @Test func theREADMEsImagesAreTheRepositorysOwnInMarkdown() throws {
         let readme = try text("README.md")
