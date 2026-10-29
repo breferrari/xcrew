@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A large test result that Claude Code saved to a file is still read back and shortened if a later Claude Code words its notice differently: xcrew finds the file by its path rather than the notice's sentence.
 - A build or test call's row in the transcript shows its outcome, as the line above the prompt does: `✓ test_sim · 1:12 · 959 passed`, or the first failures and how many more. ctrl+o shows the result Claude read, which is unchanged.
 - A compiler warning that fires in several places reaches Claude once, with how many times and every file and line, in place of one copy of the message per place. Warnings that differ are left as MobileBuildMCP wrote them.
 - The notification after a long failing run carries its outcome alone, without the `/xcrew failures` pointer, which can't be typed from a notification. The line above the prompt, and the toast where that line can't draw, still end with it.

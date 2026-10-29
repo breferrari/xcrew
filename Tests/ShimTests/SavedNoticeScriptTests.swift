@@ -47,7 +47,7 @@ import Testing
     @Test func aNoticeWithoutTheWordsXcrewLooksForFails() async throws {
         let result = try await check(Self.current.replacingOccurrences(of: "Output has been saved to", with: "Output was saved to"))
         #expect(result.status == 1)
-        #expect(result.errors == "Claude Code's executable has no 'Output has been saved to ${…}' notice: find how it words a saved result now and update Report.savedPath to match\n")
+        #expect(result.errors == "Claude Code's executable has no 'Output has been saved to ${…}' notice: xcrew finds the saved file by its path, so check that the new notice still names it, then update the words scripts/saved-notice.sh looks for\n")
     }
 
     @Test func anExecutableWithTheWordsButNoTemplateSaysSo() async throws {
@@ -60,6 +60,6 @@ import Testing
         let result = try await check(Self.current.replacingOccurrences(of: "${e}.\nFormat: ${r}\n", with: "${e} (${r})"))
         #expect(result.status == 1)
         #expect(result.errors.hasPrefix("xcrew didn't read back a result saved under Claude Code's notice, which now reads \"Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to /"))
-        #expect(result.errors.hasSuffix("/tool-results/mcp-test_sim-1.txt (JSON)\": update Report.savedPath to match\n"))
+        #expect(result.errors.hasSuffix("/tool-results/mcp-test_sim-1.txt (JSON)\": xcrew finds the saved file by an existing path in a tool-results folder, so check that the notice still names one\n"))
     }
 }

@@ -5,8 +5,9 @@
 set -eu
 cd "$(dirname "$0")/.."
 folder=$(mktemp -d)
-saved="$folder/tool-results/mcp-test_sim-1.txt"
-mkdir "$folder/tool-results"
+# Laid out as Claude Code saves one: <config>/projects/<project>/<session>/tool-results/<file>.
+saved="$folder/projects/-work-App/session/tool-results/mcp-test_sim-1.txt"
+mkdir -p "$(dirname "$saved")"
 cp Tests/XcrewCoreTests/Fixtures/Reports/mobileTestsPassed.txt "$saved"
 # The first `${…}` is the saved file, the rest its format. Exits 2 when the words are there but no template.
 status=0
@@ -19,8 +20,8 @@ notice=$(SAVED="$saved" perl -0777 -ne '
 case $status in
   0) ;;
   2) echo "Claude Code's executable has the words 'Output has been saved to' but no template with them as text, so this check can't read the notice: rework scripts/saved-notice.sh" >&2; exit 1 ;;
-  *) echo "Claude Code's executable has no 'Output has been saved to \${…}' notice: find how it words a saved result now and update Report.savedPath to match" >&2; exit 1 ;;
+  *) echo "Claude Code's executable has no 'Output has been saved to \${…}' notice: xcrew finds the saved file by its path, so check that the new notice still names it, then update the words scripts/saved-notice.sh looks for" >&2; exit 1 ;;
 esac
 printf '%s' "$notice" | bin/xcrew report --server MobileBuildMCP --kind test | grep -qF "the full result is in $saved" && exit 0
-echo "xcrew didn't read back a result saved under Claude Code's notice, which now reads \"$notice\": update Report.savedPath to match" >&2
+echo "xcrew didn't read back a result saved under Claude Code's notice, which now reads \"$notice\": xcrew finds the saved file by an existing path in a tool-results folder, so check that the notice still names one" >&2
 exit 1

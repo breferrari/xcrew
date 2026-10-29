@@ -363,9 +363,7 @@ func failingRunText(passing: Int) -> String {
     }
 
     @Test func aResultClaudeCodeSavedIsReadBackAndShortened() async throws {
-        let folder = Project.temporary()
-        folder.write(Captured.text("mobileTestsPassed"), to: "tool-results/mcp-test_sim-1.txt")
-        let saved = folder.root.appending(path: "tool-results/mcp-test_sim-1.txt").path
+        let saved = SavedResultTests.saved()
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
         let report = await Report.make(kind: .test, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
         #expect(report.ok)
@@ -589,9 +587,7 @@ extension FailureNotes {
     }
 
     @Test func aSavedResultTheCollapseAloneWouldEditStaysSaved() async {
-        let folder = Project.temporary()
-        folder.write(Captured.text("mobileTestsPassedWithWarningsJSON").replacingOccurrences(of: "output.test-result", with: "output.build-result"), to: "tool-results/mcp-build_macos-1.txt")
-        let saved = folder.root.appending(path: "tool-results/mcp-build_macos-1.txt").path
+        let saved = SavedResultTests.saved(Captured.text("mobileTestsPassedWithWarningsJSON").replacingOccurrences(of: "output.test-result", with: "output.build-result"), as: "mcp-build_macos-1.txt")
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
         let report = await Report.make(kind: .build, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
         #expect(report.ok)
@@ -609,5 +605,58 @@ extension FailureNotes {
 
     @Test func eachFilesPathIsWrittenOnceBeforeItsLines() {
         #expect(RepeatedWarnings.locations(["/a/A.swift:4", "/a/A.swift:5", "/b/B.swift:9", "/a/A.swift:7", "/c/C.swift"].map(RepeatedWarnings.Location.init)) == "/a/A.swift:4, :5, /b/B.swift:9, /a/A.swift:7, /c/C.swift")
+    }
+}
+
+@Suite struct SavedResultTests {
+    /// A result Claude Code saved, at `<config>/projects/<project>/<session>/tool-results/<name>`, `config` in `folder`.
+    static func saved(_ text: String = Captured.text("mobileTestsPassed"), as name: String = "mcp-test_sim-1.txt", in folder: String = "claude") -> String {
+        let root = Project.temporary()
+        let path = "\(folder)/projects/-work-App/0b6e4c1a/tool-results/\(name)"
+        root.write(text, to: path)
+        return root.root.appending(path: path).path
+    }
+
+    @Test func aNoticeInOtherWordsStillLeadsToTheFile() async {
+        let path = Self.saved()
+        for notice in ["Result too large; written to \(path) (JSON).", "Saved the full output at \(path)", "Error: output exceeded the limit. See '\(path)'.", "Output has been saved to \(path).\nFormat: JSON", "Output saved to `\(path)`", "Saved: <\(path)>", "Saved to “\(path)”."] {
+            #expect(Report.savedPath(notice) == path, "\(notice)")
+        }
+        let report = await Report.make(kind: .test, output: ToolOutput(text: "Result too large; written to \(path) (JSON).", server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
+        #expect(report.result?.contains("the full result is in \(path)") == true)
+    }
+
+    @Test func aPathToNoFileIsNotASavedResult() {
+        #expect(Report.savedPath("Output has been saved to /nowhere/tool-results/mcp-test_sim-1.txt.\nFormat: JSON") == nil)
+    }
+
+    @Test func aLongResultThatNamesASavedFileIsNotANotice() {
+        let path = Self.saved()
+        #expect(Report.savedPath("Output has been saved to \(path).\n" + String(repeating: "✅ FormatterTests/test_case() (0.001s)\n", count: 300)) == nil)
+    }
+
+    @Test func aPathOutsideAToolResultsFolderIsNotASavedResult() {
+        let folder = Project.temporary()
+        folder.write("{}", to: "logs/test_sim.log")
+        #expect(Report.savedPath("Output has been saved to \(folder.root.appending(path: "logs/test_sim.log").path).") == nil)
+    }
+
+    /// A path with a space in it is cut there, as it always was: the notice doesn't quote its path.
+    @Test func aConfigFolderWithParenthesesOrAnApostropheIsFound() {
+        let path = Self.saved(in: "o'neil(2)/.claude")
+        #expect(Report.savedPath("Output has been saved to \(path).\nFormat: JSON") == path)
+    }
+
+    @Test func aProjectsOwnToolResultsFolderIsNotASavedResult() {
+        let folder = Project.temporary()
+        folder.write("struct Parser {}", to: "App/tool-results/Parser.swift")
+        #expect(Report.savedPath("Compiling \(folder.root.appending(path: "App/tool-results/Parser.swift").path)\n❌ Build failed") == nil)
+    }
+
+    @Test func aFolderIsNotASavedResult() {
+        let path = Self.saved()
+        let folder = URL(fileURLWithPath: path).deletingLastPathComponent().appending(path: "session-abc")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        #expect(Report.savedPath("Output has been saved to \(folder.path).") == nil)
     }
 }

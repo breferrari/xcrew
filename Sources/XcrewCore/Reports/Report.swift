@@ -21,9 +21,29 @@ public struct Report: Sendable, Equatable, Codable {
     static let noTestsNote =
         "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names."
 
-    /// Claude Code's notice for a result over its size limit, naming the file that holds the whole text.
+    /// The longest text read as a notice: far below the size at which Claude Code saves a result (docs/findings.md),
+    /// with room for the saved JSON's schema the notice names.
+    static let noticeLimit = 10_000
+
+    /// The file Claude Code saved a result to, from the notice it left in the result's place. Found by the file, not the
+    /// notice's wording, which is undocumented: a file directly in a `tool-results` folder below a `projects` folder,
+    /// where the docs say it saves one, that exists. The config folder above isn't checked, since `CLAUDE_CONFIG_DIR`
+    /// moves it. A path runs to the next space; whatever closes it (`.`, a quote, a bracket) is trimmed until a file is found.
     static func savedPath(_ text: String) -> String? {
-        text.firstMatch(of: #/Output has been saved to (\/\S+\/tool-results\/\S+?)\.\s/#).map { String($0.1) }
+        guard text.utf8.count <= noticeLimit else { return nil }
+        for match in text.matches(of: #/\/\S*\/projects\/\S+\/tool-results\/[^\s\/]+/#) {
+            var path = Substring(match.output)
+            while let last = path.last {
+                if isFile(path) { return String(path) }
+                guard !last.isLetter, !last.isNumber else { break }
+                path.removeLast()
+            }
+        }
+        return nil
+    }
+
+    static func isFile(_ path: some StringProtocol) -> Bool {
+        (try? URL(fileURLWithPath: String(path)).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
     /// A result Claude Code saved to a file is read back from it.
