@@ -41,7 +41,7 @@ scripts/typecheck.sh      # the mod's types; needs that session once
 ## House rules
 
 - **Titles say what to fix or what to build.** One imperative clause, no "because"; the explanation goes in the body. Start a pull request title with its kind: `fix:` for a defect or `feat:` for a new feature that users get, otherwise `ci:`, `docs:`, `test:` or `chore:`. Issue titles are imperative too, without the prefix.
-- **A pull request carries its release note.** The template's last section is one line for someone who has never opened this repository, saying what changed for them, or `none` for internal work. The same line goes under `## Unreleased` in `CHANGELOG.md`.
+- **A pull request carries its release note.** The template's last section is one line for someone who has never opened this repository, saying what changed for them, or `none` for internal work. The same line goes under `## Unreleased` in `CHANGELOG.md`, placed by what a reader notices first rather than at the top or the end, so a release ships the changelog as it stands.
 - **A Markdown-only pull request skips the test jobs.** They report as skipped, which satisfies the required checks. `CHANGELOG.md`, skills and the session briefing (`context/`) count as code, since the tests read them.
 - **Numbers or it didn't happen.** A test plan says what ran and how it went, with counts and timings; a single green run of something flaky isn't evidence.
 - **Logic goes in Swift, not in the mod.** The mod hooks, draws and keeps state; anything that parses what the servers print as text, reads a file or runs a program is a Swift command the mod calls. [docs/architecture.md](docs/architecture.md) (*The mod's boundary*) has the line, and `ModBoundaryTests` holds it.
@@ -57,13 +57,13 @@ Claude Code keeps people on a plugin's `version` until it changes, so every rele
 2. In a throwaway worktree, so your clone is untouched, it sets the version in `Sources/XcrewCore/XcrewVersion.swift` and `.claude-plugin/plugin.json` and turns `## Unreleased` into `## <version> — <date>`. `ManifestTests` fails until they agree.
 3. It opens the `chore: release <version>` pull request, merges it once it's green, and brings it up to date whenever `main` moves ahead of it.
 4. It tags the merge commit `v<version>` and waits for the release workflow. The workflow refuses a tag that doesn't match the declared version, or one whose commit isn't exactly what a pull request tested and passed, then publishes the release with its changelog entry. It doesn't test again: CI runs once per change, on its pull request, and the ruleset only merges one that is green and up to date with `main`.
-5. Once the workflow has published the release, it opens and merges `chore: Install <version> from the marketplace`, which points the marketplace entry's `ref` at the new tag. Until then installs stay on the previous release, so the marketplace only ever names a tag that exists and was published. If the workflow refuses the tag, the script stops there and says what to do.
+5. Installs follow the `stable` branch, which the marketplace entry names as its `ref`. The workflow's last step, after every check and the publish passed, fast-forwards `stable` to the tag's commit, so a refused tag never reaches installs and a failed release leaves them on the last good one. A ruleset keeps `stable` from being deleted or rewound. The script confirms `stable` reached the tag; if the workflow refused it, the script stops there and says what to do.
 
 Every step can run again: after a failure, run `scripts/release.sh <version>` again, and it finds the tag and goes on from the release workflow.
 
-The weekly canary fails, and opens an issue, when the marketplace still installs an older release a day after the latest was published.
+The weekly canary fails, and opens an issue, when `stable` is still behind the latest release a day after it was published.
 
-After a release, check that a fresh install lands on the tag without touching your own install: run `claude plugin marketplace add breferrari/xcrew` and `claude plugin install xcrew@breferrari --scope user` with `CLAUDE_CONFIG_DIR` set to a new temporary folder, and compare `gitCommitSha` in that folder's `plugins/installed_plugins.json` with the tag's commit.
+After a release, check that a fresh install lands on the tag without touching your own install: run `claude plugin marketplace add breferrari/xcrew` and `claude plugin install xcrew@breferrari --scope user` with `CLAUDE_CONFIG_DIR` set to a new temporary folder, and compare `gitCommitSha` in that folder's `plugins/installed_plugins.json` with the tag's commit, which `stable` points at.
 
 Before a release that changes what Claude sees from a build or test, run the checks in [docs/live-check.md](docs/live-check.md) in a real project.
 

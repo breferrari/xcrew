@@ -366,32 +366,28 @@ import Testing
         #expect(plugins.map { $0["name"] as? String } == ["xcrew"])
     }
 
-    /// The tags the marketplace may name: this version's, or the previous release's until the pull request after
-    /// the release moves it on, and only versions the changelog has released.
-    static func installableRefs(changelog: String, version: String) -> Set<String> {
-        let released = changelog.matches(of: #/\n## (\d+\.\d+\.\d+) — /#).map { String($0.1) }
-        let candidates = [version] + released.dropFirst().prefix(1)
-        return Set(candidates.filter(released.contains).map { "v\($0)" })
-    }
-
-    @Test func theMarketplaceMayLagOneRelease() {
-        let changelog = "# Changelog\n\n## Unreleased\n\n## 0.9.0 — 2026-11-01\n\n## 0.8.1 — 2026-10-29\n\n## 0.8.0 — 2026-10-29\n"
-        #expect(Self.installableRefs(changelog: changelog, version: "0.9.0") == ["v0.9.0", "v0.8.1"])
-    }
-
-    @Test func theMarketplaceNamesOnlyReleasedVersions() {
-        let changelog = "# Changelog\n\n## 0.9.0 — 2026-11-01\n\n## 0.8.1 — 2026-10-29\n"
-        #expect(Self.installableRefs(changelog: changelog, version: "0.9.1") == ["v0.8.1"])
-    }
-
-    /// A relative source would install main's HEAD under the last release's version.
-    @Test func theMarketplaceInstallsAReleaseTag() throws {
+    /// Installs follow `stable`, which only the release workflow moves, to a tag it accepted: a relative source would
+    /// install main's HEAD under the last release's version.
+    @Test func theMarketplaceInstallsTheStableBranch() throws {
         let repository = try #require((try json(".claude-plugin/plugin.json")["repository"] as? String)?.replacing("https://github.com/", with: ""))
         let plugins = try #require(try json(".claude-plugin/marketplace.json")["plugins"] as? [[String: Any]])
         let source = plugins.first?["source"] as? [String: String]
-        #expect(source?["source"] == "github" && source?["repo"] == repository)
-        #expect(Self.installableRefs(changelog: try text("CHANGELOG.md"), version: XcrewVersion.current).contains(source?["ref"] ?? ""))
+        #expect(source == ["source": "github", "repo": repository, "ref": "stable"])
         #expect(XcrewUpdateCheck.latestRelease == "https://api.github.com/repos/\(repository)/releases/latest")
+    }
+
+    /// The release workflow moves `stable` last, only after every check and the publish passed, as a fast-forward, with
+    /// write access granted to that job alone: a refused tag never moves it, and a crashed release leaves it on the last
+    /// good tag.
+    @Test func onlyAnAcceptedReleaseMovesStable() throws {
+        let release = try text(".github/workflows/release.yml")
+        #expect(!release.contains("\npermissions:"), "permissions belong to the job, not the workflow")
+        #expect(release.contains("    permissions:\n      contents: write"))
+        let steps = release.components(separatedBy: "\n      - ")
+        let last = try #require(steps.last)
+        #expect(last.contains(#"git push origin "$GITHUB_SHA:refs/heads/stable""#))
+        #expect(steps.dropLast().contains { $0.contains("gh release create") })
+        #expect(!release.contains("--force") && !release.contains(":+") && !release.contains(" +$") && !release.contains("continue-on-error"))
     }
 }
 

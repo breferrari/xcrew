@@ -1,19 +1,19 @@
 # A tag v<version> releases Xcrew. Claude Code keeps people on a plugin's version until it
-# changes, so the tag must match the version the plugin and the CLI declare.
+# changes, so the tag must match the version the plugin and the CLI declare. Installs follow the
+# `stable` branch, which this workflow alone moves, to the tag, once everything else passed.
 name: Release
 
 on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
-  checks: read
-  pull-requests: read
-
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      checks: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v5
       - name: The tag matches the declared version
@@ -48,3 +48,7 @@ jobs:
           tag=${GITHUB_REF_NAME#v}
           awk -v v="$tag" '$0 ~ "^## "v" " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
           gh release create "$GITHUB_REF_NAME" --title "Xcrew $tag" --notes-file notes.md
+      # Last, so a refused tag never moves it and a crash leaves it on the last good release. A plain push only
+      # fast-forwards, and the ruleset on `stable` refuses anything else.
+      - name: Point installs at this release
+        run: git push origin "$GITHUB_SHA:refs/heads/stable"

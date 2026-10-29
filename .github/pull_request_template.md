@@ -16,4 +16,4 @@ Title: one clause, imperative, no "because". Start it with its kind: fix: for a 
 
 ## Release note
 
-<!-- One line for someone who has never opened this repository, saying what changed for them. It also goes under "## Unreleased" in CHANGELOG.md. Write "none" for internal work: CI, tests, docs. -->
+<!-- One line for someone who has never opened this repository, saying what changed for them. It also goes under "## Unreleased" in CHANGELOG.md, placed by what a reader notices first. Write "none" for internal work: CI, tests, docs. -->
