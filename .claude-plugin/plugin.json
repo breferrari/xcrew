@@ -21,5 +21,23 @@
     "simulator",
     "xcodebuild"
   ],
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "mcpServers": {
+    "MobileBuildMCP": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/libexec/mobilebuildmcp-server",
+      "args": [
+        "${CLAUDE_PROJECT_DIR}"
+      ],
+      "env": {
+        "MOBILEBUILDMCP_SENTRY_DISABLED": "true"
+      }
+    },
+    "xcode": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/libexec/xcode-mcp-server"
+    },
+    "sosumi": {
+      "type": "http",
+      "url": "https://sosumi.ai/mcp"
+    }
+  }
 }
