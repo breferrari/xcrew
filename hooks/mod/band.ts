@@ -84,11 +84,6 @@ export function showsRun(run: BandRun | null, now: number): run is BandRun {
   return run !== null && !(run.ended && now - run.ended.at > shownFor(run.ended))
 }
 
-/** After setup writes the config: the one step left. */
-export function restartTree(elements: Elements): RenderElement {
-  return line(elements, [segment('↻', 'warning'), segment(' restart Claude Code to load the new config')])
-}
-
 /** A row of pieces, each separator drawn inside its value's text. */
 function line({ Box, Text }: Elements, parts: Segment[]): RenderElement {
   const children: RenderElement[] = []
@@ -111,7 +106,7 @@ export function runTree(elements: Elements, run: BandRun, now: number): RenderEl
   return line(elements, segments(run, now))
 }
 
-/** While no run shows and no restart is due: the doctor's most serious problem. */
+/** The doctor's most serious problem: a pending restart over a finished run, anything else while no run shows. */
 export function problemsTree(elements: Elements, problems: BandProblems): RenderElement {
   return line(elements, problemSegments(problems))
 }

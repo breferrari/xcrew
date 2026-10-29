@@ -176,6 +176,90 @@ import XcrewTestSupport
         #expect(await SimulatorsCheck().run(.fake(runner, project: project)) == .warn("iPhone Duo has two displays, and MobileBuildMCP's screenshot fails on it: xcrew setup --test-simulator <name> picks another"))
     }
 
+    /// Two sessions on one project: Claude Code 100 with its server 200 and this doctor, 300; Claude Code 400 with its server 500.
+    func sessions(project: Project, mine: String, theirs: String, configAgo seconds: TimeInterval) throws -> FakeRunner {
+        project.write("schemaVersion: 1\n", to: ".mobilebuildmcp/config.yaml")
+        project.write("", to: ".mobilebuildmcp/.xcrew-managed")
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -seconds)], ofItemAtPath: project.managedMarker.path)
+        let ps = """
+          100     1 01:00:00 /Users/me/.local/bin/claude --resume
+          200   100 \(mine) \(Self.server)
+          300   100    00:01 /plugins/xcrew/.build/xcrew doctor --problems --json
+          400     1 01:00:00 claude
+          500   400 \(theirs) \(Self.server)
+          600     1    00:01 /plugins/xcrew/.build/xcrew doctor
+        """
+        let comm = "100 /Users/me/.local/bin/claude\n200 node-runtime\n300 xcrew\n400 claude\n500 node-runtime\n600 xcrew\n"
+        return runner(ps: ps, comm: comm, cwd: [200, 500], project: project)
+    }
+
+    @Test func thisSessionsServerHasTheConfigItStartedAfter() async throws {
+        let project = Project.temporary()
+        let runner = try sessions(project: project, mine: "00:30", theirs: "10:00", configAgo: 60)
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)).status == .pass)
+    }
+
+    @Test func aConfigNewerThanThisSessionsServerAsksForARestart() async throws {
+        let project = Project.temporary()
+        let runner = try sessions(project: project, mine: "05:00", theirs: "00:30", configAgo: 60)
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)) == .warn("the config changed after this session's MobileBuildMCP started: restart Claude Code to load it"))
+    }
+
+    /// From a terminal there's no session to match, so the oldest server for the project stands for any stale one.
+    @Test func fromATerminalTheOldestServerCounts() async throws {
+        let project = Project.temporary()
+        let runner = try sessions(project: project, mine: "00:30", theirs: "1-02:10:00", configAgo: 60)
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 600)) == .warn("a MobileBuildMCP serving this project started before the config changed: restart its Claude Code session to load it"))
+    }
+
+    /// MobileBuildMCP saves session defaults with `persist: true` into its own config, which it already holds.
+    @Test func theServersOwnWriteAsksForNoRestart() async throws {
+        let project = Project.temporary()
+        let runner = try sessions(project: project, mine: "00:30", theirs: "10:00", configAgo: 60)
+        project.write("schemaVersion: 1\nactiveSessionDefaultsProfile: app\n", to: ".mobilebuildmcp/config.yaml")
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)).status == .pass)
+    }
+
+    static let server = "/opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/node-runtime /opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/build/cli.js mcp"
+
+    func runner(ps: String, comm: String, cwd: [Int32], project: Project) -> FakeRunner {
+        var responses: [String: CommandResult] = [
+            "ps -axo pid=,ppid=,etime=,command=": .init(status: 0, stdout: ps),
+            "ps -axo pid=,comm=": .init(status: 0, stdout: comm),
+            "lsof -a -p \(cwd.map(String.init).joined(separator: ",")) -d cwd -Fn": .init(status: 0, stdout: cwd.map { "p\($0)\nfcwd\nn\(project.root.path)\n" }.joined()),
+        ]
+        for pid in cwd { responses["lsof -a -p \(pid) -d cwd -Fn"] = .init(status: 0, stdout: "p\(pid)\nfcwd\nn\(project.root.path)\n") }
+        return FakeRunner(responses: responses)
+    }
+
+    /// The desktop app runs Claude Code from a folder with a space in its path, which a command line can't be split at.
+    @Test func aClaudeCodeInAFolderWithSpacesIsTheSession() async throws {
+        let project = Project.temporary()
+        project.write("", to: ".mobilebuildmcp/.xcrew-managed")
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)], ofItemAtPath: project.managedMarker.path)
+        let claude = "/Users/me/Library/Application Support/Claude/claude-code/1.0/claude"
+        let ps = "  100 1 01:00:00 \(claude) --resume\n  200 100 05:00 \(Self.server)\n  300 100 00:01 /plugins/xcrew/.build/xcrew doctor\n  400 1 01:00:00 claude\n  500 400 10:00 \(Self.server)\n"
+        let comm = "  100 \(claude)\n  200 /opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/node-runtime\n  300 /plugins/xcrew/.build/xcrew\n  400 /Users/me/.local/bin/claude\n  500 /opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/node-runtime\n"
+        #expect(await ConfigLoadedCheck().run(.fake(runner(ps: ps, comm: comm, cwd: [200, 500], project: project), project: project, processID: 300)) == .warn("the config changed after this session's MobileBuildMCP started: restart Claude Code to load it"))
+    }
+
+    /// A server whose Claude Code exited is adopted by launchd; no session owns it, so no restart reaches it.
+    @Test func anOrphanedServerIsNobodysToRestart() async throws {
+        let project = Project.temporary()
+        project.write("", to: ".mobilebuildmcp/.xcrew-managed")
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)], ofItemAtPath: project.managedMarker.path)
+        let ps = "  400 1 01:00:00 claude\n  500 400 00:30 \(Self.server)\n  700 1 10:00 \(Self.server)\n  600 1 00:01 /plugins/xcrew/.build/xcrew doctor\n"
+        let comm = "  400 claude\n  500 node-runtime\n  700 node-runtime\n  600 xcrew\n"
+        #expect(await ConfigLoadedCheck().run(.fake(runner(ps: ps, comm: comm, cwd: [500, 700], project: project), project: project, processID: 600)).status == .pass)
+    }
+
+    @Test func withNoServerRunningTheCheckSkips() async throws {
+        let project = Project.temporary()
+        project.write("", to: ".mobilebuildmcp/.xcrew-managed")
+        let runner = FakeRunner(responses: ["ps -axo pid=,ppid=,etime=,command=": .init(status: 0, stdout: "  1 0 01:00 /sbin/launchd\n")])
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 600)) == .skip("MobileBuildMCP isn't running for this project"))
+    }
+
     @Test func xcodeMCPChecks() async {
         let enabled = FakeRunner(responses: ["xcrun mcp-server status": .init(status: 0, stdout: "Permission: enabled\nApproved agents:\n  com.anthropic.claude-code\n")])
         #expect(await HeadlessXcodeMCPCheck().run(.fake(enabled)).status == .pass)

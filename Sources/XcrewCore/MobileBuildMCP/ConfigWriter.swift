@@ -39,6 +39,8 @@ public enum ConfigWriter {
             try fileManager.copyItem(at: config, to: backup!)
         }
         let content = Data(ConfigRenderer.render(answers, root: project.root, simulatorIDs: simulatorIDs).utf8)
+        // The doctor asks for a restart when the marker is newer than MobileBuildMCP, so the same config isn't written again.
+        if existing == content, marker == Self.fingerprint(content) { return .written(backup: nil) }
         try fileManager.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
         try content.write(to: config, options: .atomic)
         try Self.fingerprint(content).write(to: project.managedMarker, options: .atomic)

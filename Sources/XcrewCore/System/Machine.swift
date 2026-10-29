@@ -6,11 +6,14 @@ public struct Machine: Sendable {
     public let environment: [String: String]
     public let home: URL
     public let runner: any CommandRunning
+    /// This process's id.
+    public let processID: Int32
 
-    public init(environment: [String: String], home: URL, runner: any CommandRunning) {
+    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier) {
         self.environment = environment
         self.home = home
         self.runner = runner
+        self.processID = processID
     }
 
     public static let live = Machine(

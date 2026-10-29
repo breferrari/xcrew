@@ -5,6 +5,7 @@ public enum Doctor {
         MobileBuildMCPVersionCheck(),
         LegacyBinaryCheck(),
         ProjectConfigCheck(),
+        ConfigLoadedCheck(),
         SimulatorsCheck(),
         HeadlessXcodeMCPCheck(),
         ClaudeApprovedCheck(),

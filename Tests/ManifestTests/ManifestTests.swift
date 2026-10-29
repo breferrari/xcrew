@@ -228,11 +228,9 @@ import Testing
         #expect(try text(".github/workflows/canary.yml").contains("scripts/marketplace-ref.sh "))
     }
 
-    /// The band shows "restart Claude Code" once setup reports writing the config; a reworded message mustn't
-    /// silently stop that.
-    @Test func theModRecognisesSetupsWrittenLine() throws {
-        let tools = try text("hooks/mod/tools.ts")
-        #expect(tools.contains("export const SETUP_WROTE = '\(SetupCommand.wroteMarker)'"))
+    /// The band puts the doctor's restart warning first and keeps it until done, by that check's id.
+    @Test func theModKnowsTheRestartCheck() throws {
+        #expect(try text("hooks/mod/problems.ts").contains("export const RESTART_CHECK = '\(ConfigLoadedCheck().id)'"))
     }
 
     /// The setup skill takes the container from `xcrew project --setup` instead of searching, by the answer's own keys.

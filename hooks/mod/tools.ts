@@ -12,9 +12,6 @@ function bothRegistrations(server: string, tools: readonly string[]): RegExp {
 /** A shell command that runs `xcrew setup`, by any path to the CLI, quoted or not, alone or among other commands. */
 const SETUP_COMMAND = /(?:^|[\s;&|(])["']?(?:[^\s"']*\/)?xcrew["']?\s+setup(?:[\s;&|)]|$)/
 
-/** What `xcrew setup` prints once it wrote the config (`SetupCommand.wroteMarker`; ManifestTests pairs them). */
-export const SETUP_WROTE = 'xcrew: wrote .mobilebuildmcp/config.yaml'
-
 export function runsSetup(command: string): boolean {
   return SETUP_COMMAND.test(command)
 }

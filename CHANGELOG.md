@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The line above the prompt asks you to restart Claude Code whenever setup or `mcs sync` wrote the config after MobileBuildMCP started, and stops once you have. `xcrew doctor` has the check: `mobilebuildmcp/config-loaded`. A hand edit still needs a restart by hand. Setup no longer rewrites a config that hasn't changed.
 - `xcrew doctor`'s exit status no longer depends on which check comes first: 1 when one failed, 2 when one warned, 3 only when every check skipped, else 0. A skipped first check used to make a clean run exit 3.
 
 ## 0.8.3 — 2026-10-29

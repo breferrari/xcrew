@@ -16,9 +16,6 @@ struct SetupCommand: Command {
         "test-scheme": "TEST_SCHEME",
     ]
 
-    /// What setup prints once it wrote the config; the mod watches for it to ask for a restart.
-    static let wroteMarker = "xcrew: wrote .mobilebuildmcp/config.yaml"
-
     let name = "setup"
     var valuedOptions: Set<String> { Set(Self.mcsKeys.keys) }
     let flags: Set<String> = ["force"]
@@ -101,7 +98,7 @@ struct SetupCommand: Command {
         case .written(let backup):
             if let backup { invocation.print("xcrew: kept the old config as \(backup.lastPathComponent)") }
             notes.forEach(invocation.print)
-            invocation.print("\(Self.wroteMarker) for \(answers.container); restart Claude Code so MobileBuildMCP reads it")
+            invocation.print("xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container); restart Claude Code so MobileBuildMCP reads it")
         }
         if answers.appScheme == nil {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")

@@ -136,7 +136,7 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 
 - **`/xcrew:setup`** writes MobileBuildMCP's per-project profiles from your schemes and installed simulators.
 - **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
-- **Anything wrong** shows in the line above the prompt: a failing check until it's fixed, however you fix it, and a warning for a short while. After `/xcrew:setup` writes the config, the line asks you to restart Claude Code.
+- **Anything wrong** shows in the line above the prompt: a failing check until it's fixed, however you fix it, and a warning for a short while. When setup or `mcs sync` changed the config after MobileBuildMCP started, the line asks you to restart Claude Code.
 - **`xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
 
 ```
@@ -192,6 +192,7 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 | `No such module 'UIKit'` from SourceKit | Claude Code's language server can't read Xcode projects | Ignore it; the Xcode MCP's diagnostics are the real ones |
 | A build fails with "produced malformed response" | Usually a macro plugin macOS killed. Tuist before 4.203 generated a phase that overwrites plugins in place; `xcrew doctor` names the projects | Upgrade Tuist to 4.203 or later and regenerate. Until then, clean the build folder and rebuild |
 | A session starts with an `xcrew: building the CLI` error | The Swift toolchain is older than 6.2, or Xcode's command-line tools aren't selected | `xcode-select -p` should point into Xcode 27; `sudo xcode-select -s /Applications/Xcode.app` |
+| A hand edit to `.mobilebuildmcp/config.yaml` seems ignored | MobileBuildMCP reads it only when it starts, and xcrew can't tell your edit from MobileBuildMCP saving its own defaults | Restart Claude Code |
 | `project-config` warns the config points at a missing workspace | The project moved or the workspace was renamed | `/xcrew:setup` |
 
 ### Updating and removing

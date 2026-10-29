@@ -23,7 +23,7 @@ public struct FakeRunner: CommandRunning {
 }
 
 extension CheckContext {
-    public static func fake(_ runner: FakeRunner = FakeRunner(), project: Project = .temporary(), environment: [String: String] = [:]) -> CheckContext {
-        CheckContext(project: project, machine: Machine(environment: environment, home: project.root.appending(path: "home"), runner: runner))
+    public static func fake(_ runner: FakeRunner = FakeRunner(), project: Project = .temporary(), environment: [String: String] = [:], processID: Int32 = 1) -> CheckContext {
+        CheckContext(project: project, machine: Machine(environment: environment, home: project.root.appending(path: "home"), runner: runner, processID: processID))
     }
 }

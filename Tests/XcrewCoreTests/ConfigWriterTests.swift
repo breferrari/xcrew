@@ -33,6 +33,20 @@ import XcrewTestSupport
         #expect(try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8).hasSuffix("activeSessionDefaultsProfile: app\n"))
     }
 
+    /// The doctor asks for a restart when xcrew's marker is newer than MobileBuildMCP; rewriting the same config mustn't move it.
+    @Test func theSameConfigIsntWrittenAgain() async throws {
+        let project = Project.temporary()
+        _ = try ConfigWriter.write(answers, to: project)
+        let then = Date(timeIntervalSinceNow: -3600)
+        for file in [project.mobileBuildMCPConfig, project.managedMarker] {
+            try FileManager.default.setAttributes([.modificationDate: then], ofItemAtPath: file.path)
+        }
+        #expect(try ConfigWriter.write(answers, to: project) == .written(backup: nil))
+        for file in [project.mobileBuildMCPConfig, project.managedMarker] {
+            #expect(try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date == then)
+        }
+    }
+
     @Test func leavesAHandWrittenConfigAlone() async throws {
         let project = Project.temporary()
         project.write("mine: true\n", to: ".mobilebuildmcp/config.yaml")

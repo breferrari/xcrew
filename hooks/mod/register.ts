@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList } from '../../types'
-import { changedRun, endedRun, outcomeLine, problemsTree, restartTree, runTree, shownFor, showsRun } from './band'
+import { changedRun, endedRun, outcomeLine, problemsTree, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, isGeneratedOf, knownBuild, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, USAGE } from './command'
 import { describe, historyOf, observe } from './context'
@@ -10,7 +10,7 @@ import { average } from './format'
 import { describedForGenerated, REASON } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey } from './timing'
-import { kindOf, parseTool, PROJECT_REWRITER, runsSetup, SETUP_WROTE } from './tools'
+import { kindOf, parseTool, PROJECT_REWRITER, runsSetup } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -18,8 +18,6 @@ const failuresState = atom({ plugin: 'xcrew', key: 'failures' } as const, null a
 const problemsState = atom({ plugin: 'xcrew', key: 'problems' } as const, null as BandProblems | null)
 /** The failures pane's id: a literal here, so the loader can read the pane hook's matcher. */
 const FAILURES_PANE = 'xcrew-failures'
-/** Set once setup writes the config: MobileBuildMCP reads it only when Claude Code starts. */
-const restartState = atom({ plugin: 'xcrew', key: 'restart' } as const, null as boolean | null)
 /** The shim's last answer, for the session: the build to run, or none. */
 const buildState = atom({ plugin: 'xcrew', key: 'build' } as const, null as CliBuild | null)
 
@@ -140,10 +138,9 @@ export const register: Register = on => {
     const now = await $.clock.now()
     // A run going has the band; then the restart, which fixes most of what a finished run or a problem shows.
     if (run && !run.ended) return runTree($.ui.resolve(e), run, now)
-    if (await read($, restartState)) return restartTree($.ui.resolve(e))
-    if (showsRun(run, now)) return runTree($.ui.resolve(e), run, now)
-    // Problems show only while no run does, so the redraws during a run don't read them.
     const problems = await read($, problemsState)
+    if (problems?.isRestart) return problemsTree($.ui.resolve(e), problems)
+    if (showsRun(run, now)) return runTree($.ui.resolve(e), run, now)
     return problems ? problemsTree($.ui.resolve(e), problems) : next(e)
   })
   on('command.run', { command: 'xcrew' }, async ($, e) => {
@@ -179,9 +176,10 @@ export const register: Register = on => {
     })().catch(() => undefined)
     return next(e)
   })
+  // Setup may have written the config: look at once whether MobileBuildMCP now needs a restart.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
-    if (e.tool === 'Bash' && runsSetup(e.command) && result.text?.includes(SETUP_WROTE)) await quietly(() => update($, restartState, () => true))
+    if (e.tool === 'Bash' && runsSetup(e.command)) void loadProblems($, true).catch(() => undefined)
     return result
   }).catch(async ($, e, next) => next(e))
 }
@@ -265,7 +263,9 @@ let lastRead = Number.NEGATIVE_INFINITY
 let reading: Promise<void> | undefined
 
 /** Asks the doctor what's wrong and keeps what the band shows, with a redraw when new warnings' time ends. */
-function loadProblems($: EngineInterface): Promise<void> {
+function loadProblems($: EngineInterface, fresh = false): Promise<void> {
+  // A read that began before setup wrote can't see what it wrote: wait for it, then read again.
+  if (fresh && reading) return reading.catch(() => undefined).then(() => loadProblems($))
   reading ??= readProblems($).finally(() => {
     reading = undefined
   })

@@ -73,6 +73,10 @@ supplementaryDoctorChecks:
     section: xcrew
     command: mcs/checks/mobilebuildmcp--project-config.sh
   - type: shellScript
+    name: MobileBuildMCP has the current config
+    section: xcrew
+    command: mcs/checks/mobilebuildmcp--config-loaded.sh
+  - type: shellScript
     name: Configured simulators exist
     section: xcrew
     command: mcs/checks/mobilebuildmcp--simulators.sh
