@@ -20,7 +20,7 @@ The two local MCP servers start from scripts in `libexec/`, `mobilebuildmcp-serv
 The mod alone could hold most of this logic, in TypeScript. The CLI exists because every other way in needs an executable:
 
 - **mcs** runs a configure script and one script per doctor check; it never loads the mod.
-- **The plugin's session-start hook** briefs Claude on routing and on what the project still lacks, including where mods don't run, such as an organization that allows only its own mods. When MobileBuildMCP is missing or older than the minimum (the doctor's `mobilebuildmcp/version`, one assessment for both), the briefing sends builds and tests to the Xcode MCP's `BuildProject`, `RunSomeTests` and `RunAllTests` and says what that loses. A version that can't be read fails the doctor but doesn't fail over, since the server may still run.
+- **The plugin's session-start hook** briefs Claude on routing and on what the project still lacks, including where mods don't run, such as an organization that allows only its own mods. When MobileBuildMCP is missing or older than the minimum (the doctor's `mobilebuildmcp/version`, one assessment for both), the briefing sends builds and tests to the Xcode MCP's `BuildProject` and `RunAllTests` and says what that loses. A version that can't be read fails the doctor but doesn't fail over, since the server may still run.
 - **Claude** runs `xcrew doctor` and `xcrew setup` from the skills.
 
 One CLI keeps one implementation of each behaviour, tested with Swift Testing in the language the people who'll change it write. The mod stays thin: it decides when to act and calls the CLI to act.

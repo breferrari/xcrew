@@ -73,7 +73,7 @@ import Testing
     // MARK: MCP servers
 
     /// The failover note names only Xcode MCP tools the mod classifies, with the kind the note gives them.
-    @Test(arguments: [("BuildProject", "build"), ("RunSomeTests", "test"), ("RunAllTests", "test")])
+    @Test(arguments: [("BuildProject", "build"), ("RunAllTests", "test")])
     func theFailoverNoteNamesToolsTheModKnows(tool: String, kind: String) throws {
         #expect(SessionBriefing.failoverNote(reason: "").contains("`\(tool)`"))
         #expect(try text("hooks/mod/tools.test.ts").contains("['mcp__xcode__\(tool)', '\(kind)']"))
