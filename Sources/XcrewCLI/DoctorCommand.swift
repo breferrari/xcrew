@@ -13,7 +13,7 @@ struct DoctorCommand: Command {
     let valuedOptions: Set<String> = ["check"]
     let flags: Set<String> = ["list", "problems", "json"]
     let usage = [
-        "doctor [--check ID]   run the health checks (exit: 0 ok, 1 failed, 2 warned, 3 skipped)",
+        "doctor [--check ID]   run the health checks (exit: 1 failed, 2 warned, 3 every check skipped, else 0)",
         "doctor --list         list the check ids",
         "doctor --problems     only what failed or warned, worst first, or \"No problems.\"; nothing outside an Apple-platform project (exit 0)",
         "doctor --json         the same, as JSON: each check's status, id and message (the mod reads it)",

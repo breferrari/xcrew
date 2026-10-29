@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `xcrew doctor`'s exit status no longer depends on which check comes first: 1 when one failed, 2 when one warned, 3 only when every check skipped, else 0. A skipped first check used to make a clean run exit 3.
+
 ## 0.8.3 — 2026-10-29
 
 - `/xcrew:setup` now asks which folder to use when two qualify, or tells you to generate a Tuist project first, and no longer mistakes a doctor warning for a failed setup.

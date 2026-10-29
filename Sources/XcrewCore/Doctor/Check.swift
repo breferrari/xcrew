@@ -4,10 +4,11 @@ import Foundation
 public enum CheckStatus: Int32, Sendable, Comparable {
     case pass = 0, fail = 1, warn = 2, skip = 3
 
-    /// How bad the outcome is: a skip is as harmless as a pass.
+    /// How bad the outcome is: below a pass for a skip, so a run counts as skipped only when every check skipped.
     var severity: Int {
         switch self {
-        case .pass, .skip: 0
+        case .skip: -1
+        case .pass: 0
         case .warn: 1
         case .fail: 2
         }

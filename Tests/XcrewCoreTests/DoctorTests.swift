@@ -10,12 +10,16 @@ import XcrewTestSupport
         #expect(ids.allSatisfy { $0.split(separator: "/").count == 2 })
     }
 
-    @Test func worstIgnoresSkips() async {
+    @Test func worstIgnoresSkipsInAnyOrder() async {
         func entry(_ status: CheckStatus) -> Doctor.Entry { .init(check: LegacyBinaryCheck(), result: .init(status: status, message: "")) }
         #expect(Doctor.worst([entry(.pass), entry(.skip)]) == .pass)
         #expect(Doctor.worst([entry(.skip), entry(.warn)]) == .warn)
         #expect(Doctor.worst([entry(.warn), entry(.fail), entry(.pass)]) == .fail)
+        // The setup skill and scripts read a full run's status: the same results give the same answer in any order.
+        #expect(Doctor.worst([entry(.skip), entry(.pass)]) == .pass)
+        #expect(Doctor.worst([entry(.skip), entry(.skip)]) == .skip)
     }
+
 
     static let latestRelease = "curl -fsSL --max-time 5 https://api.github.com/repos/breferrari/xcrew/releases/latest"
 

@@ -12,7 +12,7 @@ description: Set up xcrew for this iOS project — write MobileBuildMCP's config
    - **Simulators:** leave them out unless the person names one: setup picks the newest plain iPhone installed.
 2. Show the person the choices in one short list and ask them to confirm or change any.
 3. Run `xcrew setup [--container <name>] [--app-scheme <scheme>] [--bundle-id <id>] [--ui-scheme <scheme>] [--test-scheme <scheme>] [--test-simulator <name>] [--app-simulator <name>]` on its own, not chained to another command. Pass `--container` only when the person named or chose one. Tell the person which scheme it chose for unit tests; when it lists several, or couldn't tell, ask which one runs them and re-run with `--test-scheme`. When it reports a config xcrew didn't write, ask before re-running with `--force` (it keeps a backup).
-4. Run `xcrew doctor` on its own and report each line that isn't `ok` with the command it names. It exits non-zero when a check failed or warned: that's the doctor's verdict, not a failed setup. Two fixes need the person once per Mac: `sudo xcrun mcp-server enable`, and approving Claude Code in Xcode's dialog (call `XcodeOpenWorkspace` on the container to raise it).
+4. Run `xcrew doctor` on its own and report each line that isn't `ok` with the command it names. It exits non-zero when a check failed or warned, or when every check skipped: that's the doctor's verdict, not a failed setup. Two fixes need the person once per Mac: `sudo xcrun mcp-server enable`, and approving Claude Code in Xcode's dialog (call `XcodeOpenWorkspace` on the container to raise it).
 5. Tell them to restart Claude Code so MobileBuildMCP reads the new config.
 
 Done when `xcrew setup` reported "wrote" and every doctor line is `ok` or explained to the person.
