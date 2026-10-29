@@ -173,24 +173,30 @@ import XcrewCore
         #expect(seconds(elapsed) + seconds(left) == seconds(usual), "\(elapsed) + \(left) isn't the usual \(usual)")
     }
 
-    /// The directory holds a bundled image the README shows other than in Markdown's image syntax, or from elsewhere.
-    @Test func theREADMEsImagesAreTheRepositorysOwnInMarkdown() throws {
+    /// Each README picture shows in the reader's theme: a `<picture>` whose light and dark sources and dark fallback are
+    /// this repository's files, by absolute URL, since the plugin directory's listing shows the README away from the
+    /// repository. The light file is the dark one's `-light` twin from `assets/mockups.py --light`.
+    @Test func theREADMEsPicturesFollowTheReadersTheme() throws {
         let readme = try text("README.md")
-        #expect(!readme.contains("<img"), "an HTML image tag; the directory reads Markdown's ![alt](path)")
-        let sources = readme.matches(of: /!\[[^\]]*\]\(([^)\s]+)/).map { String($0.1) }
-        #expect(!sources.isEmpty)
-        // The directory's listing shows the README away from the repository, where a relative path finds nothing.
         let raw = "https://raw.githubusercontent.com/breferrari/xcrew/main/"
-        for source in sources where !source.hasPrefix("https://img.shields.io/") {
-            #expect(source.hasPrefix(raw + "assets/"), "\(source) isn't one of this repository's assets by absolute URL")
-            #expect(FileManager.default.fileExists(atPath: Self.repository.appending(path: String(source.dropFirst(raw.count))).path), "\(source) doesn't exist")
+        let pictures = readme.matches(of: /(?s)<picture>(.*?)<\/picture>/).map { String($0.1) }
+        #expect(pictures.count == 5)
+        for picture in pictures {
+            let light = try #require(picture.firstMatch(of: /media="\(prefers-color-scheme: light\)" srcset="([^"]+)"/)).output.1
+            let dark = try #require(picture.firstMatch(of: /media="\(prefers-color-scheme: dark\)" srcset="([^"]+)"/)).output.1
+            let fallback = try #require(picture.firstMatch(of: /<img src="([^"]+)" alt="[^"]+"/)).output.1
+            #expect(fallback == dark, "\(fallback) isn't the dark source")
+            #expect(light == dark.replacingOccurrences(of: ".png", with: "-light.png"), "\(light) isn't \(dark)'s light twin")
+            for source in [light, dark] {
+                #expect(source.hasPrefix(raw + "assets/"), "\(source) isn't one of this repository's assets by absolute URL")
+                #expect(FileManager.default.fileExists(atPath: Self.repository.appending(path: String(source.dropFirst(raw.count))).path), "\(source) doesn't exist")
+            }
         }
-        for source in sources where !source.hasPrefix(raw) {
-            #expect(source.hasPrefix("https://img.shields.io/"), "\(source) isn't a file under assets/")
-        }
+        // Outside the pictures, only the badges are images.
+        let others = readme.replacing(/(?s)<picture>.*?<\/picture>/, with: "").matches(of: /!\[[^\]]*\]\(([^)\s]+)/).map { String($0.1) }
+        #expect(others.allSatisfy { $0.hasPrefix("https://img.shields.io/") }, "\(others)")
     }
 
-    /// A flag a command reads but doesn't declare would be refused before the command runs.
     @Test func everyFlagACommandReadsIsDeclared() throws {
         for command in CLI.commands {
             let file = "Sources/XcrewCLI/\(String(describing: type(of: command))).swift"

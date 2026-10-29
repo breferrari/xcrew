@@ -1,6 +1,10 @@
 <div align="center">
 
-![Xcrew: a brushed-steel screw with a copper-orange X in its head](https://raw.githubusercontent.com/breferrari/xcrew/main/assets/banner.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/banner-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/banner.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/banner.png" alt="Xcrew: a brushed-steel screw with a copper-orange X in its head" width="100%">
+</picture>
 
 ### Your **Xcode** crew inside **Claude Code**.
 
@@ -14,7 +18,11 @@
 
 Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and MobileBuildMCP, and read Apple's docs through Sosumi. On their own, the three overlap, misroute and bury Claude in output. **Xcrew turns them into one setup, and adds what none of them has.**
 
-![The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time](https://raw.githubusercontent.com/breferrari/xcrew/main/assets/band.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/band-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/band.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
+</picture>
 
 | | On their own | With Xcrew |
 | --- | --- | --- |
@@ -83,7 +91,11 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 - **Compile errors counted once.**
 - **Passing tests left out**, with the full list a file read away.
 
-![What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary](https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
+</picture>
 
 ### The last failures beside the chat
 
@@ -96,7 +108,11 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 
 They answer at once, without a turn for Claude.
 
-![The failures pane beside the chat, listing each failing test with its file, line and message](https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
+</picture>
 
 ### The right server for each job
 
@@ -137,7 +153,11 @@ ok    xcrew/up-to-date                 0.7.0, the latest release
 
 ## How it works
 
-![Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too](https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/architecture.png" alt="Claude Code loads the plugin's four pieces: .mcp.json starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
+</picture>
 
 | Piece | What it does |
 | --- | --- |
