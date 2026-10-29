@@ -197,7 +197,7 @@ struct MobileText: Sendable {
             }
         }
         let note = listedAbove ? "  (\(passed) passing tests left out; failing tests are listed in full above)" : "  (\(passed) passing tests left out)"
-        return MobileText(lines: Array(lines[...start]) + [Line(note)] + kept + lines[end...])
+        return MobileText(lines: Array(lines[...start]) + [Line(note)] + kept + Array(lines[end...]))
     }
 
     /// MobileBuildMCP lists a compile error twice: the message, and the compiler's caret line
