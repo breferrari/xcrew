@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.3 — 2026-10-29
 
 - `/xcrew:setup` now asks which folder to use when two qualify, or tells you to generate a Tuist project first, and no longer mistakes a doctor warning for a failed setup.
 - `xcrew setup` picks a standard iPhone simulator again. A device with its own runtime, such as the iPhone Duo with Xcode 27.2, no longer looks newer than the rest, and a simulator with two displays is never the default, since screenshots fail on it. `xcrew doctor` warns when your config already names one.
