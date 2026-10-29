@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 import type { BandRun } from '../../types'
 import { estimate, stopwatch } from './format'
+import { noteLayout } from './failures'
 import { clearProblems, readProblems } from './problems'
 
 /** The band keeps showing a finished run's outcome this long. */
@@ -69,6 +70,7 @@ export function outcomeLine(tool: string, ended: NonNullable<BandRun['ended']>):
 /** Draws the run above the prompt, and nothing when there's none or it ended a while ago. */
 export function registerBand(on: On): void {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    noteLayout(e.viewport)
     if (e.props.hasSurvey) return next(e)
     const run = await read($, runState)
     const now = await $.clock.now()

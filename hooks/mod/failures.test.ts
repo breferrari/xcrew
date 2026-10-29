@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Report } from './cli'
 import { callTool, runCommand, stubCli } from './testing'
@@ -112,4 +113,35 @@ test('/xcrew close closes the pane from the prompt, where its mark can\'t be cli
 
   expect(seen.closed).toEqual(['xcrew-failures'])
   expect(ran.text).toBe('Closed the failures pane.')
+})
+
+const BAND = {
+  plugin: 'xcrew',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isWorking: true, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+} as const
+
+/** Draws the band in a terminal of one layout or the other, as Claude Code does all session. */
+async function drawBand($: Engine, on: On, isFullscreen: boolean) {
+  // Stands for Claude Code's own drawing, which shows when the band steps aside.
+  on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['engine'] }))
+  await $.ui.mount({ ...BAND, surface: 'terminal', viewport: { columns: 200, rows: 50, isFullscreen } })
+}
+
+test('in the fullscreen layout, a failing run opens the pane beside the chat by itself', async ($, on) => {
+  const seen = engine(on, [TESTS_FAILED])
+  await drawBand($, on, true)
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(seen.opened).toEqual(['xcrew-failures'])
+})
+
+test('on the main screen, a failing run leaves the pane closed: it would take over the space above the prompt', async ($, on) => {
+  const seen = engine(on, [TESTS_FAILED])
+  await drawBand($, on, false)
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(seen.opened).toEqual([])
 })

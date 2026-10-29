@@ -89,7 +89,7 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 
 | Command | What it does |
 | --- | --- |
-| `/xcrew failures` | Opens a pane with every failing test and compile error of the last failing run |
+| `/xcrew failures` | Opens a pane with every failing test and compile error of the last failing run. In fullscreen it opens by itself, beside the chat, when a run fails |
 | `/xcrew close` | Closes it |
 | `/xcrew history` | Each tool's usual duration, per scheme and test selection |
 | `/xcrew doctor` | The doctor's report, below |

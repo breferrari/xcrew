@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- In the fullscreen layout, a failing build or test run opens the failures pane beside the chat by itself. On the main screen, where a pane would take over the space above the prompt, it still waits for `/xcrew failures`.
+
 ## 0.7.2 — 2026-10-29
 
 - The mod runs the CLI's build directly, about 5 ms a call instead of about 35 ms through `bin/xcrew`, which matters most for the band's once-a-second phase. `bin/xcrew` itself no longer hashes the sources on every call: it keeps the key in its cache and works it out again only when a source changes.
