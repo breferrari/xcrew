@@ -6,6 +6,8 @@ final class Drain: Sendable {
     private struct State {
         var data = Data()
         var isEnded = false
+        /// Whether reading stopped because nothing new arrived in time, rather than at end of file.
+        var wentQuiet = false
         var waiter: CheckedContinuation<Void, Never>?
     }
 
@@ -59,7 +61,6 @@ final class Drain: Sendable {
     /// Returns once reading has stopped, stopping it once `idle` passes with nothing new arriving: true at end of file,
     /// false when the pipe went quiet without closing.
     func ended(idleFor idle: Duration) async -> Bool {
-        let wentQuiet = Mutex(false)
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.ended() }
             group.addTask {
@@ -68,7 +69,7 @@ final class Drain: Sendable {
                     try? await Task.sleep(for: idle)
                     if Task.isCancelled { return }
                     if self.data.count == seen {
-                        wentQuiet.withLock { $0 = true }
+                        self.state.withLock { $0.wentQuiet = true }
                         self.stop()
                         return
                     }
@@ -77,7 +78,7 @@ final class Drain: Sendable {
             await group.next()
             group.cancelAll()
         }
-        return !wentQuiet.withLock { $0 }
+        return !state.withLock { $0.wentQuiet }
     }
 
     /// What has arrived so far.
