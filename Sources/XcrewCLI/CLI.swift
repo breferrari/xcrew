@@ -16,7 +16,7 @@ public enum CLI {
     public static func run(
         _ argv: [String],
         context: CheckContext,
-        standardInput: @escaping () -> Data = { Data() },
+        standardInput: @escaping () async -> Data = { Data() },
         print: @escaping (String) -> Void = { Swift.print($0) },
         printError: (String) -> Void = { FileHandle.standardError.write(Data("xcrew: \($0)\n".utf8)) }
     ) async -> Int32 {

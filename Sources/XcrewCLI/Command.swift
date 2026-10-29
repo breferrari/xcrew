@@ -27,10 +27,10 @@ extension Command {
 public struct Invocation {
     public let arguments: Arguments
     public let context: CheckContext
-    public let standardInput: () -> Data
+    public let standardInput: () async -> Data
     public let print: (String) -> Void
 
-    public init(arguments: Arguments, context: CheckContext, standardInput: @escaping () -> Data, print: @escaping (String) -> Void) {
+    public init(arguments: Arguments, context: CheckContext, standardInput: @escaping () async -> Data, print: @escaping (String) -> Void) {
         self.arguments = arguments
         self.context = context
         self.standardInput = standardInput

@@ -44,7 +44,7 @@ final class Drain: Sendable {
     }
 
     /// What has arrived so far.
-    var text: String {
-        String(decoding: state.withLock { $0.data }, as: UTF8.self)
-    }
+    var data: Data { state.withLock { $0.data } }
+
+    var text: String { String(decoding: data, as: UTF8.self) }
 }

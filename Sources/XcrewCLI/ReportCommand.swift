@@ -19,7 +19,7 @@ struct ReportCommand: Command {
         guard let kind = invocation.arguments["kind"].flatMap(Report.Kind.init(rawValue:)) else {
             throw UsageError(description: "report needs --kind build, test or run")
         }
-        let output = ToolOutput(text: String(decoding: invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
+        let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
         let machine = invocation.context.machine
         let report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner)
         let encoded = try JSONEncoder.sorted.encode(report)

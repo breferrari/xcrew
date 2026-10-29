@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The line above the prompt is easier to read: the time, the time left, the phase, the result and the scheme and simulator are in your theme's text colour, and only the separators between them stay faint. On a finished run, the scheme and simulator come last, as they do while it runs, so a narrow terminal cuts them before the outcome.
+- A script that runs `xcrew hook` or `xcrew report` and leaves standard input open no longer waits forever: xcrew stops reading once two seconds pass with nothing new, says so on stderr, and goes on. A file passed on standard input is read at once. Claude Code closes the input, so it was never affected.
 
 ## 0.8.0 — 2026-10-29
 

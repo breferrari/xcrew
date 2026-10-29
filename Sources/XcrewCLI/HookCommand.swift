@@ -14,7 +14,7 @@ struct HookCommand: Command {
         guard invocation.arguments.positional.first == "session-start" else {
             throw UsageError(description: "unknown hook '\(invocation.arguments.positional.first ?? "")'")
         }
-        let event = HookEvent(json: invocation.standardInput())
+        let event = HookEvent(json: await invocation.standardInput())
         let machine = invocation.context.machine
         let project = event.cwd.map { Project(root: URL(fileURLWithPath: $0, isDirectory: true), home: invocation.context.machine.home) } ?? invocation.context.project
         let routing = (try? String(contentsOf: Self.pluginRoot(machine).appending(path: "context/routing.md"), encoding: .utf8)) ?? ""
