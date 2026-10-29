@@ -9,6 +9,8 @@ public enum MacroCopyPhase {
     /// Folders never holding a project the developer builds from.
     static let skipped = ProjectLayout.dependencyFolders
     static let maxDepth = 5
+    /// A project's own file in either format: `project.pbxproj`, or Xcode 27.2's JSON `project.xcproj`.
+    static let projectFileNames = ["project.pbxproj", "project.xcproj"]
 
     /// Names of the generated projects in `project` that still have the phase.
     public static func projects(in project: Project) -> [String] {
@@ -17,16 +19,16 @@ public enum MacroCopyPhase {
         guard !tuistFolders.isEmpty else { return [] }
         let derived = tuistFolders.flatMap { children(of: $0.appending(path: "Tuist/.build/tuist-derived/Projects")) }
         let candidates = projectFiles(under: project.root, depth: 0) + derived.flatMap { projectFiles(under: $0, depth: maxDepth - 1) }
-        return candidates.filter(containsPhase).map {
+        return Set(candidates.filter(containsPhase).map {
             ($0.deletingLastPathComponent().lastPathComponent as NSString).deletingPathExtension
-        }.sorted()
+        }).sorted()
     }
 
     static func projectFiles(under folder: URL, depth: Int) -> [URL] {
         guard depth <= maxDepth else { return [] }
         return children(of: folder).flatMap { child -> [URL] in
             let name = child.lastPathComponent
-            if name.hasSuffix(".xcodeproj") { return [child.appending(path: "project.pbxproj")] }
+            if name.hasSuffix(".xcodeproj") { return projectFileNames.map { child.appending(path: $0) } }
             guard !name.hasPrefix("."), !skipped.contains(name), isDirectory(child) else { return [] }
             return projectFiles(under: child, depth: depth + 1)
         }

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `xcrew doctor` finds the in-place macro copy phase older Tuist generated in a project saved in Xcode 27.2's JSON format too, not only in `project.pbxproj`, and warns as it does there.
+
 ## 0.8.4 — 2026-10-29
 
 - A build or test call's row in the transcript shows its outcome, as the line above the prompt does: `✓ test_sim · 1:12 · 959 passed`, or the first failures and how many more. ctrl+o shows the result Claude read, which is unchanged.
