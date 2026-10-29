@@ -116,7 +116,7 @@ import Testing
         #expect(after == before)
     }
 
-    /// The plugin's Xcode MCP script starts `xcrun mcpbridge`, as `.mcp.json` did.
+    /// The plugin's Xcode MCP script starts `xcrun mcpbridge`, as the server's inline command did.
     @Test func theXcodeServerScriptStartsTheBridgeAsTheManifestDid() async throws {
         let started = try await startServer(repository.appending(path: "libexec/xcode-mcp-server").path, [], faking: "xcrun", as: #"echo "args=$*""#)
         #expect(started == "args=mcpbridge\n")

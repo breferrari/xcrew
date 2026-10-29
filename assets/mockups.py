@@ -256,7 +256,7 @@ def arch():
     # Claude Code and the four plugin pieces.
     box(60, 250, 190, 70, "Claude Code", accent=C["orange"])
     pieces = [
-        (".mcp.json", "MobileBuildMCP · Xcode MCP · Sosumi", False),
+        ("plugin.json", "MobileBuildMCP · Xcode MCP · Sosumi", False),
         ("hooks.json", "session briefing", True),
         ("mod (TypeScript)", "guard · timing · band · pane · /xcrew", True),
         ("skills/", "setup · reference", True),

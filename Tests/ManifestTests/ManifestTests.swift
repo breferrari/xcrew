@@ -72,6 +72,11 @@ import Testing
 
     // MARK: MCP servers
 
+    /// The plugin's MCP servers, by name, as the manifest declares them.
+    func servers() throws -> [String: [String: Any]] {
+        try #require(try json(".claude-plugin/plugin.json")["mcpServers"] as? [String: [String: Any]])
+    }
+
     /// The plugin's root is this repository's, where Claude Code would read a `.mcp.json` as the project's own and find
     /// `${CLAUDE_PLUGIN_ROOT}` unset; the servers live in the manifest instead.
     @Test func theServersAreDeclaredInTheManifestNotAtTheRoot() {
@@ -79,7 +84,7 @@ import Testing
     }
 
     @Test func pluginShipsTheThreeServers() async throws {
-        let servers = try #require(try json(".claude-plugin/plugin.json")["mcpServers"] as? [String: [String: Any]])
+        let servers = try servers()
         #expect(Set(servers.keys) == ["MobileBuildMCP", "xcode", "sosumi"])
 
         let mobile = try #require(servers["MobileBuildMCP"])
@@ -127,7 +132,7 @@ import Testing
     /// The directory reads a server started as a file of the plugin with plain arguments, not through a shell's `-c`.
     @Test(arguments: [("MobileBuildMCP", "libexec/mobilebuildmcp-server", ["${CLAUDE_PROJECT_DIR}"]), ("xcode", "libexec/xcode-mcp-server", nil)])
     func aLocalServerStartsFromThePluginsScript(server: String, script: String, arguments: [String]?) throws {
-        let servers = try #require(try json(".claude-plugin/plugin.json")["mcpServers"] as? [String: [String: Any]])
+        let servers = try servers()
         let entry = try #require(servers[server])
         #expect(entry["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/\(script)")
         if let arguments { #expect(entry["args"] as? [String] == arguments) } else { #expect(entry["args"] == nil) }

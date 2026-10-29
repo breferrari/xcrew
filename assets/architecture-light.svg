@@ -5,7 +5,7 @@
 <text x="78.0" y="291.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#1f2328" xml:space="preserve">Claude Code</text>
 <path d="M250 285 H288.0 V132.0 H326" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>
 <rect x="330" y="100" width="470" height="64" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
-<text x="348.0" y="128.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#1f2328" xml:space="preserve">.mcp.json</text>
+<text x="348.0" y="128.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#1f2328" xml:space="preserve">plugin.json</text>
 <text x="348.0" y="150.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="14" fill="#6e7781" xml:space="preserve">MobileBuildMCP · Xcode MCP · Sosumi</text>
 <path d="M250 285 H288.0 V224.0 H326" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>
 <rect x="330" y="192" width="470" height="64" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
