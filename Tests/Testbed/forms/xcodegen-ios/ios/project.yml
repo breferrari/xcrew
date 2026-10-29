@@ -1,0 +1,28 @@
+name: App
+options:
+  bundleIdPrefix: dev.xcrew.testbed
+  deploymentTarget:
+    iOS: "18.0"
+  defaultSourceDirectoryType: group
+targets:
+  App:
+    type: application
+    platform: iOS
+    sources: [App]
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+  AppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: App
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+schemes:
+  App:
+    build:
+      targets:
+        App: all
+    test:
+      targets: [AppTests]

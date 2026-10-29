@@ -1,0 +1,7 @@
+{
+  "definition": "pbxproj-groups",
+  "generator": "xcodegen",
+  "generatorVersion": "2.46.0",
+  "layout": "ios",
+  "xcode": "27.2"
+}

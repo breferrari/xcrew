@@ -7,6 +7,8 @@ Package.resolved
 *.xcodeproj/
 xcuserdata/
 DerivedData/
+# The test bed's projects are fixtures, committed on purpose
+!Tests/Testbed/**/*.xcodeproj/
 
 # Coverage and profiling output from test runs
 *.profraw

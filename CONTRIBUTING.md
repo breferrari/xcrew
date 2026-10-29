@@ -35,6 +35,7 @@ scripts/typecheck.sh      # the mod's types; needs that session once
 - **Test first.** Write the test for the behaviour you're adding, watch it fail for the reason you expect, then write the code that passes it. Pull requests say which tests were seen failing first.
 - **Keep install paths in step.** The plugin and the mcs techpack name the same hooks, checks and setup questions as the Swift code; `Tests/ManifestTests` fails when they drift, so a red parity test usually means a second file to update.
 - **Prefer discovering to hard-coding.** If a value can change with a new Xcode, simulator lineup or server release, read it at runtime.
+- **The test bed is committed, never generated in CI.** `Tests/Testbed/forms` holds one app as every project form xcrew reads (a classic project, buildable folders, the JSON format, Tuist and XcodeGen, each at the root and under `ios/`), each with the `expect.xcrew.json` that `TestbedTests` checks it against. To regenerate them after a change to `Tests/Testbed/base`, install Tuist and XcodeGen (`brew install tuist xcodegen`) and run `scripts/testbed/generate.sh --build`, which also builds each form to prove it real.
 - **No dependencies, no unsafe code.** See [CLAUDE.md](CLAUDE.md) for the full conventions; they apply to people as much as to Claude.
 
 ## House rules

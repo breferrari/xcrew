@@ -1,0 +1,18 @@
+{
+  "activeProfile": "unit",
+  "container": "ios/App.xcodeproj",
+  "containerProblem": null,
+  "doctor": {
+    "mobilebuildmcp/project-config": "pass",
+    "xcode-mcp/macro-copy-phase": "pass"
+  },
+  "generator": "xcodegen",
+  "generatorRoot": "ios",
+  "isApplePlatformProject": true,
+  "isGenerated": true,
+  "profiles": [
+    "unit",
+    "app"
+  ],
+  "testScheme": "App"
+}
