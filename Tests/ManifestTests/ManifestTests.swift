@@ -295,6 +295,12 @@ import XcrewCore
         #expect(try text("CHANGELOG.md").contains("\n## \(version)"))
     }
 
+    /// The shim states the first build's time; the measurements behind it are in docs/findings.md, *Toolchains*.
+    @Test func theShimAndTheREADMEAgreeOnTheFirstBuildTime() throws {
+        let range = try #require(try text("bin/xcrew").firstMatch(of: /building the CLI for this version \(once, (.+) s\)/)?.1)
+        #expect(try text("README.md").contains("builds Xcrew's small Swift CLI, \(range) seconds, once per version"))
+    }
+
     @Test func pluginAndMarketplaceAgree() async throws {
         #expect(try json(".claude-plugin/plugin.json")["name"] as? String == "xcrew")
         let plugins = try #require(try json(".claude-plugin/marketplace.json")["plugins"] as? [[String: Any]])

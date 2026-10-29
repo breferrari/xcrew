@@ -3,6 +3,7 @@
 ## Unreleased
 
 - `xcrew doctor`'s fix for a missing MobileBuildMCP config now says "the mcs CLI": on a Mac with Mono, a bare `mcs` is Mono's C# compiler.
+- The first run now says building Xcrew's CLI takes 10 to 20 seconds, instead of "about 10 s".
 
 ## 0.8.1 — 2026-10-29
 

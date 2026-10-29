@@ -61,7 +61,7 @@ You need macOS 26 or later, Xcode 27 or later, [Homebrew](https://brew.sh) and [
    sudo xcrun mcp-server enable
    ```
 
-3. **Restart Claude Code** in your project and run `/xcrew:setup`. The first run builds Xcrew's small Swift CLI, about ten seconds, once per version.
+3. **Restart Claude Code** in your project and run `/xcrew:setup`. The first run builds Xcrew's small Swift CLI, 10 to 20 seconds, once per version.
 
 4. **Approve Claude Code in Xcode's dialog** the first time Claude calls the Xcode MCP.
 

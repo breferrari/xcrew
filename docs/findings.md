@@ -115,6 +115,8 @@ From the directory's validation of `main` at two commits on October 29, 2026, be
 
 On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The `macos-26` runner image (version 20261013.0424.1) carries Xcode 26.0.1 to 26.6, and Apple's [Xcode system requirements](https://developer.apple.com/xcode/system-requirements/) put Swift 6.2 in Xcode 26.0 and 26.0.1, 6.2.1 to 6.2.3 in 26.1 to 26.3, and 6.3 in 26.4.1 to 26.6. So CI's newest toolchain was Swift 6.3, older than the contributor's 6.4.2. Each Swift job now prints its toolchain, and a floor job builds and tests on the oldest Xcode whose Swift is the version `Package.swift`'s `swift-tools-version` names.
 
+The first run builds the CLI. The shim used to say "about 10 s" with no measurement behind it. Two cold first builds, `bin/xcrew --version` with an empty Xcrew cache, both on October 29, 2026, under Swift 6.4.2 (Xcode 27.2 beta 3): a fresh Mac took 15.4 s wall clock (`swift build` reported 11.5 s); a contributor's M1 Max (macOS 27.0.1, APFS, Swift's own caches warm) took 13.5 to 14.4 s over three runs (12.0 to 12.4 s). The shim states a range both support, and the README repeats it.
+
 ## Tried and rejected
 
 | Option | Why not |

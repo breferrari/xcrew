@@ -50,7 +50,7 @@ if [ ! -x "$binary" ]; then
     trap 'rm -rf "$lock"' EXIT
 fi
 if [ ! -x "$binary" ]; then
-    echo "xcrew: building the CLI for this version (once, about 10 s)…" >&2
+    echo "xcrew: building the CLI for this version (once, 10 to 20 s)…" >&2
     swift build -c release --product xcrew --package-path "$root" --scratch-path "$cache/build" >&2
     mkdir -p "$cache/$key"
     cp "$cache/build/release/xcrew" "$binary.partial"
