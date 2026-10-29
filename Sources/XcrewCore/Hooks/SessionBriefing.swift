@@ -14,8 +14,11 @@ public struct SessionBriefing: Sendable {
 
     public func text(routing: String) async -> String? {
         guard project.isApplePlatformProject else { return nil }
-        let failover = await MobileBuildMCPStatus.assess(CheckContext(project: project, machine: machine)).problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") }
-        let notes = [failover, profiles(), bootedNote(await booted())].compactMap { $0 } + gaps()
+        async let status = MobileBuildMCPStatus.assess(machine, timeout: Self.versionTimeout)
+        async let bootedNow = booted()
+        let mobileBuildMCP = await status
+        let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
+        let notes = [failover, failover == nil ? profiles() : nil, bootedNote(await bootedNow)].compactMap { $0 } + gaps()
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         return lines.joined(separator: "\n")
     }
@@ -27,6 +30,10 @@ public struct SessionBriefing: Sendable {
         let named = profiles.names.map { "`\($0)`" + ($0 == profiles.active ? " (active)" : "") }
         return "MobileBuildMCP profiles here: \(named.joined(separator: ", ")). Switch with `session_use_defaults_profile`."
     }
+
+    /// How long the briefing waits for `mobilebuildmcp --version` when its cache is cold: about half a second after an
+    /// upgrade (docs/findings.md), and a version it can't read in time doesn't fail over.
+    static let versionTimeout = Duration.seconds(2)
 
     /// How long the briefing waits for `simctl`, after which the runner takes up to its grace to stop it (docs/findings.md).
     static let simctlTimeout = Duration.seconds(1)
@@ -52,7 +59,7 @@ public struct SessionBriefing: Sendable {
     /// What Claude does while MobileBuildMCP can't serve: the Xcode MCP's build and test tools, what they lose, and the
     /// one change to the person's own Xcode, its active scheme, that waits for their word.
     static func failoverNote(reason: String) -> String {
-        "MobileBuildMCP isn't usable here (\(reason)), so its build and test tools aren't either. Until it is, build with the Xcode MCP's `BuildProject` and test with `RunAllTests`: they work through Xcode itself, on the open project, its active scheme and destination, in Xcode's own DerivedData. Lost meanwhile: coverage reports, simulator control, UI automation and LLDB. Tell the person once that MobileBuildMCP is unavailable and what that loses, then carry on. If a build or test needs a scheme other than Xcode's active one, ask before switching it: that changes their open Xcode."
+        "MobileBuildMCP isn't usable here (\(reason)), so its build and test tools aren't either. Until it is, the routing rules' MobileBuildMCP rows don't apply: build with the Xcode MCP's `BuildProject`, and test with `RunSomeTests` for chosen tests or `RunAllTests` for all. They work through Xcode itself, on the open project, its active scheme and destination, in Xcode's own DerivedData. Lost meanwhile: coverage reports, simulator control, UI automation and LLDB. Tell the person once that MobileBuildMCP is unavailable and what that loses, then carry on. If a build or test needs a scheme other than Xcode's active one, ask before switching it: that changes their open Xcode. If the Xcode MCP's tools refuse too, run `xcrew doctor`."
     }
 
     /// Fast checks only: this runs before every session's first prompt.

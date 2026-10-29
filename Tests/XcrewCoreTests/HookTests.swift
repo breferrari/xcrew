@@ -31,7 +31,7 @@ import XcrewTestSupport
     @Test func briefingNamesTheConfiguredProfiles() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         project.write(ConfigRenderer.render(.init(container: "App.xcodeproj", testSimulator: "iPhone 17", appScheme: "App", testScheme: "App"), root: project.root), to: ".mobilebuildmcp/config.yaml")
-        let text = await SessionBriefing(project: project, machine: CheckContext.fake(project: project).machine).text(routing: "rules\n")
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n")
         #expect(text?.contains("- **xcrew:** MobileBuildMCP profiles here: `unit` (active), `app`. Switch with `session_use_defaults_profile`.") == true)
     }
 
@@ -80,11 +80,11 @@ import XcrewTestSupport
 
     // MARK: Failover to the Xcode MCP
 
-    static let failover = "Until it is, build with the Xcode MCP's `BuildProject` and test with `RunAllTests`: they work through Xcode itself, on the open project, its active scheme and destination, in Xcode's own DerivedData. Lost meanwhile: coverage reports, simulator control, UI automation and LLDB. Tell the person once that MobileBuildMCP is unavailable and what that loses, then carry on. If a build or test needs a scheme other than Xcode's active one, ask before switching it: that changes their open Xcode."
+    static let failover = "Until it is, the routing rules' MobileBuildMCP rows don't apply: build with the Xcode MCP's `BuildProject`, and test with `RunSomeTests` for chosen tests or `RunAllTests` for all. They work through Xcode itself, on the open project, its active scheme and destination, in Xcode's own DerivedData. Lost meanwhile: coverage reports, simulator control, UI automation and LLDB. Tell the person once that MobileBuildMCP is unavailable and what that loses, then carry on. If a build or test needs a scheme other than Xcode's active one, ask before switching it: that changes their open Xcode. If the Xcode MCP's tools refuse too, run `xcrew doctor`."
 
-    /// A Mac whose `mobilebuildmcp` is a real file, answering `--version` with `version` (nil: no answer).
+    /// A Mac whose `mobilebuildmcp` is a real file, answering `--version` with `version` (nil: no answer). The file is
+    /// written once, since the version's cache is keyed by its modification time.
     static func machine(_ project: Project, version: String?) -> Machine {
-        // Written once: the cache is keyed by the binary's modification time.
         if !FileManager.default.fileExists(atPath: project.root.appending(path: "bin/mobilebuildmcp").path) { project.write("#!/bin/sh\n", to: "bin/mobilebuildmcp") }
         var runner = FakeRunner(installed: ["mobilebuildmcp"], responses: version.map { ["mobilebuildmcp --version": CommandResult(status: 0, stdout: $0 + "\n")] } ?? [:])
         runner.paths["mobilebuildmcp"] = project.root.appending(path: "bin/mobilebuildmcp").path
@@ -97,12 +97,26 @@ import XcrewTestSupport
         #expect(text.contains("- **xcrew:** MobileBuildMCP isn't usable here (not installed: ask the person to run `brew install getsentry/xcodebuildmcp/mobilebuildmcp`, then restart Claude Code), so its build and test tools aren't either. \(Self.failover)"))
     }
 
-    @Test func anOutdatedOrUnreadableMobileBuildMCPSendsThemThereToo() async {
-        for (version, reason) in [("2.7.0", "version 2.7.0 is older than 2.7.1"), ("", "its version couldn't be read")] {
-            let project = Project.temporary(containing: ["App.xcodeproj"])
-            let text = await SessionBriefing(project: project, machine: Self.machine(project, version: version.isEmpty ? nil : version)).text(routing: "rules\n") ?? ""
-            #expect(text.contains("MobileBuildMCP isn't usable here (\(reason): ask the person to run `brew upgrade mobilebuildmcp`, then restart Claude Code), so its build and test tools aren't either. \(Self.failover)"), "\(version)")
-        }
+    @Test func anOutdatedMobileBuildMCPSendsThemThereToo() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.0")).text(routing: "rules\n") ?? ""
+        #expect(text.contains("MobileBuildMCP isn't usable here (version 2.7.0 is older than 2.7.1: ask the person to run `brew upgrade mobilebuildmcp`, then restart Claude Code), so its build and test tools aren't either. \(Self.failover)"))
+    }
+
+    /// While MobileBuildMCP can't serve, its profiles aren't offered: switching them would call tools that aren't there.
+    @Test func theProfilesAreLeftOutWhileItCantServe() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write(ConfigRenderer.render(.init(container: "App.xcodeproj", testSimulator: "iPhone 17", appScheme: "App", testScheme: "App"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        let text = await SessionBriefing(project: project, machine: CheckContext.fake(project: project).machine).text(routing: "rules\n") ?? ""
+        #expect(text.contains("isn't usable here"))
+        #expect(!text.contains("session_use_defaults_profile"))
+    }
+
+    /// A version that couldn't be read says nothing about the server, which may well be running: no failover then.
+    @Test func anUnreadableVersionKeepsTheRouting() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: nil)).text(routing: "rules\n") ?? ""
+        #expect(!text.contains("isn't usable"))
     }
 
     @Test func aUsableMobileBuildMCPLeavesTheRoutingAsItIs() async {
@@ -111,23 +125,28 @@ import XcrewTestSupport
         #expect(!text.contains("isn't usable"))
     }
 
-    /// The doctor and the briefing read one assessment, so they never disagree about the same Mac.
-    @Test func theDoctorAndTheBriefingAgree() async {
-        for version in ["2.7.0", "2.7.1", nil] {
-            let project = Project.temporary(containing: ["App.xcodeproj"])
-            let machine = Self.machine(project, version: version)
-            let check = await MobileBuildMCPVersionCheck().run(CheckContext(project: project, machine: machine))
-            let briefing = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
-            #expect((check.status == .pass) == !briefing.contains("isn't usable"), "\(version ?? "unreadable")")
-        }
+    /// The doctor and the briefing read one assessment: a version the briefing fails over for is one the doctor fails.
+    @Test(arguments: ["2.7.0", "2.7.1"])
+    func theDoctorAndTheBriefingAgree(_ version: String) async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let machine = Self.machine(project, version: version)
+        let check = await MobileBuildMCPVersionCheck().run(CheckContext(project: project, machine: machine))
+        let briefing = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
+        #expect((check.status == .pass) == !briefing.contains("isn't usable"))
+    }
+
+    @Test func theDoctorSaysWhenTheVersionCantBeRead() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let check = await MobileBuildMCPVersionCheck().run(CheckContext(project: project, machine: Self.machine(project, version: nil)))
+        #expect(check == .fail("its version couldn't be read: brew reinstall mobilebuildmcp"))
     }
 
     /// The version is read from the cache while the binary is unchanged: the briefing runs no `--version` then.
     @Test func aWarmCacheAnswersWithoutRunningMobileBuildMCP() async throws {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let warm = Self.machine(project, version: "2.7.1")
-        #expect(await MobileBuildMCPStatus.assess(CheckContext(project: project, machine: warm)) == .usable(version: "2.7.1"))
+        #expect(await MobileBuildMCPStatus.assess(warm) == .usable(version: "2.7.1"))
         let cold = Self.machine(project, version: nil)
-        #expect(await MobileBuildMCPStatus.assess(CheckContext(project: project, machine: cold)) == .usable(version: "2.7.1"))
+        #expect(await MobileBuildMCPStatus.assess(cold) == .usable(version: "2.7.1"))
     }
 }
