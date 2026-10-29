@@ -18,6 +18,7 @@ mcs pack validate .
 - **Discover, don't hard-code** anything that ages: simulator names come from `simctl`, Xcode's skills from the installed Xcode, build and test tools from name patterns in `hooks/mod/tools.ts`. A fixed list is acceptable only where a pattern can't express it, and then a test pins it.
 - **One source of truth per fact.** Where two files must name the same thing (the plugin's hooks and the mod, the techpack and the Swift checks or setup options), `Tests/ManifestTests` asserts they agree. Extend it with every new pairing.
 - **Every failure mode the doctor can see gets a check** whose message names the fix.
+- **Read before you probe.** When unsure how an Apple API or tool behaves, read Apple's docs through Sosumi; for anything else, its own docs, then its source. Experiment only where the docs are silent, record what came back in `docs/findings.md` with its scope (macOS version, file system, what ran), and pin it with a test so a platform change shows up red.
 - **Docs carry no counts or versions that drift**, except dated evidence in `docs/findings.md`.
 - **Warnings become errors only in CI**, never in `Package.swift`: a newer Swift adding a warning must not break a user's first build.
 
