@@ -1,13 +1,15 @@
 """Draws the README's mockups as SVG, in the banner's frame and colours.
 
 Drawn rather than captured, so they stay sharp and readable at any width. Run from assets/, then
-render each at 2x: python3 mockups.py && for f in band band-light test-result failures-pane architecture; do
+render each at 2x: python3 mockups.py && for f in band test-result failures-pane architecture; do
 rsvg-convert -z 2 $f.svg -o $f.png; done
 """
 import sys
 from xml.sax.saxutils import escape
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else "."
+# `--light` draws only the band, in a light theme's colours, as band-light.svg: a check that it reads on either.
+IS_LIGHT = "--light" in sys.argv
+OUT = next((arg for arg in sys.argv[1:] if not arg.startswith("--")), ".")
 FONT = "JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace"
 SIZE = 17
 CW = SIZE * 0.6  # monospace advance
@@ -27,6 +29,9 @@ LIGHT = {
     "text": "#1f2328", "subtle": "#6e7781", "inactive": "#d0d7de", "success": "#1a7f37", "error": "#cf222e",
     "warning": "#9a6700", "orange": "#ec501d", "blue": "#0969da", "label": "#57606a",
 }
+
+if IS_LIGHT:
+    C.update(LIGHT)
 
 SEP = (" · ", "subtle")
 
@@ -240,11 +245,7 @@ def arch():
     return c
 
 
-for name, make in [("band", band), ("test-result", result), ("failures-pane", pane), ("architecture", arch)]:
+drawings = [("band-light", band)] if IS_LIGHT else [("band", band), ("test-result", result), ("failures-pane", pane), ("architecture", arch)]
+for name, make in drawings:
     with open(f"{OUT}/{name}.svg", "w") as f:
         f.write(make().svg())
-
-# The band again in a light theme's colours, to check it reads on either.
-C.update(LIGHT)
-with open(f"{OUT}/band-light.svg", "w") as f:
-    f.write(band().svg())

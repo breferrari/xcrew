@@ -38,8 +38,8 @@ test('a problem found at session start shows on the band, with where to look', a
   expect(calls.map(call => call.args)).toContainEqual(['doctor', '--problems', '--json'])
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: '⚠' }))?.props.color).toBe('warning')
-  expect((await ui.find({ type: 'Text', text: /^ AppMacros still copy macro plugins in place/ }))?.props.color).toBe('warning')
-  expect((await ui.find({ type: 'Text', text: ' · /xcrew doctor' }))?.props.color).toBe('subtle')
+  expect((await ui.find({ type: 'Text', text: /^AppMacros still copy macro plugins in place/ }))?.props.color).toBe('warning')
+  expect((await ui.find({ type: 'Text', text: /^\/xcrew doctor$/ }))?.props.color).toBeUndefined()
   await ui.unmount()
 })
 
@@ -50,8 +50,8 @@ test('the band shows the doctor\'s first problem, which it lists worst first, an
 
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: '⚠' }))?.props.color).toBe('error')
-  expect((await ui.find({ type: 'Text', text: /isn't approved in Xcode/ }))?.text).toBe(" Claude Code isn't approved in Xcode: call XcodeOpenWorkspace and approve it")
-  expect((await ui.find({ type: 'Text', text: ' (+1 more)' }))).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: /^Claude Code isn't approved in Xcode/ }))?.text).toBe("Claude Code isn't approved in Xcode: call XcodeOpenWorkspace and approve it")
+  expect((await ui.find({ type: 'Text', text: /^\(\+1 more\)$/ }))).toBeDefined()
   await ui.unmount()
 })
 
