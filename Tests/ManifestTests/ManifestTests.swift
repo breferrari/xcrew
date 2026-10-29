@@ -223,6 +223,11 @@ import Testing
         }
     }
 
+    /// Only the weekly canary can tell an install pull request that's pending from one that was abandoned.
+    @Test func theCanaryChecksTheMarketplaceRef() throws {
+        #expect(try text(".github/workflows/canary.yml").contains("scripts/marketplace-ref.sh "))
+    }
+
     /// The band shows "restart Claude Code" once setup reports writing the config; a reworded message mustn't
     /// silently stop that.
     @Test func theModRecognisesSetupsWrittenLine() throws {

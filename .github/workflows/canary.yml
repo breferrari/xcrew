@@ -16,6 +16,13 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
+      - name: The marketplace installs the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r tag published <<< "$(gh release view --json tagName,publishedAt --jq '.tagName + " " + .publishedAt')"
+          scripts/marketplace-ref.sh "$tag" "$published" "$(date -u +%s)" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
+        shell: bash
       - uses: actions/setup-node@v5
         with:
           node-version: lts/*
@@ -54,7 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue create --title "Canary failed $(date -u +%Y-%m-%d)" --label canary \
-            --body "The weekly canary failed against the newest upstream versions: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            || gh issue create --title "Canary failed $(date -u +%Y-%m-%d)" \
-            --body "The weekly canary failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body="The weekly canary failed against the newest upstream versions: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -s "$RUNNER_TEMP/reasons" ]; then body=$(printf '%s\n\n%s' "$body" "$(cat "$RUNNER_TEMP/reasons")"); fi
+          gh issue create --title "Canary failed $(date -u +%Y-%m-%d)" --label canary --body "$body" \
+            || gh issue create --title "Canary failed $(date -u +%Y-%m-%d)" --body "$body"

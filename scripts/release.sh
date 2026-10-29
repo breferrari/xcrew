@@ -107,7 +107,7 @@ while [ -z "$run" ]; do
   sleep 5
   run=$(gh run list --workflow release.yml --branch "v$version" --limit 1 --json databaseId -q '.[0].databaseId')
 done
-installed=$(git show origin/main:.claude-plugin/marketplace.json | sed -n 's/.*"ref": "\(v[^"]*\)".*/\1/p')
+installed=$(git show origin/main:.claude-plugin/marketplace.json | sed -n 's/.*"ref": *"\(v[^"]*\)".*/\1/p')
 if [ -z "$installed" ]; then
   echo "release: .claude-plugin/marketplace.json on main has no \"ref\": \"v…\" line to move" >&2
   exit 1
