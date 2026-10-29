@@ -17,39 +17,39 @@ import Testing
     }
 
     @Test func aProgramThatOutlivesItsTimeoutIsStopped() async {
-        // A run that waited for the child would take its full 8 seconds; stopping it at the
+        // A run that waited for the child would take its full 30 seconds; stopping it at the
         // timeout returns far sooner, with seconds to spare for a loaded CI runner.
-        let duration = "8.\(Int.random(in: 100_000...999_999))"
+        let duration = "30.\(Int.random(in: 100_000...999_999))"
         let clock = ContinuousClock()
         let started = clock.now
         let result = await runner.run(["/bin/sleep", duration], stdin: nil, timeout: .milliseconds(200))
         #expect(result.status == 124)
-        #expect(clock.now - started < .seconds(6), "waited for the child instead of stopping it")
+        #expect(clock.now - started < .seconds(10), "waited for the child instead of stopping it")
         #expect(await runner.run("/usr/bin/pgrep", "-f", "sleep \(duration)").status == 1, "the child is still running")
     }
 
     @Test func aGrandchildHoldingAPipeDoesntOutlastTheTimeout() async {
         // The shell's background sleep inherits stdout and outlives the SIGTERM the shell gets.
-        let duration = "8.\(Int.random(in: 100_000...999_999))"
+        let duration = "30.\(Int.random(in: 100_000...999_999))"
         let clock = ContinuousClock()
         let started = clock.now
         let result = await runner.run(["/bin/sh", "-c", "sleep \(duration) & wait"], stdin: nil, timeout: .milliseconds(200))
         _ = await runner.run("/usr/bin/pkill", "-f", "sleep \(duration)")
         #expect(result.status == 124)
-        #expect(clock.now - started < .seconds(4), "waited for the grandchild's pipe")
+        #expect(clock.now - started < .seconds(10), "waited for the grandchild's pipe")
     }
 
     @Test func aGrandchildLeftRunningDoesntHoldUpAFinishedProgram() async {
         // The shell exits at once, and its background sleep keeps stdout open.
-        let duration = "8.\(Int.random(in: 100_000...999_999))"
+        let duration = "30.\(Int.random(in: 100_000...999_999))"
         let clock = ContinuousClock()
         let started = clock.now
         // A long time limit: the wait after exit is a moment's grace, not what's left of the limit.
-        let result = await runner.run(["/bin/sh", "-c", "echo ready; sleep \(duration) &"], stdin: nil, timeout: .seconds(20))
+        let result = await runner.run(["/bin/sh", "-c", "echo ready; sleep \(duration) &"], stdin: nil, timeout: .seconds(60))
         _ = await runner.run("/usr/bin/pkill", "-f", "sleep \(duration)")
         #expect(result.status == 0)
         #expect(result.stdout == "ready\n")
-        #expect(clock.now - started < .seconds(4), "waited for the grandchild's pipe")
+        #expect(clock.now - started < .seconds(10), "waited for the grandchild's pipe")
     }
 
     @Test func largeOutputDoesNotDeadlock() async {

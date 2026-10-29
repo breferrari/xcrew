@@ -24,10 +24,10 @@ import Testing
     @Test func anInputLeftOpenIsReadUntilItGoesQuiet() async throws {
         let clock = ContinuousClock()
         let started = clock.now
-        let input = await StandardInput.read(pipe(writing: [#"{"cwd":"/project"}"#], gap: 0, closeAfter: 5), idleFor: .milliseconds(500))
+        let input = await StandardInput.read(pipe(writing: [#"{"cwd":"/project"}"#], gap: 0, closeAfter: 30), idleFor: .milliseconds(500))
         #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
         #expect(!input.isComplete)
-        #expect(clock.now - started < .seconds(3), "waited for the caller to close stdin")
+        #expect(clock.now - started < .seconds(10), "waited for the caller to close stdin")
     }
 
     /// A writer still sending is read to its end, however long it takes, as long as it doesn't go quiet.
