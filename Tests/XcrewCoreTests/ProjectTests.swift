@@ -56,6 +56,52 @@ import XcrewTestSupport
         #expect(!Project.temporary(containing: [".git", "node_modules/x/Project.swift", "Pods/y/Y.xcodeproj"]).isApplePlatformProject)
     }
 
+    @Test func aFolderWithADotInItsNameIsSearched() {
+        #expect(Project.temporary(containing: [".git", "apps/MyApp.iOS/App.xcodeproj"]).isApplePlatformProject)
+    }
+
+    @Test func aSymlinkedSpellingOfHomeIsHome() throws {
+        let folder = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj", "ios/Tuist.swift"]).root
+        let link = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
+        let project = Project(root: folder, home: link)
+        #expect(!project.isApplePlatformProject)
+        #expect(!project.isGenerated)
+    }
+
+    // Pins for docs/findings.md, "How Foundation sees a project's folders".
+
+    @Test func theDataVolumesFirmlinkAndLetterCaseNameTheHomeFolder() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let firmlinked = URL(fileURLWithPath: "/System/Volumes/Data" + home.path)
+        #expect(ProjectLayout.canonical(firmlinked) == ProjectLayout.canonical(home))
+        let caseSensitive = try? home.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames
+        if caseSensitive == false {
+            #expect(ProjectLayout.canonical(URL(fileURLWithPath: home.path.uppercased())) == ProjectLayout.canonical(home))
+        }
+    }
+
+    @Test func anAssetCatalogIsntAPackageButIsntSearched() throws {
+        let project = Project.temporary(containing: ["App.xcodeproj", "Assets.xcassets", "MyApp.iOS"])
+        let package = { (name: String) in try project.root.appending(path: name).resourceValues(forKeys: [.isPackageKey]).isPackage }
+        #expect(try package("App.xcodeproj") == true)
+        #expect(try package("Assets.xcassets") == false)
+        #expect(try package("MyApp.iOS") == false)
+        #expect(!ProjectLayout.isSearched(project.root.appending(path: "Assets.xcassets")))
+        #expect(ProjectLayout.isSearched(project.root.appending(path: "MyApp.iOS")))
+    }
+
+    @Test func aProjectOpenedThroughASymlinkIsFound() throws {
+        // Listing a URL doesn't follow a symlink at its end, so the walk starts from the resolved root.
+        let folder = Project.temporary(containing: [".git", "App.xcodeproj", "apps/ios/Tuist.swift"]).root
+        let link = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
+        let project = Project(root: link)
+        #expect(project.isApplePlatformProject)
+        #expect(project.isGenerated)
+        #expect(project.xcodeContainers == ["App.xcodeproj"])
+    }
+
     @Test func aSwiftPackageBelowTheRootIsntAnApp() {
         // A repository that keeps a tool or a server in a package is not an Apple-platform app.
         #expect(!Project.temporary(containing: [".git", "tools/format/Package.swift"]).isApplePlatformProject)
@@ -70,7 +116,7 @@ import XcrewTestSupport
 
     @Test func aTuistProjectInASubfolderCounts() {
         #expect(Project.temporary(containing: ["ios/Tuist.swift"]).isTuistProject)
-        #expect(Project.temporary(containing: ["apps/ios/Project.swift"]).isTuistProject)
+        #expect(Project.temporary(containing: ["apps/ios/Project.swift", "apps/ios/Tuist"]).isTuistProject)
         #expect(Project.temporary(containing: ["apps/ios/project.yml"]).isGenerated)
     }
 
@@ -86,6 +132,31 @@ import XcrewTestSupport
 
     @Test func bundlesArentSearched() {
         #expect(!Project.temporary(containing: ["App.xcodeproj", "App/Assets.xcassets/Tuist"]).isGenerated)
+    }
+
+    @Test func anOrdinarySourceFileNamedLikeAManifestDoesntCount() {
+        // Project.swift and Workspace.swift are common source-file names; below the root only Tuist's own files mark Tuist.
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("struct Project {}", to: "App/Models/Project.swift")
+        project.write("struct Workspace {}", to: "App/Workspace.swift")
+        #expect(!project.isGenerated)
+        #expect(!project.isTuistProject)
+    }
+
+    @Test func aNestedTuistAppOutsideGitIsStillGenerated() {
+        // A miss here lets Claude edit a project the next generate overwrites.
+        #expect(Project.temporary(containing: ["ios/Tuist.swift"]).isGenerated)
+        #expect(Project.temporary(containing: ["apps/ios/Tuist"]).isTuistProject)
+    }
+
+    @Test func theHomeFolderIsNeverWalked() {
+        let folder = Project.temporary(containing: [".git", "ios/Tuist.swift", "apps/ios/App.xcodeproj"])
+        let home = Project(root: folder.root, home: folder.root)
+        for reach in [ProjectLayout.Reach.repository, .anywhereButHome] {
+            #expect(ProjectLayout.depth(of: home, reach: reach) == 0)
+        }
+        #expect(!home.isGenerated)
+        #expect(!home.isApplePlatformProject)
     }
 
     @Test func dependenciesDontCount() {

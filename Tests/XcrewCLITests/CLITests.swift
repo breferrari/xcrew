@@ -93,6 +93,20 @@ import XcrewTestSupport
         #expect(config(project).contains("'iPhone 17'"))
     }
 
+    @Test func findsTheContainerAFolderOrTwoDown() async {
+        let project = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj"])
+        let run = await Run("setup", context: .fake(simulators, project: project))
+        #expect(run.status == 0)
+        #expect(config(project).contains("projectPath: '\(project.root.path)/apps/ios/App.xcodeproj'"))
+    }
+
+    @Test func aContainerAtTheRootWinsOverOneBelow() async {
+        let project = Project.temporary(containing: [".git", "Root.xcodeproj", "apps/ios/App.xcworkspace"])
+        let run = await Run("setup", context: .fake(simulators, project: project))
+        #expect(run.status == 0)
+        #expect(config(project).contains("projectPath: '\(project.root.path)/Root.xcodeproj'"))
+    }
+
     @Test func noContainerIsAUsageError() async {
         let run = await Run("setup", context: .fake(simulators))
         #expect(run.status == 64)
@@ -147,6 +161,15 @@ import XcrewTestSupport
         #expect(run.output.count == Doctor.checks.count)
         #expect(run.status == CheckStatus.fail.rawValue)
         #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
+    }
+
+    @Test func theProjectChecksSkipOutsideAnApplePlatformProject() async {
+        // Following "run /xcrew:setup" there would write a MobileBuildMCP config into a project with nothing to build.
+        let run = await Run("doctor")
+        #expect(run.output.contains("skip  mobilebuildmcp/project-config    not an Apple project"))
+        #expect(run.output.contains("skip  mobilebuildmcp/simulators        not an Apple project"))
+        let inside = await Run("doctor", context: .fake(project: .temporary(containing: ["App.xcodeproj"])))
+        #expect(inside.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/project-config") })
     }
 
     @Test func problemsLeavesOutChecksThatReachTheNetwork() async {

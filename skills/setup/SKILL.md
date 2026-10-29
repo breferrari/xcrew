@@ -7,7 +7,7 @@ description: Set up xcrew for this iOS project — write MobileBuildMCP's config
 
 1. Run `xcrew doctor` and keep its output for step 5.
 2. Find the choices, without asking for what you can look up:
-   - **Container:** the `.xcworkspace` (else `.xcodeproj`) at the project root. In a generated project with none yet, ask the person to generate it first.
+   - **Container:** the `.xcworkspace` (else `.xcodeproj`) nearest the project root, at the root or a folder or two below it; `xcrew setup` picks the same one when you leave out `--container`. In a generated project with none yet, ask the person to generate it first.
    - **Schemes:** MobileBuildMCP's `list_schemes` on that container. Pick the app scheme and, if there is one, the UI-test scheme.
    - **Bundle ID:** `get_app_bundle_id`, or the app target's `PRODUCT_BUNDLE_IDENTIFIER` from `show_build_settings`.
    - **Simulators:** leave them out unless the person names one: setup picks the newest plain iPhone installed.

@@ -87,6 +87,17 @@ Measured 2026-10-28 on a modular app's 961-test target (959 passing, 2 expected 
 
 As runners they differ the other way. MobileBuildMCP runs `xcodebuild` on its own, so it leaves the person's Xcode window, its scheme and its DerivedData alone; pins the simulator its profiles name; takes any `-only-testing` or `-skip-testing` filter; and adds coverage, simulator control, UI automation and LLDB. The Xcode MCP switches the IDE's active scheme to run, uses the scheme's own destination, and has no coverage. So Xcrew keeps MobileBuildMCP for builds and tests and makes its reports the smallest of the three, and the Xcode MCP stays the fallback runner in *MobileBuildMCP's upkeep* above, at the cost of those runner features.
 
+## How Foundation sees a project's folders
+
+Where Apple's docs are silent, the project search rests on these probes, taken on October 29, 2026 on macOS 27.0.1 with APFS, case-insensitive. Each is pinned by a test in `Tests/XcrewCoreTests/ProjectTests.swift`, so a platform change shows up red.
+
+| Question | Docs | What came back |
+| --- | --- | --- |
+| Does listing a folder by URL follow a symlink to it? | `contentsOfDirectory(at:…)`: "does not traverse symbolic links" | It throws for a URL that is a symlink to a folder; `contentsOfDirectory(atPath:)` follows it. The search starts from the resolved root |
+| Does `resolvingSymlinksInPath()` resolve the `/System/Volumes/Data` firmlink and letter case? | Silent beyond symlinks | Yes: a symlink to the home folder, `/System/Volumes/Data/Users/x` and `/USERS/X` all became `/Users/x`. `canonicalPathKey` alone leaves a final symlink unresolved |
+| Is the volume case-insensitive? | `volumeSupportsCaseSensitiveNamesKey` | `false` here. Manifest names match without regard to case only where the volume says so |
+| Which folders are packages? | `isPackageKey`: a package by its extension or by its own flag | True for `.xcodeproj`, `.xcworkspace`, `.app`, `.bundle`, `.playground`, `.xcdatamodeld`; false for `.xcassets`, `.framework`, `.xcframework`, `.lproj`, `.docc`, `.xctestplan` and dotted folders such as `MyApp.iOS`. The search skips a package or an `.xc…` folder, and enters the rest |
+
 ## Tried and rejected
 
 | Option | Why not |

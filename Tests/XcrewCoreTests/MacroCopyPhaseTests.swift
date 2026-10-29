@@ -15,6 +15,12 @@ let oldTuistCopyPhase = ##"shellScript = "#  This build phase serves two purpose
         #expect(MacroCopyPhase.projects(in: project) == ["Macros", "SomeMacros"])
     }
 
+    @Test func findsTheDerivedProjectsOfANestedTuistApp() {
+        let project = Project.temporary(containing: [".git", "ios/Tuist"])
+        project.write(oldTuistCopyPhase, to: "ios/Tuist/.build/tuist-derived/Projects/SomeMacros/SomeMacros.xcodeproj/project.pbxproj")
+        #expect(MacroCopyPhase.projects(in: project) == ["SomeMacros"])
+    }
+
     @Test func onlyATuistProjectIsSearched() {
         // Only Tuist generated the phase; elsewhere the walk over the tree would find nothing, slowly.
         let project = Project.temporary(containing: ["App.xcworkspace"])

@@ -30,7 +30,7 @@ struct SetupCommand: Command {
             invocation.arguments[option] ?? Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") }
         }
         guard let container = answer("container") ?? context.project.xcodeContainers.first else {
-            throw UsageError(description: "no .xcworkspace or .xcodeproj in \(context.project.root.path): generate it first, or pass --container")
+            throw UsageError(description: "no .xcworkspace or .xcodeproj in \(context.project.root.path) or a folder or two below it: generate it first, or pass --container")
         }
         var testSimulator = answer("test-simulator")
         if testSimulator == nil { testSimulator = await SimulatorCatalog.load(using: context.runner).defaultIPhone }
