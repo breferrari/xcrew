@@ -1,6 +1,6 @@
 {
   "name": "xcrew",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Your Xcode crew inside Claude Code: three MCP servers working as one, with live build progress and test reports Claude can act on.",
   "author": {
     "name": "Brenno Ferrari",

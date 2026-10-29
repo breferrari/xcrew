@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.3 — 2026-10-29
 
 - After a failing build or test run, the line above the prompt ends with `/xcrew failures`, which opens the pane listing each failure.
 
