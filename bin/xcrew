@@ -5,19 +5,24 @@
 # hooks reply on stdout.
 set -eu
 
-root=$(cd "${0%/*}/.." && pwd -P)
+# The plugin folder, found without a subshell; the working directory is put back, since the CLI
+# reads it to find the project.
+here=$PWD
+case $0 in */*) cd -P "${0%/*}/.." ;; *) cd -P "$(dirname "$(command -v "$0")")/.." ;; esac
+root=$PWD
+cd "$here"
 cache=${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}
-# Hashing every source takes most of this script's time, and the mod calls it once a second while a
-# build runs. The key is kept beside the sources and worked out again only when something under
-# them is newer: an edit, or a deletion, which changes its folder.
-stamp="$root/.xcrew-key"
+# Hashing every source takes most of this script's time. The key is kept in the cache, under this
+# checkout's path, and worked out again only when something under the sources is newer: an edit, or
+# a deletion, which changes its folder.
+stamp="$cache/roots$root.key"
 key=
-if [ -f "$stamp" ] && [ -z "$(cd "$root" && find Package.swift Sources -newer "$stamp" -print -quit 2>/dev/null)" ]; then
+if [ -f "$stamp" ] && [ -z "$(find "$root/Package.swift" "$root/Sources" -newer "$stamp" -print -quit 2>/dev/null)" ]; then
     read -r key < "$stamp" || key=
 fi
 if [ -z "$key" ]; then
     key=$(cd "$root" && find Package.swift Sources -type f -name '*.swift' | LC_ALL=C sort | xargs cat | shasum | cut -c1-16)
-    printf '%s\n' "$key" > "$stamp" 2>/dev/null || true
+    mkdir -p "${stamp%/*}" 2>/dev/null && printf '%s\n' "$key" > "$stamp" 2>/dev/null || true
 fi
 binary="$cache/$key/xcrew"
 
@@ -46,7 +51,7 @@ if [ ! -x "$binary" ]; then
     mv "$binary.partial" "$binary"
     # Builds no checkout has run for two weeks go. Another checkout's current build stays: the
     # installed plugin and a development clone each keep theirs instead of rebuilding in turn.
-    find "$cache" -mindepth 1 -maxdepth 1 -type d ! -name build ! -name .lock ! -name "$key" -mtime +14 -exec rm -rf {} + 2>/dev/null || true
+    find "$cache" -mindepth 1 -maxdepth 1 -type d ! -name build ! -name .lock ! -name roots ! -name "$key" -mtime +14 -exec rm -rf {} + 2>/dev/null || true
 fi
 # Marks this build as in use, for the cleanup above.
 touch "$cache/$key"
@@ -56,7 +61,7 @@ if [ -n "${lock:-}" ]; then
     trap - EXIT
 fi
 
-# The mod runs the build directly on its once-a-second path, and asks here which one to run.
+# The mod runs the build directly, and asks here which one to run.
 if [ "${1:-}" = --binary-path ]; then
     printf '%s\n' "$binary"
     exit 0

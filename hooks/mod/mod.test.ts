@@ -84,7 +84,7 @@ test('a finished run hands the server\'s text to the CLI, saying which server an
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.cli.map(({ args, stdin }) => ({ args, stdin }))).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED }])
+  expect(seen.cli.filter(call => call.args[0] !== '--binary-path')).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED, program: BUILT_BINARY }])
 })
 
 test('a build failing on a killed macro plugin reaches Claude as the server reported it, with nothing retried', async ($, on) => {
@@ -318,7 +318,7 @@ test('Xcode MCP runs ask for no phase: that server writes no log to follow', asy
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.cli.map(call => call.args[0])).toEqual(['report'])
+  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path')).toEqual(['report'])
 })
 
 test('where no band draws, the status line carries the gauge against the usual time', async ($, on) => {
@@ -586,7 +586,7 @@ test('any session-defaults answer that names the profile in use is read, not onl
   expect(statuses).toContain('build_sim · iPhone 12 · 0:03')
 })
 
-test('a run asks the shim for its build once, then runs the build directly for each phase', async ($, on) => {
+test('the mod asks the shim for its build once, then runs the build directly', async ($, on) => {
   const clock = mock.clock(on)
   const seen = watch(on, {}, { phase: () => ({ log: LOG, phase: 'compiling App' }) })
   on('tool.call', async () => {
@@ -595,9 +595,35 @@ test('a run asks the shim for its build once, then runs the build directly for e
   })
 
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
 
   expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
-  const phases = seen.cli.filter(call => call.args[0] === 'phase')
-  expect(phases.length).toBeGreaterThan(3)
-  expect(phases.every(call => call.program === BUILT_BINARY)).toBe(true)
+  const direct = seen.cli.filter(call => call.args[0] !== '--binary-path')
+  expect(direct.length).toBeGreaterThan(5)
+  expect(direct.every(call => call.program === BUILT_BINARY)).toBe(true)
+})
+
+test('the build is asked for again after 30 s, so a development checkout\'s rebuild is picked up', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on)
+  on('tool.call', async () => {
+    await clock.advance(31_000)
+    return { result: {}, text: 'ok' }
+  })
+
+  await callTool($, 'mcp__xcode__BuildProject')
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(2)
+})
+
+test('when the shim names no build, the CLI runs through the shim', async ($, on) => {
+  mock.clock(on)
+  const seen = watch(on, {}, { noBuild: true })
+  on('tool.call', () => ({ result: {}, text: 'ok' }))
+
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  const report = seen.cli.find(call => call.args[0] === 'report')
+  expect(report?.program).toBeUndefined()
 })

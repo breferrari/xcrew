@@ -27,9 +27,38 @@ export type Phase = { log?: string; phase?: string }
 /** One line of `xcrew doctor --problems --json`. */
 export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 
-/** Runs `bin/xcrew` with these arguments: the mod's one process. */
-function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string) {
-  return $.process.run([`${$.plugin.root}/bin/xcrew`, ...args], { timeoutMs, ...(stdin === undefined ? {} : { stdin }) })
+/** How long a build the shim named is run without asking again: a development checkout rebuilds when its sources change. */
+const RECHECK_MS = 30_000
+let built: { path: string; at: number } | undefined
+
+/** Starts a program of the CLI's: the mod's one process. */
+function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string) {
+  return $.process.run([program, ...args], { timeoutMs, env: { XCREW_ROOT: $.plugin.root }, ...(stdin === undefined ? {} : { stdin }) })
+}
+
+/** The build the shim runs, asked for at most every 30 s. */
+async function build($: EngineInterface): Promise<string | undefined> {
+  const now = await $.clock.now()
+  if (built && now - built.at < RECHECK_MS) return built.path
+  const path = (await start($, `${$.plugin.root}/bin/xcrew`, ['--binary-path'], 120_000).catch(() => undefined))?.stdout.trim()
+  built = path ? { path, at: now } : undefined
+  return built?.path
+}
+
+/**
+ * Runs the CLI. The shim's own work is several times the build's, and the band asks once a second,
+ * so the build it names runs directly; through the shim when there's none, or the build fails to start.
+ */
+async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string) {
+  const binary = await build($).catch(() => undefined)
+  if (binary) {
+    try {
+      return await start($, binary, args, timeoutMs, stdin)
+    } catch {
+      built = undefined
+    }
+  }
+  return start($, `${$.plugin.root}/bin/xcrew`, args, timeoutMs, stdin)
 }
 
 async function run($: EngineInterface, args: string[], stdin?: string, timeoutMs = 60_000): Promise<unknown> {
@@ -43,26 +72,10 @@ export async function report($: EngineInterface, server: string, kind: string, t
   return { ...parsed, ok: parsed.ok ?? !isError, failures: parsed.failures ?? [], notes: parsed.notes ?? [] }
 }
 
-/**
- * The build the shim would run. The band asks for the phase once a second, and the shim's own
- * work is several times the build's, so a run asks for this once and runs the build directly.
- */
-export async function builtBinary($: EngineInterface): Promise<string | undefined> {
-  const ran = await xcrew($, ['--binary-path'], 120_000).catch(() => undefined)
-  const path = ran?.stdout.trim()
-  return path ? path : undefined
-}
-
-/** The running call's log, once it appears, and the phase read from it; from `binary` when the run has it, else through the shim. */
-export async function phase($: EngineInterface, tool: string, since: number, expectedTests: number | undefined, log: string | undefined, binary?: string): Promise<Phase> {
+/** The running call's log, once it appears, and the phase read from it. */
+export async function phase($: EngineInterface, tool: string, since: number, expectedTests: number | undefined, log: string | undefined): Promise<Phase> {
   const args = ['phase', '--tool', tool, '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
-  const direct = binary === undefined ? undefined : await $.process.run([binary, ...args], { timeoutMs: 10_000, env: { XCREW_ROOT: $.plugin.root } }).catch(() => undefined)
-  const stdout = direct?.stdout ?? (await xcrew($, args, 10_000).catch(() => undefined))?.stdout
-  try {
-    return stdout ? (JSON.parse(stdout) as Phase) : {}
-  } catch {
-    return {}
-  }
+  return ((await run($, args, undefined, 10_000).catch(() => undefined)) as Phase | undefined) ?? {}
 }
 
 /** What `xcrew doctor` finds wrong, worst first; nothing outside an Apple-platform project. */

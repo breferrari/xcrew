@@ -168,13 +168,10 @@ import XcrewCore
         #expect(try Self.offenders(/JSON\.parse\(/, allowed: ["cli.ts", "context.ts"]) == [])
     }
 
-    @Test func theModRunsNoProgramButTheCLI() throws {
+    @Test func theModStartsProcessesFromOnePlace() throws {
+        // One call site, in cli.ts: whatever it starts, every process goes through it.
         let wrapper = try #require(try Self.sources().first { $0.name == "cli.ts" }).text
-        let runs = wrapper.matches(of: /\$\.process\.run\(\[([^,\]]+)/).map { String($0.1) }
-        #expect(!runs.isEmpty)
-        // The shim, or the build the shim itself names (`--binary-path`), which the phase polls run directly.
-        #expect(runs.allSatisfy { $0 == "`${$.plugin.root}/bin/xcrew`" || $0 == "binary" })
-        #expect(wrapper.contains("['--binary-path']"))
+        #expect(wrapper.matches(of: /\$\.process\.run\(/).count == 1)
     }
 
     @Test func onlyToolNamesAreMatchedByPattern() throws {

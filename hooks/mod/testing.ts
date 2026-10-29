@@ -15,8 +15,8 @@ export function runCommand($: Engine, command: string, args = '') {
   return $.command.run({ command, args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
 }
 
-/** One call the mod made to the Swift CLI: the program it ran, its arguments, and what it piped in. */
-export type CliCall = { program: string; args: readonly string[]; stdin?: string }
+/** One call the mod made to the Swift CLI: its arguments, what it piped in, and the program when it wasn't the shim. */
+export type CliCall = { args: readonly string[]; stdin?: string; program?: string }
 
 /** Where the stand-in shim says its build is, for `--binary-path`. */
 export const BUILT_BINARY = '/cache/0123456789abcdef/xcrew'
@@ -28,21 +28,22 @@ export const BUILT_BINARY = '/cache/0123456789abcdef/xcrew'
  */
 export function stubCli(
   on: On,
-  answers: { reports?: Partial<Report>[]; phase?: (args: readonly string[]) => Phase; problems?: Problem[]; project?: { isGenerated: boolean } } = {},
+  answers: { reports?: Partial<Report>[]; phase?: (args: readonly string[]) => Phase; problems?: Problem[]; project?: { isGenerated: boolean }; noBuild?: boolean } = {},
 ): CliCall[] {
   const calls: CliCall[] = []
   const reports = [...(answers.reports ?? [])]
   on('process.run', (_, e) => {
     const args = e.argv.slice(1)
-    calls.push({ program: e.argv[0] ?? '', args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }) })
-    if (args[0] === '--binary-path') return { value: { exitCode: 0, stdout: `${BUILT_BINARY}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    const program = e.argv[0] ?? ''
+    calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }) })
     const answer =
       args[0] === 'report' ? ((reports.length > 1 ? reports.shift() : reports[0]) ?? {})
       : args[0] === 'phase' ? (answers.phase?.(args) ?? {})
       : args[0] === 'doctor' ? (answers.problems ?? [])
       : args[0] === 'project' ? (answers.project ?? { isGenerated: false })
       : null
-    return { value: { exitCode: 0, stdout: JSON.stringify(answer), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : JSON.stringify(answer)
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return calls
 }

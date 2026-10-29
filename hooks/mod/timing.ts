@@ -2,7 +2,7 @@ import type { EngineInterface, On } from 'claude-code'
 import { average, comparison, estimate, stopwatch } from './format'
 import { clearRun, endRun, outcomeLine, startRun, updateRun } from './band'
 import { describe, historyOf, observe } from './context'
-import { builtBinary, phase as readRunPhase, report } from './cli'
+import { phase as readRunPhase, report } from './cli'
 import { recordRun } from './failures'
 import { kindOf, parseTool } from './tools'
 
@@ -72,11 +72,8 @@ export function registerTiming(on: On): void {
     let logPath: string | undefined
     if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }) }))
     let phase: string | undefined
-    // Asked for once per run, so each second's poll runs the build directly instead of through the shim.
-    let binary: Promise<string | undefined> | undefined
     const readPhase = async (since: number) => {
-      binary ??= quietly(() => builtBinary($)).then(path => path)
-      const found = (await quietly(async () => readRunPhase($, name, since, expectedTests, logPath, await binary))) ?? {}
+      const found = await readRunPhase($, name, since, expectedTests, logPath)
       if (logPath === undefined && found.log !== undefined) {
         logPath = found.log
         if (!writesLog) await quietly(() => $.store.set(logsKey(name), true))
