@@ -20,7 +20,7 @@ public enum CLI {
         print: @escaping (String) -> Void = { Swift.print($0) },
         printError: (String) -> Void = { FileHandle.standardError.write(Data("xcrew: \($0)\n".utf8)) }
     ) async -> Int32 {
-        guard let name = argv.first, !["help", "-h", "--help"].contains(name) else {
+        guard let name = argv.first, name != "help", !helpOptions.contains(name) else {
             print(usage)
             return 0
         }
@@ -32,8 +32,13 @@ public enum CLI {
             printError("unknown command '\(name)' (xcrew help)")
             return 64
         }
+        let rest = Array(argv.dropFirst())
+        if rest.contains(where: helpOptions.contains) {
+            (["usage: xcrew \(name) [options]", ""] + command.usage.map { "  \($0)" }).forEach(print)
+            return 0
+        }
         do {
-            let arguments = try Arguments(Array(argv.dropFirst()), valued: command.valuedOptions)
+            let arguments = try Arguments(rest, for: command)
             return try await command.run(Invocation(arguments: arguments, context: context, standardInput: standardInput, print: print))
         } catch let error as UsageError {
             printError(error.description)
@@ -43,6 +48,9 @@ public enum CLI {
             return 1
         }
     }
+
+    /// What asks for usage: after a command, that command's; alone, every command's.
+    static let helpOptions: Set = ["--help", "-h"]
 
     public static var usage: String {
         (["usage: xcrew <command> [options]", ""]

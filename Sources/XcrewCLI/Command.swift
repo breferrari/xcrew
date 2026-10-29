@@ -7,14 +7,17 @@ public protocol Command: Sendable {
     var name: String { get }
     /// One usage line per form, shown by `xcrew help`.
     var usage: [String] { get }
-    /// Option names that take a value; any other `--name` is a flag.
+    /// Option names that take a value.
     var valuedOptions: Set<String> { get }
+    /// Option names that take no value. Any `--name` in neither set is a usage error.
+    var flags: Set<String> { get }
     /// Returns the process exit status.
     func run(_ invocation: Invocation) async throws -> Int32
 }
 
 extension Command {
     public var valuedOptions: Set<String> { [] }
+    public var flags: Set<String> { [] }
 }
 
 /// Everything a command reads and writes, so a test can run it without a process.

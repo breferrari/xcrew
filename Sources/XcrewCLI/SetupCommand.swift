@@ -17,6 +17,7 @@ struct SetupCommand: Command {
 
     let name = "setup"
     var valuedOptions: Set<String> { Set(Self.mcsKeys.keys) }
+    let flags: Set<String> = ["force"]
     let usage = [
         "setup [--container NAME] [--test-simulator NAME] [--app-simulator NAME]",
         "      [--app-scheme NAME] [--bundle-id ID] [--ui-scheme NAME] [--force]",

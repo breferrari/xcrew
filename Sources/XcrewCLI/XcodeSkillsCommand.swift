@@ -4,6 +4,7 @@ import XcrewCore
 
 struct XcodeSkillsCommand: Command {
     let name = "xcode-skills"
+    let flags: Set<String> = ["list", "force"]
     let usage = [
         "xcode-skills [--list] [--force] [NAME...]   copy the agent skills this Xcode ships into .claude/skills",
         "                                  (all unless names are given; run again after an Xcode update)",

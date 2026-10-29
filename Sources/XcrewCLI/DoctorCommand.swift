@@ -11,6 +11,7 @@ struct DoctorCommand: Command {
 
     let name = "doctor"
     let valuedOptions: Set<String> = ["check"]
+    let flags: Set<String> = ["list", "problems", "json"]
     let usage = [
         "doctor [--check ID]   run the health checks (exit: 0 ok, 1 failed, 2 warned, 3 skipped)",
         "doctor --list         list the check ids",

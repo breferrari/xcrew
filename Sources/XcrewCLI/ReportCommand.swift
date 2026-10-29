@@ -7,6 +7,7 @@ import XcrewCore
 struct ReportCommand: Command {
     let name = "report"
     let valuedOptions: Set<String> = ["server", "kind"]
+    let flags: Set<String> = ["error"]
     let usage = [
         "report --server S --kind K [--error]   (mod) read a build, test or run result on stdin; print its report as JSON",
     ]

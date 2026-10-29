@@ -86,6 +86,15 @@ import XcrewCore
         #expect(servers["sosumi"]?["url"] as? String == "https://sosumi.ai/mcp")
     }
 
+    /// A flag a command reads but doesn't declare would be refused before the command runs.
+    @Test func everyFlagACommandReadsIsDeclared() throws {
+        for command in CLI.commands {
+            let file = "Sources/XcrewCLI/\(String(describing: type(of: command))).swift"
+            let read = try text(file).matches(of: /arguments\.has\("([\w-]+)"\)/).map { String($0.1) }
+            #expect(Set(read).isSubset(of: command.flags), "\(file) reads \(Set(read).subtracting(command.flags).sorted())")
+        }
+    }
+
     // MARK: mcs techpack
 
     /// Checks the techpack leaves out because mcs does the same itself: `mcs check-updates` says when a
