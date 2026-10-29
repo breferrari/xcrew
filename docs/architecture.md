@@ -7,11 +7,11 @@ All behaviour lives in a dependency-free Swift package. Everything else is a thi
 | Entry point | Calls |
 | --- | --- |
 | Plugin hooks (`hooks/hooks.json`) | `bin/xcrew hook session-start` |
-| Mod (`hooks/mod/`) | `bin/xcrew report`, `phase`, `project` and `doctor`, through `cli.ts` |
+| Mod (`hooks/mod/`) | `report`, `phase`, `project` and `doctor`, through `cli.ts`, on the build `bin/xcrew --binary-path` names |
 | Skills (`skills/`) | `xcrew setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
 | mcs (`techpack.yaml`) | `mcs/configure.sh` → `xcrew setup`; `mcs/checks/*.sh` → `xcrew doctor --check <id>` |
 
-`bin/xcrew` builds the package on first use, keyed by a hash of its sources, so a plugin update rebuilds once and removes the build it replaces, and Swift's ABI stability keeps a build working across Xcode updates.
+`bin/xcrew` builds the package on first use, keyed by a hash of its sources, so a plugin update rebuilds once, and Swift's ABI stability keeps a build working across Xcode updates. It keeps that key in its cache and hashes again only when a source changes. One build runs at a time, and a build no checkout has run for two weeks is removed, so the installed plugin and a development clone each keep theirs.
 
 ## Why a CLI
 
@@ -28,7 +28,7 @@ One CLI keeps one implementation of each behaviour, tested with Swift Testing in
 ```
 Sources/
   XcrewCore/            the behaviour, no I/O beyond what Machine allows
-    System/             CommandRunning (the seam every process call goes through), Machine, Version
+    System/             CommandRunning (the seam every process call goes through), Machine, Version, Once
     Project/            the project root, the files xcrew reads or writes there, git exclusion, Tuist's old macro copy phase
     MobileBuildMCP/     profile answers, config rendering and writing, the simulator catalog
     Doctor/             the Check protocol, the registry, and one file per check in Checks/
@@ -55,9 +55,9 @@ Everything that touches the machine goes through `Machine` (environment, home fo
 1. **guard**: matched on `XcodeWrite`; refuses it when `xcrew project` says Tuist or XcodeGen generates the project (manifests at the root or up to two folders below it), and lets it through in a classic project or when the CLI can't say. A `tool.describe` hook on the same tool adds that to its description, so Claude reaches for Write first.
 2. **timing**: the one unmatched hook; times calls `tools.ts` classifies as build, test or run, by name pattern so new tools are timed without a change. It keeps the last ten durations per tool in `$.store`, compares each run with them, and calls out one far slower than usual. Its bookkeeping is best-effort and never fails a build.
 
-`cli.ts` runs the build the shim names directly, asking again every 30 s and falling back to the shim, so the once-a-second poll skips the shim's work. Timing reads nothing itself. While a MobileBuildMCP run goes it asks `xcrew phase` once a second for the run's log and phase; when the call ends it pipes the result to `xcrew report`, which returns the outcome, the failures, the duration, and the shorter result and notes Claude reads.
+`cli.ts` runs the build the shim names directly, asking the shim again every 30 s, so the once-a-second poll skips the shim's work; when that build can't be started, the shim runs the command instead. Timing reads nothing itself. While a MobileBuildMCP run goes it asks `xcrew phase` once a second for the run's log and phase; when the call ends it pipes the result to `xcrew report`, which returns the outcome, the failures, the duration, and the shorter result and notes Claude reads.
 
-Beside those, **band** (`ui.render` on `AbovePrompt`) draws the run that timing records in `$.state`, its gauge and phase, or, before the first run, the problem **problems** found with `xcrew doctor --problems --json`. **session** is the one unmatched `session.start` hook: it registers `/xcrew` and starts that look for problems without holding the session up. **command** answers `/xcrew` itself: `doctor` runs the CLI, `history` reads timing's durations, kept per tool, scheme and test selection, and `failures` opens the **failures** pane, which keeps the last failing run's failures.
+Beside those, **band** (`ui.render` on `AbovePrompt`) draws the run that timing records in `$.state`, its gauge and phase, or, before the first run, the problem **problems** found with `xcrew doctor --problems --json`. **session** is the one unmatched `session.start` hook: it registers `/xcrew` and starts that look for problems without holding the session up. **command** answers `/xcrew` itself: `doctor` runs the CLI, `history` reads timing's durations, kept per tool, scheme and test selection, `failures` opens the **failures** pane, which keeps the last failing run's failures, and `close` closes it.
 
 Every tool name is matched under both registrations: `mcp__plugin_xcrew_<server>__<tool>` from this plugin, and `mcp__<server>__<tool>` when the person registered the server themselves, which Claude Code then prefers.
 
