@@ -2,20 +2,16 @@
 
 ## Unreleased
 
-- In a git repository, an app whose Xcode project or Tuist or XcodeGen manifests sit a folder or two below the root (`ios/`, `apps/ios/`) now counts as an Apple-platform project: Claude gets the session briefing and the band shows the doctor's problems there.
-- `xcrew <command> --help` prints that command's usage, and an option or word a command doesn't take is refused with exit 64 instead of being ignored: `xcrew doctor --help`, `-l` or `problems` used to run every check.
-- In a git repository, an app in a folder whose name has a dot (`apps/MyApp.iOS/`) is found, and a project opened through a symlink is found again.
-- `xcrew setup` without `--container` finds the workspace or project a folder or two below the root. In a generated project it takes the one beside the manifests, and says `generate it first` when that isn't there yet rather than picking a module's project. When two folders hold projects equally near (`apps/ios/`, `apps/macos/`), it names them and asks for `--container` instead of picking one.
-- A source file named `Project.swift` or `Workspace.swift` below the root no longer marks a classic project as Tuist-generated, so Claude can edit its project files again. Below the root, those two count only when they import `ProjectDescription`, so a Tuist app found by its git root alone is still guarded.
-- The doctor finds Tuist's old macro copy phase in every Tuist app in the project, including one kept in a subfolder (`ios/Tuist/`), not only at the root.
-- Outside an Apple-platform project, `xcrew doctor` skips the two project checks (`not an Apple project`) instead of failing them and suggesting setup. An app a folder or two down still counts, in a git repository or not.
-- The project search never walks your home folder, however its path is spelled and wherever it sits below the folder Claude Code started in.
-- Build, test and run tools are recognised by whole words in their names: a tool with *latest* in its name is no longer timed as a test run, while `RunTargetTests`, `RunUITests`, `swift_package_build` and `launch_mac_app` are timed. Switching the test plan (`XcodeSwitchTestPlan`) and tools that only read, such as `build_settings`, aren't timed.
-- The README's new *Privacy* section lists everything Xcrew reads, runs, changes and sends, and the plugin's privacy link opens it. The mod and the MobileBuildMCP server now start in the form the plugin directory reads, with no change to what they do.
-- A build or test call that fails beneath Xcrew, such as one that's interrupted, no longer leaves the line above the prompt or the status line counting.
-- The Xcode MCP starts from a script in the plugin, as MobileBuildMCP does, so the plugin directory can read both server commands. Nothing else changes. The README shows its pictures in Markdown, as the directory reads them.
-- The plugin directory's listing names Xcrew, links to its README for documentation and its issues for support, and shows the README's pictures.
-- A command Xcrew runs that exits while a background process it started keeps running no longer holds Xcrew up until that process ends: Xcrew gives the command's output a second to arrive, then goes on.
+- **Apps a folder or two below the root.** In a git repository, an app kept in `ios/`, `apps/ios/` or `apps/MyApp.iOS/` counts as an Apple-platform project: Claude gets the session briefing and the line above the prompt shows the doctor's problems. `xcrew setup` without `--container` finds its workspace or project there too. In a generated project it takes the one beside the manifests and says `generate it first` when that isn't there yet. When two folders hold projects equally near (`apps/ios/`, `apps/macos/`), it names them and asks for `--container`.
+- **Generated projects, told apart more carefully.** A source file named `Project.swift` or `Workspace.swift` below the root no longer marks a classic project as Tuist-generated, so Claude can edit its project files again. A Tuist app found by its git root alone is still guarded. The doctor finds Tuist's old macro copy phase in every Tuist app in the project, not only at the root.
+- **The project search** finds a project opened through a symlink again, and never walks your home folder, however its path is spelled and wherever it sits.
+- **`xcrew doctor` outside an Apple-platform project** skips the two project checks (`not an Apple project`) instead of failing them and suggesting setup.
+- **`xcrew <command> --help`** prints that command's usage. An option or word a command doesn't take is refused with exit 64 instead of being ignored: `xcrew doctor --help`, `-l` or `problems` used to run every check.
+- **Build, test and run tools are recognised by whole words in their names.** A tool with *latest* in its name is no longer timed as a test run, while `RunTargetTests`, `RunUITests`, `swift_package_build` and `launch_mac_app` are timed. Switching the test plan (`XcodeSwitchTestPlan`) and tools that only read, such as `build_settings`, aren't timed.
+- **A build or test call that fails beneath Xcrew**, such as one that's interrupted, no longer leaves the line above the prompt or the status line counting.
+- **A command Xcrew runs that exits while a background process it started keeps running** no longer holds Xcrew up until that process ends: Xcrew gives the command's output a second to arrive, then goes on.
+- **The README's new *Privacy* section** lists everything Xcrew reads, runs, changes and sends, and the plugin's privacy link opens it.
+- **The Xcode MCP and MobileBuildMCP** now start from small scripts in the plugin, in `libexec/`. What they do doesn't change.
 
 ## 0.7.3 — 2026-10-29
 
