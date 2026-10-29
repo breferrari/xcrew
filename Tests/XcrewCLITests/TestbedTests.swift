@@ -15,7 +15,7 @@ import XcrewTestSupport
     }
 
     /// What `expect.xcrew.json` states, and what the checks below find.
-    struct Outcome: Codable, Equatable {
+    struct Outcome: Codable, Hashable {
         var isApplePlatformProject: Bool
         var generator: String?
         var generatorRoot: String?
@@ -33,7 +33,7 @@ import XcrewTestSupport
         "xcrun simctl list devices available --json": .init(status: 0, stdout: #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"name":"iPhone 18","udid":"U18","isAvailable":true}]}}"#),
     ])
 
-    /// A copy of the fixture with a `.git` of its own, so its root is a repository's.
+    /// A copy of the fixture with a `.git` of its own, so its root is a repository's; setup writes into it.
     static func copy(_ name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-testbed-\(UUID().uuidString)/\(name)")
         try FileManager.default.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -42,9 +42,12 @@ import XcrewTestSupport
         return root
     }
 
-    static func outcome(of name: String, expecting expected: Outcome) async throws -> Outcome {
+    /// What xcrew finds in the fixture, with the reason setup gives in full when it finds no container.
+    static func outcome(of name: String) async throws -> Outcome {
         let root = try copy(name)
-        let project = Project(root: root, home: root.deletingLastPathComponent().appending(path: "home"))
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        // The machine's home is the one `CheckContext.fake` gives it, so the search leaves out the same folder.
+        let project = Project(root: root, home: root.appending(path: "home"))
         let context = CheckContext.fake(simulators, project: project)
         let manifests = project.layout(.anywhereButHome).generator
         let answer = try JSONDecoder().decode(ProjectCommand.Answer.self, from: Data(await Run("project", "--setup", context: context).text.utf8))
@@ -58,7 +61,7 @@ import XcrewTestSupport
             generatorRoot: manifests.map { $0.path.isEmpty ? "." : $0.path },
             isGenerated: answer.isGenerated,
             container: answer.container,
-            containerProblem: answer.containerProblem.flatMap { problem in expected.containerProblem.map { problem.contains($0) ? $0 : problem } },
+            containerProblem: answer.containerProblem,
             profiles: profiles.names,
             activeProfile: profiles.active,
             testScheme: scheme(of: "unit", in: config),
@@ -85,7 +88,11 @@ import XcrewTestSupport
     @Test(arguments: names)
     func eachFormIsWhatItsExpectationSays(_ name: String) async throws {
         let expected = try Self.expected(name)
-        let actual = try await Self.outcome(of: name, expecting: expected)
+        var actual = try await Self.outcome(of: name)
+        if let problem = expected.containerProblem {
+            #expect(actual.containerProblem?.contains(problem) == true, "setup said \(actual.containerProblem ?? "nothing")")
+            actual.containerProblem = problem
+        }
         #expect(actual == expected, "found \(actual)")
     }
 
@@ -97,25 +104,22 @@ import XcrewTestSupport
             outcome.container = outcome.container.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent }
             return outcome
         }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        let distinct = Set(try built.map { String(decoding: try encoder.encode($0), as: UTF8.self) })
-        #expect(distinct.count == 1, "\(distinct.sorted())")
+        #expect(Set(built).count == 1, "\(Set(built))")
     }
 
     /// Every file of a JSON form's folders is in its target: `xcodeproj` records them all as exclusions when phases come
     /// after the folder (docs/findings.md, *Making the test bed's projects*).
     @Test func theJSONFormsExcludeNothing() throws {
         for name in Self.names where name.hasPrefix("json") {
-            let folder = name.hasSuffix("-ios") ? "\(name)/ios" : name
-            let project = try String(contentsOf: Self.forms.appending(path: "\(folder)/App.xcodeproj/project.xcproj"), encoding: .utf8)
+            let container = try #require(try Self.expected(name).container)
+            let project = try String(contentsOf: Self.forms.appending(path: "\(name)/\(container)/project.xcproj"), encoding: .utf8)
             #expect(!project.contains("membership-exceptions"), "\(name)")
         }
     }
 
-    /// Whether a program is on this Mac's PATH: the generators are on the one that makes the fixtures, never on CI.
+    /// Whether a program is installed: the generators are on the Mac that makes the fixtures, never on CI.
     static func isInstalled(_ program: String) -> Bool {
-        (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: "\($0)/\(program)") }
+        SystemCommandRunner().which(program) != nil
     }
 
     /// A regeneration with another Tuist or XcodeGen shows here, on the Mac that has them; CI has neither and skips.

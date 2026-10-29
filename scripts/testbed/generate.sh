@@ -12,14 +12,6 @@ xcode=$(xcodebuild -version | head -1 | sed 's/Xcode //')
 tuist_version=$(tuist version | tail -1)
 xcodegen_version=$(xcodegen version | sed 's/Version: //')
 
-# The project's folder: the fixture itself, or its ios/ subfolder.
-place() {
-  case $2 in
-    root) echo "$1" ;;
-    ios) echo "$1/ios" ;;
-  esac
-}
-
 sources() {
   mkdir -p "$1"
   cp -R "$base/App" "$base/AppTests" "$1/"
@@ -109,15 +101,9 @@ json_project() {
   )
 }
 
-# The shared scheme XcodeGen writes, for a form whose tool writes none.
-shared_scheme() {
-  scratch=$(mktemp -d)
-  sources "$scratch"
-  xcodegen_spec "$scratch" group
-  xcodegen generate --quiet --spec "$scratch/project.yml" --project "$scratch"
-  mkdir -p "$1/App.xcodeproj/xcshareddata/xcschemes"
-  cp "$scratch/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme" "$1/App.xcodeproj/xcshareddata/xcschemes/"
-  rm -rf "$scratch"
+xcodegen_project() {
+  xcodegen_spec "$1" "$2"
+  xcodegen generate --quiet --spec "$1/project.yml" --project "$1"
 }
 
 fixture_json() {
@@ -139,30 +125,32 @@ EOF
 }
 
 form() {
-  name=$1 layout=$2
-  fixture=$testbed/forms/$name$( [ "$layout" = ios ] && echo -ios || true )
+  name=$1 layout=$2 suffix="" folder=""
+  if [ "$layout" = ios ]; then suffix=-ios folder=/ios; fi
+  fixture=$testbed/forms/$name$suffix
+  # The expectation is written by hand, not generated: it outlives the fixture's regeneration.
+  expectation=$(cat "$fixture/expect.xcrew.json" 2>/dev/null || true)
   rm -rf "$fixture"
-  project=$(place "$fixture" "$layout")
+  project=$fixture$folder
   sources "$project"
   case $name in
     classic)
-      xcodegen_spec "$project" group
-      xcodegen generate --quiet --spec "$project/project.yml" --project "$project"
+      xcodegen_project "$project" group
       rm "$project/project.yml"
       fixture_json "$fixture" pbxproj-groups none "$layout" ;;
     folders)
-      xcodegen_spec "$project" syncedFolder
-      xcodegen generate --quiet --spec "$project/project.yml" --project "$project"
+      xcodegen_project "$project" syncedFolder
       rm "$project/project.yml"
       grep -q PBXFileSystemSynchronizedRootGroup "$project/App.xcodeproj/project.pbxproj"
       fixture_json "$fixture" pbxproj-folders none "$layout" ;;
     json)
       json_project "$project"
-      shared_scheme "$project"
+      # `xcodeproj` writes no scheme: the JSON form shares the one XcodeGen wrote for the classic form.
+      mkdir -p "$project/App.xcodeproj/xcshareddata/xcschemes"
+      cp "$testbed/forms/classic$suffix$folder/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme" "$project/App.xcodeproj/xcshareddata/xcschemes/"
       fixture_json "$fixture" json none "$layout" ;;
     xcodegen)
-      xcodegen_spec "$project" group
-      xcodegen generate --quiet --spec "$project/project.yml" --project "$project"
+      xcodegen_project "$project" group
       fixture_json "$fixture" pbxproj-groups xcodegen "$layout" ;;
     tuist)
       tuist_manifests "$project"
@@ -188,6 +176,7 @@ form() {
       rm -rf "$derived"
     fi
   fi
+  if [ -n "$expectation" ]; then printf '%s\n' "$expectation" > "$fixture/expect.xcrew.json"; fi
   # Opening or building a project writes the user's own state, under their name: never part of a fixture.
   find "$fixture" -name xcuserdata -prune -exec rm -rf {} +
   echo "$fixture"

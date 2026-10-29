@@ -15,8 +15,8 @@
       "kind": "group",
       "name": "Products",
       "children": [
-        { "path": "<PRODUCTS>/App.app", "id": "792B23EA3093F13A00663597", "type": "wrapper.application", "index": false },
-        { "path": "<PRODUCTS>/AppTests.xctest", "id": "792C36223093F13A00894B95", "type": "wrapper.cfbundle", "index": false },
+        { "path": "<PRODUCTS>/App.app", "id": "798111293093F3BC00D6971F", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/AppTests.xctest", "id": "7982732E3093F3BC000C1A8B", "type": "wrapper.cfbundle", "index": false },
       ],
     },
     { "kind": "folder", "path": "App", "target-membership": [ "App" ] },
@@ -25,7 +25,7 @@
   "targets": [
     {
       "name": "App",
-      "id": "792B23E93093F13A00663597",
+      "id": "798111283093F3BC00D6971F",
       "product": "Products/App.app",
       "product-type": "application",
       "build-phases": [
@@ -40,7 +40,7 @@
       },
     }, {
       "name": "AppTests",
-      "id": "792C36213093F13A00894B95",
+      "id": "7982732D3093F3BC000C1A8B",
       "product": "Products/AppTests.xctest",
       "product-type": "bundle.unit-test",
       "dependencies": [
