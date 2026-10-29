@@ -175,7 +175,7 @@ ok    xcrew/up-to-date                 0.7.0, the latest release
 
 ### Configuration
 
-- **Profiles:** `.mobilebuildmcp/config.yaml` holds a `unit` profile, plus `ui` and `app` when you name those schemes.
+- **Profiles:** `.mobilebuildmcp/config.yaml` holds `unit` for the scheme that runs your unit tests, which setup finds itself, plus `app` and `ui` when you name those schemes. Each has its scheme and simulator, so it can build as soon as it's active.
   - Rerun `/xcrew:setup` or `xcrew setup` to change them.
   - A config Xcrew didn't write is left alone, unless you pass `--force`, which keeps a backup.
   - It holds this Mac's absolute paths, so setup keeps it out of git through `.git/info/exclude`.

@@ -19,6 +19,13 @@ struct ProjectConfigCheck: Check {
             let names = missing.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
             return .warn("the config points at \(names), which no longer exists (the project moved or was renamed): xcrew setup")
         }
+        let profiles = ConfigRenderer.profiles(in: yaml)
+        if let active = profiles.active, !profiles.withScheme.contains(active) {
+            return .warn("the active profile, \(active), has no scheme, so a build or test has nothing to run: rerun /xcrew:setup (xcrew setup --force replaces a config xcrew didn't write)")
+        }
+        if profiles.withScheme.isEmpty {
+            return .warn("no profile has a scheme yet, so a build or test needs one each time: /xcrew:setup adds them from your schemes")
+        }
         if !yaml.contains("- xcode-ide") {
             return .warn("the xcode-ide tool group is off; another tool may have rewritten the config (xcrew setup --force restores it)")
         }

@@ -4,7 +4,7 @@ import Testing
 import XcrewTestSupport
 
 @Suite struct ConfigWriterTests {
-    let answers = ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17")
+    let answers = ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17", testScheme: "App")
 
     @Test func writesAndMarksTheConfig() async throws {
         let project = Project.temporary()
@@ -20,6 +20,17 @@ import XcrewTestSupport
         changed.testSimulator = "iPhone 18"
         #expect(try ConfigWriter.write(changed, to: project) == .written(backup: nil))
         #expect(try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8).contains("iPhone 18"))
+    }
+
+    /// A config 0.8.1 wrote has a schemeless `unit` profile active; rerunning setup replaces it without --force.
+    @Test func aConfigAnOlderXcrewWroteIsReplaced() async throws {
+        let project = Project.temporary()
+        let old = "schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: '/work/App.xcworkspace'\n    simulatorName: 'iPhone 17'\nactiveSessionDefaultsProfile: unit\n"
+        project.write(old, to: ".mobilebuildmcp/config.yaml")
+        try ConfigWriter.fingerprint(Data(old.utf8)).write(to: project.managedMarker)
+        let app = ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17", appScheme: "App")
+        #expect(try ConfigWriter.write(app, to: project) == .written(backup: nil))
+        #expect(try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8).hasSuffix("activeSessionDefaultsProfile: app\n"))
     }
 
     @Test func leavesAHandWrittenConfigAlone() async throws {
@@ -41,7 +52,7 @@ import XcrewTestSupport
 }
 
 @Suite struct HandEditedConfigTests {
-    let answers = ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17")
+    let answers = ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17", testScheme: "App")
 
     @Test func aManagedConfigEditedByHandIsKept() throws {
         let project = Project.temporary()

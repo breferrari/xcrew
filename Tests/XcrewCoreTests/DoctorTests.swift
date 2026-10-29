@@ -95,11 +95,32 @@ import XcrewTestSupport
         project.write("enabledWorkflows:\n  - simulator\n", to: ".mobilebuildmcp/config.yaml")
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .warn)
 
-        project.write(ConfigRenderer.render(.init(container: "A.xcworkspace", testSimulator: "iPhone 17"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        project.write(ConfigRenderer.render(.init(container: "A.xcworkspace", testSimulator: "iPhone 17", testScheme: "A"), root: project.root), to: ".mobilebuildmcp/config.yaml")
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .pass)
 
         project.write("", to: ".xcodebuildmcp/config.yaml")
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .warn)
+    }
+
+    /// Configs from 0.8.1 and earlier have a schemeless `unit` profile active.
+    @Test func anActiveProfileWithoutASchemeWarns() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        project.write("schemaVersion: 1\nenabledWorkflows:\n  - xcode-ide\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: '\(project.root.path)/A.xcworkspace'\n    simulatorName: 'iPhone 17'\nactiveSessionDefaultsProfile: unit\n", to: ".mobilebuildmcp/config.yaml")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("the active profile, unit, has no scheme, so a build or test has nothing to run: rerun /xcrew:setup (xcrew setup --force replaces a config xcrew didn't write)"))
+    }
+
+    @Test func aConfigWithoutProfilesWarns() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        project.write(ConfigRenderer.render(.init(container: "A.xcworkspace", testSimulator: "iPhone 17"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("no profile has a scheme yet, so a build or test needs one each time: /xcrew:setup adds them from your schemes"))
+    }
+
+    @Test func aSimulatorIDThatIsGoneWarns() async {
+        let project = Project.temporary()
+        project.write(ConfigRenderer.render(.init(container: "A.xcworkspace", testSimulator: "iPhone 17", testScheme: "A"), root: project.root, simulatorIDs: ["iPhone 17": "GONE"]), to: ".mobilebuildmcp/config.yaml")
+        let json = #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"name":"iPhone 17","udid":"NEW","isAvailable":true}]}}"#
+        let runner = FakeRunner(responses: ["xcrun simctl list devices available --json": .init(status: 0, stdout: json)])
+        #expect(await SimulatorsCheck().run(.fake(runner, project: project)) == .warn("a simulator the profiles name by ID is gone (GONE): xcrew setup writes the current ones"))
     }
 
     @Test func simulatorsCheckNamesWhatIsMissing() async {
@@ -136,7 +157,7 @@ import XcrewTestSupport
 @Suite struct StaleConfigTests {
     @Test func aConfigPointingAtAContainerThatIsGoneWarns() async {
         let project = Project.temporary(containing: ["Renamed.xcworkspace"])
-        project.write(ConfigRenderer.render(.init(container: "App.xcworkspace", testSimulator: "iPhone 17"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        project.write(ConfigRenderer.render(.init(container: "App.xcworkspace", testSimulator: "iPhone 17", testScheme: "App"), root: project.root), to: ".mobilebuildmcp/config.yaml")
         let result = await ProjectConfigCheck().run(.fake(project: project))
         #expect(result.status == .warn)
         #expect(result.message.contains("App.xcworkspace") && result.message.contains("xcrew setup"))

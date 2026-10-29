@@ -12,30 +12,66 @@ public enum ConfigRenderer {
         "toggle_software_keyboard", "toggle_connect_hardware_keyboard",
     ]
 
-    public static func render(_ answers: ProfileAnswers, root: URL) -> String {
+    public static func render(_ answers: ProfileAnswers, root: URL, simulatorIDs: [String: String] = [:]) -> String {
         let pathKey = answers.container.hasSuffix(".xcodeproj") ? "projectPath" : "workspacePath"
         let location = quoted(root.appending(path: answers.container).path)
 
-        func profile(_ name: String, scheme: String?, simulator: String, extra: [String] = []) -> [String] {
-            ["  \(name):", "    \(pathKey): \(location)"]
-                + (scheme.map { ["    scheme: \(quoted($0))"] } ?? [])
-                + ["    simulatorName: \(quoted(simulator))"]
+        func profile(_ name: String, scheme: String, simulator: String, extra: [String] = []) -> [String] {
+            ["  \(name):", "    \(pathKey): \(location)", "    scheme: \(quoted(scheme))", "    simulatorName: \(quoted(simulator))"]
+                + (simulatorIDs[simulator].map { ["    simulatorId: \(quoted($0))"] } ?? [])
                 + extra
         }
 
         var lines = ["schemaVersion: 1", "enabledWorkflows:"] + workflows.map { "  - \($0)" }
         lines += ["customWorkflows:", "  sim-env:"] + simEnvTools.map { "    - \($0)" }
-        lines += ["sentryDisabled: true", "showTestTiming: true", "sessionDefaultsProfiles:"]
-        lines += profile("unit", scheme: nil, simulator: answers.testSimulator)
-        if let scheme = answers.uiTestScheme {
-            lines += profile("ui", scheme: scheme, simulator: answers.appSimulator)
+        lines += ["sentryDisabled: true", "showTestTiming: true"]
+        // In the order the active one is chosen: the first written is active.
+        let bundle = answers.bundleID.map { ["    bundleId: \(quoted($0))"] } ?? []
+        let written = [
+            ("unit", answers.testScheme, answers.testSimulator, [String]()),
+            ("app", answers.appScheme, answers.appSimulator, bundle),
+            ("ui", answers.uiTestScheme, answers.appSimulator, []),
+        ].compactMap { name, scheme, simulator, extra in scheme.map { (name, profile(name, scheme: $0, simulator: simulator, extra: extra)) } }
+        if let active = written.first?.0 {
+            lines += ["sessionDefaultsProfiles:"] + written.flatMap(\.1) + ["activeSessionDefaultsProfile: \(active)"]
+        } else {
+            lines += ["sessionDefaults:", "  \(pathKey): \(location)", "  simulatorName: \(quoted(answers.testSimulator))"]
+                + (simulatorIDs[answers.testSimulator].map { ["  simulatorId: \(quoted($0))"] } ?? [])
         }
-        if let scheme = answers.appScheme {
-            let bundle = answers.bundleID.map { ["    bundleId: \(quoted($0))"] } ?? []
-            lines += profile("app", scheme: scheme, simulator: answers.appSimulator, extra: bundle)
-        }
-        lines.append("activeSessionDefaultsProfile: unit")
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// The profiles a config defines, in its order, which of them name a scheme, and the active one. A
+    /// profile is a key one level inside `sessionDefaultsProfiles`, at whatever indent the file uses.
+    public static func profiles(in yaml: String) -> (names: [String], withScheme: Set<String>, active: String?) {
+        var names: [String] = []
+        var withScheme: Set<String> = []
+        var inProfiles = false
+        var keyIndent: Int?
+        for raw in yaml.split(whereSeparator: \.isNewline) {
+            let line = String(raw)
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+            let indent = line.prefix { $0 == " " }.count
+            if indent == 0 {
+                inProfiles = trimmed == "sessionDefaultsProfiles:"
+                keyIndent = nil
+                continue
+            }
+            guard inProfiles else { continue }
+            if keyIndent == nil { keyIndent = indent }
+            if indent == keyIndent, trimmed.hasSuffix(":") {
+                names.append(unquoted(trimmed.dropLast().trimmingCharacters(in: .whitespaces)))
+            } else if indent > keyIndent ?? 0, trimmed.hasPrefix("scheme:"), let current = names.last {
+                withScheme.insert(current)
+            }
+        }
+        return (names, withScheme, values(of: ["activeSessionDefaultsProfile:"], in: yaml).first)
+    }
+
+    /// The simulator IDs a config's profiles name, each once.
+    public static func simulatorIDs(in yaml: String) -> [String] {
+        values(of: ["simulatorId:"], in: yaml)
     }
 
     /// The simulator names a config's profiles reference, each once.
@@ -44,7 +80,7 @@ public enum ConfigRenderer {
     }
 
     static func values(of keys: [String], in yaml: String) -> [String] {
-        let found = yaml.split(separator: "\n").compactMap { line -> String? in
+        let found = yaml.split(whereSeparator: \.isNewline).compactMap { line -> String? in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard let key = keys.first(where: trimmed.hasPrefix) else { return nil }
             return unquoted(trimmed.dropFirst(key.count).trimmingCharacters(in: .whitespaces))

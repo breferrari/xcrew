@@ -27,6 +27,14 @@ import XcrewTestSupport
         #expect(text?.contains("/xcrew:setup") == true)
     }
 
+    /// Claude learns the profiles this config defines, not a fixed list that may name ones it lacks.
+    @Test func briefingNamesTheConfiguredProfiles() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write(ConfigRenderer.render(.init(container: "App.xcodeproj", testSimulator: "iPhone 17", appScheme: "App", testScheme: "App"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        let text = SessionBriefing(project: project, machine: CheckContext.fake(project: project).machine).text(routing: "rules\n")
+        #expect(text?.contains("- **xcrew:** MobileBuildMCP profiles here: `unit` (active), `app`. Switch with `session_use_defaults_profile`.") == true)
+    }
+
     @Test func briefingForAnAppInASubfolder() async {
         let project = Project.temporary(containing: [".git", "ios/Tuist.swift"])
         let text = SessionBriefing(project: project, machine: CheckContext.fake(project: project).machine).text(routing: "rules\n")

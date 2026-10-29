@@ -8,6 +8,7 @@ public struct SimulatorCatalog: Sendable {
         /// The runtime's version, as in `26.5`.
         public let runtimeVersion: String
         public let platform: String
+        public var udid: String? = nil
     }
 
     public let devices: [Device]
@@ -33,12 +34,17 @@ public struct SimulatorCatalog: Sendable {
             let version = pieces.dropFirst().joined(separator: ".")
             return entries.compactMap { entry in
                 guard entry["isAvailable"] as? Bool ?? true, let name = entry["name"] as? String else { return nil }
-                return Device(name: name, runtimeVersion: version, platform: String(platform))
+                return Device(name: name, runtimeVersion: version, platform: String(platform), udid: entry["udid"] as? String)
             }
         }
     }
 
     public var names: Set<String> { Set(devices.map(\.name)) }
+
+    /// The UDID of the simulator called `name`, on the newest runtime that has one, as `defaultIPhone` picks runtimes.
+    public func udid(of name: String) -> String? {
+        devices.filter { $0.name == name && $0.udid != nil }.max { Version($0.runtimeVersion) < Version($1.runtimeVersion) }?.udid
+    }
 
     /// The newest plain iPhone ("iPhone 17", not "iPhone 17 Pro Max") on the newest iOS runtime,
     /// else any iPhone there.

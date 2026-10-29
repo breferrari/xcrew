@@ -4,7 +4,7 @@ Three MCP servers serve this project; their tool names carry the server's (`…x
 
 | Job | Use |
 | --- | --- |
-| Build, test (`-only-testing:` through `extraArgs`), coverage, simulators, tapping through the app, LLDB | MobileBuildMCP. Switch setups with `session_use_defaults_profile` (`unit`, `ui`, `app`) |
+| Build, test (`-only-testing:` through `extraArgs`), coverage, simulators, tapping through the app, LLDB | MobileBuildMCP. Switch setups with `session_use_defaults_profile`, among the profiles named below |
 | Compile errors for one file, SwiftUI previews, running a snippet in a module, Organizer crash logs, a physical device | Xcode MCP |
 | Apple documentation, with each API's minimum OS version | Sosumi; Xcode's `DocumentationSearch` only offline |
 | Creating and editing files | Claude's own Write and Edit. In a Tuist or XcodeGen project, `XcodeWrite` re-saves the generated project file and is refused; in a classic project, use it when a new file must join a target |

@@ -29,6 +29,13 @@ import XcrewTestSupport
         #expect(SimulatorCatalog(json: Data()).devices.isEmpty)
     }
 
+    @Test func aSimulatorIsFoundByNameOnTheNewestRuntime() async {
+        let json = #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[{"name":"iPhone 17","udid":"OLD","isAvailable":true}],"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"name":"iPhone 17","udid":"NEW","isAvailable":true}]}}"#
+        let simulators = SimulatorCatalog(json: Data(json.utf8))
+        #expect(simulators.udid(of: "iPhone 17") == "NEW")
+        #expect(simulators.udid(of: "iPhone 99") == nil)
+    }
+
     @Test func runtimeVersionsCompareNumerically() async {
         let simulators = catalog([
             "com.apple.CoreSimulator.SimRuntime.iOS-9-0": ["iPhone 6"],

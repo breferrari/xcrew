@@ -15,6 +15,7 @@ public enum ConfigWriter {
     public static func write(
         _ answers: ProfileAnswers,
         to project: Project,
+        simulatorIDs: [String: String] = [:],
         force: Bool = false,
         now: Date = Date()
     ) throws -> Outcome {
@@ -37,7 +38,7 @@ public enum ConfigWriter {
             backup = config.appendingPathExtension("backup-\(stamp)")
             try fileManager.copyItem(at: config, to: backup!)
         }
-        let content = Data(ConfigRenderer.render(answers, root: project.root).utf8)
+        let content = Data(ConfigRenderer.render(answers, root: project.root, simulatorIDs: simulatorIDs).utf8)
         try fileManager.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
         try content.write(to: config, options: .atomic)
         try Self.fingerprint(content).write(to: project.managedMarker, options: .atomic)

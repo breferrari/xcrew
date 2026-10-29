@@ -11,10 +11,15 @@ struct SimulatorsCheck: Check {
         }
         let wanted = ConfigRenderer.simulatorNames(in: yaml)
         guard !wanted.isEmpty else { return .skip("no simulators named") }
-        let installed = await SimulatorCatalog.load(using: context.runner).names
-        let missing = wanted.filter { !installed.contains($0) }
+        let catalog = await SimulatorCatalog.load(using: context.runner)
+        let missing = wanted.filter { !catalog.names.contains($0) }
         guard missing.isEmpty else {
             return .warn("missing: \(missing.joined(separator: ", ")) (xcrun simctl create \"<name>\" <device-type> <runtime>, or xcrew setup to pick installed ones)")
+        }
+        // MobileBuildMCP uses a profile's ID as it is, and tools like `screenshot` fail on one that's gone.
+        let gone = ConfigRenderer.simulatorIDs(in: yaml).filter { id in !catalog.devices.contains { $0.udid == id } }
+        guard gone.isEmpty else {
+            return .warn("a simulator the profiles name by ID is gone (\(gone.joined(separator: ", "))): xcrew setup writes the current ones")
         }
         return .pass(wanted.joined(separator: ", "))
     }

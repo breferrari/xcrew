@@ -223,6 +223,14 @@ import Testing
         }
     }
 
+    /// The setup skill hands Claude a command line; an option `xcrew setup` doesn't declare would be refused.
+    @Test func theSetupSkillPassesOnlyOptionsSetupDeclares() throws {
+        let line = try #require(try text("skills/setup/SKILL.md").firstMatch(of: /`xcrew setup [^`]*`/)?.0)
+        let options = Set(line.matches(of: /--([\w-]+)/).map { String($0.1) })
+        #expect(!options.isEmpty)
+        #expect(options.isSubset(of: SetupCommand().valuedOptions.union(SetupCommand().flags)), "\(options.subtracting(SetupCommand().valuedOptions).sorted())")
+    }
+
     /// The mod runs the CLI with options of its own; one a command doesn't declare would be refused, and the mod
     /// would quietly lose that answer.
     @Test func everyOptionTheModPassesIsDeclared() throws {
@@ -265,8 +273,8 @@ import Testing
         }
     }
 
-    /// mcs asks only for the workspace; the simulator defaults to the newest iPhone, and the
-    /// schemes are found by `/xcrew:setup` instead of typed in.
+    /// mcs asks only for the workspace; the simulator defaults to the newest iPhone, `xcrew setup` finds
+    /// the unit-test scheme, and `/xcrew:setup` finds the others instead of having them typed in.
     @Test func mcsAsksOnlyForTheWorkspace() async throws {
         let keys = try text("techpack.yaml").matches(of: /- key: (\w+)/).map { String($0.1) }
         #expect(keys == ["PROJECT"])

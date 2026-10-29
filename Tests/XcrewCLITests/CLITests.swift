@@ -61,7 +61,7 @@ import XcrewTestSupport
 
 @Suite struct SetupCommandTests {
     let simulators = FakeRunner(responses: [
-        "xcrun simctl list devices available --json": .init(status: 0, stdout: #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"name":"iPhone 18","isAvailable":true}]}}"#),
+        "xcrun simctl list devices available --json": .init(status: 0, stdout: #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"name":"iPhone 18","udid":"U18","isAvailable":true}]}}"#),
     ])
 
     func config(_ project: Project) -> String {
@@ -70,7 +70,7 @@ import XcrewTestSupport
 
     @Test func detectsTheWorkspaceAndTheNewestIPhone() async {
         let project = Project.temporary(containing: ["App.xcworkspace"])
-        let run = await Run("setup", context: .fake(simulators, project: project))
+        let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
         #expect(run.status == 0)
         #expect(config(project).contains("workspacePath: '\(project.root.path)/App.xcworkspace'"))
         #expect(config(project).contains("simulatorName: 'iPhone 18'"))
@@ -88,21 +88,21 @@ import XcrewTestSupport
 
     @Test func optionsWinOverMCSAnswers() async {
         let project = Project.temporary(containing: ["App.xcworkspace"])
-        let run = await Run("setup", "--test-simulator", "iPhone 17", context: .fake(simulators, project: project, environment: ["MCS_RESOLVED_TEST_SIMULATOR": "iPhone 9"]))
+        let run = await Run("setup", "--test-simulator", "iPhone 17", "--test-scheme", "App", context: .fake(simulators, project: project, environment: ["MCS_RESOLVED_TEST_SIMULATOR": "iPhone 9"]))
         #expect(run.status == 0)
         #expect(config(project).contains("'iPhone 17'"))
     }
 
     @Test func findsTheContainerAFolderOrTwoDown() async {
         let project = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj"])
-        let run = await Run("setup", context: .fake(simulators, project: project))
+        let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
         #expect(run.status == 0)
         #expect(config(project).contains("projectPath: '\(project.root.path)/apps/ios/App.xcodeproj'"))
     }
 
     @Test func aContainerAtTheRootWinsOverOneBelow() async {
         let project = Project.temporary(containing: [".git", "Root.xcodeproj", "apps/ios/App.xcworkspace"])
-        let run = await Run("setup", context: .fake(simulators, project: project))
+        let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
         #expect(run.status == 0)
         #expect(config(project).contains("projectPath: '\(project.root.path)/Root.xcodeproj'"))
     }
@@ -144,12 +144,62 @@ import XcrewTestSupport
         #expect(try String(contentsOf: project.root.appending(path: ".git/info/exclude"), encoding: .utf8) == "/.mobilebuildmcp/\n")
     }
 
+    /// A one-app project, each scheme testing the targets named.
+    func appProject(schemes: [String: [String]], targets: [String: String]) -> Project {
+        let project = Project.temporary()
+        project.writePBXProj(targets)
+        for (name, testables) in schemes { project.writeScheme(name, testing: testables) }
+        return project
+    }
+
+    @Test func theSchemeThatRunsUnitTestsBecomesTheUnitProfile() async {
+        let project = appProject(schemes: ["App": ["AppTests"]], targets: ["App": "application", "AppTests": "bundle.unit-test"])
+        let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
+        #expect(run.status == 0)
+        #expect(config(project).contains("  unit:\n    projectPath: '\(project.root.path)/App.xcodeproj'\n    scheme: 'App'"))
+        #expect(run.text.contains("xcrew: unit tests run with the App scheme (--test-scheme <name> picks another)"))
+        #expect(config(project).hasSuffix("activeSessionDefaultsProfile: unit\n"))
+    }
+
+    @Test func withoutUnitTestsTheAppProfileIsActive() async {
+        let project = appProject(schemes: ["App": []], targets: ["App": "application"])
+        let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
+        #expect(!config(project).contains("  unit:"))
+        #expect(config(project).hasSuffix("activeSessionDefaultsProfile: app\n"))
+        #expect(run.status == 0)
+    }
+
+    @Test func severalTestSchemesAreListedForThePersonToChoose() async {
+        let project = appProject(schemes: ["Core": ["CoreTests"], "Kit": ["KitTests"]], targets: ["CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test"])
+        let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
+        #expect(run.text.contains("xcrew: several schemes run unit tests (Core, Kit): pass --test-scheme <name> to add the unit profile"))
+        #expect(!config(project).contains("  unit:"))
+    }
+
+    @Test func aTestSchemeThatCantBeToldIsListedNotGuessed() async {
+        let project = appProject(schemes: ["App": ["Gone"]], targets: [:])
+        let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
+        #expect(run.text.contains("xcrew: couldn't tell whether these schemes run unit tests (App): pass --test-scheme <name> to add the unit profile"))
+    }
+
+    @Test func anExplicitTestSchemeWins() async {
+        let project = appProject(schemes: ["Core": ["CoreTests"], "Kit": ["KitTests"]], targets: ["CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test"])
+        _ = await Run("setup", "--app-scheme", "App", "--test-scheme", "Kit", context: .fake(simulators, project: project))
+        #expect(config(project).contains("    scheme: 'Kit'\n    simulatorName: 'iPhone 18'"))
+    }
+
+    @Test func everyProfileGetsItsSimulatorID() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        _ = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
+        #expect(config(project).contains("    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'"))
+    }
+
     @Test func handWrittenConfigNeedsForce() async {
         let project = Project.temporary(containing: ["App.xcworkspace"])
         project.write("mine: true\n", to: ".mobilebuildmcp/config.yaml")
         #expect(await Run("setup", context: .fake(simulators, project: project)).text.contains("left as is"))
         #expect(config(project) == "mine: true\n")
-        #expect(await Run("setup", "--force", context: .fake(simulators, project: project)).text.contains("kept the old config"))
+        #expect(await Run("setup", "--force", "--app-scheme", "App", context: .fake(simulators, project: project)).text.contains("kept the old config"))
         #expect(config(project).contains("iPhone 18"))
     }
 }
@@ -299,6 +349,7 @@ import XcrewTestSupport
     @Test func withoutAnAppSchemeSetupPointsAtTheSkill() async {
         let run = await Run("setup", context: .fake(simulators, project: .temporary(containing: ["App.xcworkspace"])))
         #expect(run.text.contains("/xcrew:setup adds the app and UI-test profiles"))
+        #expect(run.status == 0)
     }
 
     @Test func withAnAppSchemeItDoesNot() async {

@@ -1,7 +1,8 @@
 import Foundation
 
 /// The answers that shape `.mobilebuildmcp/config.yaml`: the container to build and the
-/// session-defaults profiles Claude switches between (`unit` always, `ui` and `app` when asked).
+/// session-defaults profiles Claude switches between, `unit`, `app` and `ui`, each written only when
+/// it has a scheme (see `ConfigRenderer.render`).
 public struct ProfileAnswers: Sendable, Equatable {
     public var container: String
     public var testSimulator: String
@@ -9,6 +10,7 @@ public struct ProfileAnswers: Sendable, Equatable {
     public var appScheme: String?
     public var bundleID: String?
     public var uiTestScheme: String?
+    public var testScheme: String?
 
     public init(
         container: String,
@@ -16,7 +18,8 @@ public struct ProfileAnswers: Sendable, Equatable {
         appSimulator: String? = nil,
         appScheme: String? = nil,
         bundleID: String? = nil,
-        uiTestScheme: String? = nil
+        uiTestScheme: String? = nil,
+        testScheme: String? = nil
     ) {
         self.container = container.hasPrefix("./") ? String(container.dropFirst(2)) : container
         self.testSimulator = testSimulator
@@ -24,6 +27,7 @@ public struct ProfileAnswers: Sendable, Equatable {
         self.appScheme = appScheme.nonEmpty
         self.bundleID = bundleID.nonEmpty
         self.uiTestScheme = uiTestScheme.nonEmpty
+        self.testScheme = testScheme.nonEmpty
     }
 }
 
