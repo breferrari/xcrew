@@ -110,10 +110,10 @@ public struct ProjectLayout: Sendable {
         }
     }
 
-    /// What to run after an edit to `file` before the next build, when the generator reads it; `nearest` is the
+    /// What to run after an edit to `file` before the next build, and the manifests it regenerates, when the generator reads it; `nearest` is the
     /// project's manifests. Tuist reads a manifest below its app's folder by the rule detection uses, taking that folder as
     /// the root, and every file in its own folder; XcodeGen reads the spec beside its project.
-    public func command(after file: URL, nearest: Manifests) -> String? {
+    public func command(after file: URL, nearest: Manifests) -> (manifests: Manifests, command: String)? {
         let manifests = nearest.generator == .tuist ? tuistApp(holding: file) ?? nearest : nearest
         let folder = Self.canonical(manifests.folder) + "/"
         let path = Self.canonical(file)
@@ -122,11 +122,11 @@ public struct ProjectLayout: Sendable {
         let isBeside = !relative.contains("/")
         switch manifests.generator {
         case .xcodeGen:
-            return isBeside && named(file.lastPathComponent, Self.xcodeGenMarkers) ? manifests.generateCommand : nil
+            return isBeside && named(file.lastPathComponent, Self.xcodeGenMarkers) ? (manifests, manifests.generateCommand) : nil
         case .tuist:
-            if named(relative, [Self.tuistDependencies]) { return manifests.installAndGenerateCommand }
+            if named(relative, [Self.tuistDependencies]) { return (manifests, manifests.installAndGenerateCommand) }
             let isInTuistFolder = !isBeside && named(String(relative.prefix { $0 != "/" }), [Self.tuistFolder])
-            return isInTuistFolder || isTuistManifest(file, countsByName: isBeside) ? manifests.generateCommand : nil
+            return isInTuistFolder || isTuistManifest(file, countsByName: isBeside) ? (manifests, manifests.generateCommand) : nil
         }
     }
 

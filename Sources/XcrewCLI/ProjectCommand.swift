@@ -19,6 +19,8 @@ struct ProjectCommand: Command {
         var containerProblem: String?
         /// The command to run before the next build, when the file `--manifest` names is one the generator reads.
         var generate: String?
+        /// The app that command regenerates, as the path of its manifests' folder from the root: empty for the root.
+        var app: String?
     }
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -28,7 +30,8 @@ struct ProjectCommand: Command {
         var answer = Answer(isGenerated: nearest != nil)
         if let manifest = invocation.arguments["manifest"], let nearest {
             let file = manifest.hasPrefix("/") ? URL(fileURLWithPath: manifest) : project.root.appending(path: manifest)
-            answer.generate = layout.command(after: file, nearest: nearest)
+            let found = layout.command(after: file, nearest: nearest)
+            (answer.generate, answer.app) = (found?.command, found?.manifests.path)
         }
         if invocation.arguments.has("setup") {
             do {

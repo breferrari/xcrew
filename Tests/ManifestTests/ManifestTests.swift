@@ -89,6 +89,17 @@ import Testing
         }
     }
 
+    /// After a generate, the mod clears the marks of the app it names, read back from the commands the CLI writes: each is
+    /// a case of the mod's parser test, giving back the app's path, or none for the root.
+    @Test(arguments: [ProjectLayout.Generator.tuist, .xcodeGen], ["", "ios"])
+    func theModReadsTheAppBackFromEachCommand(generator: ProjectLayout.Generator, path: String) throws {
+        let manifests = ProjectLayout.Manifests(generator: generator, folder: URL(fileURLWithPath: "/"), path: path)
+        let commands = generator == .tuist ? [manifests.generateCommand, manifests.installAndGenerateCommand] : [manifests.generateCommand]
+        for command in commands {
+            #expect(try text("hooks/mod/tools.test.ts").contains("['\(command)', [\(path.isEmpty ? "undefined" : "'\(path)'")]]"), "\(command)")
+        }
+    }
+
     /// The mod asks the CLI about an edit only when the file's name is one a generator reads, as detection names them.
     @Test func theModAsksAboutEveryManifestName() throws {
         let tests = try text("hooks/mod/tools.test.ts")

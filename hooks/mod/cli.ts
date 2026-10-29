@@ -94,10 +94,10 @@ export function isGeneratedOf(answer: unknown): boolean {
   return (answer as { isGenerated?: boolean } | undefined)?.isGenerated === true
 }
 
-/** The command that regenerates the project, when the file `xcrew project --manifest` was asked about is a manifest. */
-export function generateOf(answer: unknown): string | undefined {
-  const generate = (answer as { generate?: unknown } | undefined)?.generate
-  return typeof generate === 'string' && generate !== '' ? generate : undefined
+/** The app an edit changed and the command that regenerates it, when the file `xcrew project --manifest` was asked about is a manifest. */
+export function manifestEditOf(answer: unknown): { app: string; generate: string } | undefined {
+  const { app, generate } = (answer ?? {}) as { app?: unknown; generate?: unknown }
+  return typeof app === 'string' && typeof generate === 'string' && generate !== '' ? { app, generate } : undefined
 }
 
 /** Why a CLI command couldn't run. */

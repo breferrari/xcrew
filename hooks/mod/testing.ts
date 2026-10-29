@@ -21,7 +21,7 @@ export function submitPrompt($: Engine, text: string) {
 }
 
 /** What `xcrew project` answers: with `--manifest`, the command that regenerates the project when the file is a manifest. */
-type ProjectAnswer = { isGenerated: boolean; generate?: string }
+type ProjectAnswer = { isGenerated: boolean; generate?: string; app?: string }
 
 /** One call the mod made to the Swift CLI: its arguments, what it piped in, and the program when it wasn't the shim. */
 export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number }

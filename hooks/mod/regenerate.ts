@@ -1,5 +1,5 @@
 import type { StaleProject } from '../../types'
-import { generatedApp } from './tools'
+import { generatedApps } from './tools'
 
 /**
  * Builds after a manifest edit. The generated project changes only when the generator runs again, so a build before
@@ -33,17 +33,31 @@ function listed(generates: readonly string[]): string {
   return quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted.at(-1)}` : (quoted[0] ?? '')
 }
 
-/** The marks after an edit to a manifest `generate` regenerates: one per app, and a build refused again for the new one. */
-export function marked(stale: StaleProject | null, generate: string): StaleProject {
-  return { generates: [...(stale?.generates ?? []).filter(other => other !== generate), generate], refused: false }
+type Mark = StaleProject['marks'][number]
+
+/** The marks of a stale project, or none: a session that began on an older mod may hold another shape. */
+export function marksOf(stale: StaleProject | null | undefined): readonly Mark[] {
+  return Array.isArray(stale?.marks) ? stale.marks : []
 }
 
 /**
- * The marks after a generate that succeeded: the app it names is up to date; one that names none may have run in any,
- * after a `cd`, and clears them all. A build is refused again for the marks left.
+ * The marks after an edit to an app's manifests: one per app, and a build refused again for it. Of two commands for
+ * the app, the one that holds the other stays, so an install a dependency edit needs isn't lost to a later edit.
+ */
+export function marked(stale: StaleProject | null, mark: Mark): StaleProject {
+  const earlier = marksOf(stale).find(other => other.app === mark.app)
+  const generate = earlier?.generate.includes(mark.generate) ? earlier.generate : mark.generate
+  return { marks: [...marksOf(stale).filter(other => other.app !== mark.app), { app: mark.app, generate }], refused: false }
+}
+
+/**
+ * The marks after a generate that succeeded: each app it names is up to date, matched by its path from the root or a
+ * longer path ending in it; one generate that names none may have run in any app, and clears them all. A build is
+ * refused again for the marks left.
  */
 export function afterGenerate(stale: StaleProject | null, command: string): StaleProject | null {
-  const app = generatedApp(command)
-  const left = app === undefined ? [] : (stale?.generates ?? []).filter(generate => generatedApp(generate) !== app)
-  return left.length > 0 ? { generates: left, refused: false } : null
+  const ran = generatedApps(command)
+  const isGenerated = (app: string) => ran.some(path => path === undefined || path === app || (app !== '' && path.endsWith(`/${app}`)))
+  const left = marksOf(stale).filter(mark => !isGenerated(mark.app))
+  return left.length > 0 ? { marks: left, refused: false } : null
 }

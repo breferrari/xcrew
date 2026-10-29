@@ -34,8 +34,9 @@ export type BandProblems = { isFailure: boolean; message: string; more: number; 
 /** The CLI build the shim named, and when it was asked: `path` is null when it named none. */
 export type CliBuild = { path: string | null; at: number }
 
-/** Manifest edits the project hasn't been generated since: the command that generates each app they changed, and whether a build was refused for them. */
-export type StaleProject = { generates: string[]; refused: boolean }
+/** Manifest edits the project hasn't been generated since: one mark per app they changed, with the path the CLI gives the
+ * app and the command that generates it, and whether a build was refused for them. */
+export type StaleProject = { marks: { app: string; generate: string }[]; refused: boolean }
 
 declare module 'claude-code' {
   interface PluginState {

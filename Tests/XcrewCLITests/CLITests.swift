@@ -452,7 +452,7 @@ import XcrewTestSupport
         project.write("import ProjectDescription\n", to: "Tuist/ProjectDescriptionHelpers/Targets.swift")
         for manifest in ["Projects/Features/Feature/Project.swift", "Tuist/ProjectDescriptionHelpers/Targets.swift", "Tuist.swift"] {
             let text = await Run("project", "--manifest", project.root.appending(path: manifest).path, context: .fake(project: project)).text
-            #expect(text == #"{"generate":"tuist generate --no-open","isGenerated":true}"#, "\(manifest)")
+            #expect(text == #"{"app":"","generate":"tuist generate --no-open","isGenerated":true}"#, "\(manifest)")
         }
     }
 
@@ -470,7 +470,7 @@ import XcrewTestSupport
     @Test func aManifestMayBeNamedFromTheRoot() async {
         let project = Project.temporary(containing: ["ios/project.yml"])
         let text = await Run("project", "--manifest", "ios/project.yml", context: .fake(project: project)).text
-        #expect(text == #"{"generate":"xcodegen generate --spec ios/project.yml","isGenerated":true}"#)
+        #expect(text == #"{"app":"ios","generate":"xcodegen generate --spec ios/project.yml","isGenerated":true}"#)
     }
 
     /// A module's manifest within reach of the walk still belongs to the app whose `Tuist.swift` is above it: generating the
@@ -479,7 +479,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["Tuist.swift"])
         project.write("import ProjectDescription\n", to: "Modules/Feature/Project.swift")
         let text = await Run("project", "--manifest", project.root.appending(path: "Modules/Feature/Project.swift").path, context: .fake(project: project)).text
-        #expect(text == #"{"generate":"tuist generate --no-open","isGenerated":true}"#)
+        #expect(text == #"{"app":"","generate":"tuist generate --no-open","isGenerated":true}"#)
     }
 
     /// Tuist resolves the dependencies `Tuist/Package.swift` declares only on `tuist install`; a generate alone keeps the old ones.
@@ -487,7 +487,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["ios/Tuist"])
         project.write("// swift-tools-version: 6.0\n", to: "ios/Tuist/Package.swift")
         let text = await Run("project", "--manifest", project.root.appending(path: "ios/Tuist/Package.swift").path, context: .fake(project: project)).text
-        #expect(text == #"{"generate":"tuist install --path ios && tuist generate --no-open --path ios","isGenerated":true}"#)
+        #expect(text == #"{"app":"ios","generate":"tuist install --path ios && tuist generate --no-open --path ios","isGenerated":true}"#)
     }
 
     /// A repository may keep more than one Tuist app: an edit regenerates the one whose manifests it changed.
@@ -495,7 +495,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["apps/a/Tuist.swift", "apps/b/Tuist.swift"])
         project.write("import ProjectDescription\n", to: "apps/b/Project.swift")
         let text = await Run("project", "--manifest", project.root.appending(path: "apps/b/Project.swift").path, context: .fake(project: project)).text
-        #expect(text == #"{"generate":"tuist generate --no-open --path apps/b","isGenerated":true}"#)
+        #expect(text == #"{"app":"apps/b","generate":"tuist generate --no-open --path apps/b","isGenerated":true}"#)
     }
 
     /// Claude may edit another project's manifests from this one: that changes nothing this project builds.
