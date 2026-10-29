@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- With mcs, the techpack no longer runs its own check for a newer Xcrew: `mcs check-updates` already reports pack updates, and `mcs update` installs them. `xcrew doctor` keeps the check for plugin installs.
 - The note about a run's expected failures names the tests, five at most.
 - A crashed test whose run attached no crash log says so, and how to get one, so Claude knows why there are no frames.
 - `xcrew doctor --problems` prints `No problems.` when there are none, rather than nothing.
