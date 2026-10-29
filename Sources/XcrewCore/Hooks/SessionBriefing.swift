@@ -14,7 +14,8 @@ public struct SessionBriefing: Sendable {
 
     public func text(routing: String) async -> String? {
         guard project.isApplePlatformProject else { return nil }
-        let notes = [profiles(), bootedNote(await booted())].compactMap { $0 } + gaps()
+        let failover = await MobileBuildMCPStatus.assess(CheckContext(project: project, machine: machine)).problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") }
+        let notes = [failover, profiles(), bootedNote(await booted())].compactMap { $0 } + gaps()
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         return lines.joined(separator: "\n")
     }
@@ -48,12 +49,15 @@ public struct SessionBriefing: Sendable {
         return "Simulators booted now: \(named.joined(separator: ", ")). Reuse one rather than booting another."
     }
 
+    /// What Claude does while MobileBuildMCP can't serve: the Xcode MCP's build and test tools, what they lose, and the
+    /// one change to the person's own Xcode, its active scheme, that waits for their word.
+    static func failoverNote(reason: String) -> String {
+        "MobileBuildMCP isn't usable here (\(reason)), so its build and test tools aren't either. Until it is, build with the Xcode MCP's `BuildProject` and test with `RunAllTests`: they work through Xcode itself, on the open project, its active scheme and destination, in Xcode's own DerivedData. Lost meanwhile: coverage reports, simulator control, UI automation and LLDB. Tell the person once that MobileBuildMCP is unavailable and what that loses, then carry on. If a build or test needs a scheme other than Xcode's active one, ask before switching it: that changes their open Xcode."
+    }
+
     /// Fast checks only: this runs before every session's first prompt.
     func gaps() -> [String] {
         var gaps: [String] = []
-        if !machine.hasMobileBuildMCP {
-            gaps.append("MobileBuildMCP isn't installed, so its tools are missing: ask the person to run `brew install getsentry/xcodebuildmcp/mobilebuildmcp`, then restart Claude Code.")
-        }
         if !project.hasMobileBuildMCPConfig {
             gaps.append("This project has no `.mobilebuildmcp/config.yaml`, so MobileBuildMCP has no profiles: offer `/xcrew:setup` before the first build or test.")
         }

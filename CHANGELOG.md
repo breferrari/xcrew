@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- When MobileBuildMCP is missing or out of date, the session briefing has Claude build and test through the Xcode MCP and tell you once what that loses (coverage, simulator control, UI automation, LLDB), instead of stopping at "install it". It asks before switching your open Xcode to another scheme.
+
 ## 0.8.5 — 2026-10-29
 
 - The line above the prompt follows only its own run, so two sessions building in one checkout, or in two checkouts of folders with the same name, no longer show each other's progress.

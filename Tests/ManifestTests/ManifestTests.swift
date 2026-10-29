@@ -72,6 +72,13 @@ import Testing
 
     // MARK: MCP servers
 
+    /// The failover note names only Xcode MCP tools the mod classifies, with the kind the note gives them.
+    @Test(arguments: [("BuildProject", "build"), ("RunAllTests", "test")])
+    func theFailoverNoteNamesToolsTheModKnows(tool: String, kind: String) throws {
+        #expect(SessionBriefing.failoverNote(reason: "").contains("`\(tool)`"))
+        #expect(try text("hooks/mod/tools.test.ts").contains("['mcp__xcode__\(tool)', '\(kind)']"))
+    }
+
     /// The plugin's MCP servers, by name, as the manifest declares them.
     func servers() throws -> [String: [String: Any]] {
         try #require(try json(".claude-plugin/plugin.json")["mcpServers"] as? [String: [String: Any]])

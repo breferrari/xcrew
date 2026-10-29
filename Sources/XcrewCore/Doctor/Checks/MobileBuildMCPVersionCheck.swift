@@ -8,13 +8,9 @@ struct MobileBuildMCPVersionCheck: Check {
     let title = "MobileBuildMCP \(minimum) or newer"
 
     func run(_ context: CheckContext) async -> CheckResult {
-        guard context.machine.hasMobileBuildMCP else {
-            return .fail("not installed: brew install getsentry/xcodebuildmcp/mobilebuildmcp")
-        }
-        let version = Version(await Self.version(context))
-        guard version >= Self.minimum else {
-            return .fail("version \(version) is older than \(Self.minimum): brew upgrade mobilebuildmcp")
-        }
+        let status = await MobileBuildMCPStatus.assess(context)
+        if let problem = status.problem { return .fail("\(problem.reason): \(problem.fix)") }
+        guard case let .usable(version) = status else { return .fail("not usable") }
         return .pass("version \(version)")
     }
 
