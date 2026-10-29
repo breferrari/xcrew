@@ -16,6 +16,26 @@ export function runsSetup(command: string): boolean {
   return SETUP_COMMAND.test(command)
 }
 
+/** The built-in tools that change a file's text; an edit to a manifest leaves the generated project behind it. */
+export const FILE_EDITOR = /^(?:Write|Edit)$/
+
+/**
+ * A name a generator may read: Tuist's markers and manifests, any file in its `Tuist/` folder, and XcodeGen's spec. In
+ * any case, as the file system matches names. Only a first look, so most edits never start the CLI, which decides.
+ */
+const MANIFEST_NAME = /(?:^|\/)(?:(?:Tuist|Project|Workspace)\.swift|project\.yml|Tuist\/.+)$/i
+
+export function mayBeManifest(path: string): boolean {
+  return MANIFEST_NAME.test(path)
+}
+
+/** A shell command that regenerates the project: `tuist generate`, or `xcodegen` with its default `generate` or none. */
+const GENERATE_COMMAND = /(?:^|[\s;&|(])(?:tuist\s+generate|xcodegen(?:\s+generate)?(?!\s+\w))(?:[\s;&|)]|$)/
+
+export function runsGenerate(command: string): boolean {
+  return GENERATE_COMMAND.test(command)
+}
+
 /** The matcher for the guard: the engine calls a hook only for the tools its matcher matches. */
 export const PROJECT_REWRITER = bothRegistrations('xcode', ['XcodeWrite'])
 

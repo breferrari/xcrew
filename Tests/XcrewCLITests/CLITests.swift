@@ -445,6 +445,50 @@ import XcrewTestSupport
         #expect(text == #"{"container":"Other.xcworkspace","isGenerated":false}"#)
     }
 
+    /// A module's manifest sits deeper than detection walks: it counts by its import, under the folder Tuist's manifests are in.
+    @Test func anEditedManifestNamesTheCommandThatRegenerates() async {
+        let project = Project.temporary(containing: ["Tuist.swift"])
+        project.write("import ProjectDescription\n\nlet project = Project(name: \"Feature\")\n", to: "Projects/Features/Feature/Project.swift")
+        project.write("import ProjectDescription\n", to: "Tuist/ProjectDescriptionHelpers/Targets.swift")
+        for manifest in ["Projects/Features/Feature/Project.swift", "Tuist/ProjectDescriptionHelpers/Targets.swift", "Tuist.swift"] {
+            let text = await Run("project", "--manifest", project.root.appending(path: manifest).path, context: .fake(project: project)).text
+            #expect(text == #"{"generate":"tuist generate --no-open","isGenerated":true}"#, "\(manifest)")
+        }
+    }
+
+    @Test func aSourceFileNamedLikeAManifestRegeneratesNothing() async {
+        let project = Project.temporary(containing: ["Tuist.swift"])
+        project.write("struct Project {}\n", to: "Projects/Feature/Sources/Project.swift")
+        project.write("struct Model {}\n", to: "Projects/Feature/Sources/Model.swift")
+        for file in ["Projects/Feature/Sources/Project.swift", "Projects/Feature/Sources/Model.swift"] {
+            let text = await Run("project", "--manifest", project.root.appending(path: file).path, context: .fake(project: project)).text
+            #expect(text == #"{"isGenerated":true}"#, "\(file)")
+        }
+    }
+
+    /// The mod passes the path the edit tool was given, which may be relative to where Claude works: the project's root.
+    @Test func aManifestMayBeNamedFromTheRoot() async {
+        let project = Project.temporary(containing: ["ios/project.yml"])
+        let text = await Run("project", "--manifest", "ios/project.yml", context: .fake(project: project)).text
+        #expect(text == #"{"generate":"xcodegen generate --spec ios/project.yml","isGenerated":true}"#)
+    }
+
+    /// A repository may keep more than one Tuist app: an edit regenerates the one whose manifests it changed.
+    @Test func anEditInASecondTuistAppRegeneratesThatApp() async {
+        let project = Project.temporary(containing: ["apps/a/Tuist.swift", "apps/b/Tuist.swift"])
+        project.write("import ProjectDescription\n", to: "apps/b/Project.swift")
+        let text = await Run("project", "--manifest", project.root.appending(path: "apps/b/Project.swift").path, context: .fake(project: project)).text
+        #expect(text == #"{"generate":"tuist generate --no-open --path apps/b","isGenerated":true}"#)
+    }
+
+    /// Claude may edit another project's manifests from this one: that changes nothing this project builds.
+    @Test func aManifestOutsideTheManifestsFolderRegeneratesNothing() async {
+        let project = Project.temporary(containing: ["ios/Tuist.swift"])
+        let other = Project.temporary(containing: ["Tuist.swift"])
+        let text = await Run("project", "--manifest", other.root.appending(path: "Tuist.swift").path, context: .fake(project: project)).text
+        #expect(text == #"{"isGenerated":true}"#)
+    }
+
     @Test func projectsEquallyNearAreAQuestion() async {
         let project = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj", "apps/macos/App.xcodeproj"])
         let text = await Run("project", "--setup", context: .fake(project: project)).text

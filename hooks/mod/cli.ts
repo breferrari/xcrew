@@ -94,6 +94,12 @@ export function isGeneratedOf(answer: unknown): boolean {
   return (answer as { isGenerated?: boolean } | undefined)?.isGenerated === true
 }
 
+/** The command that regenerates the project, when the file `xcrew project --manifest` was asked about is a manifest. */
+export function generateOf(answer: unknown): string | undefined {
+  const generate = (answer as { generate?: unknown } | undefined)?.generate
+  return typeof generate === 'string' && generate !== '' ? generate : undefined
+}
+
 /** Why a CLI command couldn't run. */
 export function couldntRun(args: readonly string[], error: unknown): string {
   return `xcrew ${args.join(' ')} couldn't run: ${error instanceof Error ? error.message : String(error)}`

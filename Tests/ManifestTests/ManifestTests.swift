@@ -79,6 +79,21 @@ import Testing
         #expect(try text("hooks/mod/tools.test.ts").contains("['mcp__xcode__\(tool)', '\(kind)']"))
     }
 
+    /// The mod clears its stale mark on each command the CLI names for regenerating, as its tests feed it.
+    @Test(arguments: [ProjectLayout.Generator.tuist, .xcodeGen], ["", "ios"])
+    func theModRecognisesEachGenerateCommand(generator: ProjectLayout.Generator, path: String) throws {
+        let command = ProjectLayout.Manifests(generator: generator, folder: URL(fileURLWithPath: "/"), path: path).generateCommand
+        #expect(try text("hooks/mod/tools.test.ts").contains("'\(command)'"), "\(command)")
+    }
+
+    /// The mod asks the CLI about an edit only when the file's name is one a generator reads, as detection names them.
+    @Test func theModAsksAboutEveryManifestName() throws {
+        let tests = try text("hooks/mod/tools.test.ts")
+        for name in ProjectLayout.tuistMarkers.map({ $0 == ProjectLayout.tuistFolder ? "\($0)/Package.swift" : $0 }) + ProjectLayout.tuistManifests + ProjectLayout.xcodeGenMarkers {
+            #expect(tests.contains("'/a/\(name)'"), "\(name)")
+        }
+    }
+
     /// The plugin's MCP servers, by name, as the manifest declares them.
     func servers() throws -> [String: [String: Any]] {
         try #require(try json(".claude-plugin/plugin.json")["mcpServers"] as? [String: [String: Any]])

@@ -20,6 +20,9 @@ export function submitPrompt($: Engine, text: string) {
   return $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
 }
 
+/** What `xcrew project` answers: with `--manifest`, the command that regenerates the project when the file is a manifest. */
+type ProjectAnswer = { isGenerated: boolean; generate?: string }
+
 /** One call the mod made to the Swift CLI: its arguments, what it piped in, and the program when it wasn't the shim. */
 export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number }
 
@@ -40,7 +43,7 @@ export function stubCli(
     problems?: Problem[]
     /** The doctor can't run: the shim is building, or it timed out. */
     doctorFails?: () => boolean
-    project?: { isGenerated: boolean }
+    project?: ProjectAnswer | ((args: readonly string[]) => ProjectAnswer)
     noBuild?: boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
   } = {},
@@ -61,7 +64,7 @@ export function stubCli(
       args[0] === 'report' ? ((reports.length > 1 ? reports.shift() : reports[0]) ?? {})
       : args[0] === 'phase' ? (answers.phase?.(args) ?? {})
       : args[0] === 'doctor' ? (answers.problems ?? [])
-      : args[0] === 'project' ? (answers.project ?? { isGenerated: false })
+      : args[0] === 'project' ? ((typeof answers.project === 'function' ? answers.project(args) : answers.project) ?? { isGenerated: false })
       : null
     const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : JSON.stringify(answer)
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- In a Tuist or XcodeGen project, after Claude edits a manifest, the next build, test or run is refused once with the command that regenerates the project, such as `tuist generate --no-open`, so it doesn't build the project as it was. A generate that succeeds lets builds run again; if you generated in your own terminal, the next attempt goes through. A source file that only shares a manifest's name, like a `Project.swift` model, doesn't count.
+
 ## 0.8.6 — 2026-10-29
 
 - When MobileBuildMCP is missing or out of date, the session briefing has Claude build and test through the Xcode MCP and tell you once what that loses (coverage, simulator control, UI automation, LLDB), instead of stopping at "install it". It asks before switching your open Xcode to another scheme.
