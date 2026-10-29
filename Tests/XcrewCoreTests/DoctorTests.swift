@@ -31,6 +31,41 @@ import XcrewTestSupport
         #expect(await XcrewUpdateCheck().run(.fake(runner)) == .pass("\(XcrewVersion.current), the latest release"))
     }
 
+    /// A checkout at `/Users/me/Dev/Xcrew`, a spelling git doesn't print, as the mod passes the plugin root unresolved.
+    private func checkout(prefix: String = "", status: CommandResult = .init(status: 0, stdout: ""), online: Bool = true, latest: String = XcrewVersion.current) -> CheckContext {
+        var responses: [String: CommandResult] = [
+            "git -C /Users/me/Dev/Xcrew rev-parse --show-prefix --short HEAD": .init(status: 0, stdout: "\(prefix)\n5b646cc\n"),
+            "git --no-optional-locks -C /Users/me/Dev/Xcrew status --porcelain": status,
+        ]
+        if online { responses[Self.latestRelease] = .init(status: 0, stdout: #"{"tag_name":"v\#(latest)"}"#) }
+        return .fake(FakeRunner(responses: responses), environment: ["XCREW_ROOT": "/Users/me/Dev/Xcrew"])
+    }
+
+    @Test func aGitCheckoutShowsItsCommit() async {
+        #expect(await XcrewUpdateCheck().run(checkout()) == .pass("\(XcrewVersion.current) (5b646cc), the latest release"))
+        #expect(await XcrewUpdateCheck().run(checkout(status: .init(status: 0, stdout: " M bin/xcrew\n"))) == .pass("\(XcrewVersion.current) (5b646cc + local changes), the latest release"))
+    }
+
+    /// A cached install inside a git-managed folder, such as a versioned `~/.claude`, isn't a checkout of Xcrew.
+    @Test func aRepositoryAroundACachedInstallIsNotItsCommit() async {
+        let result = await XcrewUpdateCheck().run(checkout(prefix: "plugins/cache/breferrari/xcrew/0.8.1/"))
+        #expect(result == .pass("\(XcrewVersion.current), the latest release"))
+    }
+
+    /// A `git status` that fails prints nothing, which would read as a clean tree.
+    @Test func aCommitWhoseTreeCantBeReadIsNotShown() async {
+        #expect(await XcrewUpdateCheck().run(checkout(status: .init(status: 128, stdout: ""))) == .pass("\(XcrewVersion.current), the latest release"))
+    }
+
+    /// `claude plugin update` touches only the marketplace copy, never the checkout that runs.
+    @Test func anOldCheckoutIsToldToPull() async {
+        #expect(await XcrewUpdateCheck().run(checkout(latest: "99.0.0")) == .warn("\(XcrewVersion.current) (5b646cc) installed, 99.0.0 released: git pull in /Users/me/Dev/Xcrew"))
+    }
+
+    @Test func offlineTheCommitIsStillShown() async {
+        #expect(await XcrewUpdateCheck().run(checkout(online: false)) == .skip("\(XcrewVersion.current) (5b646cc): couldn't reach GitHub to compare"))
+    }
+
     @Test func noNetworkIsASkipNotAFailure() async {
         #expect(await XcrewUpdateCheck().run(.fake()).status == .skip)
         let garbled = FakeRunner(responses: [Self.latestRelease: .init(status: 0, stdout: "<html>rate limited</html>")])

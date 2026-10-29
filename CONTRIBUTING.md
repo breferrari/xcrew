@@ -53,13 +53,16 @@ scripts/typecheck.sh      # the mod's types; needs that session once
 Claude Code keeps people on a plugin's `version` until it changes, so every release bumps it. `scripts/release.sh <version>` does the whole release; it needs `gh`, signed in with write access:
 
 1. It turns off auto-merge on every other open pull request, and turns it back on when it ends, however it ends. A feature merging between the bump and the tag ships in a version whose changelog doesn't list it, which is how 0.6.5's and 0.6.6's entries once landed under each other's headings.
-2. In a throwaway worktree, so your clone is untouched, it sets the version in `Sources/XcrewCore/XcrewVersion.swift` and `.claude-plugin/plugin.json` and turns `## Unreleased` into `## <version> — <date>`. `ManifestTests` fails until all three agree.
+2. In a throwaway worktree, so your clone is untouched, it sets the version in `Sources/XcrewCore/XcrewVersion.swift` and `.claude-plugin/plugin.json` and turns `## Unreleased` into `## <version> — <date>`. `ManifestTests` fails until they agree.
 3. It opens the `chore: release <version>` pull request, merges it once it's green, and brings it up to date whenever `main` moves ahead of it.
 4. It tags the merge commit `v<version>` and waits for the release workflow. The workflow refuses a tag that doesn't match the declared version, or one whose commit isn't exactly what a pull request tested and passed, then publishes the release with its changelog entry. It doesn't test again: CI runs once per change, on its pull request, and the ruleset only merges one that is green and up to date with `main`.
+5. Once the workflow has published the release, it opens and merges `chore: Install <version> from the marketplace`, which points the marketplace entry's `ref` at the new tag. Until then installs stay on the previous release, so the marketplace only ever names a tag that exists and was published. If the workflow refuses the tag, the script stops there and says what to do.
+
+Every step can run again: after a failure, run `scripts/release.sh <version>` again, and it finds the tag and goes on from the release workflow.
 
 Before a release that changes what Claude sees from a build or test, run the checks in [docs/live-check.md](docs/live-check.md) in a real project.
 
-Between releases, `main` moves ahead of the version people have installed; that's expected, and it's why a release is a version bump.
+Between releases, `main` moves ahead of the version people have installed; that's expected. The marketplace installs the tagged release, never `main`.
 
 ## Reporting a problem
 

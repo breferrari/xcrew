@@ -31,7 +31,7 @@ They overlap on build, test and run. Xcrew sends those to MobileBuildMCP because
 - **Coverage tools need an absolute `.xcresult` path**; `~` isn't expanded.
 - **The `mobilebuildmcp://doctor` resource reports Sentry as enabled regardless.** That line reads only a legacy variable; the environment section below it is accurate.
 - **Sosumi beats `DocumentationSearch` for documentation**: short results with links, WWDC sessions, and each API's minimum OS version. `DocumentationSearch` matches the installed SDK and works offline.
-- **`IDEAllowUnauthenticatedAgents`** lets any unsigned process drive Xcode's tools; leave it off.
+- **`IDEAllowUnauthenticatedAgents`** lets any unsigned process drive Xcode's tools; leave it off. Turning it off doesn't cut Claude Code off: on October 29, 2026 (Xcode 27.2 beta 3, 27B5038j; macOS 27.0; Claude Code 2.1.312; MobileBuildMCP 2.7.1), setting it to `NO` and restarting Xcode left every doctor check `ok`, `xcode-mcp/claude-approved` included. That check reads a status, so a working Xcode MCP call is the stronger proof. On that Mac the value was already `1` before Xcrew first ran, so something else set it; Xcode itself is the likely source (unverified).
 
 ## Build and test progress
 
@@ -110,6 +110,14 @@ From the directory's validation of `main` at two commits on October 29, 2026, be
 | It holds a bundled image the README shows with an HTML `<img>` tag; its checklist asks for Markdown's image syntax | The README's images are Markdown, and a test fails on an `<img>` tag |
 | Its listing preview shows the README away from the repository: an image at a relative `assets/` path appeared as its alt text | The README's images are absolute `raw.githubusercontent.com` URLs to this repository's `assets/`, and a test fails on any other image source |
 | Without `documentationUrl`, the listing took the README's first link, Sosumi's site, as the plugin's documentation | `plugin.json` sets `documentationUrl` and `supportUrl`, and a test fails on a field the manifest reference doesn't document |
+
+## How a marketplace install picks its code
+
+On October 29, 2026 (Claude Code 2.1.312), a fresh install from the marketplace recorded `version` `0.8.1` and `gitCommitSha` `5b646cc` in `installed_plugins.json`. That commit was five past the `v0.8.1` tag. With `"source": "./"`, the plugin came from the marketplace's own clone of the default branch, and [Host and maintain a marketplace](https://code.claude.com/docs/en/plugins/host-marketplace.md) says updates follow `version` alone: "Users get a new copy only when the plugin's computed version differs from the one they have." So two `0.8.1` installs could run different code.
+
+The entry now names the release tag (`"ref": "v<version>"` on a `github` source), which the same page documents: "`ref` names a branch or tag and `sha` names a commit for a `github`, `url`, or `git-subdir` source." Only the plugin's code follows the ref. The catalog, `marketplace.json`, is still read from the default branch, since only "`#<ref>` on the add command" changes that, so `claude plugin marketplace add breferrari/xcrew` works as before.
+
+The ref moves in a pull request of its own, after the tag is pushed and the release workflow has published it. If the release pull request moved it instead, the catalog would name a tag that doesn't exist yet from the merge until the push, and installs would fail meanwhile. It would also still name the tag if the workflow refused it. Pinning a `sha` doesn't help either, since the squash merge makes the release commit and its hash isn't known before. A release branch added with `#release` would avoid the gap, but every existing user would have to add the marketplace again. So a test allows the ref to be this version or the previous release, and only a version the changelog has released.
 
 ## Toolchains
 

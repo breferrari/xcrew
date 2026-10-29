@@ -10,7 +10,11 @@
   "plugins": [
     {
       "name": "xcrew",
-      "source": "./",
+      "source": {
+        "source": "github",
+        "repo": "breferrari/xcrew",
+        "ref": "v0.8.1"
+      },
       "description": "Your Xcode crew inside Claude Code: three MCP servers working as one, with live build progress and test reports Claude can act on."
     }
   ]

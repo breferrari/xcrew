@@ -37,7 +37,7 @@ Sources/
     Hooks/              hook input and replies, the session briefing
     Reports/            reading the servers' output for the mod: each result decoded once into its server's shape (MobileBuildMCP's text as typed lines, every line shape read in MobileBuildMCPLine), failures, logs, result bundles
     XcodeSkills/        finding and copying the skills Xcode ships
-    XcrewVersion.swift  the version, held equal to plugin.json and the changelog
+    XcrewVersion.swift  the version, held equal to plugin.json and the changelog; the marketplace ref is it or the release before
   XcrewCLI/             one Command type per subcommand, and the dispatcher
   xcrew/                main.swift: builds the live Machine and calls CLI.run
 Tests/

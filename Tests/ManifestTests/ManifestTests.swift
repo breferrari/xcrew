@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 @testable import XcrewCLI
-import XcrewCore
+@testable import XcrewCore
 
 /// The plugin, the mcs techpack and the Swift code each name the same things: hooks, tools,
 /// checks, prompts. These tests keep them in step, so a change in one place can't leave another
@@ -305,7 +305,34 @@ import XcrewCore
         #expect(try json(".claude-plugin/plugin.json")["name"] as? String == "xcrew")
         let plugins = try #require(try json(".claude-plugin/marketplace.json")["plugins"] as? [[String: Any]])
         #expect(plugins.map { $0["name"] as? String } == ["xcrew"])
-        #expect(plugins.first?["source"] as? String == "./")
+    }
+
+    /// The tags the marketplace may name: this version's, or the previous release's until the pull request after
+    /// the release moves it on, and only versions the changelog has released.
+    static func installableRefs(changelog: String, version: String) -> Set<String> {
+        let released = changelog.matches(of: #/\n## (\d+\.\d+\.\d+) — /#).map { String($0.1) }
+        let candidates = [version] + released.dropFirst().prefix(1)
+        return Set(candidates.filter(released.contains).map { "v\($0)" })
+    }
+
+    @Test func theMarketplaceMayLagOneRelease() {
+        let changelog = "# Changelog\n\n## Unreleased\n\n## 0.9.0 — 2026-11-01\n\n## 0.8.1 — 2026-10-29\n\n## 0.8.0 — 2026-10-29\n"
+        #expect(Self.installableRefs(changelog: changelog, version: "0.9.0") == ["v0.9.0", "v0.8.1"])
+    }
+
+    @Test func theMarketplaceNamesOnlyReleasedVersions() {
+        let changelog = "# Changelog\n\n## 0.9.0 — 2026-11-01\n\n## 0.8.1 — 2026-10-29\n"
+        #expect(Self.installableRefs(changelog: changelog, version: "0.9.1") == ["v0.8.1"])
+    }
+
+    /// A relative source would install main's HEAD under the last release's version.
+    @Test func theMarketplaceInstallsAReleaseTag() throws {
+        let repository = try #require((try json(".claude-plugin/plugin.json")["repository"] as? String)?.replacing("https://github.com/", with: ""))
+        let plugins = try #require(try json(".claude-plugin/marketplace.json")["plugins"] as? [[String: Any]])
+        let source = plugins.first?["source"] as? [String: String]
+        #expect(source?["source"] == "github" && source?["repo"] == repository)
+        #expect(Self.installableRefs(changelog: try text("CHANGELOG.md"), version: XcrewVersion.current).contains(source?["ref"] ?? ""))
+        #expect(XcrewUpdateCheck.latestRelease == "https://api.github.com/repos/\(repository)/releases/latest")
     }
 }
 
