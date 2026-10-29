@@ -12,4 +12,6 @@ Three MCP servers serve this project; their tool names carry the server's (`…x
 
 - **Compile errors:** trust the Xcode MCP's `XcodeRefreshCodeIssuesInFile`. In a project without a `Package.swift` (a plain Xcode, Tuist or XcodeGen project), Claude Code's SourceKit `No such module` errors are false: it checks each file alone against the macOS SDK.
 - **After changing a SwiftUI view** with a `#Preview`, render it with `RenderPreview` in light and dark at a large Dynamic Type size.
+- **DerivedData:** never delete it unless the person asks. If errors persist after `clean`, report what you saw instead.
+- **`xcodebuild` and `simctl` through Bash:** only for the project's build scripts, archiving or exporting, and simulator push, URLs, privacy grants, adding photos or videos, creating or shutting one down. All other simulator work goes through MobileBuildMCP, including `erase_sims`, `set_sim_location` and `set_sim_appearance`.
 - **Something not working** ("not approved", "produced malformed response", a missing tool, LLDB refusing `expr`): load the `xcrew:reference` skill, and run `xcrew doctor`.

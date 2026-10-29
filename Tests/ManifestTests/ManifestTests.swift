@@ -223,6 +223,17 @@ import Testing
         }
     }
 
+    /// The briefing keeps Claude off DerivedData, and its line on `xcodebuild` and `simctl` names only simulator tools
+    /// the setup's config enables, so it never points at a tool that isn't there.
+    @Test func routingKeepsClaudeOffDerivedDataAndOnTheEnabledTools() throws {
+        let routing = try text("context/routing.md")
+        #expect(routing.contains("- **DerivedData:** never delete it unless the person asks."))
+        let bash = try #require(routing.split(separator: "\n").first { $0.hasPrefix("- **`xcodebuild` and `simctl` through Bash:**") })
+        let named = Set(bash.matches(of: /`([a-z]+_[a-z_]+)`/).map { String($0.1) })
+        #expect(!named.isEmpty)
+        #expect(named.isSubset(of: Set(ConfigRenderer.simEnvTools)), "\(named.subtracting(ConfigRenderer.simEnvTools).sorted())")
+    }
+
     /// Only the weekly canary can tell an install pull request that's pending from one that was abandoned, and only the
     /// newest Claude Code can say xcrew still reads its saved-result notice, whose wording isn't documented.
     @Test(arguments: ["scripts/marketplace-ref.sh ", "scripts/saved-notice.sh "])
