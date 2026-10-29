@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- In a git repository, an app whose Xcode project or Tuist or XcodeGen manifests sit a folder or two below the root (`ios/`, `apps/ios/`) now counts as an Apple-platform project: Claude gets the session briefing and the band shows the doctor's problems there.
+
 ## 0.7.3 — 2026-10-29
 
 - After a failing build or test run, the line above the prompt ends with `/xcrew failures`, which opens the pane listing each failure.

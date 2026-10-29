@@ -27,6 +27,12 @@ import XcrewTestSupport
         #expect(text?.contains("/xcrew:setup") == true)
     }
 
+    @Test func briefingForAnAppInASubfolder() async {
+        let project = Project.temporary(containing: [".git", "ios/Tuist.swift"])
+        let text = SessionBriefing(project: project, machine: CheckContext.fake(project: project).machine).text(routing: "rules\n")
+        #expect(text?.hasPrefix("rules\n- **xcrew:** MobileBuildMCP isn't installed") == true)
+    }
+
     @Test func generatedProjectsCountBeforeTheirWorkspaceExists() async {
         let project = Project.temporary()
         project.write("", to: "Project.swift")

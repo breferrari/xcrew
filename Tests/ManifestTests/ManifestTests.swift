@@ -118,6 +118,12 @@ import XcrewCore
         #expect(Set(keys).isSubset(of: Set(SetupCommand.mcsKeys.values)), "a prompt no setup option reads")
     }
 
+    /// mcs offers the workspaces and projects it finds; xcrew must recognise the same ones.
+    @Test func mcsDetectsTheContainersXcrewDoes() throws {
+        let patterns = try text("techpack.yaml").matches(of: /^\s+- "(\*\.xc\w+)"$/.anchorsMatchLineEndings()).map { String($0.1) }
+        #expect(patterns == Project.containerExtensions.map { "*\($0)" })
+    }
+
     @Test func mcsConfiguresThroughTheCLI() async throws {
         let techpack = try text("techpack.yaml")
         #expect(techpack.contains("script: mcs/configure.sh"))

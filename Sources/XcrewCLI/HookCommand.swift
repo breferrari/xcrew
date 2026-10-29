@@ -15,7 +15,7 @@ struct HookCommand: Command {
         }
         let event = HookEvent(json: invocation.standardInput())
         let machine = invocation.context.machine
-        let project = event.cwd.map { Project(root: URL(fileURLWithPath: $0, isDirectory: true)) } ?? invocation.context.project
+        let project = event.cwd.map { Project(root: URL(fileURLWithPath: $0, isDirectory: true), home: invocation.context.machine.home) } ?? invocation.context.project
         let routing = (try? String(contentsOf: Self.pluginRoot(machine).appending(path: "context/routing.md"), encoding: .utf8)) ?? ""
         if let text = SessionBriefing(project: project, machine: machine).text(routing: routing) {
             invocation.print(HookReply(event: event, context: text).json)

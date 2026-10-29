@@ -139,6 +139,12 @@ import XcrewTestSupport
         #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
     }
 
+    @Test func problemsListedForAnAppInASubfolder() async {
+        let project = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj"])
+        let run = await Run("doctor", "--problems", context: .fake(project: project))
+        #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
+    }
+
     @Test func problemsAsJSONGiveEachChecksStatusIdAndMessage() async throws {
         let project = Project.temporary(containing: ["App.xcworkspace"])
         let run = await Run("doctor", "--problems", "--json", context: .fake(project: project))
