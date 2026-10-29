@@ -103,16 +103,33 @@ public struct ResultBundle: Sendable {
         return (crashed.map { [$0] } ?? []) + top
     }
 
+    /// The tests in `xcresulttool get test-results tests` output that ran as expected failures, in the listing's order.
+    public static func expectedFailures(listing: String) -> [String] {
+        nodes(parse(listing)).compactMap { node in
+            node["nodeType"] as? String == "Test Case" && node["result"] as? String == "Expected Failure" ? node["nodeIdentifier"] as? String : nil
+        }
+    }
+
+    /// Expected failures named in the note before the rest are counted.
+    static let mostNamed = 5
+
     /// A note naming a run's expected failures (`XCTExpectFailure`), from `xcresulttool get test-results
-    /// summary`: MobileBuildMCP's counts leave them out, so passed + failed + skipped falls short of the
-    /// tests that ran. Nil when there are none.
-    public static func expectedFailuresNote(summary: String) -> String? {
+    /// summary` and the tests the list names: MobileBuildMCP's counts leave them out, so passed + failed
+    /// + skipped falls short of the tests that ran. Nil when there are none.
+    public static func expectedFailuresNote(summary: String, names: [String] = []) -> String? {
         let counts = parse(summary) as? [String: Any]
         let expected = counts?["expectedFailures"] as? Int ?? 0
         guard expected > 0 else { return nil }
         let tests = expected == 1 ? "1 test also ran as an expected failure" : "\(expected) tests also ran as expected failures"
         let total = (counts?["totalTestCount"] as? Int).map { ": \($0) tests ran in all" } ?? ""
-        return "xcrew: \(tests) (XCTExpectFailure). They count as neither passed nor failed in the result\(total)."
+        return "xcrew: \(tests) (XCTExpectFailure)\(listed(names)). They count as neither passed nor failed in the result\(total)."
+    }
+
+    /// `: A, B and C`, or `: A, B, C, D, E and 2 more`; nothing without names.
+    static func listed(_ names: [String]) -> String {
+        guard let last = names.last else { return "" }
+        if names.count > mostNamed { return ": " + names.prefix(mostNamed).joined(separator: ", ") + " and \(names.count - mostNamed) more" }
+        return names.count == 1 ? ": \(last)" : ": " + names.dropLast().joined(separator: ", ") + " and \(last)"
     }
 
     // MARK: Asking xcresulttool
@@ -127,9 +144,14 @@ public struct ResultBundle: Sendable {
         await xcresulttool(["get", "test-results", "test-details", "--test-id", "\(test)()", "--path", path, "--compact"])
     }
 
+    /// Every test the run ran, with its result: `xcresulttool get test-results tests`.
+    public func tests() async -> String {
+        await xcresulttool(["get", "test-results", "tests", "--path", path, "--compact"])
+    }
+
     /// The run's skipped tests: MobileBuildMCP's list can leave one out.
     public func skips() async -> [(test: String, skip: Skip)] {
-        Self.skippedTests(listing: await xcresulttool(["get", "test-results", "tests", "--path", path, "--compact"]))
+        Self.skippedTests(listing: await tests())
     }
 
     public func summary() async -> String {

@@ -30,6 +30,15 @@ public enum FailureNotes {
         return "\(milliseconds / 1000).\(String(repeating: "0", count: 3 - fraction.count))\(fraction)"
     }
 
+    /// Under a crash whose run attached no crash log, so Claude knows why there are no frames.
+    public static let noCrashLog = "no crash log came with this run; running the test alone, without parallel testing, may attach one"
+
+    /// MobileBuildMCP words a crash `Crash: xctest at …` when a crash log came with the run, and
+    /// `Test crashed with signal …` when none did.
+    static func isCrash(_ message: String) -> Bool {
+        message.hasPrefix("Crash:") || message.hasPrefix("Test crashed with signal")
+    }
+
     static func isPath(_ line: String) -> Bool {
         line.contains(#/^\s+\/\S+:\d+\s*$/#)
     }
@@ -84,7 +93,7 @@ public enum FailureNotes {
             guard let failure = failure(line) else { continue }
             if !order.contains(failure.test) { order.append(failure.test) }
             if index + 1 < lines.count, isPath(lines[index + 1]) { located.insert(failure.test) }
-            if failure.message.hasPrefix("Crash:") { crashed.insert(failure.test) }
+            if isCrash(failure.message) { crashed.insert(failure.test) }
         }
         let lookups = order.filter { !located.contains($0) || crashed.contains($0) }.prefix(mostLookups)
         let listedSkips = lines.compactMap(skipped)
@@ -98,7 +107,7 @@ public enum FailureNotes {
             if !located.contains(test), let location = ResultBundle.sourceLocation(details: await bundle.details(of: test)) {
                 added.append("    \(location)")
             }
-            if crashed.contains(test) { added += (await bundle.crash(of: test) ?? []).map { "      \($0)" } }
+            if crashed.contains(test) { added += (await bundle.crash(of: test) ?? [noCrashLog]).map { "      \($0)" } }
             if !added.isEmpty { notes.failures[test] = added }
         }
         if isSkipping {

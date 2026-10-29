@@ -14,7 +14,7 @@ struct DoctorCommand: Command {
     let usage = [
         "doctor [--check ID]   run the health checks (exit: 0 ok, 1 failed, 2 warned, 3 skipped)",
         "doctor --list         list the check ids",
-        "doctor --problems     only what failed or warned, and nothing outside an Apple-platform project (exit 0)",
+        "doctor --problems     only what failed or warned, or \"No problems.\"; nothing outside an Apple-platform project (exit 0)",
         "doctor --json         the same, as JSON: each check's status, id and message (the mod reads it)",
     ]
 
@@ -42,11 +42,12 @@ struct DoctorCommand: Command {
             return onlyProblems ? 0 : Doctor.worst(entries).rawValue
         }
         let width = entries.map(\.check.id.count).max() ?? 0
-        for entry in entries {
+        let lines = entries.map { entry in
             let tag = entry.result.status.tag.padding(toLength: 4, withPad: " ", startingAt: 0)
             let id = entry.check.id.padding(toLength: width, withPad: " ", startingAt: 0)
-            invocation.print("\(tag)  \(id)  \(entry.result.message)")
+            return "\(tag)  \(id)  \(entry.result.message)"
         }
+        (onlyProblems ? Doctor.problemsText(lines: lines) : lines).forEach(invocation.print)
         return onlyProblems ? 0 : Doctor.worst(entries).rawValue
     }
 }

@@ -29,7 +29,7 @@ C. A clean run. Delete the probe file and run the target again. It passes, and t
 
 D. Doctor. Find the plugin's `bin/xcrew` (under ~/.claude/plugins/cache) and run:
    1. `xcrew doctor`: every check, including `xcrew/up-to-date`.
-   2. `xcrew doctor --problems`: only failures and warnings, with no `xcrew/up-to-date` line.
+   2. `xcrew doctor --problems`: only failures and warnings, or `No problems.`, with no `xcrew/up-to-date` line.
    3. `HTTPS_PROXY=http://10.255.255.1:9 xcrew doctor`: `xcrew/up-to-date` is skipped with "couldn't reach GitHub to compare", within about 5 seconds.
 
 End with `git status` (clean) and a short list of anything that looked wrong or unclear.

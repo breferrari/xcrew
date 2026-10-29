@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The note about a run's expected failures names the tests, five at most.
+- A crashed test whose run attached no crash log says so, and how to get one, so Claude knows why there are no frames.
+- `xcrew doctor --problems` prints `No problems.` when there are none, rather than nothing.
+
 ## 0.7.1 — 2026-10-29
 
 - A test run that fails to compile counts each compile error once, as a build does: the compiler's caret line was counted as a second error.

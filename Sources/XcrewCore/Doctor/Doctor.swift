@@ -38,6 +38,11 @@ public enum Doctor {
         return checks.indices.map { Entry(check: checks[$0], result: results[$0]!) }
     }
 
+    /// What `doctor --problems` prints: its lines, or a line saying there are none.
+    public static func problemsText(lines: [String]) -> [String] {
+        lines.isEmpty ? ["No problems."] : lines
+    }
+
     public static func worst(_ entries: [Entry]) -> CheckStatus {
         entries.map(\.result.status).max() ?? .pass
     }

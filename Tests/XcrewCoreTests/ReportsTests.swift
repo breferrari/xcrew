@@ -376,3 +376,30 @@ func failingRunText(passing: Int) -> String {
         #expect(added.contains("  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API"))
     }
 }
+
+@Suite struct LiveCheckFollowUpTests {
+    @Test func theTestListNamesEachExpectedFailure() {
+        #expect(ResultBundle.expectedFailures(listing: Captured.text("xcresultTestsWithExpectedFailures")) == ["FormatterTests/test_knownBug()", "FormatterTests/test_rounding()"])
+        #expect(ResultBundle.expectedFailures(listing: "not json").isEmpty)
+    }
+
+    @Test func theExpectedFailuresNoteNamesTheTests() {
+        let summary = #"{"totalTestCount":5,"passedTests":3,"expectedFailures":2}"#
+        #expect(ResultBundle.expectedFailuresNote(summary: summary, names: ["A/a()", "B/b()"])
+            == "xcrew: 2 tests also ran as expected failures (XCTExpectFailure): A/a() and B/b(). They count as neither passed nor failed in the result: 5 tests ran in all.")
+        let many = (1...7).map { "T/t\($0)()" }
+        #expect(ResultBundle.expectedFailuresNote(summary: #"{"expectedFailures":7}"#, names: many)?.contains("T/t1(), T/t2(), T/t3(), T/t4(), T/t5() and 2 more") == true)
+    }
+
+    @Test func aCrashWithoutACrashLogSaysSo() async {
+        let text = Captured.text("mobileTestsCrashedAndSkipped").replacingOccurrences(of: "Crash: xctest at implicit closure #1 in FormatterTests.test_crash()", with: "Test crashed with signal trap.")
+        let bundle = ResultBundle(path: "/b.xcresult", runner: FakeRunner(), exportFolder: { FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)") })
+        let added = await FailureNotes.adding(to: text, from: bundle)
+        #expect(added.contains("Test crashed with signal trap.\n      \(FailureNotes.noCrashLog)"))
+    }
+
+    @Test func doctorProblemsSaysWhenThereAreNone() {
+        #expect(Doctor.problemsText(lines: []) == ["No problems."])
+        #expect(Doctor.problemsText(lines: ["warn  a/b  c"]) == ["warn  a/b  c"])
+    }
+}

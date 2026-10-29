@@ -41,7 +41,12 @@ public struct Report: Sendable, Equatable, Codable {
 
         var notes: [String] = []
         if isTest, final.testTotal == 0 { notes.append(noTestsNote) }
-        if let bundle, let expected = ResultBundle.expectedFailuresNote(summary: await bundle.summary()) { notes.append(expected) }
+        if let bundle {
+            let summary = await bundle.summary()
+            // The test list is only asked for when the summary counts expected failures to name.
+            let names = ResultBundle.expectedFailuresNote(summary: summary) == nil ? [] : ResultBundle.expectedFailures(listing: await bundle.tests())
+            if let expected = ResultBundle.expectedFailuresNote(summary: summary, names: names) { notes.append(expected) }
+        }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(
