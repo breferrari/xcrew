@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.1 — 2026-10-29
 
 - Xcrew builds with Swift 6.2 (Xcode 26.0) again, the oldest toolchain it supports. Since 0.7.2, one line in how it reads a test run needed Swift 6.3 to compile, so the first build failed on Xcode 26.0 and 26.0.1.
 - The line above the prompt is easier to read: the time, the time left, the phase, the result and the scheme and simulator are in your theme's text colour, and only the separators between them stay faint. On a finished run, the scheme and simulator come last, as they do while it runs, so a narrow terminal cuts them before the outcome.
