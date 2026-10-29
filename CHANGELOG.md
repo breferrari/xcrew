@@ -10,6 +10,7 @@
 - The doctor finds Tuist's old macro copy phase in every Tuist app in the project, including one kept in a subfolder (`ios/Tuist/`), not only at the root.
 - Outside an Apple-platform project, `xcrew doctor` skips the two project checks (`not an Apple project`) instead of failing them and suggesting setup. An app a folder or two down still counts, in a git repository or not.
 - The project search never walks your home folder, however its path is spelled and wherever it sits below the folder Claude Code started in.
+- Build, test and run tools are recognised by whole words in their names, and a word that only reads (get, list, show, settings, log) keeps a tool untimed: a tool with *latest* in its name is no longer timed as a test run, a test tool with *target* in its name is timed, and a reader such as `clean_logs` isn't timed as a build.
 
 ## 0.7.3 — 2026-10-29
 

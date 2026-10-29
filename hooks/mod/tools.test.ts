@@ -16,6 +16,8 @@ test('build, test and run tools are classified under either registration', () =>
     ['mcp__xcode__RunAllTests', 'test'],
     ['mcp__xcode__RunSomeTests', 'test'],
     ['mcp__MobileBuildMCP__test_sim', 'test'],
+    // Whole words: "target" holds "get", which marks a tool that only reads.
+    ['mcp__xcode__RunTargetTests', 'test'],
     ['mcp__xcode__RunProject', 'run'],
     ['mcp__MobileBuildMCP__launch_app_sim', 'run'],
     ['mcp__xcode__DeviceInteractionInstallAndRun', 'run'],
@@ -32,6 +34,12 @@ test('tools that only read or inspect are not timed', () => {
     'mcp__MobileBuildMCP__list_schemes',
     'mcp__MobileBuildMCP__show_build_settings',
     'mcp__MobileBuildMCP__screenshot',
+    // Whole words: "latest" holds "test".
+    'mcp__MobileBuildMCP__show_latest_log',
+    // A build or run word first doesn't make a reader a build or a run.
+    'mcp__MobileBuildMCP__clean_logs',
+    'mcp__MobileBuildMCP__build_settings',
+    'mcp__MobileBuildMCP__launch_app_logs',
   ]) {
     expect([name, kind(name)]).toEqual([name, undefined])
   }

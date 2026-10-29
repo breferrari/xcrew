@@ -34,15 +34,22 @@ export function parseTool(name: string): XcodeTool | undefined {
   return server && tool ? { server: server as XcodeTool['server'], tool } : undefined
 }
 
+/** A tool name's words, lowercased: split at `_` and where a lowercase letter or digit meets a capital (`RunSomeTests` → run, some, tests). */
+function wordsOf(name: string): string[] {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split('_')
+}
+
 /**
- * Whether a call is a build, a test run or an app run worth timing. Matched by pattern rather
- * than a list, so tools either server adds later are timed without a change here.
+ * Whether a call is a build, a test run or an app run worth timing. Matched by whole words rather
+ * than a list, so tools either server adds later are timed without a change here, and a word that
+ * only reads (get, list, show, settings, log) keeps a tool untimed whatever else its name says.
  */
 export function kindOf(tool: XcodeTool): ToolKind | undefined {
-  const name = tool.tool.toLowerCase()
-  if (/test/.test(name) && !/list|get/.test(name)) return 'test'
-  if (/^(build|clean)|build(project|_sim|_device|_macos)?$|buildrun|build_run/.test(name)) return 'build'
-  if (/^run(project|_app)|launch_app|installandrun/.test(name)) return 'run'
+  const words = wordsOf(tool.tool).join(' ')
+  if (/\b(get|list|show|settings|logs?)\b/.test(words)) return undefined
+  if (/\btests?\b/.test(words)) return 'test'
+  if (/^(build|clean)\b/.test(words)) return 'build'
+  if (/^run (project|app)\b|\blaunch app\b|\binstall and run\b/.test(words)) return 'run'
   return undefined
 }
 
