@@ -196,6 +196,17 @@ A person may regenerate in their own terminal, which the mod can't see. So the m
 
 The stale guard holds back a run tool unless its name says it only launches. `RunProject` builds before it launches. Whether the Xcode MCP's `DeviceInteractionInstallAndRun` builds first is unverified, so it is held back by that rule too; the next session where the Xcode MCP connects confirms it from `tools/list`, with `RunSomeTests`.
 
+## XcodeGen's included specs
+
+XcodeGen reads every spec its spec includes, so an edit to one marks the project stale like an edit to `project.yml`. Read on October 30, 2026 from XcodeGen's `Docs/ProjectSpec.md` and, where it is silent, `Sources/ProjectSpec/SpecFile.swift` on master:
+
+- "Include can either be a list of includes or a single include. An include can be provided via a string (the path) or an object". The object has `path`, `relativePaths` and `enable`, both flags defaulting to true.
+- "Included specs can also include other specs and so on." The loader reads each file once.
+- Where an include resolves isn't in the docs. The source keeps a base folder and a relative folder for each spec and reads an include at the base joined with its path. A top-level include therefore resolves from the root spec's folder. A nested one resolves from the folder of the spec that includes it, or, with `relativePaths: false`, from that spec's base.
+- A disabled include is never read (`.filter(\.enable)` comes before the file is loaded). `${NAME}` in a spec, an include's path among them, expands from the variables the loader is given: the environment.
+
+xcrew reads only the top-level `include` key, in those documented forms, with no YAML dependency. It resolves includes the same way. An include whose path holds a variable, or whose `enable` isn't a literal, is left out, since it depends on the environment at generate time. JSON specs (`project.json`) are out of scope, as detection doesn't find them either. The CLI tests pin each case. Since a spec can include another by any name, the mod asks the CLI about every YAML file edited.
+
 ## Toolchains
 
 On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The `macos-26` runner image (version 20261013.0424.1) carries Xcode 26.0.1 to 26.6, and Apple's [Xcode system requirements](https://developer.apple.com/xcode/system-requirements/) put Swift 6.2 in Xcode 26.0 and 26.0.1, 6.2.1 to 6.2.3 in 26.1 to 26.3, and 6.3 in 26.4.1 to 26.6. So CI's newest toolchain was Swift 6.3, older than the contributor's 6.4.2. Each Swift job now prints its toolchain, and a floor job builds and tests on the oldest Xcode whose Swift is the version `Package.swift`'s `swift-tools-version` names.

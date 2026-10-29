@@ -220,3 +220,18 @@ test('one app keeps one mark: after its dependencies change, the install stays i
   expect(refused.deny).toContain(`\`${APPS.bDependencies.generate}\``)
   expect(refused.deny).not.toContain(`\`${APPS.b.generate}\``)
 })
+
+// MARK: XcodeGen's included specs
+
+test('an edit to a spec the XcodeGen spec includes marks the project, and other YAML only asks', async ($, on) => {
+  mock.store(on)
+  const included = '/work/App/targets/App.yml'
+  const calls = stubCli(on, { project: args => ({ isGenerated: true, ...(args.includes(included) ? { generate: 'xcodegen generate', app: '' } : {}) }) })
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+  await callTool($, 'Edit', { file_path: '/work/App/.github/workflows/ci.yml', old_string: 'a', new_string: 'b' })
+  expect((await build($)).deny).toBeUndefined()
+  await callTool($, 'Edit', { file_path: included, old_string: 'a', new_string: 'b' })
+  expect((await build($)).deny).toContain('`xcodegen generate`')
+  // The CLI decides for every YAML file: a spec can include another by any name.
+  expect(calls.filter(call => call.args.includes('--manifest')).map(call => call.args.at(-1))).toEqual(['/work/App/.github/workflows/ci.yml', included])
+})

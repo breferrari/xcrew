@@ -20,10 +20,10 @@ export function runsSetup(command: string): boolean {
 export const FILE_EDITOR = /^(?:Write|Edit)$/
 
 /**
- * A name a generator may read: Tuist's markers and manifests, any file in its `Tuist/` folder, and XcodeGen's spec. In
- * any case, as the file system matches names. Only a first look, so most edits never start the CLI, which decides.
+ * A name a generator may read: Tuist's markers and manifests, any file in its `Tuist/` folder, and any YAML file, since
+ * XcodeGen's spec may include others by any name. In any case, as the file system matches names. Only a first look, so most edits never start the CLI, which decides.
  */
-const MANIFEST_NAME = /(?:^|\/)(?:(?:Tuist|Project|Workspace)\.swift|project\.yml|Tuist\/.+)$/i
+const MANIFEST_NAME = /(?:^|\/)(?:(?:Tuist|Project|Workspace)\.swift|[^/]+\.ya?ml|Tuist\/.+)$/i
 
 export function mayBeManifest(path: string): boolean {
   return MANIFEST_NAME.test(path)
