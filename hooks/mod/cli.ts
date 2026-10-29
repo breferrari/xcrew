@@ -62,3 +62,9 @@ export async function text($: EngineInterface, args: string[]): Promise<string> 
     error => `xcrew ${args.join(' ')} couldn't run: ${error instanceof Error ? error.message : String(error)}`,
   )
 }
+
+/** Whether Tuist or XcodeGen generates this project; false when the CLI can't say, which leaves XcodeWrite allowed. */
+export async function isGeneratedProject($: EngineInterface): Promise<boolean> {
+  const answer = (await run($, ['project'], undefined, 10_000).catch(() => undefined)) as { isGenerated?: boolean } | undefined
+  return answer?.isGenerated === true
+}

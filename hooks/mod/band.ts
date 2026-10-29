@@ -21,6 +21,11 @@ export function updateRun($: EngineInterface, change: Pick<BandRun, 'phase'> | P
   return update($, runState, run => (run && !run.ended ? { ...run, ...change } : run))
 }
 
+/** Takes the run off the band, as for a call that never ran. */
+export function clearRun($: EngineInterface): Promise<unknown> {
+  return update($, runState, () => null)
+}
+
 export function endRun($: EngineInterface, ended: NonNullable<BandRun['ended']>): Promise<unknown> {
   return update($, runState, run => (run ? { ...run, ended } : run))
 }

@@ -35,7 +35,9 @@ finish() {
   git -C "$repo" branch -q -D "$branch" 2>/dev/null || true
   rm -rf "$work"
 }
-trap finish EXIT INT TERM
+trap finish EXIT
+# An interrupt stops the release: the cleanup runs once, on the way out, rather than the script carrying on after it.
+trap 'exit 130' INT TERM
 
 paused=$(gh pr list --state open --json number,autoMergeRequest -q '.[] | select(.autoMergeRequest != null) | .number')
 for pr in $paused; do gh pr merge "$pr" --disable-auto >/dev/null; done

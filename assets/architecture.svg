@@ -20,13 +20,13 @@
 <text x="348.0" y="404.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#e6e8eb" xml:space="preserve">skills/</text>
 <text x="348.0" y="426.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="14" fill="#8b929c" xml:space="preserve">setup · reference</text>
 <text x="330.0" y="92.0" font-family="Helvetica Neue" font-size="12" font-weight="600" letter-spacing="2" fill="#a9afb9" xml:space="preserve">THE PLUGIN</text>
-<rect x="860" y="100" width="360" height="64" rx="6" fill="#11151b" stroke="#58a6ff" stroke-width="1.6"/>
+<rect x="860" y="100" width="384" height="64" rx="6" fill="#11151b" stroke="#58a6ff" stroke-width="1.6"/>
 <text x="878.0" y="128.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#e6e8eb" xml:space="preserve">three MCP servers</text>
 <text x="878.0" y="150.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="14" fill="#8b929c" xml:space="preserve">builds, previews, documentation</text>
 <path d="M800 132 L856 132" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>
-<rect x="860" y="470" width="360" height="80" rx="6" fill="#11151b" stroke="#3fb950" stroke-width="1.6"/>
+<rect x="860" y="470" width="384" height="80" rx="6" fill="#11151b" stroke="#3fb950" stroke-width="1.6"/>
 <text x="878.0" y="506.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="17" font-weight="600" fill="#e6e8eb" xml:space="preserve">Swift CLI (bin/xcrew)</text>
-<text x="878.0" y="528.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="14" fill="#8b929c" xml:space="preserve">report · phase · doctor · setup · hook</text>
+<text x="878.0" y="528.0" font-family="JetBrains Mono, JetBrainsMono Nerd Font Mono, SF Mono, Menlo, monospace" font-size="14" fill="#8b929c" xml:space="preserve">report · phase · project · doctor · setup</text>
 <path d="M800 224.0 H830 V496 H856" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>
 <path d="M800 316.0 H830 V496 H856" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>
 <path d="M800 408.0 H830 V496 H856" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>

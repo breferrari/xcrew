@@ -7,7 +7,7 @@ public enum MacroCopyPhase {
     /// The phase's own comment: specific to it, unlike the build-setting paths it shares.
     static let signature = "compile the macOS executable transitively"
     /// Folders never holding a project the developer builds from.
-    static let skipped: Set<String> = ["node_modules", "Pods", "Carthage", "DerivedData", "build"]
+    static let skipped = Project.dependencyFolders
     static let maxDepth = 5
 
     /// Names of the generated projects in `project` that still have the phase.

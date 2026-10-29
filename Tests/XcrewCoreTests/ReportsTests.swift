@@ -403,3 +403,56 @@ func failingRunText(passing: Int) -> String {
         #expect(Doctor.problemsText(lines: ["warn  a/b  c"]) == ["warn  a/b  c"])
     }
 }
+
+@Suite struct RunLogWorkspaceTests {
+    @Test func anotherProjectWhoseNameStartsTheSameIsNotFollowed() {
+        let home = Project.temporary()
+        home.write("legacy", to: "Library/Developer/MobileBuildMCP/workspaces/App-Legacy-0a1b2c3d4e5f/logs/test_sim_2.log")
+        #expect(RunLog.find(tool: "test_sim", since: .distantPast, project: URL(fileURLWithPath: "/work/App"), home: home.root) == nil)
+        home.write("mine", to: "Library/Developer/MobileBuildMCP/workspaces/App-9969f1c198bb/logs/test_sim_1.log")
+        #expect(RunLog.find(tool: "test_sim", since: .distantPast, project: URL(fileURLWithPath: "/work/App"), home: home.root)?.lastPathComponent == "test_sim_1.log")
+    }
+}
+
+@Suite struct LookupConcurrencyTests {
+    /// Answers each xcresulttool call after a short wait, and records the most it saw at once.
+    final class SlowRunner: CommandRunning, @unchecked Sendable {
+        private let lock = NSLock()
+        private var running = 0
+        private var peak = 0
+        var mostAtOnce: Int { lock.withLock { peak } }
+
+        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+            lock.withLock { running += 1; peak = max(peak, running) }
+            try? await Task.sleep(for: .milliseconds(30))
+            lock.withLock { running -= 1 }
+            return CommandResult(status: 0, stdout: "{}")
+        }
+
+        func which(_ name: String) -> String? { nil }
+    }
+
+    @Test func aRunWithManyFailuresLooksThemUpAFewAtATime() async {
+        let failures = (1...10).map { "  ✗ Suite / test_\($0)(): failed\n" }.joined(separator: "\n")
+        let text = "🧪 Test\n\nTest Failures (10):\n\n\(failures)\n❌ 10 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
+        let runner = SlowRunner()
+        _ = await FailureNotes.adding(to: text, from: ResultBundle(path: "/b.xcresult", runner: runner))
+        #expect(runner.mostAtOnce > 1)
+        #expect(runner.mostAtOnce <= FailureNotes.mostAtOnce)
+    }
+}
+
+@Suite struct RunLogTailTests {
+    @Test func aStepBeforeALongStretchWithoutTasksIsFound() throws {
+        let project = Project.temporary()
+        let warnings = String(repeating: "ld: warning: object file was built for a newer iOS Simulator version\n", count: 2_000)
+        project.write("SwiftCompile normal arm64 /w/A.swift (in target 'Early' from project 'App')\nSwiftCompile normal arm64 /w/B.swift (in target 'Payments' from project 'App')\n" + warnings, to: "build.log")
+        #expect(RunLog.phase(ofLogAt: project.root.appending(path: "build.log"), expectedTests: nil) == "compiling Payments")
+    }
+
+    @Test func aLogWithNoTaskAnywhereSaysNothing() throws {
+        let project = Project.temporary()
+        project.write(String(repeating: "note: nothing to do\n", count: 5_000), to: "build.log")
+        #expect(RunLog.phase(ofLogAt: project.root.appending(path: "build.log"), expectedTests: nil) == nil)
+    }
+}

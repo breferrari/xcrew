@@ -4,16 +4,16 @@ import Foundation
 /// one shape captured from a real server (see `Tests/XcrewCoreTests/Fixtures/Reports`); output in any
 /// other shape falls back to whether the server reported a tool error, so a server update degrades
 /// the summary rather than breaking it.
-public struct ToolOutput {
+public final class ToolOutput {
     public let text: String
     public let isError: Bool
-    /// The text as a JSON object, when it is one: parsed once, since every reading below starts from it.
-    let json: [String: Any]?
+    /// The text as a JSON object, when it is one: parsed on first use and kept, since most readings
+    /// below start from it and some outputs never need it.
+    lazy var json: [String: Any]? = Self.object(text)
 
     public init(text: String, isError: Bool = false) {
         self.text = text
         self.isError = isError
-        json = Self.object(text)
     }
 
     public struct Summary: Sendable, Equatable, Codable {

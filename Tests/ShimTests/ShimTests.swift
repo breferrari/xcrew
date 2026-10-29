@@ -147,3 +147,18 @@ extension ShimTests {
         #expect(builds == 1)
     }
 }
+
+extension ShimTests {
+    /// A build killed outright (SIGKILL runs no trap) leaves its lock behind; the next run clears it
+    /// at once rather than waiting out the ten-minute backstop.
+    @Test func aLockLeftByAKilledBuildIsCleared() async throws {
+        let lock = cache.appending(path: ".lock")
+        try FileManager.default.createDirectory(at: lock, withIntermediateDirectories: true)
+        try "999999".write(to: lock.appending(path: "pid"), atomically: true, encoding: .utf8)
+        let started = Date()
+        let run = try await shim("help")
+        #expect(run.status == 0 && run.output.hasPrefix("ran help"))
+        #expect(Date().timeIntervalSince(started) < 5)
+        #expect(!FileManager.default.fileExists(atPath: lock.path))
+    }
+}

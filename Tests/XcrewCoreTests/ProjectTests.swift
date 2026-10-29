@@ -27,3 +27,27 @@ import XcrewTestSupport
         #expect(project.isApplePlatformProject)
     }
 }
+
+@Suite struct GeneratedProjectTests {
+    @Test(arguments: ["Project.swift", "Workspace.swift", "Tuist", "Tuist.swift", "project.yml"])
+    func aGeneratorManifestAtTheRootMarksAGeneratedProject(marker: String) {
+        #expect(Project.temporary(containing: [marker]).isGenerated)
+    }
+
+    @Test func aTuistProjectInASubfolderCounts() {
+        #expect(Project.temporary(containing: ["ios/Tuist.swift"]).isTuistProject)
+        #expect(Project.temporary(containing: ["apps/ios/Project.swift"]).isTuistProject)
+        #expect(Project.temporary(containing: ["apps/ios/project.yml"]).isGenerated)
+    }
+
+    @Test func aClassicProjectIsNeither() {
+        let project = Project.temporary(containing: ["App.xcodeproj", "Sources"])
+        #expect(!project.isGenerated)
+        #expect(!project.isTuistProject)
+    }
+
+    @Test func dependenciesDontCount() {
+        // A checked-out package that uses Tuist isn't this project being generated.
+        #expect(!Project.temporary(containing: ["node_modules/x/Project.swift", ".build/checkouts/y/Tuist"]).isGenerated)
+    }
+}

@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 import { average, comparison, estimate, stopwatch } from './format'
-import { endRun, outcomeLine, startRun, updateRun } from './band'
+import { clearRun, endRun, outcomeLine, startRun, updateRun } from './band'
 import { describe, historyOf, observe } from './context'
 import { phase as readRunPhase, report } from './cli'
 import { recordRun } from './failures'
@@ -104,14 +104,19 @@ export function registerTiming(on: On): void {
     if (!usesBand) await quietly(() => $.ui.status(undefined))
     const ended = await quietly(() => $.clock.now())
     if (started === undefined || ended === undefined) return result
+    // A denied call never ran: it has no outcome to show and no time that says how long a run takes.
+    if (result.deny !== undefined) {
+      if (usesBand) await quietly(() => clearRun($))
+      return result
+    }
 
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
     // `report` never throws: without the CLI it falls back to whether the server reported an error.
-    const outcome = result.deny === undefined ? await report($, parsed.server, kind, result.text ?? '', result.isError === true) : { ok: false, failures: [], notes: [] }
+    const outcome = await report($, parsed.server, kind, result.text ?? '', result.isError === true)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     await quietly(() => $.store.set(historyKey(history), [...earlier, elapsed].slice(-HISTORY)))
-    if (result.deny === undefined) await quietly(() => recordRun($, history, outcome.ok, outcome.failures))
+    await quietly(() => recordRun($, history, outcome.ok, outcome.failures))
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(history), outcome.tests))
     const compared = comparison(elapsed, earlier)
     const ending = { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: compared }

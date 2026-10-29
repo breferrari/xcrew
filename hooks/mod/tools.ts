@@ -12,9 +12,13 @@ function bothRegistrations(server: string, tools: readonly string[]): RegExp {
 /** The matcher for the guard: the engine calls a hook only for the tools its matcher matches. */
 export const PROJECT_REWRITER = bothRegistrations('xcode', ['XcodeWrite'])
 
-/** Whether a tool's answer names what the next build will use: MobileBuildMCP's session defaults, the Xcode MCP's scheme and destination. */
+/**
+ * Whether a tool's answer can name what the next build will use: any of MobileBuildMCP's session
+ * tools, and the Xcode MCP's workspace and switch tools. By family, so a tool either server adds
+ * there later is read too; a file another tool returns is never mistaken for one.
+ */
 export function namesTarget(tool: XcodeTool): boolean {
-  return /^(session_show_defaults|session_set_defaults|session_use_defaults_profile|XcodeOpenWorkspace|XcodeSwitchScheme|XcodeSwitchRunDestination)$/.test(tool.tool)
+  return tool.server === 'MobileBuildMCP' ? /^session_/.test(tool.tool) : /^Xcode(OpenWorkspace|Switch\w+)$/.test(tool.tool)
 }
 
 /** `mcp__<server>__<tool>`, where server is `xcode`, `MobileBuildMCP`, or either under this plugin. */

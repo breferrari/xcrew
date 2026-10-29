@@ -109,12 +109,12 @@ public struct ResultBundle: Sendable {
         return (crashed.map { [$0] } ?? []) + top
     }
 
-    /// The tests in `xcresulttool get test-results tests` output that ran as expected failures, in the listing's order.
     /// How many tests the summary counts as expected failures.
     public static func expectedFailureCount(summary: String) -> Int {
         (parse(summary) as? [String: Any])?["expectedFailures"] as? Int ?? 0
     }
 
+    /// The tests in `xcresulttool get test-results tests` output that ran as expected failures, in the listing's order.
     public static func expectedFailures(listing: String) -> [String] {
         nodes(parse(listing)).compactMap { node in
             node["nodeType"] as? String == "Test Case" && node["result"] as? String == "Expected Failure" ? node["nodeIdentifier"] as? String : nil

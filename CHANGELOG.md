@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A call you deny at the permission prompt leaves no trace: no time in the usual-duration history, no outcome line, no notification.
+- A build killed outright no longer leaves a lock that holds up every Xcrew call for ten minutes.
+- A Tuist project with a root `Tuist.swift`, or with its manifests a folder or two below the root (`ios/`), counts as generated: the `XcodeWrite` guard and the doctor's copy-phase check both find it.
+- Any MobileBuildMCP `session_` answer and any Xcode MCP switch answer updates the scheme and simulator the band shows, such as `session_clear_defaults`.
+- The band follows its own project's log, not another project whose name starts the same (`App` and `App-Legacy`).
+- On a crash-heavy run, Xcrew looks up at most four tests at once, so a busy Mac doesn't time its lookups out.
+- The band's phase stays fast when a log ends in a long run of warnings.
 - The band's phase stays cheap on a clean build: it reads the end of the log, not all of it. A 45 MB log took 1.4 s a second to read; now it takes 0.07 s.
 - Session start is faster outside Tuist projects: the doctor looks for Tuist's old macro copy phase only where Tuist generated the project. It took about 0.7 s in a large project.
 - The installed plugin and a development checkout no longer rebuild each other's CLI in turn: a cached build is removed after two weeks unused, not whenever another version builds. Two first runs at once now build once.

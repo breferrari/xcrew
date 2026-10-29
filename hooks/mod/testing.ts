@@ -21,11 +21,11 @@ export type CliCall = { args: readonly string[]; stdin?: string }
 /**
  * Stands for the Swift CLI, which does the reading the mod hands off: each `report` answers with
  * the next of `reports` (the last one repeats), `phase` with what `phase` returns for its
- * arguments, and `doctor` with `problems`.
+ * arguments, `doctor` with `problems`, and `project` with `project`.
  */
 export function stubCli(
   on: On,
-  answers: { reports?: Partial<Report>[]; phase?: (args: readonly string[]) => Phase; problems?: Problem[] } = {},
+  answers: { reports?: Partial<Report>[]; phase?: (args: readonly string[]) => Phase; problems?: Problem[]; project?: { isGenerated: boolean } } = {},
 ): CliCall[] {
   const calls: CliCall[] = []
   const reports = [...(answers.reports ?? [])]
@@ -36,6 +36,7 @@ export function stubCli(
       args[0] === 'report' ? ((reports.length > 1 ? reports.shift() : reports[0]) ?? {})
       : args[0] === 'phase' ? (answers.phase?.(args) ?? {})
       : args[0] === 'doctor' ? (answers.problems ?? [])
+      : args[0] === 'project' ? (answers.project ?? { isGenerated: false })
       : null
     return { value: { exitCode: 0, stdout: JSON.stringify(answer), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })

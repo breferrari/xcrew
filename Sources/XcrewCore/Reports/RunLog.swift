@@ -28,7 +28,21 @@ public enum RunLog {
             return phase(of: String(decoding: data[testing...], as: UTF8.self), expectedTests: expectedTests)
         }
         let tail = String(decoding: data.suffix(tailBytes), as: UTF8.self)
-        return buildStep(tail) ?? (data.count > tailBytes ? buildStep(String(decoding: data, as: UTF8.self)) : nil)
+        return buildStep(tail) ?? (data.count > tailBytes ? lastStep(in: data) : nil)
+    }
+
+    /// The latest task's step in a log whose end holds none, such as a long run of linker warnings:
+    /// each earlier `(in target '` is found in the bytes and only its own line is read.
+    static func lastStep(in data: Data) -> String? {
+        let mark = Data("(in target '".utf8), newline = UInt8(ascii: "\n")
+        var searchEnd = data.endIndex
+        while let found = data.range(of: mark, options: .backwards, in: data.startIndex..<searchEnd) {
+            let start = data[..<found.lowerBound].lastIndex(of: newline).map { $0 + 1 } ?? data.startIndex
+            let end = data[found.upperBound...].firstIndex(of: newline) ?? data.endIndex
+            if let step = buildStep(String(decoding: data[start..<end], as: UTF8.self)) { return step }
+            searchEnd = start
+        }
+        return nil
     }
 
     /// The latest task's step: `compiling Utility`, `linking Utility`, or `building Utility`.
@@ -51,7 +65,10 @@ public enum RunLog {
         let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
         let prefix = project.lastPathComponent + "-"
         let manager = FileManager.default
-        let folders = ((try? manager.contentsOfDirectory(atPath: workspaces.path)) ?? []).filter { $0.hasPrefix(prefix) }
+        // `<name>-<hex hash>`: a bare prefix would also take `App-Legacy-<hash>` for `App`.
+        let folders = ((try? manager.contentsOfDirectory(atPath: workspaces.path)) ?? []).filter { folder in
+            folder.hasPrefix(prefix) && folder.dropFirst(prefix.count).allSatisfy(\.isHexDigit) && folder.count > prefix.count
+        }
         var newest: (url: URL, modified: Date)?
         for folder in folders {
             let logs = workspaces.appending(path: folder).appending(path: "logs")

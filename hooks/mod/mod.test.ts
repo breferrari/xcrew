@@ -24,44 +24,47 @@ function watch(on: On, stored: Record<string, unknown> = {}, cli: Parameters<typ
 
 // MARK: The project-file guard
 
-/** A project root holding these files; the engine beneath answers the mod's file checks. */
-function projectWith(on: On, files: string[]): void {
-  on('session.root', () => ({ value: '/work/App' }))
+/** A project the CLI calls generated or not; the engine beneath answers tool descriptions as written. */
+function projectThatIs(on: On, generated: 'generated' | 'classic') {
   on('tool.describe', (_, e) => ({ description: e.description }))
-  on('fs.exists', (_, e) => ({ value: files.some(file => e.path === `/work/App/${file}`) }))
+  return stubCli(on, { project: { isGenerated: generated === 'generated' } })
 }
 
 test('in a generated project XcodeWrite is refused under either registration, with the alternative named', async ($, on) => {
-  projectWith(on, ['Project.swift'])
+  const asked = projectThatIs(on, 'generated')
   on('tool.call', () => ({ result: {} }))
   for (const tool of ['mcp__xcode__XcodeWrite', 'mcp__plugin_xcrew_xcode__XcodeWrite']) {
     const ran = await callTool($, tool, { filePath: 'App/New.swift', content: '' })
     expect(ran.deny).toContain('Write tool')
   }
+  // Whether a project is generated is the CLI's to say, from the manifests wherever they sit.
+  expect(asked.map(call => call.args)).toContainEqual(['project'])
 })
 
-test('an XcodeGen project counts as generated too', async ($, on) => {
-  projectWith(on, ['project.yml'])
-  on('tool.call', () => ({ result: {} }))
+test('when the CLI can\'t say, XcodeWrite is let through: refusing it would block a classic project', async ($, on) => {
+  on('process.run', () => {
+    throw new Error('xcrew not built')
+  })
+  on('tool.call', () => ({ result: { ok: true } }))
   const ran = await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })
-  expect(ran.deny).toBeDefined()
+  expect(ran.deny).toBeUndefined()
 })
 
 test('in a classic Xcode project XcodeWrite works, since it is how a file joins its target there', async ($, on) => {
-  projectWith(on, ['App.xcodeproj'])
+  projectThatIs(on, 'classic')
   on('tool.call', () => ({ result: { ok: true } }))
   const ran = await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })
   expect(ran.deny).toBeUndefined()
 })
 
 test('in a generated project XcodeWrite\'s description says to use Write, so Claude does not try it first', async ($, on) => {
-  projectWith(on, ['Project.swift'])
+  projectThatIs(on, 'generated')
   const described = await $.tool.describe({ tool: 'mcp__plugin_xcrew_xcode__XcodeWrite', description: 'Writes a file.', provider: { plugin: 'xcrew', tier: 'user' } })
   expect(described.description).toMatch(/^Writes a file\.\n\n.*generated.*Write tool/s)
 })
 
 test('in a classic Xcode project XcodeWrite\'s description is left as the server wrote it', async ($, on) => {
-  projectWith(on, ['App.xcodeproj'])
+  projectThatIs(on, 'classic')
   const described = await $.tool.describe({ tool: 'mcp__xcode__XcodeWrite', description: 'Writes a file.', provider: { plugin: 'xcrew', tier: 'user' } })
   expect(described.description).toBe('Writes a file.')
 })
@@ -542,4 +545,43 @@ test('only the answers that name a scheme are read for one: a file that happens 
   await callTool($, 'mcp__xcode__BuildProject')
 
   expect(statuses).toContain('BuildProject running · 0:03')
+})
+
+test('a call the person denies leaves no trace: no time in the history, no outcome, no notification', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on, { 'durations.build_sim': [90_000] })
+  const notifications: string[] = []
+  on('ui.notify', (_, e) => {
+    notifications.push(e.text)
+    return { value: { isSent: true, channel: 'terminal_bell' } }
+  })
+  const answers: ({ deny: string } | { result: object; text: string })[] = [{ deny: 'The person denied this call.' }, { result: {}, text: 'ok' }]
+  on('tool.call', async () => {
+    const answer = answers.shift()!
+    await clock.advance('deny' in answer ? 2_000 : 90_000)
+    return answer
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  // The next run is still measured against the usual 1:30, not an average the denied 0:02 pulled down.
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(seen.toasts).toEqual(['✓ build_sim · 1:30 (avg 1:30)'])
+  expect(notifications).toEqual(['✓ build_sim · 1:30 (avg 1:30)'])
+  expect(seen.cli.filter(call => call.args[0] === 'report').length).toBe(1)
+})
+
+test('any session-defaults answer that names the profile in use is read, not only the ones listed', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  const statuses = serve(on, {
+    session_show_defaults: captured.mobileSessionDefaults,
+    session_clear_defaults: { isError: false, text: '{"schema":"mobilebuildmcp.output.session-profile","data":{"currentProfile":"unit"}}' },
+  }, clock)
+
+  await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  await callTool($, 'mcp__MobileBuildMCP__session_clear_defaults')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(statuses).toContain('build_sim · iPhone 12 · 0:03')
 })

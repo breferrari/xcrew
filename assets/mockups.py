@@ -213,11 +213,11 @@ def arch():
     c.text(px, 92, "THE PLUGIN", "label", "600", size=12, font=sans, spacing="2")
     # The servers the plugin starts.
     sx = 860
-    box(sx, 100, 360, 64, "three MCP servers", "builds, previews, documentation", accent=C["blue"])
+    box(sx, 100, 384, 64, "three MCP servers", "builds, previews, documentation", accent=C["blue"])
     line(px + pw, 132, sx - 4, 132)
     # The Swift CLI everything else calls.
     cy = 470
-    box(860, cy, 360, 80, "Swift CLI (bin/xcrew)", "report · phase · doctor · setup · hook", accent=C["success"])
+    box(860, cy, 384, 80, "Swift CLI (bin/xcrew)", "report · phase · project · doctor · setup", accent=C["success"])
     for i in (1, 2, 3):
         py = 100 + i * 92 + ph / 2
         c.add(f'<path d="M{px + pw} {py} H830 V{cy + 26} H856" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>')

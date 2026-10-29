@@ -252,3 +252,15 @@ import XcrewTestSupport
         #expect(await Run("phase", "--tool", "test_sim", "--since", "0").text == "{}")
     }
 }
+
+@Suite struct ProjectCommandTests {
+    @Test func aTuistProjectInASubfolderIsGenerated() async {
+        let project = Project.temporary(containing: ["ios/Tuist.swift"])
+        #expect(await Run("project", context: .fake(project: project)).text == #"{"isGenerated":true}"#)
+    }
+
+    @Test func aClassicProjectIsNot() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        #expect(await Run("project", context: .fake(project: project)).text == #"{"isGenerated":false}"#)
+    }
+}

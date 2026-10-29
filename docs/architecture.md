@@ -7,7 +7,7 @@ All behaviour lives in a dependency-free Swift package. Everything else is a thi
 | Entry point | Calls |
 | --- | --- |
 | Plugin hooks (`hooks/hooks.json`) | `bin/xcrew hook session-start` |
-| Mod (`hooks/mod/`) | `bin/xcrew report`, `phase` and `doctor`, through `cli.ts` |
+| Mod (`hooks/mod/`) | `bin/xcrew report`, `phase`, `project` and `doctor`, through `cli.ts` |
 | Skills (`skills/`) | `xcrew setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
 | mcs (`techpack.yaml`) | `mcs/configure.sh` → `xcrew setup`; `mcs/checks/*.sh` → `xcrew doctor --check <id>` |
 
@@ -52,7 +52,7 @@ Everything that touches the machine goes through `Machine` (environment, home fo
 
 `hooks/mod/register.ts` registers two `tool.call` hooks. Hooks on one event run in registration order, each wrapping the next:
 
-1. **guard**: matched on `XcodeWrite`; refuses it when the project root has a Tuist or XcodeGen manifest, and lets it through in a classic project. A `tool.describe` hook on the same tool adds that to its description, so Claude reaches for Write first.
+1. **guard**: matched on `XcodeWrite`; refuses it when `xcrew project` says Tuist or XcodeGen generates the project (manifests at the root or up to two folders below it), and lets it through in a classic project or when the CLI can't say. A `tool.describe` hook on the same tool adds that to its description, so Claude reaches for Write first.
 2. **timing**: the one unmatched hook; times calls `tools.ts` classifies as build, test or run, by name pattern so new tools are timed without a change. It keeps the last ten durations per tool in `$.store`, compares each run with them, and calls out one far slower than usual. Its bookkeeping is best-effort and never fails a build.
 
 Timing reads nothing itself. While a MobileBuildMCP run goes it asks `xcrew phase` once a second for the run's log and phase; when the call ends it pipes the result to `xcrew report`, which returns the outcome, the failures, the duration, and the shorter result and notes Claude reads.
@@ -71,7 +71,7 @@ The mod does what only TypeScript can reach, and hands everything else to the CL
 | Draw the band and the pane, keep `$.state` and `$.store` | Read files, run `xcrun` and other programs |
 | Time calls, and hand a result back to Claude | Decide what a result means and what Claude reads instead |
 
-Reading a few named fields of a JSON answer is fine: **context** learns the scheme and simulator that way. So in `hooks/mod/`, only `cli.ts` runs a process (and only `bin/xcrew`), only `cli.ts` and `context.ts` parse JSON, only `tools.ts` matches a pattern, and only the guard touches the file system, to check that a file exists. `ModBoundaryTests` in `Tests/ManifestTests` fails on any of these anywhere else. When a change seems to need one, the logic belongs in a Swift command the mod calls through `cli.ts`, tested with Swift Testing against captured output in `Tests/XcrewCoreTests/Fixtures`.
+Reading a few named fields of a JSON answer is fine: **context** learns the scheme and simulator that way. So in `hooks/mod/`, only `cli.ts` runs a process (and only `bin/xcrew`), only `cli.ts` and `context.ts` parse JSON, only `tools.ts` matches a pattern, and nothing touches the file system. `ModBoundaryTests` in `Tests/ManifestTests` fails on any of these anywhere else. When a change seems to need one, the logic belongs in a Swift command the mod calls through `cli.ts`, tested with Swift Testing against captured output in `Tests/XcrewCoreTests/Fixtures`.
 
 ## Extending
 

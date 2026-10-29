@@ -7,6 +7,7 @@ public enum CLI {
         DoctorCommand(),
         ReportCommand(),
         PhaseCommand(),
+        ProjectCommand(),
         XcodeSkillsCommand(),
         HookCommand(),
     ]

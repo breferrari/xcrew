@@ -6,6 +6,9 @@ import Foundation
 public enum FailureNotes {
     /// At most this many tests are looked up: past it, the first ones are enough to start from.
     static let mostLookups = 10
+    /// At most this many tests are looked up at once: each is one or two xcresulttool processes on
+    /// the same bundle, and a crowd of them on a busy Mac runs into their timeouts.
+    static let mostAtOnce = 4
 
     /// `0.006`, as MobileBuildMCP writes a test's time: three decimals, whatever the Mac's locale.
     static func seconds(_ value: Double) -> String {
@@ -77,9 +80,12 @@ public enum FailureNotes {
         guard !lookups.isEmpty || isSkipping else { return text }
 
         var notes = Notes()
-        // Each test's lookups are their own xcresulttool calls, so they run side by side.
+        // Each test's lookups are their own xcresulttool calls, so a few run side by side.
         notes.failures = await withTaskGroup(of: (String, [String]).self) { group in
-            for test in lookups {
+            var pending = lookups.makeIterator()
+            var found: [String: [String]] = [:]
+            func lookUpNext() {
+                guard let test = pending.next() else { return }
                 let isLocated = located.contains(test), isCrashed = crashed.contains(test)
                 group.addTask {
                     var added: [String] = []
@@ -90,7 +96,13 @@ public enum FailureNotes {
                     return (test, added)
                 }
             }
-            return await group.reduce(into: [:]) { if !$1.1.isEmpty { $0[$1.0] = $1.1 } }
+            for _ in 0..<mostAtOnce { lookUpNext() }
+            // As each lookup finishes, the next one starts.
+            while let (test, added) = await group.next() {
+                if !added.isEmpty { found[test] = added }
+                lookUpNext()
+            }
+            return found
         }
         if isSkipping {
             let listed = Set(listedSkips)

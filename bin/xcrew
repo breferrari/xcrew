@@ -12,14 +12,20 @@ binary="$cache/$key/xcrew"
 
 if [ ! -x "$binary" ]; then
     # One build at a time: at session start the hook and the mod both start this. The second waits,
-    # then finds the first one's build. A lock older than ten minutes is left from a killed build.
+    # then finds the first one's build. The holder writes its process id, so a lock left by a build
+    # that was killed outright (no trap runs on SIGKILL) is cleared at once; ten minutes is the backstop.
     lock="$cache/.lock"
     mkdir -p "$cache"
     until mkdir "$lock" 2>/dev/null; do
-        if [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then rmdir "$lock" 2>/dev/null || true; fi
+        holder=$(cat "$lock/pid" 2>/dev/null || true)
+        if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } || [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+            rm -rf "$lock"
+            continue
+        fi
         sleep 1
     done
-    trap 'rmdir "$lock" 2>/dev/null || true' EXIT
+    echo $$ > "$lock/pid"
+    trap 'rm -rf "$lock"' EXIT
 fi
 if [ ! -x "$binary" ]; then
     echo "xcrew: building the CLI for this version (once, about 10 s)…" >&2
@@ -35,7 +41,7 @@ fi
 touch "$cache/$key"
 # exec replaces this shell, so the trap wouldn't run: the lock goes first.
 if [ -n "${lock:-}" ]; then
-    rmdir "$lock" 2>/dev/null || true
+    rm -rf "$lock"
     trap - EXIT
 fi
 

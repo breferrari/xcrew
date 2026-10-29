@@ -179,17 +179,7 @@ import XcrewCore
         #expect(try Self.offenders(/\.exec\(|\.test\(|\.match\(|\.matchAll\(|new RegExp|\.replace\(\//, allowed: ["tools.ts"]) == [])
     }
 
-    @Test func theModReadsNoFilesOnlyChecksTheyExist() throws {
-        #expect(try Self.offenders(/\$\.fs\.(?!exists\()/, allowed: []) == [])
-        #expect(try Self.offenders(/\$\.fs\./, allowed: ["guard.ts"]) == [])
-    }
-}
-
-@Suite struct GeneratorMarkerTests {
-    /// The mod's guard decides a project is generated from the same files the Swift code does.
-    @Test func theGuardAndTheSwiftCodeKnowTheSameGenerators() throws {
-        let guardSource = try String(contentsOf: ManifestTests.repository.appending(path: "hooks/mod/guard.ts"), encoding: .utf8)
-        let list = try #require(guardSource.firstMatch(of: /GENERATOR_MARKERS = \[([^\]]*)\]/)).1
-        #expect(list.matches(of: /'([^']+)'/).map { String($0.1) } == Project.generatorMarkers)
+    @Test func theModTouchesNoFiles() throws {
+        #expect(try Self.offenders(/\$\.fs\./, allowed: []) == [])
     }
 }
