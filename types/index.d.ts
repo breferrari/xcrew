@@ -10,7 +10,8 @@ export type BandRun = {
   measuredFrom?: number
   /** What the run is doing now, read from its log: `compiling Utility · Formatter.swift`, `testing 312 of 959`. */
   phase?: string
-  ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string }
+  /** `hasFailures`: the run left failures in the pane, which the band points to. */
+  ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string; hasFailures?: boolean }
 }
 
 /** The last failing run's failures, for the failure pane. */

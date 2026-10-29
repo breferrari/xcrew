@@ -2,7 +2,6 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 import type { BandRun } from '../../types'
 import { estimate, stopwatch } from './format'
-import { noteLayout } from './failures'
 import { clearProblems, readProblems } from './problems'
 
 /** The band keeps showing a finished run's outcome this long. */
@@ -42,7 +41,7 @@ export function segments(run: BandRun, now: number): Segment[] {
     // What changes comes first, so a narrow terminal cuts the target, which the person already knows.
     return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' }, ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase, ...target]
   }
-  const { ok, elapsed, comparison, detail } = run.ended
+  const { ok, elapsed, comparison, detail, hasFailures } = run.ended
   return [
     { text: ok ? '✓' : '✗', color: ok ? 'success' : 'error' },
     { text: ' ' },
@@ -51,6 +50,8 @@ export function segments(run: BandRun, now: number): Segment[] {
     { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' },
     ...(comparison ? [{ text: ` ${comparison}`, color: ORANGE }] : []),
     ...(detail ? [{ text: ` · ${detail}`, color: ok ? 'subtle' : 'error' }] : []),
+    // The pane opens only when asked: docked or above the prompt, it takes room the chat needs.
+    ...(hasFailures ? [{ text: ' · /xcrew failures', color: 'subtle' }] : []),
   ]
 }
 
@@ -70,7 +71,6 @@ export function outcomeLine(tool: string, ended: NonNullable<BandRun['ended']>):
 /** Draws the run above the prompt, and nothing when there's none or it ended a while ago. */
 export function registerBand(on: On): void {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    noteLayout(e.viewport)
     if (e.props.hasSurvey) return next(e)
     const run = await read($, runState)
     const now = await $.clock.now()

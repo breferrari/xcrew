@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- In the fullscreen layout, a failing build or test run opens the failures pane beside the chat by itself. On the main screen, where a pane would take over the space above the prompt, it still waits for `/xcrew failures`.
+- After a failing build or test run, the line above the prompt ends with `/xcrew failures`, which opens the pane listing each failure.
 
 ## 0.7.2 — 2026-10-29
 

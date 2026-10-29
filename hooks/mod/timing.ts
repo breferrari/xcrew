@@ -119,7 +119,7 @@ export function registerTiming(on: On): void {
     await quietly(() => recordRun($, history, outcome.ok, outcome.failures))
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(history), outcome.tests))
     const compared = comparison(elapsed, earlier)
-    const ending = { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: compared }
+    const ending = { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: compared, hasFailures: !outcome.ok && outcome.failures.length > 0 }
     const summary = outcomeLine(name, ending)
     if (usesBand) {
       await quietly(() => endRun($, ending))

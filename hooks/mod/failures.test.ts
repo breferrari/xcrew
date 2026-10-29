@@ -121,27 +121,24 @@ const BAND = {
   props: { hasSurvey: false, isWorking: true, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
 } as const
 
-/** Draws the band in a terminal of one layout or the other, as Claude Code does all session. */
-async function drawBand($: Engine, on: On, isFullscreen: boolean) {
-  // Stands for Claude Code's own drawing, which shows when the band steps aside.
-  on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['engine'] }))
-  await $.ui.mount({ ...BAND, surface: 'terminal', viewport: { columns: 200, rows: 50, isFullscreen } })
+/** The band's line as it reads, after the calls made so far. */
+async function bandText($: Engine): Promise<string> {
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  return (await ui.findAll({ type: 'Text' })).map(text => text.text).join('')
 }
 
-test('in the fullscreen layout, a failing run opens the pane beside the chat by itself', async ($, on) => {
+test('after a failing run the band says where its failures are, and the pane stays closed until asked', async ($, on) => {
   const seen = engine(on, [TESTS_FAILED])
-  await drawBand($, on, true)
-
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
-  expect(seen.opened).toEqual(['xcrew-failures'])
+  expect(await bandText($)).toEndWith(' · /xcrew failures')
+  expect(seen.opened).toEqual([])
 })
 
-test('on the main screen, a failing run leaves the pane closed: it would take over the space above the prompt', async ($, on) => {
-  const seen = engine(on, [TESTS_FAILED])
-  await drawBand($, on, false)
-
+test('a passing run, or a failure with nothing to list, points nowhere', async ($, on) => {
+  engine(on, [PASSED, { ok: false, failures: [] }])
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
-
-  expect(seen.opened).toEqual([])
+  expect(await bandText($)).not.toContain('/xcrew failures')
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  expect(await bandText($)).not.toContain('/xcrew failures')
 })
