@@ -10,18 +10,15 @@ struct HookCommand: Command {
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
+        guard invocation.arguments.positional.first == "session-start" else {
+            throw UsageError(description: "unknown hook '\(invocation.arguments.positional.first ?? "")'")
+        }
         let event = HookEvent(json: invocation.standardInput())
         let machine = invocation.context.machine
         let project = event.cwd.map { Project(root: URL(fileURLWithPath: $0, isDirectory: true)) } ?? invocation.context.project
-
-        switch invocation.arguments.positional.first {
-        case "session-start":
-            let routing = (try? String(contentsOf: Self.pluginRoot(machine).appending(path: "context/routing.md"), encoding: .utf8)) ?? ""
-            if let text = SessionBriefing(project: project, machine: machine).text(routing: routing) {
-                invocation.print(HookReply(event: event, context: text).json)
-            }
-        default:
-            throw UsageError(description: "unknown hook '\(invocation.arguments.positional.first ?? "")'")
+        let routing = (try? String(contentsOf: Self.pluginRoot(machine).appending(path: "context/routing.md"), encoding: .utf8)) ?? ""
+        if let text = SessionBriefing(project: project, machine: machine).text(routing: routing) {
+            invocation.print(HookReply(event: event, context: text).json)
         }
         return 0
     }

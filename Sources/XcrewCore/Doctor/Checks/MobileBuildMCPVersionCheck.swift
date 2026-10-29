@@ -8,7 +8,7 @@ struct MobileBuildMCPVersionCheck: Check {
     let title = "MobileBuildMCP \(minimum) or newer"
 
     func run(_ context: CheckContext) async -> CheckResult {
-        guard context.runner.which("mobilebuildmcp") != nil else {
+        guard context.machine.hasMobileBuildMCP else {
             return .fail("not installed: brew install getsentry/xcodebuildmcp/mobilebuildmcp")
         }
         let version = Version(await context.runner.run("mobilebuildmcp", "--version").stdout.trimmingCharacters(in: .whitespacesAndNewlines))

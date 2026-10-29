@@ -23,6 +23,7 @@ import Testing
         let fakeSwift = """
         #!/bin/sh
         echo build >> "\(log.path)"
+        [ -n "${BUILD_SECONDS:-}" ] && sleep "$BUILD_SECONDS"
         [ -n "${FAIL_BUILD:-}" ] && { echo "compile error" >&2; exit 1; }
         while [ $# -gt 0 ]; do [ "$1" = --scratch-path ] && scratch="$2"; shift; done
         mkdir -p "$scratch/release"
@@ -118,14 +119,31 @@ import Testing
 }
 
 extension ShimTests {
-    @Test func aRebuildRemovesTheBuildItReplaces() async throws {
+    /// Another checkout's build is kept while it's in use, so the installed plugin and a development
+    /// clone don't rebuild in turn; one unused for two weeks goes.
+    @Test func aRebuildKeepsRecentBuildsAndRemovesStaleOnes() async throws {
         _ = try await shim("help")
         let first = try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { $0 != "build" }
+        let stale = cache.appending(path: "0000000000000000")
+        try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -15 * 86_400)], ofItemAtPath: stale.path)
         try write("print(3)\n", to: "Sources/xcrew/main.swift")
         _ = try await shim("help")
-        let second = try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { $0 != "build" }
+        let second = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { $0 != "build" })
         #expect(first.count == 1)
-        #expect(second.count == 1)
-        #expect(second != first)
+        #expect(second.count == 2)
+        #expect(second.isSuperset(of: first))
+        #expect(!second.contains(stale.lastPathComponent))
+    }
+}
+
+extension ShimTests {
+    /// At session start the session hook and the mod both start the shim; after an update only one may build.
+    @Test func twoFirstRunsAtOnceBuildOnce() async throws {
+        async let first = shim("help", environment: ["BUILD_SECONDS": "1"])
+        async let second = shim("help", environment: ["BUILD_SECONDS": "1"])
+        let runs = try await [first, second]
+        #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
+        #expect(builds == 1)
     }
 }

@@ -11,15 +11,32 @@ key=$(cd "$root" && find Package.swift Sources -type f -name '*.swift' | LC_ALL=
 binary="$cache/$key/xcrew"
 
 if [ ! -x "$binary" ]; then
+    # One build at a time: at session start the hook and the mod both start this. The second waits,
+    # then finds the first one's build. A lock older than ten minutes is left from a killed build.
+    lock="$cache/.lock"
+    mkdir -p "$cache"
+    until mkdir "$lock" 2>/dev/null; do
+        if [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then rmdir "$lock" 2>/dev/null || true; fi
+        sleep 1
+    done
+    trap 'rmdir "$lock" 2>/dev/null || true' EXIT
+fi
+if [ ! -x "$binary" ]; then
     echo "xcrew: building the CLI for this version (once, about 10 s)…" >&2
     swift build -c release --product xcrew --package-path "$root" --scratch-path "$cache/build" >&2
     mkdir -p "$cache/$key"
     cp "$cache/build/release/xcrew" "$binary.partial"
     mv "$binary.partial" "$binary"
-    # Earlier versions' builds are never run again.
-    for old in "$cache"/*/; do
-        case "$old" in "$cache/build/" | "$cache/$key/") ;; *) rm -rf "$old" ;; esac
-    done
+    # Builds no checkout has run for two weeks go. Another checkout's current build stays: the
+    # installed plugin and a development clone each keep theirs instead of rebuilding in turn.
+    find "$cache" -mindepth 1 -maxdepth 1 -type d ! -name build ! -name .lock ! -name "$key" -mtime +14 -exec rm -rf {} + 2>/dev/null || true
+fi
+# Marks this build as in use, for the cleanup above.
+touch "$cache/$key"
+# exec replaces this shell, so the trap wouldn't run: the lock goes first.
+if [ -n "${lock:-}" ]; then
+    rmdir "$lock" 2>/dev/null || true
+    trap - EXIT
 fi
 
 XCREW_ROOT=$root exec "$binary" "$@"

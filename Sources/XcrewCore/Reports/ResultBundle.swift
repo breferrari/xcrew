@@ -14,11 +14,14 @@ public struct ResultBundle: Sendable {
     let runner: any CommandRunning
     /// A fresh folder for one crash log export; tests pass one they have filled.
     let exportFolder: @Sendable () -> URL
+    /// The run's test list, which skips and expected failures both read: asked for once, when first needed.
+    let listing: Once<String>
 
     public init(path: String, runner: any CommandRunning, exportFolder: @escaping @Sendable () -> URL = { FileManager.default.temporaryDirectory.appending(path: "xcrew-crash-\(UUID().uuidString)") }) {
         self.path = path
         self.runner = runner
         self.exportFolder = exportFolder
+        listing = Once { await Self.xcresulttool(["get", "test-results", "tests", "--path", path, "--compact"], runner: runner) }
     }
 
     /// The run's `.xcresult`: from a passing run's JSON, or the workspace folder and bundle path a failing run's text lists.
@@ -41,8 +44,11 @@ public struct ResultBundle: Sendable {
     static func nodes(_ json: Any?) -> [[String: Any]] {
         var queue: [Any] = json.map { [$0] } ?? []
         var found: [[String: Any]] = []
-        while !queue.isEmpty {
-            let node = queue.removeFirst()
+        // A cursor, not removeFirst: popping the front of an array copies the rest, quadratic over a 1,000-test list.
+        var next = 0
+        while next < queue.count {
+            let node = queue[next]
+            next += 1
             if let array = node as? [Any] {
                 queue.append(contentsOf: array)
             } else if let object = node as? [String: Any] {
@@ -77,7 +83,7 @@ public struct ResultBundle: Sendable {
             let message = (node["children"] as? [[String: Any]])?.first { $0["nodeType"] as? String == "Skip Message" }?["name"] as? String
             let reason = message.map { $0.hasPrefix("Test skipped - ") ? String($0.dropFirst("Test skipped - ".count)) : $0 }
             let parts = identifier.split(separator: "/", maxSplits: 1).map(String.init)
-            return (FailureNotes.key(parts.first ?? "", parts.count > 1 ? parts[1] : ""), Skip(reason: reason, seconds: node["durationInSeconds"] as? Double ?? 0))
+            return (MobileBuildMCPLine.key(parts.first ?? "", parts.count > 1 ? parts[1] : ""), Skip(reason: reason, seconds: node["durationInSeconds"] as? Double ?? 0))
         }
     }
 
@@ -104,6 +110,11 @@ public struct ResultBundle: Sendable {
     }
 
     /// The tests in `xcresulttool get test-results tests` output that ran as expected failures, in the listing's order.
+    /// How many tests the summary counts as expected failures.
+    public static func expectedFailureCount(summary: String) -> Int {
+        (parse(summary) as? [String: Any])?["expectedFailures"] as? Int ?? 0
+    }
+
     public static func expectedFailures(listing: String) -> [String] {
         nodes(parse(listing)).compactMap { node in
             node["nodeType"] as? String == "Test Case" && node["result"] as? String == "Expected Failure" ? node["nodeIdentifier"] as? String : nil
@@ -118,7 +129,7 @@ public struct ResultBundle: Sendable {
     /// + skipped falls short of the tests that ran. Nil when there are none.
     public static func expectedFailuresNote(summary: String, names: [String] = []) -> String? {
         let counts = parse(summary) as? [String: Any]
-        let expected = counts?["expectedFailures"] as? Int ?? 0
+        let expected = expectedFailureCount(summary: summary)
         guard expected > 0 else { return nil }
         let tests = expected == 1 ? "1 test also ran as an expected failure" : "\(expected) tests also ran as expected failures"
         let total = (counts?["totalTestCount"] as? Int).map { ": \($0) tests ran in all" } ?? ""
@@ -134,9 +145,13 @@ public struct ResultBundle: Sendable {
 
     // MARK: Asking xcresulttool
 
-    func xcresulttool(_ arguments: [String]) async -> String {
+    static func xcresulttool(_ arguments: [String], runner: any CommandRunning) async -> String {
         let ran = await runner.run(["xcrun", "xcresulttool"] + arguments, stdin: nil, timeout: .seconds(15))
         return ran.succeeded ? ran.stdout : ""
+    }
+
+    func xcresulttool(_ arguments: [String]) async -> String {
+        await Self.xcresulttool(arguments, runner: runner)
     }
 
     /// One test's details. The result bundle names a test with its `()`.
@@ -146,7 +161,7 @@ public struct ResultBundle: Sendable {
 
     /// Every test the run ran, with its result: `xcresulttool get test-results tests`.
     public func tests() async -> String {
-        await xcresulttool(["get", "test-results", "tests", "--path", path, "--compact"])
+        await listing.value()
     }
 
     /// The run's skipped tests: MobileBuildMCP's list can leave one out.

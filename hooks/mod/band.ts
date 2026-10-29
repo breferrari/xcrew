@@ -1,13 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 import type { BandRun } from '../../types'
-import { gauge, remaining, stopwatch } from './format'
+import { estimate, stopwatch } from './format'
 import { clearProblems, readProblems } from './problems'
 
 /** The band keeps showing a finished run's outcome this long. */
 const HIDE_AFTER_MS = 3 * 60_000
-/** Cells in the gauge: wide enough to move each few seconds, narrow enough to leave room for the rest. */
-const GAUGE_CELLS = 8
 /** The X's orange, the brand colour; everything else follows the person's theme. */
 const ORANGE = '#ec501d'
 
@@ -18,12 +16,9 @@ export async function startRun($: EngineInterface, run: BandRun): Promise<unknow
   return update($, runState, () => run)
 }
 
-export function setPhase($: EngineInterface, phase: string): Promise<unknown> {
-  return update($, runState, run => (run && !run.ended ? { ...run, phase } : run))
-}
-
-export function setMeasuredFrom($: EngineInterface, measuredFrom: number): Promise<unknown> {
-  return update($, runState, run => (run && !run.ended ? { ...run, measuredFrom } : run))
+/** Updates the run while it's still going: its phase, or when its own time began. */
+export function updateRun($: EngineInterface, change: Pick<BandRun, 'phase'> | Pick<BandRun, 'measuredFrom'>): Promise<unknown> {
+  return update($, runState, run => (run && !run.ended ? { ...run, ...change } : run))
 }
 
 export function endRun($: EngineInterface, ended: NonNullable<BandRun['ended']>): Promise<unknown> {
@@ -39,7 +34,7 @@ export function segments(run: BandRun, now: number): Segment[] {
     const elapsed = now - run.startedAt
     const phase: Segment[] = run.phase ? [{ text: ` · ${run.phase}`, color: 'subtle' }] : []
     // What changes comes first, so a narrow terminal cuts the target, which the person already knows.
-    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' }, ...(run.measuredFrom === undefined ? [] : estimate(now - run.measuredFrom, run.usual)), ...phase, ...target]
+    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' }, ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase, ...target]
   }
   const { ok, elapsed, comparison, detail } = run.ended
   return [
@@ -53,13 +48,17 @@ export function segments(run: BandRun, now: number): Segment[] {
   ]
 }
 
-/** A gauge of the time so far against the usual time, and how much is left; nothing without a usual time. */
-function estimate(elapsed: number, usual: number | undefined): Segment[] {
-  if (usual === undefined || usual <= 0) return []
-  const { done, rest } = gauge(elapsed / usual, GAUGE_CELLS)
-  const { text, isOver } = remaining(elapsed, usual)
-  const tone = isOver ? 'warning' : 'success'
-  return [{ text: ' ' }, { text: done, color: tone }, { text: rest, color: 'inactive' }, { text: ` ${text}`, color: isOver ? 'warning' : 'subtle' }]
+/** The gauge and time left, coloured: green under the usual time, the warning colour past it. */
+function gaugeSegments(elapsed: number, usual: number | undefined): Segment[] {
+  const parts = estimate(elapsed, usual)
+  if (!parts) return []
+  const tone = parts.isOver ? 'warning' : 'success'
+  return [{ text: ' ' }, { text: parts.done, color: tone }, { text: parts.rest, color: 'inactive' }, { text: ` ${parts.text}`, color: parts.isOver ? 'warning' : 'subtle' }]
+}
+
+/** A finished run's line in plain text, for a toast or a notification: the band's own wording, without the target. */
+export function outcomeLine(tool: string, ended: NonNullable<BandRun['ended']>): string {
+  return segments({ tool, startedAt: 0, ended }, 0).map(segment => segment.text).join('')
 }
 
 /** Draws the run above the prompt, and nothing when there's none or it ended a while ago. */

@@ -6,7 +6,7 @@ struct ProjectConfigCheck: Check {
 
     func run(_ context: CheckContext) async -> CheckResult {
         let project = context.project
-        guard let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else {
+        guard project.hasMobileBuildMCPConfig, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else {
             return .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup, or mcs sync")
         }
         if FileManager.default.fileExists(atPath: project.legacyConfigFolder.path) {

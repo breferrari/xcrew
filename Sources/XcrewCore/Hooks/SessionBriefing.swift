@@ -20,10 +20,10 @@ public struct SessionBriefing: Sendable {
     /// Fast checks only: this runs before every session's first prompt.
     func gaps() -> [String] {
         var gaps: [String] = []
-        if machine.runner.which("mobilebuildmcp") == nil {
+        if !machine.hasMobileBuildMCP {
             gaps.append("MobileBuildMCP isn't installed, so its tools are missing: ask the person to run `brew install getsentry/xcodebuildmcp/mobilebuildmcp`, then restart Claude Code.")
         }
-        if !FileManager.default.fileExists(atPath: project.mobileBuildMCPConfig.path) {
+        if !project.hasMobileBuildMCPConfig {
             gaps.append("This project has no `.mobilebuildmcp/config.yaml`, so MobileBuildMCP has no profiles: offer `/xcrew:setup` before the first build or test.")
         }
         return gaps

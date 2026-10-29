@@ -19,6 +19,9 @@ public struct Machine: Sendable {
         runner: SystemCommandRunner()
     )
 
+    /// Whether MobileBuildMCP is on the PATH; the doctor and the session briefing both ask.
+    public var hasMobileBuildMCP: Bool { runner.which("mobilebuildmcp") != nil }
+
     /// A variable's value, treating an empty one as unset.
     public func value(_ name: String) -> String? {
         guard let value = environment[name], !value.isEmpty else { return nil }

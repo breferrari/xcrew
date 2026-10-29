@@ -11,11 +11,10 @@ import XcrewTestSupport
     }
 
     @Test func replyShape() async throws {
-        let json = HookReply(event: HookEvent(name: "SessionStart"), context: "rules", systemMessage: "hi").json
+        let json = HookReply(event: HookEvent(name: "SessionStart"), context: "rules").json
         let object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
         let specific = try #require(object["hookSpecificOutput"] as? [String: String])
         #expect(specific == ["hookEventName": "SessionStart", "additionalContext": "rules"])
-        #expect(object["systemMessage"] as? String == "hi")
     }
 
     @Test func briefingOnlyInAppleProjects() async {

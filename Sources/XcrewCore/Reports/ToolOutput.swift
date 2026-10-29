@@ -4,13 +4,16 @@ import Foundation
 /// one shape captured from a real server (see `Tests/XcrewCoreTests/Fixtures/Reports`); output in any
 /// other shape falls back to whether the server reported a tool error, so a server update degrades
 /// the summary rather than breaking it.
-public struct ToolOutput: Sendable, Equatable {
+public struct ToolOutput {
     public let text: String
     public let isError: Bool
+    /// The text as a JSON object, when it is one: parsed once, since every reading below starts from it.
+    let json: [String: Any]?
 
     public init(text: String, isError: Bool = false) {
         self.text = text
         self.isError = isError
+        json = Self.object(text)
     }
 
     public struct Summary: Sendable, Equatable, Codable {
@@ -43,7 +46,6 @@ public struct ToolOutput: Sendable, Equatable {
     static let noTestsRan = "no tests ran"
 
     public var summary: Summary {
-        let json = Self.object(text)
         let found = json.flatMap { Self.fromMobileBuildMCP($0) ?? Self.fromXcodeMCP($0) } ?? Self.fromMobileBuildMCPText(text) ?? Summary(ok: !isError)
         guard let detail = found.detail else { return found }
         return Summary(ok: found.ok, detail: Self.shorten(detail))
@@ -53,7 +55,7 @@ public struct ToolOutput: Sendable, Equatable {
     /// permission prompts around the call: MobileBuildMCP's `durationMs` or its `(⏱️ 12.3s)`, the
     /// Xcode MCP's `elapsedTime`. The Xcode MCP's test runs report none.
     public var reportedDuration: Int? {
-        if let json = Self.object(text) {
+        if let json {
             if let duration = (json["data"] as? [String: Any]).flatMap({ $0["summary"] as? [String: Any] })?["durationMs"] as? NSNumber {
                 return duration.intValue
             }
@@ -66,23 +68,20 @@ public struct ToolOutput: Sendable, Equatable {
 
     /// How many tests a test run ran, from either server's counts.
     public var testTotal: Int? {
-        let json = Self.object(text)
         let nested = (json?["data"] as? [String: Any]).flatMap { $0["summary"] as? [String: Any] }?["counts"] as? [String: Any]
         if let counts = nested ?? json?["counts"] as? [String: Any] {
             if let total = counts["total"] as? Int { return total }
             return ["passed", "failed", "skipped"].reduce(0) { $0 + ((counts[$1] as? Int) ?? 0) }
         }
-        guard let tests = text.firstMatch(of: Self.testCounts) else { return nil }
-        return (Int(tests.1) ?? 0) + (Int(tests.2) ?? 0) + (Int(tests.3) ?? 0)
+        guard let counts = MobileBuildMCPLine.counts(in: text) else { return nil }
+        return counts.failed + counts.passed + counts.skipped
     }
 
     /// Every failure a run reported, from each shape `summary` reads; none for a passing run.
     public var failures: [Failure] {
-        if let json = Self.object(text) { return Self.failuresFromXcodeMCP(json) }
+        if let json { return Self.failuresFromXcodeMCP(json) }
         return Self.failuresFromMobileBuildMCPText(text)
     }
-
-    static var testCounts: Regex<(Substring, Substring, Substring, Substring)> { #/❌ (\d+) tests? failed, (\d+) passed, (\d+) skipped/# }
 
     static func object(_ text: String) -> [String: Any]? {
         (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any]
@@ -129,15 +128,19 @@ public struct ToolOutput: Sendable, Equatable {
 
     /// MobileBuildMCP's text, which it returns instead of JSON when a build or test run fails.
     static func fromMobileBuildMCPText(_ text: String) -> Summary? {
-        if let tests = text.firstMatch(of: testCounts) {
-            let failed = Int(tests.1) ?? 0, total = failed + (Int(tests.2) ?? 0) + (Int(tests.3) ?? 0)
-            let first = text.firstMatch(of: #/(?m)^\s*✗ (.+?) \/ (\S+?)(?:\(\))?: /#)
-            return Summary(ok: false, detail: "\(failed) of \(total) failed\(first.map { " · \($0.1)/\($0.2)" } ?? "")")
+        let lines = text.components(separatedBy: "\n")
+        if let counts = MobileBuildMCPLine.counts(in: text) {
+            let first = lines.lazy.compactMap(MobileBuildMCPLine.failure).first
+            return Summary(ok: false, detail: "\(counts.failed) of \(counts.failed + counts.passed + counts.skipped) failed\(first.map { " · \($0.test)" } ?? "")")
         }
         if text.hasPrefix("🧪"), text.contains("❌ Test failed") { return Summary(ok: false, detail: testsDidNotRun) }
         if text.contains("❌ Build failed") {
-            guard let first = text.firstMatch(of: #/(?m)^\s*✗ (.+)\n\s*(\/\S+):(\d+)/#) else { return Summary(ok: false) }
-            return Summary(ok: false, detail: "\(basename(String(first.2))):\(first.3) \(first.1)")
+            // The first error MobileBuildMCP gives a location for.
+            let first = lines.indices.dropLast().lazy.compactMap { index in
+                MobileBuildMCPLine.entry(lines[index]).flatMap { entry in MobileBuildMCPLine.location(lines[index + 1]).map { (entry, $0) } }
+            }.first
+            guard let (entry, location) = first else { return Summary(ok: false) }
+            return Summary(ok: false, detail: "\(basename(location.path)):\(location.line) \(entry)")
         }
         return nil
     }
@@ -168,15 +171,15 @@ public struct ToolOutput: Sendable, Equatable {
         var seen: Set<String> = []
         for (index, line) in lines.enumerated() {
             // Its second copy of a compiler error is the source excerpt, drawn with `|`.
-            guard let entry = line.firstMatch(of: #/^\s*✗ (.+)$/#).map({ String($0.1) }), !entry.hasPrefix("|") else { continue }
-            let path = index + 1 < lines.count ? lines[index + 1].firstMatch(of: #/^\s+(\/\S+):(\d+)\s*$/#) : nil
-            let location = path.map { "\(basename(String($0.1))):\($0.2)" }
-            if let test = entry.firstMatch(of: #/^(.+?) \/ (\S+?)(?:\(\))?: (.*)$/#) {
-                let title = "\(test.1)/\(test.2)"
+            guard let entry = MobileBuildMCPLine.entry(line), !entry.hasPrefix("|") else { continue }
+            let path = index + 1 < lines.count ? MobileBuildMCPLine.location(lines[index + 1]) : nil
+            let location = path.map { "\(basename($0.path)):\($0.line)" }
+            if let test = MobileBuildMCPLine.test(in: entry) {
+                let title = test.test
                 // It lists a failing test twice, once with its location; the first is kept.
                 guard seen.insert(title).inserted else { continue }
                 // XCTest words an XCTFail as `failed - <message>`; the message is what was written.
-                let message = String(test.3).replacing(#/^failed - /#, with: "")
+                let message = test.message.replacing(#/^failed - /#, with: "")
                 failures.append(Failure(title: title, message: message, where: location))
                 continue
             }

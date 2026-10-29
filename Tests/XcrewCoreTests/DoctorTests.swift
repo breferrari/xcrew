@@ -107,3 +107,43 @@ import XcrewTestSupport
         #expect(result.message.contains("App.xcworkspace") && result.message.contains("xcrew setup"))
     }
 }
+
+@Suite struct DoctorProblemsTests {
+    struct Fixed: Check {
+        let id: String
+        let title = "fixed"
+        let status: CheckStatus
+        func run(_ context: CheckContext) async -> CheckResult { CheckResult(status: status, message: id) }
+    }
+
+    @Test func problemsAreWhatFailedOrWarnedWorstFirst() async {
+        let checks: [any Check] = [Fixed(id: "a/ok", status: .pass), Fixed(id: "b/warn", status: .warn), Fixed(id: "c/fail", status: .fail), Fixed(id: "d/skip", status: .skip)]
+        let entries = await Doctor.run(checks, in: .fake())
+        #expect(Doctor.problems(entries).map(\.check.id) == ["c/fail", "b/warn"])
+    }
+}
+
+@Suite struct MCPServerStatusTests {
+    /// Answers every call and counts how many asked for the Xcode MCP's status.
+    final class CountingRunner: CommandRunning, @unchecked Sendable {
+        private let lock = NSLock()
+        private var statuses = 0
+        var statusCalls: Int { lock.withLock { statuses } }
+
+        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+            if argv == ["xcrun", "mcp-server", "status"] { lock.withLock { statuses += 1 } }
+            return CommandResult(status: 0, stdout: "Permission: enabled\ncom.anthropic.claude-code")
+        }
+
+        func which(_ name: String) -> String? { nil }
+    }
+
+    @Test func oneDoctorRunAsksTheXcodeMCPForItsStatusOnce() async {
+        let runner = CountingRunner()
+        let project = Project.temporary()
+        let context = CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner))
+        let entries = await Doctor.run(Doctor.checks.filter { $0.id.hasPrefix("xcode-mcp/headless") || $0.id.hasPrefix("xcode-mcp/claude") }, in: context)
+        #expect(entries.map(\.result.status) == [.pass, .pass])
+        #expect(runner.statusCalls == 1)
+    }
+}

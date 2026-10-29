@@ -45,10 +45,13 @@ public struct CheckResult: Sendable, Equatable {
 public struct CheckContext: Sendable {
     public let project: Project
     public let machine: Machine
+    /// `xcrun mcp-server status`, which two checks read: run once per doctor run, when first asked for.
+    public let xcodeMCPStatus: Once<CommandResult>
 
     public init(project: Project, machine: Machine) {
         self.project = project
         self.machine = machine
+        xcodeMCPStatus = Once { await machine.runner.run("xcrun", "mcp-server", "status") }
     }
 
     public var runner: any CommandRunning { machine.runner }
@@ -62,13 +65,9 @@ public protocol Check: Sendable {
     var title: String { get }
     /// Whether it calls out to the network, which the session-start `doctor --problems` leaves out.
     var reachesNetwork: Bool { get }
-    /// Whether mcs does this itself, so the techpack leaves it out: `mcs check-updates` already says
-    /// when a pack has a newer version.
-    var isCoveredByMCS: Bool { get }
     func run(_ context: CheckContext) async -> CheckResult
 }
 
 extension Check {
     public var reachesNetwork: Bool { false }
-    public var isCoveredByMCS: Bool { false }
 }

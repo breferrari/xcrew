@@ -7,7 +7,7 @@ struct ClaudeApprovedCheck: Check {
     let title = "Claude Code approved in Xcode"
 
     func run(_ context: CheckContext) async -> CheckResult {
-        let status = await context.runner.run("xcrun", "mcp-server", "status")
+        let status = await context.xcodeMCPStatus.value()
         guard status.succeeded else { return .skip("xcrun mcp-server unavailable") }
         guard status.stdout.contains(Self.agentIdentifier) else {
             return .warn("not approved yet: have Claude call XcodeOpenWorkspace, then allow it in Xcode's dialog")

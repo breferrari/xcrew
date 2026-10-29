@@ -11,17 +11,13 @@ const USAGE = [
   '/xcrew close    close that pane',
 ].join('\n')
 
-/** Subcommands that run the CLI: the person's word, then the CLI's. */
-const CLI_SUBCOMMANDS: Record<string, string> = { doctor: 'doctor' }
-
 export const COMMAND = { name: 'xcrew', description: 'Xcrew: doctor, history, failures or close', argumentHint: '[doctor|history|failures|close]' }
 
 /** `/xcrew`, answered by the mod itself: nothing reaches Claude, and nothing costs a turn. */
 export function registerCommand(on: On): void {
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
-    const cli = CLI_SUBCOMMANDS[subcommand]
-    if (cli) return { text: await text($, [cli]) }
+    if (subcommand === 'doctor') return { text: await text($, ['doctor']) }
     if (subcommand === 'history') return { text: await history($) }
     if (subcommand === 'failures') return { text: await openFailures($) }
     if (subcommand === 'close') return { text: await closeFailures($) }

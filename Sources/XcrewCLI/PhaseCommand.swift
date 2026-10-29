@@ -23,8 +23,7 @@ struct PhaseCommand: Command {
         // Once the mod has the log it passes it back, which saves looking again.
         let log = invocation.arguments["log"].map { URL(fileURLWithPath: $0) }
             ?? RunLog.find(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: context.project.root, home: context.machine.home)
-        let text = log.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
-        let phase = text.flatMap { RunLog.phase(of: $0, expectedTests: invocation.arguments["expected"].flatMap(Int.init)) }
+        let phase = log.flatMap { RunLog.phase(ofLogAt: $0, expectedTests: invocation.arguments["expected"].flatMap(Int.init)) }
         let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: phase))
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0

@@ -38,6 +38,11 @@ public enum Doctor {
         return checks.indices.map { Entry(check: checks[$0], result: results[$0]!) }
     }
 
+    /// What failed or warned, worst first, so the band can show the first.
+    public static func problems(_ entries: [Entry]) -> [Entry] {
+        entries.filter { $0.result.status == .fail || $0.result.status == .warn }.sorted { $0.result.status > $1.result.status }
+    }
+
     /// What `doctor --problems` prints: its lines, or a line saying there are none.
     public static func problemsText(lines: [String]) -> [String] {
         lines.isEmpty ? ["No problems."] : lines

@@ -14,7 +14,7 @@ struct DoctorCommand: Command {
     let usage = [
         "doctor [--check ID]   run the health checks (exit: 0 ok, 1 failed, 2 warned, 3 skipped)",
         "doctor --list         list the check ids",
-        "doctor --problems     only what failed or warned, or \"No problems.\"; nothing outside an Apple-platform project (exit 0)",
+        "doctor --problems     only what failed or warned, worst first, or \"No problems.\"; nothing outside an Apple-platform project (exit 0)",
         "doctor --json         the same, as JSON: each check's status, id and message (the mod reads it)",
     ]
 
@@ -34,8 +34,8 @@ struct DoctorCommand: Command {
         if onlyProblems, !invocation.context.project.isApplePlatformProject { return 0 }
         // It runs at every session start, so it leaves out checks that call the network.
         let checks = Doctor.checks.filter { !onlyProblems || !$0.reachesNetwork }
-        let entries = await Doctor.run(checks, in: invocation.context)
-            .filter { !onlyProblems || $0.result.status == .fail || $0.result.status == .warn }
+        let ran = await Doctor.run(checks, in: invocation.context)
+        let entries = onlyProblems ? Doctor.problems(ran) : ran
         if invocation.arguments.has("json") {
             let lines = entries.map { JSONLine(status: $0.result.status.tag.lowercased(), id: $0.check.id, message: $0.result.message) }
             invocation.print(String(decoding: try JSONEncoder.sorted.encode(lines), as: UTF8.self))

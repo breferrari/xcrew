@@ -43,8 +43,8 @@ test('a problem found at session start shows on the band, with where to look', a
   await ui.unmount()
 })
 
-test('a failure outranks a warning, and the band says how many more there are', async ($, on) => {
-  const { clock } = sessionWith(on, [COPY_PHASE, NOT_APPROVED])
+test('the band shows the doctor\'s first problem, which it lists worst first, and how many more there are', async ($, on) => {
+  const { clock } = sessionWith(on, [NOT_APPROVED, COPY_PHASE])
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   await clock.settle()
 

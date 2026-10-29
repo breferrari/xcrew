@@ -7,7 +7,6 @@ struct XcrewUpdateCheck: Check {
     let id = "xcrew/up-to-date"
     let title = "Xcrew is the latest release"
     let reachesNetwork = true
-    let isCoveredByMCS = true
 
     func run(_ context: CheckContext) async -> CheckResult {
         let response = await context.runner.run("curl", "-fsSL", "--max-time", "5", Self.latestRelease)

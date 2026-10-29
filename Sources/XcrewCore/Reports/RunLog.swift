@@ -15,6 +15,22 @@ public enum RunLog {
         return buildStep(log)
     }
 
+    /// How much of a log's end holds its latest task line, nearly always.
+    static let tailBytes = 64 * 1024
+
+    /// The phase of the log at `url`, reading only what it needs: a clean build's log runs to tens of
+    /// megabytes, and the band asks once a second. A test run's count needs only what follows its last
+    /// `Testing started`; a build's step needs only the log's end.
+    public static func phase(ofLogAt url: URL, expectedTests: Int?) -> String? {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+        let marker = Data("Testing started".utf8)
+        if let testing = data.range(of: Data("\n".utf8) + marker, options: .backwards)?.lowerBound ?? (data.starts(with: marker) ? data.startIndex : nil) {
+            return phase(of: String(decoding: data[testing...], as: UTF8.self), expectedTests: expectedTests)
+        }
+        let tail = String(decoding: data.suffix(tailBytes), as: UTF8.self)
+        return buildStep(tail) ?? (data.count > tailBytes ? buildStep(String(decoding: data, as: UTF8.self)) : nil)
+    }
+
     /// The latest task's step: `compiling Utility`, `linking Utility`, or `building Utility`.
     static func buildStep(_ log: String) -> String? {
         for line in log.components(separatedBy: "\n").reversed() {

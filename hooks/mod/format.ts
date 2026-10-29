@@ -33,6 +33,15 @@ export function gauge(fraction: number, cells: number): { done: string; rest: st
   return { done: '━'.repeat(full) + (half ? '╸' : ''), rest: '─'.repeat(cells - full - half) }
 }
 
+/** Cells in the gauge: wide enough to move each few seconds, narrow enough to leave room for the rest. */
+const GAUGE_CELLS = 8
+
+/** The gauge of the time so far against the usual time, and how much is left; none without a usual time. */
+export function estimate(elapsed: number, usual: number | undefined): { done: string; rest: string; text: string; isOver: boolean } | undefined {
+  if (usual === undefined || usual <= 0) return undefined
+  return { ...gauge(elapsed / usual, GAUGE_CELLS), ...remaining(elapsed, usual) }
+}
+
 /** `~0:15 left` while under the usual time (an estimate), `0:08 over` once past it. */
 export function remaining(elapsed: number, usual: number): { text: string; isOver: boolean } {
   const left = usual - elapsed

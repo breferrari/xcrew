@@ -7,22 +7,6 @@ public enum FailureNotes {
     /// At most this many tests are looked up: past it, the first ones are enough to start from.
     static let mostLookups = 10
 
-    /// A test as `Suite/test`: MobileBuildMCP lists one failure both with and without the `()`.
-    static func key(_ suite: String, _ test: String) -> String {
-        "\(suite)/\(test.hasSuffix("()") ? String(test.dropLast(2)) : test)"
-    }
-
-    /// `✗ Suite / test(): message`, as MobileBuildMCP lists a failing test.
-    static func failure(_ line: String) -> (test: String, message: String)? {
-        line.firstMatch(of: #/^\s*✗ (.+?) \/ (\S+?): (.*)$/#).map { (key(String($0.1), String($0.2)), String($0.3)) }
-    }
-
-    /// `⏭️ Suite/test() (0.000s)`, as it lists a skipped one.
-    static func skipped(_ line: String) -> String? {
-        // By scalar: `⏭️` is `⏭` and a variation selector, one character that a character-level match misses.
-        line.firstMatch(of: #/^\s*⏭\x{FE0F}? (\S+?)\/(\S+?) \(/#.matchingSemantics(.unicodeScalar)).map { key(String($0.1), String($0.2)) }
-    }
-
     /// `0.006`, as MobileBuildMCP writes a test's time: three decimals, whatever the Mac's locale.
     static func seconds(_ value: Double) -> String {
         let milliseconds = Int((value * 1000).rounded())
@@ -37,14 +21,6 @@ public enum FailureNotes {
     /// `Test crashed with signal …` when none did.
     static func isCrash(_ message: String) -> Bool {
         message.hasPrefix("Crash:") || message.hasPrefix("Test crashed with signal")
-    }
-
-    static func isPath(_ line: String) -> Bool {
-        line.contains(#/^\s+\/\S+:\d+\s*$/#)
-    }
-
-    static func isSummary(_ line: String) -> Bool {
-        line.contains(#/^(❌|✅) \d+ tests? /#)
     }
 
     struct Notes {
@@ -63,19 +39,19 @@ public enum FailureNotes {
         var index = 0
         while index < lines.count {
             let line = lines[index]
-            if isSummary(line), !notes.unlisted.isEmpty {
+            if MobileBuildMCPLine.isSummary(line), !notes.unlisted.isEmpty {
                 let blank = out.last?.trimmingCharacters(in: .whitespaces).isEmpty == true ? out.removeLast() : nil
                 out += notes.unlisted
                 if let blank { out.append(blank) }
             }
             out.append(line)
-            if let failure = failure(line) {
-                if index + 1 < lines.count, isPath(lines[index + 1]) {
+            if let failure = MobileBuildMCPLine.failure(line) {
+                if index + 1 < lines.count, MobileBuildMCPLine.location(lines[index + 1]) != nil {
                     index += 1
                     out.append(lines[index])
                 }
                 out += notes.failures[failure.test] ?? []
-            } else if let test = skipped(line) {
+            } else if let test = MobileBuildMCPLine.skipped(line) {
                 out += notes.skipped[test] ?? []
             }
             index += 1
@@ -90,25 +66,31 @@ public enum FailureNotes {
         var located: Set<String> = []
         var crashed: Set<String> = []
         for (index, line) in lines.enumerated() {
-            guard let failure = failure(line) else { continue }
+            guard let failure = MobileBuildMCPLine.failure(line) else { continue }
             if !order.contains(failure.test) { order.append(failure.test) }
-            if index + 1 < lines.count, isPath(lines[index + 1]) { located.insert(failure.test) }
+            if index + 1 < lines.count, MobileBuildMCPLine.location(lines[index + 1]) != nil { located.insert(failure.test) }
             if isCrash(failure.message) { crashed.insert(failure.test) }
         }
         let lookups = order.filter { !located.contains($0) || crashed.contains($0) }.prefix(mostLookups)
-        let listedSkips = lines.compactMap(skipped)
-        let skippedCount = text.firstMatch(of: #/(?m)^(?:❌|✅) \d+ tests? .*?(\d+) skipped/#).flatMap { Int($0.1) } ?? 0
-        let isSkipping = skippedCount > 0 || !listedSkips.isEmpty
+        let listedSkips = lines.compactMap(MobileBuildMCPLine.skipped)
+        let isSkipping = MobileBuildMCPLine.skippedCount(in: text) > 0 || !listedSkips.isEmpty
         guard !lookups.isEmpty || isSkipping else { return text }
 
         var notes = Notes()
-        for test in lookups {
-            var added: [String] = []
-            if !located.contains(test), let location = ResultBundle.sourceLocation(details: await bundle.details(of: test)) {
-                added.append("    \(location)")
+        // Each test's lookups are their own xcresulttool calls, so they run side by side.
+        notes.failures = await withTaskGroup(of: (String, [String]).self) { group in
+            for test in lookups {
+                let isLocated = located.contains(test), isCrashed = crashed.contains(test)
+                group.addTask {
+                    var added: [String] = []
+                    if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: test)) {
+                        added.append("    \(location)")
+                    }
+                    if isCrashed { added += (await bundle.crash(of: test) ?? [noCrashLog]).map { "      \($0)" } }
+                    return (test, added)
+                }
             }
-            if crashed.contains(test) { added += (await bundle.crash(of: test) ?? [noCrashLog]).map { "      \($0)" } }
-            if !added.isEmpty { notes.failures[test] = added }
+            return await group.reduce(into: [:]) { if !$1.1.isEmpty { $0[$1.0] = $1.1 } }
         }
         if isSkipping {
             let listed = Set(listedSkips)

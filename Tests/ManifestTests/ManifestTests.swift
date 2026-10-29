@@ -88,17 +88,20 @@ import XcrewCore
 
     // MARK: mcs techpack
 
+    /// Checks the techpack leaves out because mcs does the same itself: `mcs check-updates` says when a
+    /// pack has a newer version, with `mcs update` as the fix.
+    static let coveredByMCS: Set = ["xcrew/up-to-date"]
+
     @Test func everyDoctorCheckIsAnMCSCheck() async throws {
         let techpack = try text("techpack.yaml")
         let listed = techpack.matches(of: /command: (mcs\/checks\/[\w.-]+\.sh)/).map { String($0.1) }
-        let checks = Doctor.checks.filter { !$0.isCoveredByMCS }
+        let checks = Doctor.checks.filter { !Self.coveredByMCS.contains($0.id) }
         #expect(listed.count == checks.count)
-        for check in Doctor.checks where check.isCoveredByMCS {
+        for check in Doctor.checks where Self.coveredByMCS.contains(check.id) {
             let wrapper = "mcs/checks/\(check.id.replacingOccurrences(of: "/", with: "--")).sh"
             #expect(!listed.contains(wrapper), "\(check.id): mcs does this itself, so the techpack leaves it out")
             #expect(!FileManager.default.fileExists(atPath: Self.repository.appending(path: wrapper).path), "\(wrapper)")
         }
-        #expect(Doctor.check(id: "xcrew/up-to-date")?.isCoveredByMCS == true)
         for check in checks {
             let wrapper = "mcs/checks/\(check.id.replacingOccurrences(of: "/", with: "--")).sh"
             #expect(listed.contains(wrapper), "\(check.id) missing from techpack.yaml")
@@ -179,5 +182,14 @@ import XcrewCore
     @Test func theModReadsNoFilesOnlyChecksTheyExist() throws {
         #expect(try Self.offenders(/\$\.fs\.(?!exists\()/, allowed: []) == [])
         #expect(try Self.offenders(/\$\.fs\./, allowed: ["guard.ts"]) == [])
+    }
+}
+
+@Suite struct GeneratorMarkerTests {
+    /// The mod's guard decides a project is generated from the same files the Swift code does.
+    @Test func theGuardAndTheSwiftCodeKnowTheSameGenerators() throws {
+        let guardSource = try String(contentsOf: ManifestTests.repository.appending(path: "hooks/mod/guard.ts"), encoding: .utf8)
+        let list = try #require(guardSource.firstMatch(of: /GENERATOR_MARKERS = \[([^\]]*)\]/)).1
+        #expect(list.matches(of: /'([^']+)'/).map { String($0.1) } == Project.generatorMarkers)
     }
 }

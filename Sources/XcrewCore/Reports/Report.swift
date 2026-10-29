@@ -34,17 +34,19 @@ public struct Report: Sendable, Equatable, Codable {
         let isMobile = server == "MobileBuildMCP"
         let isTest = kind == .test
         let bundle = isMobile && isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
-        let located = read.hasPrefix("🧪") ? await bundle.asyncMap { await FailureNotes.adding(to: read, from: $0) } : nil
+        // The summary is needed whatever the run came to, so it's asked for while the failures are looked up.
+        async let bundleSummary: String? = { await bundle?.summary() }()
+        var located: String?
+        if let bundle, read.hasPrefix("🧪") { located = await FailureNotes.adding(to: read, from: bundle) }
         let text = located ?? (isMobile ? ToolOutput(text: read).cleanBuildText : nil) ?? read
         let final = ToolOutput(text: text, isError: output.isError)
         let summary = final.summary
 
         var notes: [String] = []
         if isTest, final.testTotal == 0 { notes.append(noTestsNote) }
-        if let bundle {
-            let summary = await bundle.summary()
+        if let bundle, let summary = await bundleSummary {
             // The test list is only asked for when the summary counts expected failures to name.
-            let names = ResultBundle.expectedFailuresNote(summary: summary) == nil ? [] : ResultBundle.expectedFailures(listing: await bundle.tests())
+            let names = ResultBundle.expectedFailureCount(summary: summary) > 0 ? ResultBundle.expectedFailures(listing: await bundle.tests()) : []
             if let expected = ResultBundle.expectedFailuresNote(summary: summary, names: names) { notes.append(expected) }
         }
 
@@ -58,12 +60,5 @@ public struct Report: Sendable, Equatable, Codable {
             result: compact ?? (text != read ? text : nil),
             notes: notes
         )
-    }
-}
-
-extension Optional {
-    func asyncMap<T>(_ transform: (Wrapped) async -> T) async -> T? {
-        guard let self else { return nil }
-        return await transform(self)
     }
 }

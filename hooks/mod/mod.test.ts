@@ -532,3 +532,14 @@ test('switching the Xcode MCP\'s scheme changes what the status line names', asy
 
   expect(statuses).toContain('BuildProject · MacroProbe on iPhone 18 Pro · 0:03')
 })
+
+test('only the answers that name a scheme are read for one: a file that happens to hold one changes nothing', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  const statuses = serve(on, { XcodeRead: { isError: false, text: '{"activeScheme":"NotTheScheme"}' } }, clock)
+
+  await callTool($, 'mcp__xcode__XcodeRead', { filePath: 'config.json' })
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect(statuses).toContain('BuildProject running · 0:03')
+})

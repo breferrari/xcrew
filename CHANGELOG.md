@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The band's phase stays cheap on a clean build: it reads the end of the log, not all of it. A 45 MB log took 1.4 s a second to read; now it takes 0.07 s.
+- Session start is faster outside Tuist projects: the doctor looks for Tuist's old macro copy phase only where Tuist generated the project. It took about 0.7 s in a large project.
+- The installed plugin and a development checkout no longer rebuild each other's CLI in turn: a cached build is removed after two weeks unused, not whenever another version builds. Two first runs at once now build once.
+- `xcrew doctor --problems` lists failures before warnings.
 - With mcs, the techpack no longer runs its own check for a newer Xcrew: `mcs check-updates` already reports pack updates, and `mcs update` installs them. `xcrew doctor` keeps the check for plugin installs.
 - The note about a run's expected failures names the tests, five at most.
 - A crashed test whose run attached no crash log says so, and how to get one, so Claude knows why there are no frames.

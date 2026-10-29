@@ -1,7 +1,7 @@
 import type { EngineInterface, On } from 'claude-code'
-import { average, comparison, gauge, remaining, stopwatch } from './format'
-import { endRun, setMeasuredFrom, setPhase, startRun } from './band'
-import { describe, observe, scopeOf } from './context'
+import { average, comparison, estimate, stopwatch } from './format'
+import { endRun, outcomeLine, startRun, updateRun } from './band'
+import { describe, historyOf, observe } from './context'
 import { phase as readRunPhase, report } from './cli'
 import { recordRun } from './failures'
 import { kindOf, parseTool } from './tools'
@@ -29,9 +29,8 @@ async function quietly<T>(work: () => Promise<T> | T): Promise<T | undefined> {
 
 /** The status line's gauge, the band's in plain text: ` ━━━━╸─── ~0:15 left`. */
 function plainEstimate(elapsed: number, usual: number | undefined): string {
-  if (usual === undefined || usual <= 0) return ''
-  const { done, rest } = gauge(elapsed / usual, 8)
-  return ` ${done}${rest} ${remaining(elapsed, usual).text}`
+  const parts = estimate(elapsed, usual)
+  return parts ? ` ${parts.done}${parts.rest} ${parts.text}` : ''
 }
 
 /**
@@ -53,9 +52,8 @@ export function registerTiming(on: On): void {
     }
     const target = describe(parsed, e as unknown as Record<string, unknown>)
     const label = target ? `${name} · ${target}` : `${name} running`
-    const scope = scopeOf(parsed, e as unknown as Record<string, unknown>)
     // Durations and test totals are kept per scheme and test selection, not only per tool.
-    const history = !scope ? name : scope.startsWith('›') ? `${name} ${scope}` : `${name} · ${scope}`
+    const history = historyOf(parsed, e as unknown as Record<string, unknown>)
 
     const started = await quietly(() => $.clock.now())
     const earlier = ((await quietly(() => $.store.get(historyKey(history)))) as number[] | undefined) ?? []
@@ -82,14 +80,14 @@ export function registerTiming(on: On): void {
         if (measuredFrom === undefined) {
           measuredFrom = await quietly(() => $.clock.now())
           const from = measuredFrom
-          if (usesBand && from !== undefined) await quietly(() => setMeasuredFrom($, from))
+          if (usesBand && from !== undefined) await quietly(() => updateRun($, { measuredFrom: from }))
         }
       }
       // Before its log appears xcodebuild hasn't started: a pre-build hook, a permission prompt or the server's own preparation.
       const now = found.phase ?? (writesLog && logPath === undefined ? PREPARING : undefined)
       if (now === undefined || now === phase) return
       phase = now
-      if (usesBand) await quietly(() => setPhase($, now))
+      if (usesBand) await quietly(() => updateRun($, { phase: now }))
     }
     const ticker = started === undefined ? undefined : await quietly(() =>
       $.clock.every(1000, async () => {
@@ -108,18 +106,18 @@ export function registerTiming(on: On): void {
     if (started === undefined || ended === undefined) return result
 
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
-    const reported = result.deny === undefined ? await quietly(() => report($, parsed.server, kind, result.text ?? '', result.isError === true)) : undefined
-    const outcome = reported ?? { ok: result.deny === undefined && result.isError !== true, failures: [], notes: [] }
+    // `report` never throws: without the CLI it falls back to whether the server reported an error.
+    const outcome = result.deny === undefined ? await report($, parsed.server, kind, result.text ?? '', result.isError === true) : { ok: false, failures: [], notes: [] }
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     await quietly(() => $.store.set(historyKey(history), [...earlier, elapsed].slice(-HISTORY)))
     if (result.deny === undefined) await quietly(() => recordRun($, history, outcome.ok, outcome.failures))
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(history), outcome.tests))
     const compared = comparison(elapsed, earlier)
-    const detail = outcome.detail ? ` · ${outcome.detail}` : ''
-    const summary = `${outcome.ok ? '✓' : '✗'} ${name} · ${stopwatch(elapsed)}${compared ? ` ${compared}` : ''}${detail}`
+    const ending = { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: compared }
+    const summary = outcomeLine(name, ending)
     if (usesBand) {
-      await quietly(() => endRun($, { at: ended, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: compared }))
+      await quietly(() => endRun($, ending))
     } else {
       // The band stays up with this same line where it draws; elsewhere a toast carries it.
       await quietly(() => $.ui.toast(summary))
