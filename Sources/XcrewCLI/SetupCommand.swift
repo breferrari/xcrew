@@ -61,7 +61,7 @@ struct SetupCommand: Command {
             invocation.arguments[option] ?? Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") }
         }
         let container = try invocation.arguments["container"] ?? Self.container(in: context)
-        let catalog = await SimulatorCatalog.load(using: context.runner)
+        let catalog = await SimulatorCatalog.load(using: context.runner, choosingADefault: answer("test-simulator") == nil)
         guard let testSimulator = answer("test-simulator") ?? catalog.defaultIPhone else {
             throw UsageError(description: "no iPhone simulator installed: add one in Xcode, or pass --test-simulator")
         }

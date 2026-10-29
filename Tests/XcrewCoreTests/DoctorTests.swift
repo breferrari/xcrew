@@ -159,6 +159,19 @@ import XcrewTestSupport
         #expect(!result.message.contains("iPhone 17,"))
     }
 
+    /// Setup in 0.8.2 could name the iPhone Duo, and a person can name it; `screenshot` fails on it either way.
+    @Test func aSimulatorWithTwoDisplaysWarns() async {
+        let project = Project.temporary()
+        project.write(ConfigRenderer.render(.init(container: "A.xcworkspace", testSimulator: "iPhone Duo", testScheme: "A"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        let devices = #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-2":[{"name":"iPhone Duo","isAvailable":true,"deviceTypeIdentifier":"duo"}]}}"#
+        let runner = FakeRunner(responses: [
+            "xcrun simctl list devices available --json": .init(status: 0, stdout: devices),
+            "xcrun simctl list devicetypes --json": .init(status: 0, stdout: #"{"devicetypes":[{"identifier":"duo","bundlePath":"/Profiles/Duo.simdevicetype"}]}"#),
+            "plutil -extract capabilities.displays json -o - /Profiles/Duo.simdevicetype/Contents/Resources/capabilities.plist": .init(status: 0, stdout: #"[{"powerState":1},{"powerState":1}]"#),
+        ])
+        #expect(await SimulatorsCheck().run(.fake(runner, project: project)) == .warn("iPhone Duo has two displays, and MobileBuildMCP's screenshot fails on it: xcrew setup --test-simulator <name> picks another"))
+    }
+
     @Test func xcodeMCPChecks() async {
         let enabled = FakeRunner(responses: ["xcrun mcp-server status": .init(status: 0, stdout: "Permission: enabled\nApproved agents:\n  com.anthropic.claude-code\n")])
         #expect(await HeadlessXcodeMCPCheck().run(.fake(enabled)).status == .pass)

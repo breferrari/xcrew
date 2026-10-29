@@ -99,6 +99,12 @@ Where Apple's docs are silent, the project search rests on these probes, taken o
 | What is standard input: a file, a pipe or a device? | Silent | `FileManager.attributesOfItem(atPath: "/dev/fd/0")` reports `NSFileTypeRegular` for a file, `NSFileTypeUnknown` for a pipe and `NSFileTypeCharacterSpecial` for `/dev/null`; `/dev/stdin` itself reads as a symbolic link. A file is read to its end at once, since waiting on it for more input never ends |
 | Which folders are packages? | `isPackageKey`: a package by its extension or by its own flag | True for `.xcodeproj`, `.xcworkspace`, `.app`, `.bundle`, `.playground`, `.xcdatamodeld`; false for `.xcassets`, `.framework`, `.xcframework`, `.lproj`, `.docc`, `.xctestplan` and dotted folders such as `MyApp.iOS`. The search skips a package or an `.xc…` folder, and enters the rest |
 
+## The simulator setup picks
+
+With Xcode 27.2 beta 3 on October 29, 2026, the iPhone Duo came on a runtime of its own. `simctl list runtimes` names it `com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4` and gives its `version` as 27.2, the same as the plain `iOS-27-2` runtime. Read from the identifier, it looked newer than 27.2, so setup picked the Duo. Setup now takes each runtime's version from `simctl list runtimes`, and falls back to the identifier's leading numbers only.
+
+The Duo has two displays, and MobileBuildMCP 2.7.1's `screenshot` takes no display, so it fails there. `simctl` documents no display count. The device type's CoreSimulator profile, at its `bundlePath` from `simctl list devicetypes` plus `Contents/Resources/capabilities.plist`, lists its displays, and the built-in ones are powered on by default (`powerState` 1). That's `LCD` and `LCD-1` on the Duo, and `LCD` alone on the iPhone 17; `TVOut`, `Wireless` and `Resizable` are off. Setup never defaults to a device type with more than one, the doctor warns about a configured one, and a test reads a plain iPhone's installed profile, so a change to that shape turns it red.
+
 ## How mcs marks a project
 
 mcs records each project it set up in `<project>/.claude/.mcs-project`, a JSON file that `mcs sync` writes, with the packs it configured under `configuredPacks` (mcs's `docs/architecture.md`, *Project State*, and `Sources/mcs/Core/ProjectState.swift`, read on October 29, 2026). A fix text names mcs only when that list holds `xcrew`, the techpack's identifier.

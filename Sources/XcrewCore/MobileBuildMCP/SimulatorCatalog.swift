@@ -9,32 +9,87 @@ public struct SimulatorCatalog: Sendable {
         public let runtimeVersion: String
         public let platform: String
         public var udid: String? = nil
+        /// Its device type, as in `com.apple.CoreSimulator.SimDeviceType.iPhone-17`.
+        public var deviceType: String? = nil
+
+        var isIPhone: Bool { platform == "iOS" && name.hasPrefix("iPhone") }
     }
 
     public let devices: [Device]
+    /// Device types with more than one built-in display, where MobileBuildMCP's `screenshot` fails.
+    public var multiDisplayTypes: Set<String> = []
 
     public init(devices: [Device]) {
         self.devices = devices
     }
 
-    public static func load(using runner: any CommandRunning) async -> SimulatorCatalog {
-        let output = await runner.run("xcrun", "simctl", "list", "devices", "available", "--json")
-        return SimulatorCatalog(json: Data(output.stdout.utf8))
+    /// The simulators installed. Choosing a default also reads each runtime's version and which iPhones have two
+    /// displays (docs/findings.md, *The simulator setup picks*); `displaysOf` reads the displays of those simulators only.
+    public static func load(using runner: any CommandRunning, choosingADefault: Bool = false, displaysOf names: Set<String> = []) async -> SimulatorCatalog {
+        async let devices = runner.run("xcrun", "simctl", "list", "devices", "available", "--json")
+        let runtimes = choosingADefault ? await runner.run("xcrun", "simctl", "list", "runtimes", "--json").stdout : nil
+        var catalog = SimulatorCatalog(json: Data(await devices.stdout.utf8), runtimes: runtimes.map { Data($0.utf8) })
+        let wanted = Set(catalog.devices.filter { choosingADefault ? $0.isIPhone : names.contains($0.name) }.compactMap(\.deviceType))
+        guard !wanted.isEmpty else { return catalog }
+        let types = await runner.run("xcrun", "simctl", "list", "devicetypes", "--json")
+        let bundles = ((try? JSONDecoder().decode(DeviceTypes.self, from: Data(types.stdout.utf8)))?.devicetypes ?? [])
+            .compactMap { type in type.identifier.flatMap { id in type.bundlePath.map { (id, $0) } } }
+            .filter { wanted.contains($0.0) }
+        catalog.multiDisplayTypes = await withTaskGroup(of: String?.self) { group in
+            for (identifier, bundle) in bundles {
+                group.addTask {
+                    let read = await runner.run("plutil", "-extract", "capabilities.displays", "json", "-o", "-", "\(bundle)/Contents/Resources/capabilities.plist")
+                    let displays = (try? JSONDecoder().decode([Display].self, from: Data(read.stdout.utf8))) ?? []
+                    return displays.filter { $0.powerState == 1 }.count > 1 ? identifier : nil
+                }
+            }
+            return await group.reduce(into: Set<String>()) { found, identifier in
+                if let identifier { found.insert(identifier) }
+            }
+        }
+        return catalog
     }
 
-    /// Parses `simctl list devices --json`, whose runtime keys read like
-    /// `com.apple.CoreSimulator.SimRuntime.iOS-26-5`.
-    public init(json: Data) {
+    /// Entries are optional throughout, so one odd entry doesn't lose the whole list.
+    struct DeviceTypes: Decodable {
+        struct DeviceType: Decodable {
+            let identifier: String?
+            let bundlePath: String?
+        }
+        let devicetypes: [DeviceType]
+    }
+
+    /// A display in a device type's profile: the built-in ones are powered on by default.
+    struct Display: Decodable {
+        let powerState: Int?
+    }
+
+    struct Runtimes: Decodable {
+        struct Runtime: Decodable {
+            let identifier: String?
+            let version: String?
+            let platform: String?
+        }
+        let runtimes: [Runtime]
+    }
+
+    /// Parses `simctl list devices --json`, with each runtime's version and platform from `simctl list runtimes
+    /// --json` when given, else from the identifier's leading numbers.
+    public init(json: Data, runtimes: Data? = nil) {
         let root = (try? JSONSerialization.jsonObject(with: json)) as? [String: Any]
         let byRuntime = root?["devices"] as? [String: [[String: Any]]] ?? [:]
-        devices = byRuntime.flatMap { runtime, entries -> [Device] in
-            let tail = runtime.split(separator: ".").last.map(String.init) ?? ""
-            let pieces = tail.split(separator: "-")
-            guard let platform = pieces.first else { return [] }
-            let version = pieces.dropFirst().joined(separator: ".")
+        let listed = runtimes.flatMap { try? JSONDecoder().decode(Runtimes.self, from: $0) }?.runtimes ?? []
+        let known = listed.reduce(into: [String: (version: String, platform: String)]()) { known, runtime in
+            if let id = runtime.identifier, let version = runtime.version, let platform = runtime.platform { known[id] = (version, platform) }
+        }
+        // In identifier order, so two runtimes of one version always tie the same way: the plain one first.
+        devices = byRuntime.sorted { $0.key < $1.key }.flatMap { runtime, entries -> [Device] in
+            let pieces = (runtime.split(separator: ".").last.map(String.init) ?? "").split(separator: "-").map(String.init)
+            guard let platform = known[runtime]?.platform ?? pieces.first else { return [] }
+            let version = known[runtime]?.version ?? pieces.dropFirst().prefix { Int($0) != nil }.joined(separator: ".")
             return entries.compactMap { entry in
                 guard entry["isAvailable"] as? Bool ?? true, let name = entry["name"] as? String else { return nil }
-                return Device(name: name, runtimeVersion: version, platform: String(platform), udid: entry["udid"] as? String)
+                return Device(name: name, runtimeVersion: version, platform: platform, udid: entry["udid"] as? String, deviceType: entry["deviceTypeIdentifier"] as? String)
             }
         }
     }
@@ -46,10 +101,10 @@ public struct SimulatorCatalog: Sendable {
         devices.filter { $0.name == name && $0.udid != nil }.max { Version($0.runtimeVersion) < Version($1.runtimeVersion) }?.udid
     }
 
-    /// The newest plain iPhone ("iPhone 17", not "iPhone 17 Pro Max") on the newest iOS runtime,
-    /// else any iPhone there.
+    /// The newest plain iPhone ("iPhone 17", not "iPhone 17 Pro Max") on the newest iOS version,
+    /// else any iPhone there, never one with two displays.
     public var defaultIPhone: String? {
-        let iOS = devices.filter { $0.platform == "iOS" && $0.name.hasPrefix("iPhone") }
+        let iOS = devices.filter { $0.isIPhone && !($0.deviceType.map(multiDisplayTypes.contains) ?? false) }
         guard let newest = iOS.map({ Version($0.runtimeVersion) }).max() else { return nil }
         let onNewest = iOS.filter { Version($0.runtimeVersion) == newest }.map(\.name)
         let plain = onNewest.filter { $0.range(of: #"^iPhone \d+$"#, options: .regularExpression) != nil }

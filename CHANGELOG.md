@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `xcrew setup` picks a standard iPhone simulator again. A device with its own runtime, such as the iPhone Duo with Xcode 27.2, no longer looks newer than the rest, and a simulator with two displays is never the default, since screenshots fail on it. `xcrew doctor` warns when your config already names one.
 - The line above the prompt keeps itself current. A passed run leaves after 3 minutes, a failed one when you look at it or after 30. A failing check stays until it's fixed, however you fix it; a warning shows for two minutes.
 - After `/xcrew:setup` writes the config, the line above the prompt asks you to restart Claude Code.
 - A fix text mentions mcs only in a project set up through mcs.
