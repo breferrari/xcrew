@@ -62,19 +62,8 @@ public struct SystemCommandRunner: CommandRunning {
 
     /// Both pipes' text, read to end of file or until `deadline`, whichever comes first.
     static func collect(_ stdout: Drain, _ stderr: Drain, until deadline: ContinuousClock.Instant) async -> (String, String) {
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                await stdout.ended()
-                await stderr.ended()
-            }
-            group.addTask {
-                try? await Task.sleep(until: deadline, clock: .continuous)
-                stdout.stop()
-                stderr.stop()
-            }
-            await group.next()
-            group.cancelAll()
-        }
+        await stdout.ended(by: deadline)
+        await stderr.ended(by: deadline)
         return (stdout.text, stderr.text)
     }
 }

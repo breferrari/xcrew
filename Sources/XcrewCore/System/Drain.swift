@@ -43,6 +43,19 @@ final class Drain: Sendable {
         }
     }
 
+    /// Returns once reading has stopped, stopping it at `deadline` if end of file hasn't come by then.
+    func ended(by deadline: ContinuousClock.Instant) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.ended() }
+            group.addTask {
+                try? await Task.sleep(until: deadline, clock: .continuous)
+                self.stop()
+            }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
     /// What has arrived so far.
     var data: Data { state.withLock { $0.data } }
 
