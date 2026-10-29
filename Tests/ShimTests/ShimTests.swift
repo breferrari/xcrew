@@ -31,6 +31,8 @@ import Testing
         chmod +x "$scratch/release/xcrew"
         """
         try write(fakeSwift, to: "fakebin/swift", executable: true)
+        // Counts the hashing of the sources, the cost a second run should skip.
+        try write("#!/bin/sh\necho hash >> \"\(base.appending(path: "hashes.log").path)\"\nexec /usr/bin/shasum \"$@\"\n", to: "fakebin/shasum", executable: true)
     }
 
     func write(_ text: String, to path: String, executable: Bool = false) throws {
@@ -158,7 +160,42 @@ extension ShimTests {
         let started = Date()
         let run = try await shim("help")
         #expect(run.status == 0 && run.output.hasPrefix("ran help"))
-        #expect(Date().timeIntervalSince(started) < 5)
+        // The failure is a ten-minute wait; a minute is far from it and safe when the suite runs in parallel.
+        #expect(Date().timeIntervalSince(started) < 60)
         #expect(!FileManager.default.fileExists(atPath: lock.path))
+    }
+}
+
+extension ShimTests {
+    var hashes: Int {
+        let log = root.deletingLastPathComponent().appending(path: "hashes.log")
+        return ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n").count
+    }
+
+    /// The band asks once a second while a build runs; the key is worked out once, not on every call.
+    @Test func laterRunsDontHashTheSourcesAgain() async throws {
+        _ = try await shim("help")
+        _ = try await shim("help")
+        _ = try await shim("help")
+        #expect(hashes == 1)
+        #expect(builds == 1)
+    }
+
+    @Test func deletingASourceStillRebuilds() async throws {
+        try write("print(4)\n", to: "Sources/xcrew/Extra.swift")
+        _ = try await shim("help")
+        try FileManager.default.removeItem(at: root.appending(path: "Sources/xcrew/Extra.swift"))
+        _ = try await shim("help")
+        #expect(builds == 2)
+    }
+
+    /// The mod asks for the build once per run, then runs it directly on its once-a-second path.
+    @Test func itNamesTheBuildItWouldRun() async throws {
+        let run = try await shim("--binary-path")
+        #expect(run.status == 0)
+        let path = run.output.trimmingCharacters(in: .newlines)
+        #expect(path.hasPrefix(try await physicalPath(cache)) || path.hasPrefix(cache.path))
+        #expect(FileManager.default.isExecutableFile(atPath: path))
+        #expect(builds == 1)
     }
 }

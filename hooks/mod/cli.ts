@@ -43,10 +43,26 @@ export async function report($: EngineInterface, server: string, kind: string, t
   return { ...parsed, ok: parsed.ok ?? !isError, failures: parsed.failures ?? [], notes: parsed.notes ?? [] }
 }
 
-/** The running call's log, once it appears, and the phase read from it. */
-export async function phase($: EngineInterface, tool: string, since: number, expectedTests: number | undefined, log: string | undefined): Promise<Phase> {
+/**
+ * The build the shim would run. The band asks for the phase once a second, and the shim's own
+ * work is several times the build's, so a run asks for this once and runs the build directly.
+ */
+export async function builtBinary($: EngineInterface): Promise<string | undefined> {
+  const ran = await xcrew($, ['--binary-path'], 120_000).catch(() => undefined)
+  const path = ran?.stdout.trim()
+  return path ? path : undefined
+}
+
+/** The running call's log, once it appears, and the phase read from it; from `binary` when the run has it, else through the shim. */
+export async function phase($: EngineInterface, tool: string, since: number, expectedTests: number | undefined, log: string | undefined, binary?: string): Promise<Phase> {
   const args = ['phase', '--tool', tool, '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
-  return ((await run($, args, undefined, 10_000).catch(() => undefined)) as Phase | undefined) ?? {}
+  const direct = binary === undefined ? undefined : await $.process.run([binary, ...args], { timeoutMs: 10_000, env: { XCREW_ROOT: $.plugin.root } }).catch(() => undefined)
+  const stdout = direct?.stdout ?? (await xcrew($, args, 10_000).catch(() => undefined))?.stdout
+  try {
+    return stdout ? (JSON.parse(stdout) as Phase) : {}
+  } catch {
+    return {}
+  }
 }
 
 /** What `xcrew doctor` finds wrong, worst first; nothing outside an Apple-platform project. */

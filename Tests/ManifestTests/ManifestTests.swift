@@ -172,7 +172,9 @@ import XcrewCore
         let wrapper = try #require(try Self.sources().first { $0.name == "cli.ts" }).text
         let runs = wrapper.matches(of: /\$\.process\.run\(\[([^,\]]+)/).map { String($0.1) }
         #expect(!runs.isEmpty)
-        #expect(runs.allSatisfy { $0 == "`${$.plugin.root}/bin/xcrew`" })
+        // The shim, or the build the shim itself names (`--binary-path`), which the phase polls run directly.
+        #expect(runs.allSatisfy { $0 == "`${$.plugin.root}/bin/xcrew`" || $0 == "binary" })
+        #expect(wrapper.contains("['--binary-path']"))
     }
 
     @Test func onlyToolNamesAreMatchedByPattern() throws {

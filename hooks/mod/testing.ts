@@ -15,8 +15,11 @@ export function runCommand($: Engine, command: string, args = '') {
   return $.command.run({ command, args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
 }
 
-/** One call the mod made to the Swift CLI: its arguments after `bin/xcrew`, and what it piped in. */
-export type CliCall = { args: readonly string[]; stdin?: string }
+/** One call the mod made to the Swift CLI: the program it ran, its arguments, and what it piped in. */
+export type CliCall = { program: string; args: readonly string[]; stdin?: string }
+
+/** Where the stand-in shim says its build is, for `--binary-path`. */
+export const BUILT_BINARY = '/cache/0123456789abcdef/xcrew'
 
 /**
  * Stands for the Swift CLI, which does the reading the mod hands off: each `report` answers with
@@ -31,7 +34,8 @@ export function stubCli(
   const reports = [...(answers.reports ?? [])]
   on('process.run', (_, e) => {
     const args = e.argv.slice(1)
-    calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }) })
+    calls.push({ program: e.argv[0] ?? '', args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }) })
+    if (args[0] === '--binary-path') return { value: { exitCode: 0, stdout: `${BUILT_BINARY}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     const answer =
       args[0] === 'report' ? ((reports.length > 1 ? reports.shift() : reports[0]) ?? {})
       : args[0] === 'phase' ? (answers.phase?.(args) ?? {})

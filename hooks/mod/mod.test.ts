@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { callTool, stubCli, type CliCall } from './testing'
+import { BUILT_BINARY, callTool, stubCli, type CliCall } from './testing'
 
 const MALFORMED =
   "External macro implementation type 'MockableMacros.MockableMacro' could not be found; plugin for module 'MockableMacros' produced malformed response"
@@ -84,7 +84,7 @@ test('a finished run hands the server\'s text to the CLI, saying which server an
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.cli).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED }])
+  expect(seen.cli.map(({ args, stdin }) => ({ args, stdin }))).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED }])
 })
 
 test('a build failing on a killed macro plugin reaches Claude as the server reported it, with nothing retried', async ($, on) => {
@@ -584,4 +584,20 @@ test('any session-defaults answer that names the profile in use is read, not onl
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
 
   expect(statuses).toContain('build_sim · iPhone 12 · 0:03')
+})
+
+test('a run asks the shim for its build once, then runs the build directly for each phase', async ($, on) => {
+  const clock = mock.clock(on)
+  const seen = watch(on, {}, { phase: () => ({ log: LOG, phase: 'compiling App' }) })
+  on('tool.call', async () => {
+    await clock.advance(5_000)
+    return { result: {}, text: 'ok' }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
+  const phases = seen.cli.filter(call => call.args[0] === 'phase')
+  expect(phases.length).toBeGreaterThan(3)
+  expect(phases.every(call => call.program === BUILT_BINARY)).toBe(true)
 })

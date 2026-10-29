@@ -16,3 +16,6 @@ DerivedData/
 .claude-plugin/types/
 
 .DS_Store
+
+# bin/xcrew keeps its cache key here.
+/.xcrew-key

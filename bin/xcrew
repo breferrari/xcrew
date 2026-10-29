@@ -5,9 +5,20 @@
 # hooks reply on stdout.
 set -eu
 
-root=$(cd "$(dirname "$0")/.." && pwd -P)
+root=$(cd "${0%/*}/.." && pwd -P)
 cache=${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}
-key=$(cd "$root" && find Package.swift Sources -type f -name '*.swift' | LC_ALL=C sort | xargs cat | shasum | cut -c1-16)
+# Hashing every source takes most of this script's time, and the mod calls it once a second while a
+# build runs. The key is kept beside the sources and worked out again only when something under
+# them is newer: an edit, or a deletion, which changes its folder.
+stamp="$root/.xcrew-key"
+key=
+if [ -f "$stamp" ] && [ -z "$(cd "$root" && find Package.swift Sources -newer "$stamp" -print -quit 2>/dev/null)" ]; then
+    read -r key < "$stamp" || key=
+fi
+if [ -z "$key" ]; then
+    key=$(cd "$root" && find Package.swift Sources -type f -name '*.swift' | LC_ALL=C sort | xargs cat | shasum | cut -c1-16)
+    printf '%s\n' "$key" > "$stamp" 2>/dev/null || true
+fi
 binary="$cache/$key/xcrew"
 
 if [ ! -x "$binary" ]; then
@@ -43,6 +54,12 @@ touch "$cache/$key"
 if [ -n "${lock:-}" ]; then
     rm -rf "$lock"
     trap - EXIT
+fi
+
+# The mod runs the build directly on its once-a-second path, and asks here which one to run.
+if [ "${1:-}" = --binary-path ]; then
+    printf '%s\n' "$binary"
+    exit 0
 fi
 
 XCREW_ROOT=$root exec "$binary" "$@"
