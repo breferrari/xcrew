@@ -45,7 +45,7 @@ public struct SystemCommandRunner: CommandRunning {
         let status = await withTaskGroup(of: Int32?.self) { group in
             group.addTask { await exit.first { _ in true } }
             group.addTask {
-                try? await Task.sleep(for: timeout)
+                try? await Task.sleep(until: deadline, clock: .continuous)
                 return nil
             }
             let first = await group.next() ?? nil
@@ -65,7 +65,10 @@ public struct SystemCommandRunner: CommandRunning {
     /// Both pipes' text, read to end of file or until `deadline`, whichever comes first.
     static func collect(_ stdout: Drain, _ stderr: Drain, until deadline: ContinuousClock.Instant) async -> (String, String) {
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { _ = await (stdout.text, stderr.text) }
+            group.addTask {
+                await stdout.ended()
+                await stderr.ended()
+            }
             group.addTask {
                 try? await Task.sleep(until: deadline, clock: .continuous)
                 stdout.stop()
@@ -74,7 +77,7 @@ public struct SystemCommandRunner: CommandRunning {
             await group.next()
             group.cancelAll()
         }
-        return (await stdout.text, await stderr.text)
+        return (stdout.text, stderr.text)
     }
 }
 
@@ -83,7 +86,7 @@ final class Drain: Sendable {
     private struct State {
         var data = Data()
         var isEnded = false
-        var waiters: [CheckedContinuation<Data, Never>] = []
+        var waiter: CheckedContinuation<Void, Never>?
     }
 
     private let handle: FileHandle
@@ -97,30 +100,31 @@ final class Drain: Sendable {
         }
     }
 
-    /// Stops reading and hands out what has arrived; reading at end of file and giving up both end here.
+    /// Stops reading; reaching end of file and giving up on the pipe both end here.
     func stop() {
         handle.readabilityHandler = nil
-        let (waiters, data) = state.withLock { state -> ([CheckedContinuation<Data, Never>], Data) in
-            guard !state.isEnded else { return ([], state.data) }
+        let waiter = state.withLock { state -> CheckedContinuation<Void, Never>? in
             state.isEnded = true
-            defer { state.waiters = [] }
-            return (state.waiters, state.data)
+            let waiter = state.waiter
+            state.waiter = nil
+            return waiter
         }
-        waiters.forEach { $0.resume(returning: data) }
+        waiter?.resume()
     }
 
-    /// What arrived, once reading has stopped.
-    var text: String {
-        get async {
-            let data = await withCheckedContinuation { (continuation: CheckedContinuation<Data, Never>) in
-                let ended = state.withLock { state -> Data? in
-                    if state.isEnded { return state.data }
-                    state.waiters.append(continuation)
-                    return nil
-                }
-                if let ended { continuation.resume(returning: ended) }
+    /// Returns once reading has stopped.
+    func ended() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let isEnded = state.withLock { state -> Bool in
+                if !state.isEnded { state.waiter = continuation }
+                return state.isEnded
             }
-            return String(decoding: data, as: UTF8.self)
+            if isEnded { continuation.resume() }
         }
+    }
+
+    /// What has arrived so far.
+    var text: String {
+        String(decoding: state.withLock { $0.data }, as: UTF8.self)
     }
 }
