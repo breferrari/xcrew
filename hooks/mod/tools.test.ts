@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { kindOf, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
+import { buildsProject, kindOf, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
 
 const kind = (name: string) => {
   const tool = parseTool(name)
@@ -68,6 +68,25 @@ test('a shell command that regenerates the project is recognised, alone or among
     expect([command, runsGenerate(command)]).toEqual([command, true])
   }
   for (const command of ['tuist install', 'tuist edit', 'xcodegen dump', 'xcodegen version', 'echo generate', 'mytuist generate']) expect([command, runsGenerate(command)]).toEqual([command, false])
+})
+
+test('a generate counts only when its exit status is the command\'s, by any path to the generator', () => {
+  for (const command of ['tuist install && tuist generate --no-open', 'tuist install --path ios && tuist generate --no-open --path ios', '/opt/homebrew/bin/tuist generate --no-open', './bin/xcodegen generate', 'xcodegen generate 2>&1', 'tuist generate --no-open > generate.log 2>&1', 'tuist generate && echo done']) {
+    expect([command, runsGenerate(command)]).toEqual([command, true])
+  }
+  // A later command's status hides the generate's: a failed generate would read as a success.
+  for (const command of ['tuist generate --no-open 2>&1 | tail -5', 'tuist generate; echo done', 'tuist generate || true', 'tuist generate &', 'tuist generate\necho done']) {
+    expect([command, runsGenerate(command)]).toEqual([command, false])
+  }
+})
+
+test('only tools that build the project are held back after a manifest edit', () => {
+  const builds = (name: string) => {
+    const tool = parseTool(name)
+    return tool ? buildsProject(tool) : 'not an Xcode tool'
+  }
+  for (const name of ['mcp__MobileBuildMCP__build_sim', 'mcp__MobileBuildMCP__build_run_sim', 'mcp__MobileBuildMCP__test_sim', 'mcp__xcode__BuildProject', 'mcp__xcode__RunAllTests']) expect([name, builds(name)]).toEqual([name, true])
+  for (const name of ['mcp__MobileBuildMCP__clean', 'mcp__MobileBuildMCP__launch_app_sim', 'mcp__xcode__GetBuildLog']) expect([name, builds(name)]).toEqual([name, false])
 })
 
 test('a shell command that runs xcrew setup is recognised, by any path, quoted or not', () => {

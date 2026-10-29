@@ -29,11 +29,18 @@ export function mayBeManifest(path: string): boolean {
   return MANIFEST_NAME.test(path)
 }
 
-/** A shell command that regenerates the project: `tuist generate`, or `xcodegen` with its default `generate` or none. */
-const GENERATE_COMMAND = /(?:^|[\s;&|(])(?:tuist\s+generate|xcodegen(?:\s+generate)?(?!\s+\w))(?:[\s;&|)]|$)/
+/** `tuist generate`, or `xcodegen` with its default `generate` or none, by any path to the program. */
+const GENERATE_COMMAND = /(?:^|[\s;&|(])["']?(?:[^\s"']*\/)?(?:tuist["']?\s+generate|xcodegen["']?(?:\s+generate)?(?!\s+[a-z]))(?=[\s;&|)]|$)/
 
+/**
+ * Whether a shell command regenerates the project, and its exit status says whether that worked: nothing after the
+ * generate but redirections and `&&`, since a later command's status, in a pipe or after `;`, would hide a failure.
+ */
 export function runsGenerate(command: string): boolean {
-  return GENERATE_COMMAND.test(command)
+  const match = GENERATE_COMMAND.exec(command)
+  if (!match) return false
+  const rest = command.slice(match.index + match[0].length).replace(/\d*>&\d+|&&/g, ' ')
+  return !/[|;&\n]/.test(rest)
 }
 
 /** The matcher for the guard: the engine calls a hook only for the tools its matcher matches. */
@@ -83,3 +90,9 @@ export function kindOf(tool: XcodeTool): ToolKind | undefined {
   return undefined
 }
 
+
+/** Whether a call builds the project, so a stale one would build it as it was: a build or a test run, but not a clean. */
+export function buildsProject(tool: XcodeTool): boolean {
+  const kind = kindOf(tool)
+  return kind === 'test' || (kind === 'build' && !/\bclean\b/.test(wordsOf(tool.tool)))
+}

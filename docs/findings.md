@@ -190,7 +190,7 @@ After Claude edits a manifest, the generated project changes only when the gener
 
 Tuist writes only files whose content changes. Comparing a manifest's time with the project's would therefore read "stale" forever after a generate that changed nothing. So the mod marks the project from what it sees this session: an edit to a manifest marks it, and a `tuist generate` or `xcodegen generate` that succeeds clears the mark. A test runs a generate on a copy of the fixture wherever Tuist is installed, so a Tuist that starts rewriting unchanged files shows up red.
 
-The mod can tell a failed generate only by the Bash result's `isError`. The engine's types say it's set when the tool "reported an error", without naming an exit status. In this repository's session transcripts (Claude Code 2.1.312, October 29, 2026), every Bash command that exited non-zero is stored as an error result whose text starts `Exit code 1`. The mod's tests stand on that.
+The mod can tell a failed generate only by the Bash result's `isError`. The engine's types say it's set when the tool "reported an error", without naming an exit status. In this repository's session transcripts (Claude Code 2.1.312, October 29, 2026), every Bash command that exited non-zero is stored as an error result whose text starts `Exit code 1`. The mod's tests stand on that. A shell reports a pipe's or a list's last command, so a generate piped into `tail` or followed by `; echo` would look like a success even when it failed. Such a command clears nothing, and the build is refused once more.
 
 A person may regenerate in their own terminal, which the mod can't see. So the mark refuses one build and then lets the next one through, with a line saying why.
 

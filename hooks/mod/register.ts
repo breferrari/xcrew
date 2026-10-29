@@ -12,7 +12,7 @@ import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from '
 import { editedNote, letThroughNote, refusal } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
-import { FILE_EDITOR, kindOf, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
+import { buildsProject, FILE_EDITOR, kindOf, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -44,10 +44,10 @@ export const register: Register = on => {
     const described = await next(e)
     return (await isGeneratedProject($)) ? { ...described, description: describedForGenerated(described.description) } : described
   })
-  // After a manifest edit, the first build, test or run is refused with the generate command; the next goes through.
+  // After a manifest edit, the first build or test is refused with the generate command; the next goes through.
   on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const parsed = parseTool(e.tool)
-    const stale = parsed && kindOf(parsed) ? await quietly(() => read($, staleState)) : undefined
+    const stale = parsed && buildsProject(parsed) ? await quietly(() => read($, staleState)) : undefined
     if (!stale) return next(e)
     if (!stale.refused) {
       // Refused only once the mark says so: a refusal it can't record would repeat for good.

@@ -106,6 +106,21 @@ test('when the CLI can\'t answer, an edit marks nothing and builds run', async (
   expect((await build($)).deny).toBeUndefined()
 })
 
+test('a clean or a launch after a manifest edit runs, and leaves the refusal for the build', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  expect((await callTool($, 'mcp__MobileBuildMCP__clean')).deny).toBeUndefined()
+  expect((await callTool($, 'mcp__MobileBuildMCP__launch_app_sim')).deny).toBeUndefined()
+  expect((await build($)).deny).toContain(GENERATE)
+})
+
+test('a generate piped into another command clears nothing: the pipe\'s status is the last command\'s', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  await callTool($, 'Bash', { command: `${GENERATE} 2>&1 | tail -5` })
+  expect((await build($)).deny).toContain(GENERATE)
+})
+
 test('tools that only read are never refused, however stale the project', async ($, on) => {
   tuistProject(on)
   await editManifest($)

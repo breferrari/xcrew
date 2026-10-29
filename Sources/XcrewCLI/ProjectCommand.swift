@@ -28,7 +28,7 @@ struct ProjectCommand: Command {
         var answer = Answer(isGenerated: nearest != nil)
         if let manifest = invocation.arguments["manifest"], let nearest {
             let file = manifest.hasPrefix("/") ? URL(fileURLWithPath: manifest) : project.root.appending(path: manifest)
-            answer.generate = layout.manifests(reading: file, nearest: nearest)?.generateCommand
+            answer.generate = layout.command(after: file, nearest: nearest)
         }
         if invocation.arguments.has("setup") {
             do {
