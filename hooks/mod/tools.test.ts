@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { buildsProject, kindOf, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
+import { buildsProject, generatedApp, kindOf, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
 
 const kind = (name: string) => {
   const tool = parseTool(name)
@@ -93,4 +93,20 @@ test('only tools that build the project are held back after a manifest edit', ()
 test('a shell command that runs xcrew setup is recognised, by any path, quoted or not', () => {
   for (const command of ['xcrew setup', '"/plugins/xcrew/bin/xcrew" setup --app-scheme App', 'cd ios && ~/xcrew/bin/xcrew setup', "'/a b/bin/xcrew' setup", '(xcrew setup)', 'xcrew setup;echo done']) expect(runsSetup(command)).toBe(true)
   for (const command of ['xcrew doctor', 'xcrewsetup', 'echo xcrew setups', 'myxcrew setup']) expect(runsSetup(command)).toBe(false)
+})
+
+test('the app a generate names is read from its path option, in any spelling, and none is named without one', () => {
+  const cases: [string, string | undefined][] = [
+    ['tuist generate --no-open --path apps/b', 'apps/b'],
+    ['tuist generate -p ./apps/b/ --no-open', 'apps/b'],
+    ["tuist generate --no-open --path 'my apps/b'", 'my apps/b'],
+    ['tuist generate --path=apps/b', 'apps/b'],
+    ['tuist install --path ios && tuist generate --no-open --path ios', 'ios'],
+    ['xcodegen generate --spec ios/project.yml', 'ios'],
+    ['xcodegen -s ./ios/project.yml', 'ios'],
+    ['tuist generate --no-open', undefined],
+    ['cd ios && tuist generate --no-open', undefined],
+    ['xcodegen generate', undefined],
+  ]
+  for (const [command, app] of cases) expect([command, generatedApp(command)]).toEqual([command, app])
 })

@@ -9,7 +9,7 @@ import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
 import { describedForGenerated, REASON } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
-import { editedNote, letThroughNote, refusal } from './regenerate'
+import { afterGenerate, editedNote, letThroughNote, marked, refusal } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { buildsProject, FILE_EDITOR, kindOf, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
@@ -51,19 +51,19 @@ export const register: Register = on => {
     if (!stale) return next(e)
     if (!stale.refused) {
       // Refused only once the mark says so: a refusal it can't record would repeat for good.
-      if (await markStale($, { ...stale, refused: true })) return { deny: refusal(stale.generate) }
+      if (await markStale($, () => ({ ...stale, refused: true }))) return { deny: refusal(stale.generates) }
       return next(e)
     }
-    await markStale($, null)
+    await markStale($, () => null)
     const result = await next(e)
-    return result.deny === undefined ? withContext(result, letThroughNote(stale.generate)) : result
+    return result.deny === undefined ? withContext(result, letThroughNote(stale.generates)) : result
   }).catch(async ($, e, next) => next(e))
   on('tool.call', { tool: FILE_EDITOR }, async ($, e, next) => {
     const result = await next(e)
     if ((e.tool !== 'Write' && e.tool !== 'Edit') || result.deny !== undefined || result.isError || !mayBeManifest(e.file_path)) return result
     const generate = generateOf(await answer($, ['project', '--manifest', e.file_path], 10_000))
     if (!generate) return result
-    return (await markStale($, { generate, refused: false })) ? withContext(result, editedNote(generate)) : result
+    return (await markStale($, stale => marked(stale, generate))) ? withContext(result, editedNote(generate)) : result
   }).catch(async ($, e, next) => next(e))
   on('tool.call', async ($, e, next) => {
     const parsed = parseTool(e.tool)
@@ -224,14 +224,14 @@ export const register: Register = on => {
     const result = await next(e)
     if (e.tool !== 'Bash') return result
     if (runsSetup(e.command)) void loadProblems($, true).catch(() => undefined)
-    if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, null)
+    if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, stale => afterGenerate(stale, e.command))
     return result
   }).catch(async ($, e, next) => next(e))
 }
 
-/** Records whether the project is stale; false when the state couldn't be written. */
-function markStale($: EngineInterface, stale: StaleProject | null): Promise<boolean> {
-  return quietly(() => update($, staleState, () => stale).then(() => true)).then(Boolean)
+/** Changes the marks of a stale project; false when the state couldn't be written. */
+function markStale($: EngineInterface, change: (stale: StaleProject | null) => StaleProject | null): Promise<boolean> {
+  return quietly(() => update($, staleState, change).then(() => true)).then(Boolean)
 }
 
 /** Starts a program of the CLI's: the mod's one process. */

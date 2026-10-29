@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- In a Tuist or XcodeGen project, after Claude edits a manifest, the next build or test, or a run that builds first, is refused once with the command that regenerates the project, such as `tuist generate --no-open`, so it doesn't build the project as it was. A generate that succeeds lets builds run again; if you generated in your own terminal, the next attempt goes through. After a change to `Tuist/Package.swift`, the command runs `tuist install` first. A source file that only shares a manifest's name, like a `Project.swift` model, doesn't count.
+- In a Tuist or XcodeGen project, after Claude edits a manifest, the next build or test, or a run that builds first, is refused once with the command that regenerates the project, such as `tuist generate --no-open`, so it doesn't build the project as it was. With several Tuist apps in one repository, each app edited needs its own generate, and the refusal names every one still to run. A generate that succeeds lets builds run again; if you generated in your own terminal, the next attempt goes through. After a change to `Tuist/Package.swift`, the command runs `tuist install` first. A source file that only shares a manifest's name, like a `Project.swift` model, doesn't count.
 
 ## 0.8.6 — 2026-10-29
 

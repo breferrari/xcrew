@@ -102,3 +102,20 @@ export function buildsProject(tool: XcodeTool): boolean {
   if (kind === 'run') return !/\blaunch\b/.test(words)
   return kind === 'test'
 }
+
+/** Tuist's option naming the app to generate, or XcodeGen's naming the spec, whose folder is the app's. */
+const APP_OPTION = /(?:^|\s)(--path|-p|--spec|-s)(?:=|\s+)('[^']*'|"[^"]*"|[^\s;&|]+)/
+
+/**
+ * The app a command's generate is for, as its path from the root: `apps/b` for `--path ./apps/b/`. Nothing when it
+ * names none, so it may have run anywhere: at the root, or in an app after a `cd`.
+ */
+export function generatedApp(command: string): string | undefined {
+  const match = GENERATE_COMMAND.exec(command)
+  if (!match) return undefined
+  const [, option, value] = APP_OPTION.exec(command.slice(match.index + match[0].length).split(/[;&|\n]/)[0] ?? '') ?? []
+  if (!option || !value) return undefined
+  const path = value.replace(/^(['"])(.*)\1$/, '$2').replace(/^\.\//, '')
+  const folder = (option === '--spec' || option === '-s' ? path.replace(/\/?[^/]*$/, '') : path).replace(/\/+$/, '')
+  return folder === '' || folder === '.' ? undefined : folder
+}

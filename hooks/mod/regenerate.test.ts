@@ -135,3 +135,46 @@ test('running the app through the Xcode MCP builds it first, so it is refused on
   await editManifest($)
   expect((await callTool($, 'mcp__MobileBuildMCP__launch_app_sim')).deny).toBeUndefined()
 })
+
+// MARK: Two Tuist apps in one repository
+
+const APPS = {
+  '/work/Repo/apps/a/Project.swift': 'tuist generate --no-open --path apps/a',
+  '/work/Repo/apps/b/Project.swift': 'tuist generate --no-open --path apps/b',
+} as const
+
+/** A repository with two Tuist apps: the CLI names each app's own generate for an edit to its manifest. */
+function twoApps(on: On): void {
+  mock.store(on)
+  stubCli(on, { project: args => ({ isGenerated: true, ...Object.fromEntries(Object.entries(APPS).filter(([file]) => args.includes(file)).map(([, generate]) => ['generate', generate])) }) })
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+}
+
+const editBoth = async (tool: Parameters<typeof callTool>[0]) => {
+  for (const file of Object.keys(APPS)) await callTool(tool, 'Edit', { file_path: file, old_string: 'a', new_string: 'b' })
+}
+
+test('with both apps edited, the refusal names each app\'s generate', async ($, on) => {
+  twoApps(on)
+  await editBoth($)
+  const refused = await build($)
+  for (const generate of Object.values(APPS)) expect(refused.deny).toContain(`\`${generate}\``)
+})
+
+test('generating one app leaves the other\'s mark, and generating that one too lets the build run', async ($, on) => {
+  twoApps(on)
+  await editBoth($)
+  await callTool($, 'Bash', { command: APPS['/work/Repo/apps/b/Project.swift'] })
+  const refused = await build($)
+  expect(refused.deny).toContain(APPS['/work/Repo/apps/a/Project.swift'])
+  expect(refused.deny).not.toContain(APPS['/work/Repo/apps/b/Project.swift'])
+  await callTool($, 'Bash', { command: APPS['/work/Repo/apps/a/Project.swift'] })
+  expect((await build($)).deny).toBeUndefined()
+})
+
+test('a generate that names no app may have run in any of them, after a cd: it clears every mark', async ($, on) => {
+  twoApps(on)
+  await editBoth($)
+  await callTool($, 'Bash', { command: 'cd apps/a && tuist generate --no-open' })
+  expect((await build($)).deny).toBeUndefined()
+})
