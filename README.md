@@ -179,7 +179,8 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 **Updating**
 
 - **Automatically:** `/plugin` → **Marketplaces** → `breferrari` → **Enable auto-update**. Claude Code leaves it off for marketplaces like this one.
-- **By hand:** `claude plugin marketplace update breferrari && claude plugin update xcrew@breferrari`, or `mcs sync`.
+- **By hand:** `claude plugin marketplace update breferrari && claude plugin update xcrew@breferrari`.
+- **With mcs:** `mcs check-updates` says when a new version is out, and `mcs update` installs it.
 - `xcrew doctor` says when a newer release is out. The CLI rebuilds once for the new version.
 
 **Removing**

@@ -91,8 +91,15 @@ import XcrewCore
     @Test func everyDoctorCheckIsAnMCSCheck() async throws {
         let techpack = try text("techpack.yaml")
         let listed = techpack.matches(of: /command: (mcs\/checks\/[\w.-]+\.sh)/).map { String($0.1) }
-        #expect(listed.count == Doctor.checks.count)
-        for check in Doctor.checks {
+        let checks = Doctor.checks.filter { !$0.isCoveredByMCS }
+        #expect(listed.count == checks.count)
+        for check in Doctor.checks where check.isCoveredByMCS {
+            let wrapper = "mcs/checks/\(check.id.replacingOccurrences(of: "/", with: "--")).sh"
+            #expect(!listed.contains(wrapper), "\(check.id): mcs does this itself, so the techpack leaves it out")
+            #expect(!FileManager.default.fileExists(atPath: Self.repository.appending(path: wrapper).path), "\(wrapper)")
+        }
+        #expect(Doctor.check(id: "xcrew/up-to-date")?.isCoveredByMCS == true)
+        for check in checks {
             let wrapper = "mcs/checks/\(check.id.replacingOccurrences(of: "/", with: "--")).sh"
             #expect(listed.contains(wrapper), "\(check.id) missing from techpack.yaml")
             #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: wrapper).path), "\(wrapper)")
