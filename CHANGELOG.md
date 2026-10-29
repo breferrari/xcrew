@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The session briefing names the simulators booted now, when any are, so Claude reuses one rather than booting another.
 - The session briefing tells Claude to leave DerivedData alone unless you ask, and to report a build that looks corrupted instead. It also says to build, test and drive simulators through MobileBuildMCP rather than `xcodebuild` or `simctl` in Bash, which stays for your own build scripts and what no tool covers, such as archiving.
 - A large test result that Claude Code saved to a file is still read back and shortened if a later Claude Code words its notice differently: xcrew finds the file by its path rather than the notice's sentence.
 - A build or test call's row in the transcript shows its outcome, as the line above the prompt does: `✓ test_sim · 1:12 · 959 passed`, or the first failures and how many more. ctrl+o shows the result Claude read, which is unchanged.

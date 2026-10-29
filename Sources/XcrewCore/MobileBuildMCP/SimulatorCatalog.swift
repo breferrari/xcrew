@@ -11,6 +11,8 @@ public struct SimulatorCatalog: Sendable {
         public var udid: String? = nil
         /// Its device type, as in `com.apple.CoreSimulator.SimDeviceType.iPhone-17`.
         public var deviceType: String? = nil
+        /// `Booted`, `Shutdown`, or another of `simctl`'s states.
+        public var state: String? = nil
 
         var isIPhone: Bool { platform == "iOS" && name.hasPrefix("iPhone") }
     }
@@ -89,9 +91,16 @@ public struct SimulatorCatalog: Sendable {
             let version = known[runtime]?.version ?? pieces.dropFirst().prefix { Int($0) != nil }.joined(separator: ".")
             return entries.compactMap { entry in
                 guard entry["isAvailable"] as? Bool ?? true, let name = entry["name"] as? String else { return nil }
-                return Device(name: name, runtimeVersion: version, platform: platform, udid: entry["udid"] as? String, deviceType: entry["deviceTypeIdentifier"] as? String)
+                return Device(name: name, runtimeVersion: version, platform: platform, udid: entry["udid"] as? String, deviceType: entry["deviceTypeIdentifier"] as? String, state: entry["state"] as? String)
             }
         }
+    }
+
+    /// The simulators booted or booting now, or none when `simctl` doesn't answer within `timeout`. Its `booted` filter matches each
+    /// device's description, so a device's own `state` decides.
+    public static func booted(using runner: any CommandRunning, timeout: Duration) async -> [Device] {
+        let listed = await runner.run("xcrun", "simctl", "list", "devices", "booted", "--json", timeout: timeout)
+        return SimulatorCatalog(json: Data(listed.stdout.utf8)).devices.filter { ["Booted", "Booting"].contains($0.state) }
     }
 
     public var names: Set<String> { Set(devices.map(\.name)) }
