@@ -45,7 +45,7 @@ public struct Project: Sendable, Equatable {
     var searchDepth: Int { ProjectLayout.depth(of: self, reach: .repository) }
 
     /// Whether Tuist generates this project, so the macro-copy-phase check looks for its derived projects.
-    public var isTuistProject: Bool { layout(.anywhereButHome).generator?.kind == .tuist }
+    public var isTuistProject: Bool { layout(.anywhereButHome).generator?.generator == .tuist }
 
     /// Whether Tuist or XcodeGen generates this project, so its project files are rewritten on each generate.
     public var isGenerated: Bool { layout(.anywhereButHome).generator != nil }

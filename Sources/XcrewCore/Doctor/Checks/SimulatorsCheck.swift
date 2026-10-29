@@ -7,7 +7,7 @@ struct SimulatorsCheck: Check {
 
     func run(_ context: CheckContext) async -> CheckResult {
         guard let yaml = try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8) else {
-            return .skip(context.project.isApplePlatformProject ? "no config" : "not an Apple project")
+            return .skip(context.project.layout(.anywhereButHome).isApplePlatform ? "no config" : "not an Apple project")
         }
         let wanted = ConfigRenderer.simulatorNames(in: yaml)
         guard !wanted.isEmpty else { return .skip("no simulators named") }

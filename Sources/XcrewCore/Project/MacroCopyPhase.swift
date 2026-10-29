@@ -13,10 +13,10 @@ public enum MacroCopyPhase {
     /// Names of the generated projects in `project` that still have the phase.
     public static func projects(in project: Project) -> [String] {
         // Only Tuist generated the phase, and the walk over a large tree takes most of a second.
-        guard let generator = project.layout(.anywhereButHome).generator, generator.kind == .tuist else { return [] }
-        let tuistDerived = generator.root.appending(path: "Tuist/.build/tuist-derived/Projects")
-        let candidates = projectFiles(under: project.root, depth: 0)
-            + children(of: tuistDerived).flatMap { projectFiles(under: $0, depth: maxDepth - 1) }
+        let tuistFolders = project.layout(.anywhereButHome).tuistFolders
+        guard !tuistFolders.isEmpty else { return [] }
+        let derived = tuistFolders.flatMap { children(of: $0.appending(path: "Tuist/.build/tuist-derived/Projects")) }
+        let candidates = projectFiles(under: project.root, depth: 0) + derived.flatMap { projectFiles(under: $0, depth: maxDepth - 1) }
         return candidates.filter(containsPhase).map {
             ($0.deletingLastPathComponent().lastPathComponent as NSString).deletingPathExtension
         }.sorted()

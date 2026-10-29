@@ -24,14 +24,33 @@ struct SetupCommand: Command {
         "      write .mobilebuildmcp/config.yaml; simulators default to the newest iPhone installed",
     ]
 
+    /// The container to build when none is named: the nearest, and in a generated project the one beside its manifests,
+    /// since a module's own project isn't the app. Below the root, two folders' containers equally near are a question.
+    static func defaultContainer(in project: Project) throws -> String {
+        let layout = project.layout(.anywhereButHome)
+        let containers = layout.containers
+        let manifests = layout.generator
+        let candidates = manifests.map { manifests in containers.filter { ($0 as NSString).deletingLastPathComponent == manifests.path } } ?? containers
+        guard let nearest = candidates.first else {
+            if let manifests, !containers.isEmpty {
+                throw UsageError(description: "no workspace beside the manifests in \(manifests.path.isEmpty ? "the project root" : manifests.path) yet: generate it first, or pass --container")
+            }
+            throw UsageError(description: "no .xcworkspace or .xcodeproj in \(project.root.path) or a folder or two below it: generate it first, or pass --container")
+        }
+        // A workspace and the project beside it are one choice; containers come workspaces first.
+        let folders = candidates.reduce(into: [String: String]()) { $0[($1 as NSString).deletingLastPathComponent] = $0[($1 as NSString).deletingLastPathComponent] ?? $1 }
+        if folders.count > 1, nearest.contains("/") {
+            throw UsageError(description: "several projects a folder or two down (\(folders.values.sorted().joined(separator: ", "))): pass --container")
+        }
+        return nearest
+    }
+
     func run(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         func answer(_ option: String) -> String? {
             invocation.arguments[option] ?? Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") }
         }
-        guard let container = answer("container") ?? context.project.xcodeContainers.first else {
-            throw UsageError(description: "no .xcworkspace or .xcodeproj in \(context.project.root.path) or a folder or two below it: generate it first, or pass --container")
-        }
+        let container = try answer("container") ?? Self.defaultContainer(in: context.project)
         var testSimulator = answer("test-simulator")
         if testSimulator == nil { testSimulator = await SimulatorCatalog.load(using: context.runner).defaultIPhone }
         guard let testSimulator else {

@@ -5,11 +5,11 @@
 - In a git repository, an app whose Xcode project or Tuist or XcodeGen manifests sit a folder or two below the root (`ios/`, `apps/ios/`) now counts as an Apple-platform project: Claude gets the session briefing and the band shows the doctor's problems there.
 - `xcrew <command> --help` prints that command's usage, and an option or word a command doesn't take is refused with exit 64 instead of being ignored: `xcrew doctor --help`, `-l` or `problems` used to run every check.
 - In a git repository, an app in a folder whose name has a dot (`apps/MyApp.iOS/`) is found, and a project opened through a symlink is found again.
-- `xcrew setup` without `--container` finds the workspace or project a folder or two below the root, the same one the session briefing found.
-- A source file named `Project.swift` or `Workspace.swift` below the root no longer marks a classic project as Tuist-generated, so Claude can edit its project files again; below the root only `Tuist.swift`, a `Tuist/` folder or `project.yml` count.
-- The doctor finds Tuist's old macro copy phase in a Tuist app kept in a subfolder (`ios/Tuist/`), not only at the root.
-- Outside an Apple-platform project, `xcrew doctor` skips the two project checks (`not an Apple project`) instead of failing them and suggesting setup.
-- The project search never walks your home folder, however its path is spelled.
+- `xcrew setup` without `--container` finds the workspace or project a folder or two below the root. In a generated project it takes the one beside the manifests, and says `generate it first` when that isn't there yet rather than picking a module's project. When two folders hold projects equally near (`apps/ios/`, `apps/macos/`), it names them and asks for `--container` instead of picking one.
+- A source file named `Project.swift` or `Workspace.swift` below the root no longer marks a classic project as Tuist-generated, so Claude can edit its project files again. Below the root, those two count only when they import `ProjectDescription`, so a Tuist app found by its git root alone is still guarded.
+- The doctor finds Tuist's old macro copy phase in every Tuist app in the project, including one kept in a subfolder (`ios/Tuist/`), not only at the root.
+- Outside an Apple-platform project, `xcrew doctor` skips the two project checks (`not an Apple project`) instead of failing them and suggesting setup. An app a folder or two down still counts, in a git repository or not.
+- The project search never walks your home folder, however its path is spelled and wherever it sits below the folder Claude Code started in.
 
 ## 0.7.3 — 2026-10-29
 

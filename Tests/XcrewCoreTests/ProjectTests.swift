@@ -64,6 +64,7 @@ import XcrewTestSupport
         let folder = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj", "ios/Tuist.swift"]).root
         let link = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
+        defer { try? FileManager.default.removeItem(at: link) }
         let project = Project(root: folder, home: link)
         #expect(!project.isApplePlatformProject)
         #expect(!project.isGenerated)
@@ -96,6 +97,7 @@ import XcrewTestSupport
         let folder = Project.temporary(containing: [".git", "App.xcodeproj", "apps/ios/Tuist.swift"]).root
         let link = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
+        defer { try? FileManager.default.removeItem(at: link) }
         let project = Project(root: link)
         #expect(project.isApplePlatformProject)
         #expect(project.isGenerated)
@@ -143,6 +145,21 @@ import XcrewTestSupport
         #expect(!project.isTuistProject)
     }
 
+    @Test func aTuistAppRootedByGitIsGenerated() {
+        // Tuist finds its root by Tuist/, Tuist.swift or .git, so its manifests may stand below the root on their own.
+        let project = Project.temporary(containing: [".git"])
+        project.write("import ProjectDescription\n\nlet workspace = Workspace(name: \"App\", projects: [\"Projects/*\"])\n", to: "ios/Workspace.swift")
+        project.write("import ProjectDescriptionHelpers\n\nlet project = Project.app(name: \"App\")\n", to: "ios/Projects/App/Project.swift")
+        #expect(project.isGenerated)
+        #expect(project.isTuistProject)
+    }
+
+    @Test func aProjectSwiftThatOnlyMentionsProjectDescriptionDoesntCount() {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("// Unlike ProjectDescription's Project, this one is ours.\nlet note = \"import ProjectDescription\"\nstruct Project {}\n", to: "App/Project.swift")
+        #expect(!project.isGenerated)
+    }
+
     @Test func aNestedTuistAppOutsideGitIsStillGenerated() {
         // A miss here lets Claude edit a project the next generate overwrites.
         #expect(Project.temporary(containing: ["ios/Tuist.swift"]).isGenerated)
@@ -157,6 +174,13 @@ import XcrewTestSupport
         }
         #expect(!home.isGenerated)
         #expect(!home.isApplePlatformProject)
+    }
+
+    @Test func aHomeFolderBelowTheRootIsntWalked() {
+        // Claude Code started in /Users, or /, would otherwise list Desktop, Documents and Downloads.
+        let folder = Project.temporary(containing: ["me/ios/Tuist.swift"])
+        let project = Project(root: folder.root, home: folder.root.appending(path: "me"))
+        #expect(!project.isGenerated)
     }
 
     @Test func dependenciesDontCount() {
