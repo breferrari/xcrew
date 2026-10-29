@@ -1,6 +1,6 @@
 # A tag v<version> releases Xcrew. Claude Code keeps people on a plugin's version until it
 # changes, so the tag must match the version the plugin and the CLI declare. Installs follow the
-# `stable` branch, which this workflow alone moves, to the tag, once everything else passed.
+# `stable` branch, which this workflow alone moves, to the tag, once every check on it passed.
 name: Release
 
 on:
@@ -41,14 +41,19 @@ jobs:
             echo "$check: $conclusion"
             [ "$conclusion" = success ] || { echo "$check didn't pass on $pr_head"; exit 1; }
           done
+      # Before the release is published, so `xcrew doctor` never names a release installs can't reach yet. GitHub
+      # makes the update only as a fast-forward (`force=false`), and the ruleset on `stable` refuses anything else;
+      # moving it to where it already is does nothing, so a rerun gets past it.
+      - name: Point installs at this release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/stable" -f sha="$GITHUB_SHA" -F force=false --silent
+      # A rerun finds the release already published and goes on.
       - name: Publish the release with its changelog entry
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 && exit 0
           tag=${GITHUB_REF_NAME#v}
           awk -v v="$tag" '$0 ~ "^## "v" " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
           gh release create "$GITHUB_REF_NAME" --title "Xcrew $tag" --notes-file notes.md
-      # Last, so a refused tag never moves it and a crash leaves it on the last good release. A plain push only
-      # fast-forwards, and the ruleset on `stable` refuses anything else.
-      - name: Point installs at this release
-        run: git push origin "$GITHUB_SHA:refs/heads/stable"

@@ -21,9 +21,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           read -r tag published <<< "$(gh release view --json tagName,publishedAt --jq '.tagName + " " + .publishedAt')"
-          stable=$(git ls-remote origin refs/heads/stable | cut -f1)
-          tagged=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" | tail -1 | cut -f1)
-          scripts/marketplace-ref.sh "$tag" "$published" "$(date -u +%s)" "$stable" "$tagged" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$tag...stable" -q .status || true)
+          scripts/stable-check.sh "$tag" "$published" "$(date -u +%s)" "$status" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
         shell: bash
       - uses: actions/setup-node@v5
         with:
@@ -38,6 +37,8 @@ jobs:
           brew install getsentry/xcodebuildmcp/mobilebuildmcp
           claude --version
           mobilebuildmcp --version
+      - name: Claude Code still updates a plugin that follows a branch by its version
+        run: scripts/stable-follows.sh 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       - name: Swift tests
         run: swift test
       - name: Plugin validation and mod tests

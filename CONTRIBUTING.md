@@ -67,7 +67,7 @@ After a release, check that a fresh install lands on the tag without touching yo
 
 Before a release that changes what Claude sees from a build or test, run the checks in [docs/live-check.md](docs/live-check.md) in a real project.
 
-Between releases, `main` moves ahead of the version people have installed; that's expected. The marketplace installs the tagged release, never `main`.
+Between releases, `main` moves ahead of the version people have installed; that's expected. The marketplace installs the `stable` branch, which holds the latest release, never `main`.
 
 ## Reporting a problem
 

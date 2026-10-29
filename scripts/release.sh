@@ -112,12 +112,13 @@ if ! gh run watch "$run" --exit-status >/dev/null; then
   exit 1
 fi
 
-# The workflow's last step moved stable to the tag: installs get it from there.
-tag_commit=$(git rev-parse "v$version^{commit}")
-stable=$(git ls-remote origin refs/heads/stable | cut -f1)
-if [ "$stable" != "$tag_commit" ]; then
-  echo "release: v$version is published but stable is at ${stable:-nothing}, not $tag_commit, so installs don't get it yet" >&2
-  echo "release: rerun the workflow's last step with: gh run rerun $run, or push it: git push origin $tag_commit:refs/heads/stable" >&2
-  exit 1
-fi
+# The workflow moved stable to the tag before publishing: installs get it from there, or from a later release.
+slug=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+case $(gh api "repos/$slug/compare/v$version...stable" -q .status) in
+  identical | ahead) ;;
+  *)
+    echo "release: v$version is published, but stable doesn't include it, so installs don't get it yet" >&2
+    echo "release: rerun the workflow, which moves stable before publishing: gh run rerun $run" >&2
+    exit 1 ;;
+esac
 gh release view "v$version" --json url -q .url

@@ -244,9 +244,10 @@ import Testing
         #expect(ci.components(separatedBy: "XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed").count - 1 == 2)
     }
 
-    /// Only the weekly canary can tell an install pull request that's pending from one that was abandoned, and only the
-    /// newest Claude Code can say xcrew still reads its saved-result notice, whose wording isn't documented.
-    @Test(arguments: ["scripts/marketplace-ref.sh ", "scripts/saved-notice.sh "])
+    /// Only the weekly canary can tell a `stable` still settling after a release from one left behind, and only the
+    /// newest Claude Code can say xcrew still reads its saved-result notice, whose wording isn't documented, and still
+    /// updates a plugin that follows a branch by its version.
+    @Test(arguments: ["scripts/stable-check.sh ", "scripts/saved-notice.sh ", "scripts/stable-follows.sh "])
     func theCanaryRunsEachUpstreamCheck(_ script: String) throws {
         #expect(try text(".github/workflows/canary.yml").contains(script))
     }
@@ -376,18 +377,30 @@ import Testing
         #expect(XcrewUpdateCheck.latestRelease == "https://api.github.com/repos/\(repository)/releases/latest")
     }
 
-    /// The release workflow moves `stable` last, only after every check and the publish passed, as a fast-forward, with
-    /// write access granted to that job alone: a refused tag never moves it, and a crashed release leaves it on the last
-    /// good tag.
+    /// The release workflow moves `stable` only after every check on the tag passed, and before it publishes, so
+    /// `xcrew doctor` never names a release installs can't reach. GitHub makes the move only as a fast-forward, and
+    /// write access is granted to that job alone; a rerun gets past both steps.
     @Test func onlyAnAcceptedReleaseMovesStable() throws {
         let release = try text(".github/workflows/release.yml")
         #expect(!release.contains("\npermissions:"), "permissions belong to the job, not the workflow")
-        #expect(release.contains("    permissions:\n      contents: write"))
+        #expect(release.contains(#/\n    permissions:\n(?:      \S.*\n)*      contents: write\n/#))
         let steps = release.components(separatedBy: "\n      - ")
-        let last = try #require(steps.last)
-        #expect(last.contains(#"git push origin "$GITHUB_SHA:refs/heads/stable""#))
-        #expect(steps.dropLast().contains { $0.contains("gh release create") })
-        #expect(!release.contains("--force") && !release.contains(":+") && !release.contains(" +$") && !release.contains("continue-on-error"))
+        let move = try #require(steps.firstIndex { $0.contains("refs/heads/stable") })
+        #expect(steps[move].contains(#"gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/stable" -f sha="$GITHUB_SHA" -F force=false"#))
+        #expect(steps[..<move].contains { $0.contains("is what its pull request tested") })
+        let publish = try #require(steps.firstIndex { $0.contains("gh release create") })
+        #expect(publish > move)
+        #expect(steps[publish].contains(#"gh release view "$GITHUB_REF_NAME""#))
+        for forced in ["force=true", "--force", #""+"#, "continue-on-error"] { #expect(!release.contains(forced), "\(forced)") }
+    }
+
+    /// Every place that reads or moves the branch installs follow names the one the marketplace does.
+    @Test(arguments: [".github/workflows/release.yml", ".github/workflows/canary.yml", "scripts/release.sh"])
+    func everyPlaceNamesTheBranchInstallsFollow(_ file: String) throws {
+        let plugins = try #require(try json(".claude-plugin/marketplace.json")["plugins"] as? [[String: Any]])
+        let branch = try #require((plugins.first?["source"] as? [String: String])?["ref"])
+        let text = try text(file)
+        #expect(text.contains("refs/heads/\(branch)") || text.contains("...\(branch)"), "\(file)")
     }
 }
 
