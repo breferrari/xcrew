@@ -23,7 +23,7 @@ cd xcrew
 swift test                # CLI, core, shim and manifest-parity tests
 claude plugin test .      # the mod's tests, against Claude Code's own engine
 claude plugin validate .
-mcs pack validate .       # when mcs is installed
+mcs pack validate .       # when the mcs CLI is installed
 claude --plugin-dir .     # try your checkout in a real session
 scripts/typecheck.sh      # the mod's types; needs that session once
 ```

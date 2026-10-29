@@ -55,7 +55,7 @@ import XcrewTestSupport
 
     @Test func projectConfigCheck() async {
         let project = Project.temporary(containing: ["A.xcworkspace"])
-        #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .fail)
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup (or, with the mcs CLI, mcs sync)"))
 
         project.write("enabledWorkflows:\n  - simulator\n", to: ".mobilebuildmcp/config.yaml")
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .warn)

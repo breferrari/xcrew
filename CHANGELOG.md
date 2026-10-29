@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `xcrew doctor`'s fix for a missing MobileBuildMCP config now says "the mcs CLI": on a Mac with Mono, a bare `mcs` is Mono's C# compiler.
+
 ## 0.8.1 — 2026-10-29
 
 - Xcrew builds with Swift 6.2 (Xcode 26.0) again, the oldest toolchain it supports. Since 0.7.2, one line in how it reads a test run needed Swift 6.3 to compile, so the first build failed on Xcode 26.0 and 26.0.1.
