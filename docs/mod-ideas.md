@@ -49,16 +49,16 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 | ~~Slow-run alert~~ | Shipped: `(2× its usual 1:50)` in the toast and the band | | | | |
 | ~~Done while you were away~~ | Shipped: runs of a minute or more notify, through the person's own notification settings | | | | |
 | ~~Durations from the servers~~ | Shipped: runs are timed by MobileBuildMCP's `durationMs` and the Xcode MCP's `elapsedTime` where they report one | | | | |
-| ~~Failure pane~~ | Shipped: `/xcrew failures` opens every failing test and compile error of the last failing run, with message and location | | | | |
-| Exact Xcode MCP progress | `BuildProject ━━━━━━╸─ 836 / 850` | Band | A proxy between Claude Code and `xcrun mcpbridge` that passes every message through and copies progress notifications to a file the mod reads | L | It sits in every Xcode MCP call's path, so it needs exact forwarding and no added latency. First check the notifications carry `progress` and `total`, not only text |
+| ~~Failure pane~~ | Shipped: `/xcrew failures` opens every failing test and compile error of the last failing run, with message and location; the band points to it after a failing run. It opens only when asked: docked in a half-screen terminal it takes a third of the width | | | | |
+| Exact Xcode MCP progress ([#81](https://github.com/breferrari/xcrew/issues/81)) | `BuildProject ━━━━━━╸─ 836 / 850` | Band | A proxy between Claude Code and `xcrun mcpbridge` that passes every message through and copies progress notifications to a file the mod reads | L | It sits in every Xcode MCP call's path, so it needs exact forwarding and no added latency. First check the notifications carry `progress` and `total`, not only text |
 | ~~Smaller test results for Claude~~ | Shipped: a result Claude Code saved for being too large reaches Claude without its per-test list (122 KB → 2.5 KB) | | | | |
 | ~~Report: MobileBuildMCP's per-test list is always in its structured result~~ | Reported: getsentry/MobileBuildMCP#564 | | | | |
 | ~~Report: MobileBuildMCP drops a test from its list~~ | Reported: getsentry/MobileBuildMCP#563 | | | | |
 | ~~Test failures without `file:line`~~ | Shipped in the mod: each failure's location read from the result bundle (`xcresulttool get test-results test-details`), since xcodebuild logs none for tests on parallel clones | | | | |
 | ~~Crash stacks~~ | Shipped: a crash's exception and top frames, from the crash log the result bundle attaches; skipped tests' reasons too | | | | |
 | ~~One compile error counted twice~~ | Handled in the mod: the caret line is dropped and the count corrected | | | | |
-| Shorter compiler warnings | A warning repeated across files, or a long deprecation message, cut to one line with a count: `'oldAPI()' is deprecated: use newAPI() (2×, LoginTests.swift:12, :24)` | Result | The result's Warnings section | S | In a compact test result, two deprecation warnings were ~900 of ~1,500 characters. Keep the first full message so the fix is still named |
-| Restyled tool rows | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
+| Shorter compiler warnings ([#77](https://github.com/breferrari/xcrew/issues/77)) | A warning repeated across files, or a long deprecation message, cut to one line with a count: `'oldAPI()' is deprecated: use newAPI() (2×, LoginTests.swift:12, :24)` | Result | The result's Warnings section | S | In a compact test result, two deprecation warnings were ~900 of ~1,500 characters. Keep the first full message so the fix is still named |
+| Restyled tool rows ([#80](https://github.com/breferrari/xcrew/issues/80)) | A build call's row in the transcript shows `✓ 1:12 · AVDPortfolio` instead of raw output | `ToolResult` render site | Result | M | Must keep the raw output reachable; check how `ToolResult` rewriting behaves in VS Code |
 
 ### Health and setup
 
@@ -81,8 +81,8 @@ Effort: **S** a day or less, **M** a few days, **L** more, or needs research fir
 
 | Idea | Looks like | Surface | Data | Effort | Open questions |
 | --- | --- | --- | --- | --- | --- |
-| Tool descriptions that route | Shipped for `XcodeWrite` in generated projects. Build tools saying which server to prefer is still open | `tool.describe` | — | S | Could replace part of the session briefing, so routing costs no context until a tool loads |
-| Explain-don't-refuse guard | `XcodeWrite` held with "This rewrites the generated project. Use Write instead? [Write it] [Cancel]" | `$.ui.ask` | — | S | Whether a held call beats a plain denial |
+| Tool descriptions that route ([#78](https://github.com/breferrari/xcrew/issues/78)) | Shipped for `XcodeWrite` in generated projects. Build tools saying which server to prefer is still open | `tool.describe` | — | S | Could replace part of the session briefing, so routing costs no context until a tool loads |
+| Explain-don't-refuse guard ([#79](https://github.com/breferrari/xcrew/issues/79)) | `XcodeWrite` held with "This rewrites the generated project. Use Write instead? [Write it] [Cancel]" | `$.ui.ask` | — | S | Whether a held call beats a plain denial |
 
 ### Commands
 
