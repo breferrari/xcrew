@@ -3,7 +3,7 @@
 ## Unreleased
 
 - In a git repository, an app whose Xcode project or Tuist or XcodeGen manifests sit a folder or two below the root (`ios/`, `apps/ios/`) now counts as an Apple-platform project: Claude gets the session briefing and the band shows the doctor's problems there.
-- `xcrew <command> --help` prints that command's usage, and an option a command doesn't know is refused with exit 64 instead of being ignored: `xcrew doctor --help` used to run every check.
+- `xcrew <command> --help` prints that command's usage, and an option or word a command doesn't take is refused with exit 64 instead of being ignored: `xcrew doctor --help`, `-l` or `problems` used to run every check.
 
 ## 0.7.3 — 2026-10-29
 

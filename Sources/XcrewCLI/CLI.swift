@@ -32,13 +32,12 @@ public enum CLI {
             printError("unknown command '\(name)' (xcrew help)")
             return 64
         }
-        let rest = Array(argv.dropFirst())
-        if rest.contains(where: helpOptions.contains) {
-            (["usage: xcrew \(name) [options]", ""] + command.usage.map { "  \($0)" }).forEach(print)
-            return 0
-        }
         do {
-            let arguments = try Arguments(rest, for: command)
+            let arguments = try Arguments(Array(argv.dropFirst()), for: command)
+            if arguments.wantsHelp {
+                (["usage:"] + command.usage.map { "  \($0)" }).forEach(print)
+                return 0
+            }
             return try await command.run(Invocation(arguments: arguments, context: context, standardInput: standardInput, print: print))
         } catch let error as UsageError {
             printError(error.description)

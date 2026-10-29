@@ -30,11 +30,30 @@ import XcrewTestSupport
         #expect(run.errors == ["unknown option '--problem' (xcrew doctor --help)"])
     }
 
+    @Test func aShortOptionIsRefusedToo() async {
+        let run = await Run("doctor", "-l")
+        #expect(run.status == 64)
+        #expect(run.errors == ["unknown option '-l' (xcrew doctor --help)"])
+    }
+
+    @Test func aWordACommandDoesntTakeIsRefused() async {
+        // Without the dashes, doctor would otherwise run every check.
+        let run = await Run("doctor", "problems")
+        #expect(run.status == 64)
+        #expect(run.errors == ["unexpected 'problems' (xcrew doctor --help)"])
+    }
+
+    @Test func helpAsAnOptionsValueIsTheValue() async {
+        let run = await Run("doctor", "--check", "-h")
+        #expect(run.status == 64)
+        #expect(run.errors == ["unknown check '-h' (doctor --list)"])
+    }
+
     @Test(arguments: ["--help", "-h"])
     func helpAfterACommandPrintsItsUsage(flag: String) async {
         let run = await Run("doctor", "--list", flag)
         #expect(run.status == 0)
-        #expect(run.output.first == "usage: xcrew doctor [options]")
+        #expect(run.output.first == "usage:")
         #expect(run.output.contains("  doctor --list         list the check ids"))
         #expect(!run.output.contains { $0.contains("mobilebuildmcp/version") })
     }

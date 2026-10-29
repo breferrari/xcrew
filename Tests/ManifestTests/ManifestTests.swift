@@ -95,6 +95,24 @@ import XcrewCore
         }
     }
 
+    /// The mod runs the CLI with options of its own; one a command doesn't declare would be refused, and the mod
+    /// would quietly lose that answer.
+    @Test func everyOptionTheModPassesIsDeclared() throws {
+        let folder = Self.repository.appending(path: "hooks/mod")
+        let sources = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasSuffix(".ts") && !$0.hasSuffix(".test.ts") }
+        var calls = 0
+        for source in sources {
+            for line in try text("hooks/mod/\(source)").components(separatedBy: "\n") {
+                guard let name = line.firstMatch(of: /\[\s*'([\w-]+)'/)?.1, let command = CLI.commands.first(where: { $0.name == name }) else { continue }
+                calls += 1
+                for option in line.matches(of: /'--([\w-]+)'/).map({ String($0.1) }) {
+                    #expect(command.valuedOptions.contains(option) || command.flags.contains(option), "\(source): xcrew \(name) --\(option)")
+                }
+            }
+        }
+        #expect(calls >= 4, "found no CLI calls in the mod; the pattern no longer matches how it builds them")
+    }
+
     // MARK: mcs techpack
 
     /// Checks the techpack leaves out because mcs does the same itself: `mcs check-updates` says when a

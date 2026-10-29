@@ -5,6 +5,7 @@ import XcrewCore
 /// only when it has something to say.
 struct HookCommand: Command {
     let name = "hook"
+    let takesWords = true
     let usage = [
         "hook session-start   (hook) routing rules and what this project still lacks",
     ]
