@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 
 /// Runs real processes and awaits them without blocking a thread. A program that isn't found
 /// reads as status 127 and one that outlives its timeout as 124, as a shell reports them.
@@ -17,8 +16,8 @@ public struct SystemCommandRunner: CommandRunning {
         searchPath.lazy.map { "\($0)/\(name)" }.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    /// How long the pipes may stay open once the program has ended: a background child it started can hold them
-    /// for as long as it lives.
+    /// How long the pipes may stay open once the program has ended or been stopped: a background child it started
+    /// can hold them for as long as it lives, and the program's last output can arrive just after its exit.
     static let grace = Duration.seconds(1)
 
     public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
@@ -57,8 +56,7 @@ public struct SystemCommandRunner: CommandRunning {
             _ = await Self.collect(stdout, stderr, until: .now + Self.grace)
             return .timedOut
         }
-        // The program's own output is in by now; what's still open belongs to a child it left running.
-        let (out, err) = await Self.collect(stdout, stderr, until: max(deadline, .now + Self.grace))
+        let (out, err) = await Self.collect(stdout, stderr, until: .now + Self.grace)
         return CommandResult(status: status, stdout: out, stderr: err)
     }
 
@@ -78,53 +76,5 @@ public struct SystemCommandRunner: CommandRunning {
             group.cancelAll()
         }
         return (stdout.text, stderr.text)
-    }
-}
-
-/// A pipe's output as it arrives, until end of file or until the runner stops waiting for it.
-final class Drain: Sendable {
-    private struct State {
-        var data = Data()
-        var isEnded = false
-        var waiter: CheckedContinuation<Void, Never>?
-    }
-
-    private let handle: FileHandle
-    private let state = Mutex(State())
-
-    init(_ handle: FileHandle) {
-        self.handle = handle
-        handle.readabilityHandler = { [self] handle in
-            let chunk = handle.availableData
-            if chunk.isEmpty { stop() } else { state.withLock { $0.data.append(chunk) } }
-        }
-    }
-
-    /// Stops reading; reaching end of file and giving up on the pipe both end here.
-    func stop() {
-        handle.readabilityHandler = nil
-        let waiter = state.withLock { state -> CheckedContinuation<Void, Never>? in
-            state.isEnded = true
-            let waiter = state.waiter
-            state.waiter = nil
-            return waiter
-        }
-        waiter?.resume()
-    }
-
-    /// Returns once reading has stopped.
-    func ended() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let isEnded = state.withLock { state -> Bool in
-                if !state.isEnded { state.waiter = continuation }
-                return state.isEnded
-            }
-            if isEnded { continuation.resume() }
-        }
-    }
-
-    /// What has arrived so far.
-    var text: String {
-        String(decoding: state.withLock { $0.data }, as: UTF8.self)
     }
 }
