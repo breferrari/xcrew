@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Installing or syncing Xcrew with mcs works again: 0.7.0's new description made `techpack.yaml` invalid YAML, so mcs couldn't load the pack.
+
 ## 0.7.0 — 2026-10-29
 
 - The macro-plugin repair is gone: the mod's retry, the hooks after a failed Xcode MCP build, `/xcrew repair`, `xcrew repair-macros` and the doctor's `xcode-mcp/macro-plugins` check. Finding a dead plugin meant launching every macro plugin in DerivedData, and the cause, the in-place copy phase Tuist generated before 4.203, is gone from current Tuist. `xcrew doctor` still names projects generated with that phase, with the fix: upgrade Tuist and regenerate. `XCREW_MACRO_PLUGINS` and `XCREW_DERIVED_DATA` no longer do anything.

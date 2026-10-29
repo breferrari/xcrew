@@ -1,7 +1,7 @@
 schemaVersion: 1
 identifier: xcrew
 displayName: Xcrew
-description: Your Xcode crew inside Claude Code: three MCP servers working as one, with live build progress and test reports Claude can act on.
+description: "Your Xcode crew inside Claude Code: three MCP servers working as one, with live build progress and test reports Claude can act on."
 author: Brenno Ferrari
 minMCSVersion: "2026.10.25"
 

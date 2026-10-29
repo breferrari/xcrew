@@ -61,6 +61,15 @@ import XcrewCore
         #expect(FileManager.default.fileExists(atPath: Self.repository.appending(path: "hooks/mod/register.ts").path))
     }
 
+    /// mcs reads `techpack.yaml` strictly: a plain value holding `: ` is not valid YAML, and the whole
+    /// pack fails to load. CI has no mcs to validate with, so this catches the usual way it breaks.
+    @Test func techpackValuesWithAColonAreQuoted() throws {
+        let unquoted = try text("techpack.yaml").components(separatedBy: "\n").filter {
+            $0.contains(#/^\s*(?:- )?[\w-]+: (?!["'|>]).*: /#)
+        }
+        #expect(unquoted == [])
+    }
+
     // MARK: MCP servers
 
     @Test func pluginShipsTheThreeServers() async throws {
