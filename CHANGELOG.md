@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 — 2026-10-29
 
 - A test run that fails to compile counts each compile error once, as a build does: the compiler's caret line was counted as a second error.
 - Installing or syncing Xcrew with mcs works again: 0.7.0's new description made `techpack.yaml` invalid YAML, so mcs couldn't load the pack.
