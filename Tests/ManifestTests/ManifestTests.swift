@@ -234,14 +234,16 @@ import Testing
         #expect(named.isSubset(of: Set(ConfigRenderer.simEnvTools)), "\(named.subtracting(ConfigRenderer.simEnvTools).sorted())")
     }
 
-    /// Both Swift jobs run every test, so both check the test bed out, at one commit, named in full: a tag can move.
-    @Test func bothSwiftJobsPinTheSameTestBed() throws {
-        let ci = try text(".github/workflows/ci.yml")
-        let pins = ci.matches(of: /repository: breferrari\/xcrew-testbed\n\s+ref: ([0-9a-f]+)/).map { String($0.1) }
-        #expect(pins.count == 2)
+    /// Every run of the Swift tests in CI (both Swift jobs, and the canary's) checks the test bed out, at one commit,
+    /// named in full: a tag can move, and there a missing checkout fails `ciHasTheTestBed`.
+    @Test func everySwiftTestRunPinsTheSameTestBed() throws {
+        let workflows = [try text(".github/workflows/ci.yml"), try text(".github/workflows/canary.yml")]
+        let pins = workflows.flatMap { $0.matches(of: /repository: breferrari\/xcrew-testbed\n\s+ref: ([0-9a-f]+)/).map { String($0.1) } }
+        #expect(pins.count == 3)
         #expect(Set(pins).count == 1)
         #expect(pins.allSatisfy { $0.count == 40 })
-        #expect(ci.components(separatedBy: "XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed").count - 1 == 2)
+        let runs = workflows.map { $0.components(separatedBy: "XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed").count - 1 }
+        #expect(runs == [2, 1])
     }
 
     /// Only the weekly canary can tell a `stable` still settling after a release from one left behind, and only the
