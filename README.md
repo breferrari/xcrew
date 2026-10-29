@@ -143,9 +143,9 @@ ok    xcrew/up-to-date                 0.7.0, the latest release
 | --- | --- |
 | MCP servers | MobileBuildMCP (started in your project, telemetry off), the Xcode MCP (`xcrun mcpbridge`), Sosumi |
 | Session briefing | The routing rules in [`context/routing.md`](context/routing.md), plus what this project or Mac still lacks; silent outside Apple-platform projects |
-| Mod | The live line above the prompt, compact test and build results, the failures pane, the `XcodeWrite` guard and a note in its description (in generated projects), the `/xcrew` command |
+| Mod | The live line above the prompt, the failures pane, the `XcodeWrite` guard and a note in its description (in generated projects), the `/xcrew` command. It hands each result to the CLI and passes on what the CLI makes of it |
 | Skills | `/xcrew:setup`, and `xcrew:reference`, which Claude loads when something fails (it isn't in the `/` menu) |
-| CLI | `xcrew setup`, `doctor`, `xcode-skills`; on Claude's `PATH` while the plugin is enabled |
+| CLI | `xcrew setup`, `doctor`, `xcode-skills`, on Claude's `PATH` while the plugin is enabled; `report` and `phase`, which read the servers' output for the mod |
 
 - **One implementation.** All logic lives in one dependency-free Swift package; the plugin, the mod and mcs call its CLI.
 - **No drift.** `Tests/ManifestTests` fails when an install path disagrees with the CLI.

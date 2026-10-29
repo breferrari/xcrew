@@ -202,7 +202,7 @@ def arch():
     pieces = [
         (".mcp.json", "MobileBuildMCP · Xcode MCP · Sosumi", False),
         ("hooks.json", "session briefing", True),
-        ("mod (TypeScript)", "guard · timing · results · band · pane", True),
+        ("mod (TypeScript)", "guard · timing · band · pane · /xcrew", True),
         ("skills/", "setup · reference", True),
     ]
     px, pw, ph = 330, 470, 64
@@ -217,7 +217,7 @@ def arch():
     line(px + pw, 132, sx - 4, 132)
     # The Swift CLI everything else calls.
     cy = 470
-    box(860, cy, 360, 80, "Swift CLI (bin/xcrew)", "setup · doctor · hook · xcode-skills", accent=C["success"])
+    box(860, cy, 360, 80, "Swift CLI (bin/xcrew)", "report · phase · doctor · setup · hook", accent=C["success"])
     for i in (1, 2, 3):
         py = 100 + i * 92 + ph / 2
         c.add(f'<path d="M{px + pw} {py} H830 V{cy + 26} H856" stroke="#6e7681" stroke-width="1.4" fill="none" marker-end="url(#arrow)"/>')
