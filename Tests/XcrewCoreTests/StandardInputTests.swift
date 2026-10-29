@@ -3,31 +3,55 @@ import Testing
 @testable import XcrewCore
 
 @Suite struct StandardInputTests {
-    @Test func anInputLeftOpenIsReadUntilTheLimit() async throws {
+    /// Writes `chunks` to a pipe from a thread of its own, `gap` apart, then closes it after `closeAfter`, or never.
+    func pipe(writing chunks: [String], gap: Double, closeAfter: Double?) -> FileHandle {
         let pipe = Pipe()
-        try pipe.fileHandleForWriting.write(contentsOf: Data(#"{"cwd":"/project"}"#.utf8))
-        // Stands for a caller that never closes stdin; closed late only so a reader that waits for it can't hang the suite.
         let writer = pipe.fileHandleForWriting
-        Task.detached {
-            try? await Task.sleep(for: .seconds(5))
-            try? writer.close()
-        }
+        Thread {
+            for (index, chunk) in chunks.enumerated() {
+                if index > 0 { Thread.sleep(forTimeInterval: gap) }
+                try? writer.write(contentsOf: Data(chunk.utf8))
+            }
+            if let closeAfter {
+                Thread.sleep(forTimeInterval: closeAfter)
+                try? writer.close()
+            }
+        }.start()
+        return pipe.fileHandleForReading
+    }
+
+    /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives.
+    @Test func anInputLeftOpenIsReadUntilItGoesQuiet() async throws {
         let clock = ContinuousClock()
         let started = clock.now
-        let input = await StandardInput.read(pipe.fileHandleForReading, within: .milliseconds(300))
-        #expect(String(decoding: input, as: UTF8.self) == #"{"cwd":"/project"}"#)
+        let input = await StandardInput.read(pipe(writing: [#"{"cwd":"/project"}"#], gap: 0, closeAfter: 5), idleFor: .milliseconds(500))
+        #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
+        #expect(!input.isComplete)
         #expect(clock.now - started < .seconds(3), "waited for the caller to close stdin")
     }
 
+    /// A writer still sending is read to its end, however long it takes, as long as it doesn't go quiet.
+    @Test func aWriterStillSendingIsNotCutOff() async throws {
+        let input = await StandardInput.read(pipe(writing: ["one ", "two ", "three"], gap: 0.6, closeAfter: 0.2), idleFor: .seconds(1))
+        #expect(String(decoding: input.data, as: UTF8.self) == "one two three")
+        #expect(input.isComplete)
+    }
+
     @Test func aClosedInputIsReadToItsEnd() async throws {
-        let pipe = Pipe()
-        let text = String(repeating: "x", count: 200_000)
-        let writer = pipe.fileHandleForWriting
-        Task.detached {
-            try? writer.write(contentsOf: Data(text.utf8))
-            try? writer.close()
-        }
-        let input = await StandardInput.read(pipe.fileHandleForReading, within: .seconds(10))
-        #expect(input.count == 200_000)
+        let input = await StandardInput.read(pipe(writing: [String(repeating: "x", count: 200_000)], gap: 0, closeAfter: 0), idleFor: .seconds(5))
+        #expect(input.data.count == 200_000)
+        #expect(input.isComplete)
+    }
+
+    /// `xcrew hook session-start < event.json`: a file always ends, so it's read at once.
+    @Test func aFileIsReadAtOnce() async throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "xcrew-stdin-\(UUID().uuidString).json")
+        try Data(#"{"cwd":"/project"}"#.utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let clock = ContinuousClock()
+        let started = clock.now
+        let input = await StandardInput.read(try FileHandle(forReadingFrom: file), idleFor: .seconds(5))
+        #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
+        #expect(clock.now - started < .seconds(2), "waited on a file for end of file")
     }
 }
