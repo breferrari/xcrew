@@ -4,24 +4,14 @@ import Foundation
 /// Its emoji markers are matched by scalar: `⏭️` is `⏭` and a variation selector, one character
 /// that a character-level match misses.
 enum MobileBuildMCPLine {
-    /// A test as `Suite/test`: MobileBuildMCP lists one failure both with and without the `()`.
-    static func key(_ suite: some StringProtocol, _ test: some StringProtocol) -> String {
-        "\(suite)/\(test.hasSuffix("()") ? test.dropLast(2) : test[...])"
-    }
-
     /// `✗ <entry>`: a failing test or a compile error, as the Test Failures and Errors sections list them.
     static func entry(_ line: String) -> String? {
         line.firstMatch(of: #/^\s*✗ (.+)$/#).map { String($0.1) }
     }
 
-    /// `✗ Suite / test(): message`, a failing test, keyed `Suite/test`.
-    static func failure(_ line: String) -> (test: String, message: String)? {
-        entry(line).flatMap(test(in:))
-    }
-
     /// `Suite / test(): message`, the part of a failing test's line after its `✗`.
-    static func test(in entry: String) -> (test: String, message: String)? {
-        entry.firstMatch(of: #/^(.+?) \/ (\S+?): (.*)$/#).map { (key($0.1, $0.2), String($0.3)) }
+    static func test(in entry: String) -> (test: TestID, message: String)? {
+        entry.firstMatch(of: #/^(.+?) \/ (\S+?): (.*)$/#).map { (TestID(suite: $0.1, name: $0.2), String($0.3)) }
     }
 
     /// `    /path/File.swift:12`, the line after a failure or an error that says where it happened.
@@ -29,9 +19,9 @@ enum MobileBuildMCPLine {
         line.firstMatch(of: #/^\s+(\/\S+):(\d+)\s*$/#).map { (String($0.1), String($0.2)) }
     }
 
-    /// `⏭️ Suite/test() (0.000s)`, a skipped test, keyed `Suite/test`.
-    static func skipped(_ line: String) -> String? {
-        line.firstMatch(of: #/^\s*⏭\x{FE0F}? (\S+?)\/(\S+?) \(/#.matchingSemantics(.unicodeScalar)).map { key($0.1, $0.2) }
+    /// `⏭️ Suite/test() (0.000s)`, a skipped test.
+    static func skipped(_ line: String) -> TestID? {
+        line.firstMatch(of: #/^\s*⏭\x{FE0F}? (\S+?)\/(\S+?) \(/#.matchingSemantics(.unicodeScalar)).map { TestID(suite: $0.1, name: $0.2) }
     }
 
     /// Whether a Test Results line is a skipped test's, whatever follows the marker.
@@ -50,12 +40,32 @@ enum MobileBuildMCPLine {
     }
 
     /// A failing run's counts, from its summary line.
-    static func counts(in text: String) -> (failed: Int, passed: Int, skipped: Int)? {
-        text.firstMatch(of: #/❌ (\d+) tests? failed, (\d+) passed, (\d+) skipped/#).map { (Int($0.1) ?? 0, Int($0.2) ?? 0, Int($0.3) ?? 0) }
+    static func counts(in line: String) -> (failed: Int, passed: Int, skipped: Int)? {
+        line.firstMatch(of: #/❌ (\d+) tests? failed, (\d+) passed, (\d+) skipped/#).map { (Int($0.1) ?? 0, Int($0.2) ?? 0, Int($0.3) ?? 0) }
     }
 
-    /// How many tests the summary line, passing or failing, counts as skipped.
-    static func skippedCount(in text: String) -> Int {
-        text.firstMatch(of: #/(?m)^(?:❌|✅) \d+ tests? .*?(\d+) skipped/#).flatMap { Int($0.1) } ?? 0
+    /// How many tests a summary line, passing or failing, counts as skipped.
+    static func skippedCount(in line: String) -> Int? {
+        line.firstMatch(of: #/^(?:❌|✅) \d+ tests? .*?(\d+) skipped/#).flatMap { Int($0.1) }
+    }
+
+    /// `(⏱️ 12.3s)`, how long the run took, in seconds.
+    static func duration(in line: String) -> Double? {
+        line.firstMatch(of: #/\(⏱️ ([\d.]+)s\)/#).flatMap { Double($0.1) }
+    }
+
+    /// `└── ~/Library/…/workspace/`, the folder a failing test run's artifacts are under.
+    static func workspaceFolder(_ line: String) -> String? {
+        line.firstMatch(of: #/└── (~?\/\S+\/)\s*$/#).map { String($0.1) }
+    }
+
+    /// `result-bundles/….xcresult — Result Bundle`, the run's bundle, under the workspace folder.
+    static func resultBundle(_ line: String) -> String? {
+        line.firstMatch(of: #/(result-bundles\/\S+\.xcresult) — Result Bundle/#).map { String($0.1) }
+    }
+
+    /// `Errors (3):`, the head of a failing build's error list, and where its count is written.
+    static func errorCount(in line: String) -> (range: Range<String.Index>, count: Int)? {
+        line.firstMatch(of: #/^Errors \((\d+)\):/#).flatMap { match in Int(match.1).map { (match.range, $0) } }
     }
 }

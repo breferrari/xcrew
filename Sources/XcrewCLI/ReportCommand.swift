@@ -12,7 +12,9 @@ struct ReportCommand: Command {
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
-        guard let server = invocation.arguments["server"] else { throw UsageError(description: "report needs --server") }
+        guard let server = invocation.arguments["server"].flatMap(Server.init(rawValue:)) else {
+            throw UsageError(description: "report needs --server MobileBuildMCP or xcode")
+        }
         guard let kind = invocation.arguments["kind"].flatMap(Report.Kind.init(rawValue:)) else {
             throw UsageError(description: "report needs --kind build, test or run")
         }

@@ -27,8 +27,8 @@ public enum FailureNotes {
     }
 
     struct Notes {
-        var failures: [String: [String]] = [:]
-        var skipped: [String: [String]] = [:]
+        var failures: [TestID: [String]] = [:]
+        var skipped: [TestID: [String]] = [:]
         /// Skipped tests the text leaves out, written at the end of its Test Results list.
         var unlisted: [String] = []
 
@@ -36,54 +36,56 @@ public enum FailureNotes {
     }
 
     /// Writes the notes: a failure's go after it and its location line, a skipped test's after its line.
-    static func annotate(_ text: String, with notes: Notes) -> String {
-        let lines = text.components(separatedBy: "\n")
-        var out: [String] = []
+    static func annotate(_ text: MobileText, with notes: Notes) -> MobileText {
+        let lines = text.lines
+        var out: [MobileText.Line] = []
         var index = 0
         while index < lines.count {
             let line = lines[index]
-            if MobileBuildMCPLine.isSummary(line), !notes.unlisted.isEmpty {
-                let blank = out.last?.trimmingCharacters(in: .whitespaces).isEmpty == true ? out.removeLast() : nil
-                out += notes.unlisted
+            if line.isSummary, !notes.unlisted.isEmpty {
+                let blank = out.last?.isBlank == true ? out.removeLast() : nil
+                out += notes.unlisted.map(MobileText.Line.init)
                 if let blank { out.append(blank) }
             }
             out.append(line)
-            if let failure = MobileBuildMCPLine.failure(line) {
-                if index + 1 < lines.count, MobileBuildMCPLine.location(lines[index + 1]) != nil {
+            if let failing = line.failing {
+                if text.location(after: index) != nil {
                     index += 1
                     out.append(lines[index])
                 }
-                out += notes.failures[failure.test] ?? []
-            } else if let test = MobileBuildMCPLine.skipped(line) {
-                out += notes.skipped[test] ?? []
+                out += (notes.failures[failing.test] ?? []).map(MobileText.Line.init)
+            } else if case let .skipped(test?) = line.kind {
+                out += (notes.skipped[test] ?? []).map(MobileText.Line.init)
             }
             index += 1
         }
-        return out.joined(separator: "\n")
+        return MobileText(lines: out)
     }
 
     /// The failing run's text with what the result bundle adds, or the text as it was when it adds nothing.
-    public static func adding(to text: String, from bundle: ResultBundle) async -> String {
-        let lines = text.components(separatedBy: "\n")
-        var order: [String] = []
-        var located: Set<String> = []
-        var crashed: Set<String> = []
-        for (index, line) in lines.enumerated() {
-            guard let failure = MobileBuildMCPLine.failure(line) else { continue }
-            if !order.contains(failure.test) { order.append(failure.test) }
-            if index + 1 < lines.count, MobileBuildMCPLine.location(lines[index + 1]) != nil { located.insert(failure.test) }
-            if isCrash(failure.message) { crashed.insert(failure.test) }
+    static func adding(to text: MobileText, from bundle: ResultBundle) async -> MobileText {
+        var order: [TestID] = []
+        var located: Set<TestID> = []
+        var crashed: Set<TestID> = []
+        for (index, line) in text.lines.enumerated() {
+            guard let failing = line.failing else { continue }
+            if !order.contains(failing.test) { order.append(failing.test) }
+            if text.location(after: index) != nil { located.insert(failing.test) }
+            if isCrash(failing.message) { crashed.insert(failing.test) }
         }
         let lookups = order.filter { !located.contains($0) || crashed.contains($0) }.prefix(mostLookups)
-        let listedSkips = lines.compactMap(MobileBuildMCPLine.skipped)
-        let isSkipping = MobileBuildMCPLine.skippedCount(in: text) > 0 || !listedSkips.isEmpty
+        let listedSkips = text.lines.compactMap { line -> TestID? in
+            if case let .skipped(test) = line.kind { return test }
+            return nil
+        }
+        let isSkipping = text.skippedCount > 0 || !listedSkips.isEmpty
         guard !lookups.isEmpty || isSkipping else { return text }
 
         var notes = Notes()
         // Each test's lookups are their own xcresulttool calls, so a few run side by side.
-        notes.failures = await withTaskGroup(of: (String, [String]).self) { group in
+        notes.failures = await withTaskGroup(of: (TestID, [String]).self) { group in
             var pending = lookups.makeIterator()
-            var found: [String: [String]] = [:]
+            var found: [TestID: [String]] = [:]
             func lookUpNext() {
                 guard let test = pending.next() else { return }
                 let isLocated = located.contains(test), isCrashed = crashed.contains(test)
@@ -113,7 +115,7 @@ public enum FailureNotes {
                     notes.skipped[test] = reason(skip)
                 } else if unlisted < mostLookups {
                     unlisted += 1
-                    notes.unlisted += ["  ⏭️ \(test)() (\(seconds(skip.seconds))s)"] + reason(skip)
+                    notes.unlisted += ["  ⏭️ \(test.xcresultID) (\(seconds(skip.seconds))s)"] + reason(skip)
                 }
             }
         }

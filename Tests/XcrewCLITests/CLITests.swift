@@ -236,6 +236,7 @@ import XcrewTestSupport
     @Test func itNeedsAServerAndAKind() async {
         #expect(await Run("report", "--kind", "build").status == 64)
         #expect(await Run("report", "--server", "xcode", "--kind", "deploy").status == 64)
+        #expect(await Run("report", "--server", "XcodeBuildMCP", "--kind", "build").status == 64)
     }
 }
 

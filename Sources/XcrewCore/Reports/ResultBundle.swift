@@ -24,18 +24,9 @@ public struct ResultBundle: Sendable {
         listing = Once { await Self.xcresulttool(["get", "test-results", "tests", "--path", path, "--compact"], runner: runner) }
     }
 
-    /// The run's `.xcresult`: from a passing run's JSON, or the workspace folder and bundle path a failing run's text lists.
-    public static func path(in text: String, home: String) -> String? {
-        let fromJson = (ToolOutput.object(text)?["data"] as? [String: Any]).flatMap { $0["artifacts"] as? [String: Any] }?["xcresultPath"] as? String
-        if let fromJson { return expandingHome(fromJson, home) }
-        guard let folder = text.firstMatch(of: #/(?m)└── (~?\/\S+\/)\s*$/#)?.1,
-              let bundle = text.firstMatch(of: #/(result-bundles\/\S+\.xcresult) — Result Bundle/#)?.1
-        else { return nil }
-        return expandingHome(String(folder), home) + bundle
-    }
-
-    static func expandingHome(_ path: String, _ home: String) -> String {
-        path.hasPrefix("~") ? home + path.dropFirst() : path
+    /// The run's `.xcresult`, from a passing run's JSON or a failing run's text, with `~` expanded.
+    public static func path(in output: ToolOutput, home: String) -> String? {
+        output.xcresultPath.map { $0.hasPrefix("~") ? home + $0.dropFirst() : $0 }
     }
 
     // MARK: Reading xcresulttool's output
@@ -73,17 +64,16 @@ public struct ResultBundle: Sendable {
         return nil
     }
 
-    /// Each skipped test in `xcresulttool get test-results tests` output, keyed `Suite/test`, in the
-    /// listing's order, with why it was skipped (its `Test skipped - <reason>` message) and how long it ran.
-    public static func skippedTests(listing: String) -> [(test: String, skip: Skip)] {
+    /// Each skipped test in `xcresulttool get test-results tests` output, in the listing's order, with
+    /// why it was skipped (its `Test skipped - <reason>` message) and how long it ran.
+    public static func skippedTests(listing: String) -> [(test: TestID, skip: Skip)] {
         nodes(parse(listing)).compactMap { node in
             guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Skipped",
-                  let identifier = node["nodeIdentifier"] as? String
+                  let test = (node["nodeIdentifier"] as? String).flatMap(TestID.init(parsing:))
             else { return nil }
             let message = (node["children"] as? [[String: Any]])?.first { $0["nodeType"] as? String == "Skip Message" }?["name"] as? String
             let reason = message.map { $0.hasPrefix("Test skipped - ") ? String($0.dropFirst("Test skipped - ".count)) : $0 }
-            let parts = identifier.split(separator: "/", maxSplits: 1).map(String.init)
-            return (MobileBuildMCPLine.key(parts.first ?? "", parts.count > 1 ? parts[1] : ""), Skip(reason: reason, seconds: node["durationInSeconds"] as? Double ?? 0))
+            return (test, Skip(reason: reason, seconds: node["durationInSeconds"] as? Double ?? 0))
         }
     }
 
@@ -154,9 +144,9 @@ public struct ResultBundle: Sendable {
         await Self.xcresulttool(arguments, runner: runner)
     }
 
-    /// One test's details. The result bundle names a test with its `()`.
-    public func details(of test: String) async -> String {
-        await xcresulttool(["get", "test-results", "test-details", "--test-id", "\(test)()", "--path", path, "--compact"])
+    /// One test's details.
+    public func details(of test: TestID) async -> String {
+        await xcresulttool(["get", "test-results", "test-details", "--test-id", test.xcresultID, "--path", path, "--compact"])
     }
 
     /// Every test the run ran, with its result: `xcresulttool get test-results tests`.
@@ -165,7 +155,7 @@ public struct ResultBundle: Sendable {
     }
 
     /// The run's skipped tests: MobileBuildMCP's list can leave one out.
-    public func skips() async -> [(test: String, skip: Skip)] {
+    public func skips() async -> [(test: TestID, skip: Skip)] {
         Self.skippedTests(listing: await tests())
     }
 
@@ -174,11 +164,11 @@ public struct ResultBundle: Sendable {
     }
 
     /// A crash's summary, from the crash log the result bundle attached to the test.
-    public func crash(of test: String) async -> [String]? {
+    public func crash(of test: TestID) async -> [String]? {
         let folder = exportFolder()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        _ = await xcresulttool(["export", "attachments", "--path", path, "--output-path", folder.path, "--test-id", "\(test)()", "--only-failures"])
+        _ = await xcresulttool(["export", "attachments", "--path", path, "--output-path", folder.path, "--test-id", test.xcresultID, "--only-failures"])
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         guard let log = names.sorted().first(where: { $0.hasSuffix(".ips") }),
               let text = try? String(contentsOf: folder.appending(path: log), encoding: .utf8)

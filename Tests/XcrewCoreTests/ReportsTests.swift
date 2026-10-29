@@ -54,6 +54,14 @@ enum Captured {
         #expect(ToolOutput(text: #"{"unexpected":true}"#).summary == .init(ok: true))
     }
 
+    @Test func aFieldOfAnotherTypeLosesOnlyItself() {
+        let build = #"{"buildResult":"The build failed","errors":[{"classification":"error","filePath":"/a/B.swift","lineNumber":"12","message":"problem"}]}"#
+        #expect(ToolOutput(text: build).failures == [.init(title: "B.swift:?", message: "problem")])
+        let tests = #"{"schema":"mobilebuildmcp.output.test-result","data":{"summary":{"status":"SUCCEEDED","durationMs":"soon","counts":{"passed":3,"failed":0,"skipped":0}}}}"#
+        #expect(ToolOutput(text: tests).summary == .init(ok: true, detail: "3 passed"))
+        #expect(ToolOutput(text: tests).reportedDuration == nil)
+    }
+
     @Test func aLongDetailIsShortenedToOneLine() {
         let text = #"{"buildResult":"The build failed","errors":[{"classification":"error","filePath":"/a/B.swift","lineNumber":1,"message":"\#(String(repeating: "x", count: 200))"}]}"#
         let detail = ToolOutput(text: text).summary.detail ?? ""
@@ -176,9 +184,9 @@ func failingRunText(passing: Int) -> String {
 
 @Suite struct ResultBundleTests {
     @Test func theBundleIsFoundFromEitherShapeOfResult() {
-        #expect(ResultBundle.path(in: Captured.text("mobileTestsFailedUnlocated"), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim_1.xcresult")
-        #expect(ResultBundle.path(in: Captured.text("mobileTestsPassed"), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim.xcresult")
-        #expect(ResultBundle.path(in: Captured.text("mobileBuildFailed"), home: Captured.home) == nil)
+        #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileTestsFailedUnlocated")), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim_1.xcresult")
+        #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileTestsPassed")), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim.xcresult")
+        #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileBuildFailed")), home: Captured.home) == nil)
     }
 
     @Test func aFailingTestsDetailsGiveItsFileAndLine() {
@@ -201,7 +209,7 @@ func failingRunText(passing: Int) -> String {
 
     @Test func theTestListGivesEachSkippedTestAndWhy() {
         let skips = ResultBundle.skippedTests(listing: Captured.text("xcresultTestsWithSkip"))
-        #expect(skips.map(\.test) == ["FormatterTests/test_skipped"])
+        #expect(skips.map(\.test) == [TestID(suite: "FormatterTests", name: "test_skipped")])
         #expect(skips.first?.skip == .init(reason: "waiting on the new API", seconds: 0))
         #expect(ResultBundle.skippedTests(listing: "not json").isEmpty)
     }
@@ -310,7 +318,7 @@ func failingRunText(passing: Int) -> String {
 }
 
 @Suite struct ReportTests {
-    static func report(_ name: String, server: String = "MobileBuildMCP", kind: Report.Kind = .test, isError: Bool = false, runner: FakeRunner = FakeRunner()) async -> Report {
+    static func report(_ name: String, server: Server = .mobileBuildMCP, kind: Report.Kind = .test, isError: Bool = false, runner: FakeRunner = FakeRunner()) async -> Report {
         await Report.make(server: server, kind: kind, output: Captured.output(name, isError: isError), home: Captured.home, runner: runner)
     }
 
@@ -348,13 +356,13 @@ func failingRunText(passing: Int) -> String {
         folder.write(Captured.text("mobileTestsPassed"), to: "tool-results/mcp-test_sim-1.txt")
         let saved = folder.root.appending(path: "tool-results/mcp-test_sim-1.txt").path
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
-        let report = await Report.make(server: "MobileBuildMCP", kind: .test, output: ToolOutput(text: notice), home: Captured.home, runner: FakeRunner())
+        let report = await Report.make(server: .mobileBuildMCP, kind: .test, output: ToolOutput(text: notice), home: Captured.home, runner: FakeRunner())
         #expect(report.ok)
         #expect(report.result?.contains("the full result is in \(saved)") == true)
     }
 
     @Test func theXcodeMCPsResultsAreNotLookedUpInABundle() async {
-        let report = await Self.report("xcodeTestsFailed", server: "xcode")
+        let report = await Self.report("xcodeTestsFailed", server: .xcode)
         #expect(report.detail == "3 of 5 failed · MacroProbeTests/testMacro()")
         #expect(report.result == nil)
     }
@@ -454,5 +462,12 @@ func failingRunText(passing: Int) -> String {
         let project = Project.temporary()
         project.write(String(repeating: "note: nothing to do\n", count: 5_000), to: "build.log")
         #expect(RunLog.phase(ofLogAt: project.root.appending(path: "build.log"), expectedTests: nil) == nil)
+    }
+}
+
+extension FailureNotes {
+    /// The notes on a text as text, as the assertions above read them.
+    static func adding(to text: String, from bundle: ResultBundle) async -> String {
+        await adding(to: MobileText(text), from: bundle).text
     }
 }

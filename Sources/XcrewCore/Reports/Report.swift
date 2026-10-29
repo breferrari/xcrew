@@ -1,5 +1,11 @@
 import Foundation
 
+/// The server a result came from, as the mod names it.
+public enum Server: String, Sendable {
+    case mobileBuildMCP = "MobileBuildMCP"
+    case xcode
+}
+
 /// Everything the mod shows and hands on for one finished build, test or run call, worked out from
 /// the server's output: the outcome for the band, the failures for the pane, the duration and test
 /// count for the history, and the shorter result and notes Claude reads.
@@ -26,20 +32,24 @@ public struct Report: Sendable, Equatable, Codable {
         text.firstMatch(of: #/Output has been saved to (\/\S+\/tool-results\/\S+?)\.\s/#).map { String($0.1) }
     }
 
-    /// `server` is `MobileBuildMCP` or `xcode`. A result Claude Code saved to a file is read back from it.
-    public static func make(server: String, kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning) async -> Report {
+    /// A result Claude Code saved to a file is read back from it.
+    public static func make(server: Server, kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning) async -> Report {
         let saved = savedPath(output.text)
-        let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? output.text
+        let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, isError: output.isError) } ?? output
         // MobileBuildMCP's text omits what its result bundle knows; the Xcode MCP's results carry their own.
-        let isMobile = server == "MobileBuildMCP"
+        let isMobile = server == .mobileBuildMCP
         let isTest = kind == .test
         let bundle = isMobile && isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
         // The summary is needed whatever the run came to, so it's asked for while the failures are looked up.
         async let bundleSummary: String? = { await bundle?.summary() }()
-        var located: String?
-        if let bundle, read.hasPrefix("🧪") { located = await FailureNotes.adding(to: read, from: bundle) }
-        let text = located ?? (isMobile ? ToolOutput(text: read).cleanBuildText : nil) ?? read
-        let final = ToolOutput(text: text, isError: output.isError)
+        var final = read
+        if isMobile, let text = read.mobileText {
+            if let bundle, text.isTestRun {
+                final = ToolOutput(await FailureNotes.adding(to: text, from: bundle), isError: output.isError)
+            } else if let cleaned = text.withoutExcerpts() {
+                final = ToolOutput(cleaned, isError: output.isError)
+            }
+        }
         let summary = final.summary
 
         var notes: [String] = []
@@ -51,13 +61,14 @@ public struct Report: Sendable, Equatable, Codable {
         }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
+        let text = final.text
         return Report(
             ok: summary.ok,
             detail: summary.detail,
             durationMs: final.reportedDuration,
             tests: final.testTotal,
             failures: summary.ok ? [] : final.failures,
-            result: compact ?? (text != read ? text : nil),
+            result: compact ?? (text != read.text ? text : nil),
             notes: notes
         )
     }
