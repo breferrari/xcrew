@@ -32,15 +32,20 @@ function piece(text: string, color?: string): Segment[] {
   return [SEPARATOR, segment(text, color)]
 }
 
-/** The band's one line, as coloured pieces. What changes comes first, so a narrow terminal cuts the target last. */
+/** The band's one line, as coloured pieces: the run's outcome or progress, then what's for the prompt. What changes
+ * comes first, so a narrow terminal cuts the target last. */
 export function segments(run: BandRun, now: number): Segment[] {
-  const target = run.target ? piece(run.target) : []
+  return [...outcomeSegments(run, now), ...pointer(run.ended), ...(run.target ? piece(run.target) : [])]
+}
+
+/** The run alone: going, with its time, gauge and phase, or ended, with its outcome. */
+function outcomeSegments(run: BandRun, now: number): Segment[] {
   if (!run.ended) {
     const elapsed = now - run.startedAt
     const phase = run.phase ? piece(run.phase) : []
-    return [segment('●', ORANGE), segment(' '), segment(run.tool, undefined, 'semibold'), ...piece(stopwatch(elapsed)), ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase, ...target]
+    return [segment('●', ORANGE), segment(' '), segment(run.tool, undefined, 'semibold'), ...piece(stopwatch(elapsed)), ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase]
   }
-  const { ok, elapsed, comparison, detail, hasFailures } = run.ended
+  const { ok, elapsed, comparison, detail } = run.ended
   return [
     segment(ok ? '✓' : '✗', ok ? 'success' : 'error'),
     segment(' '),
@@ -48,10 +53,13 @@ export function segments(run: BandRun, now: number): Segment[] {
     ...piece(stopwatch(elapsed)),
     ...(comparison ? [segment(' '), segment(comparison, ORANGE)] : []),
     ...(detail ? piece(detail, ok ? undefined : 'error') : []),
-    // The pane opens only when asked: docked or above the prompt, it takes room the chat needs.
-    ...(hasFailures ? piece('/xcrew failures') : []),
-    ...target,
   ]
+}
+
+/** Where a failing run's failures are: a command for the prompt, so only lines beside one carry it. The pane opens
+ * only when asked: docked or above the prompt, it takes room the chat needs. */
+function pointer(ended: BandRun['ended']): Segment[] {
+  return ended?.hasFailures ? piece('/xcrew failures') : []
 }
 
 /** The gauge and time left: green under the usual time, the warning colour past it, the time left in the text colour. */
@@ -67,9 +75,18 @@ function problemSegments(problems: BandProblems): Segment[] {
   return [segment('⚠', tone), segment(' '), segment(problems.message, tone), ...(problems.more > 0 ? [segment(' '), segment(`(+${problems.more} more)`, 'subtle')] : []), ...piece('/xcrew doctor')]
 }
 
-/** A finished run's line in plain text, for a toast or a notification: the band's own wording, without the target. */
+/** A finished run's outcome in plain text, for a notification, which arrives where no command can be typed. */
 export function outcomeLine(tool: string, ended: NonNullable<BandRun['ended']>): string {
-  return segments({ tool, startedAt: 0, ended }, 0).map(segment => segment.text).join('')
+  return text(outcomeSegments({ tool, startedAt: 0, ended }, 0))
+}
+
+/** The outcome with the pointer to its failures, for a toast, which sits beside the prompt where no band draws. */
+export function promptLine(tool: string, ended: NonNullable<BandRun['ended']>): string {
+  return text([...outcomeSegments({ tool, startedAt: 0, ended }, 0), ...pointer(ended)])
+}
+
+function text(parts: Segment[]): string {
+  return parts.map(part => part.text).join('')
 }
 
 /** The two elements of a `ui.render` hook's element table that this mod's trees use. */

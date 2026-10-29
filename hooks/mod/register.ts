@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList } from '../../types'
-import { changedRun, endedRun, outcomeLine, problemsTree, runTree, shownFor, showsRun } from './band'
+import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, isGeneratedOf, knownBuild, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, isStale, keptHistory, USAGE } from './command'
 import { describe, historyOf, observe } from './context'
@@ -130,7 +130,7 @@ export const register: Register = on => {
       await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
     } else {
       // The band stays up with this same line where it draws; elsewhere a toast carries it.
-      await quietly(() => $.ui.toast(summaryLine))
+      await quietly(() => $.ui.toast(promptLine(name, ending)))
     }
     // Long enough that the person has likely looked away; their notification settings decide how it arrives.
     if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summaryLine))

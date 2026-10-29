@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
 import { callTool, runCommand, stubCli } from './testing'
 import { segments } from './band'
 import * as captured from './fixtures'
@@ -296,5 +297,47 @@ test('/xcrew close takes a failed run off the band', async ($, on) => {
   await runCommand($, 'xcrew', 'close')
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /BuildProject/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+// MARK: Where the pointer to the failures goes
+
+/** A 90-second test run with one failure, on `surface`; returns what was toasted and what was notified. */
+async function longFailingRun($: Engine, on: On, surface: 'terminal' | 'vscode') {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.surfaces', () => ({ value: [surface] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  const toasts: string[] = []
+  const notes: string[] = []
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('ui.notify', (_, e) => {
+    notes.push(e.text)
+    return { value: { isSent: true, channel: 'terminal_bell' } }
+  })
+  stubCli(on, { reports: [{ ok: false, detail: '1 of 9 failed', failures: [{ title: 'testLogin', message: 'XCTAssertEqual failed' }] }] })
+  on('tool.call', async () => {
+    await clock.advance(90_000)
+    return { result: {}, isError: true, text: 'the server\'s result' }
+  })
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  return { toasts, notes }
+}
+
+test('where no band draws, the toast points at the failures and the notification carries the outcome alone', async ($, on) => {
+  const { toasts, notes } = await longFailingRun($, on, 'vscode')
+  expect(toasts).toEqual(['✗ test_sim · 1:30 · 1 of 9 failed · /xcrew failures'])
+  expect(notes).toEqual(['✗ test_sim · 1:30 · 1 of 9 failed'])
+})
+
+test('where the band draws, it ends with the pointer and the notification carries the outcome alone', async ($, on) => {
+  const { notes } = await longFailingRun($, on, 'terminal')
+  expect(notes).toEqual(['✗ test_sim · 1:30 · 1 of 9 failed'])
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /\/xcrew failures/ })).toBeDefined()
   await ui.unmount()
 })
