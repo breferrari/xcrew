@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-10-29
 
 - **Apps a folder or two below the root.** In a git repository, an app kept in `ios/`, `apps/ios/` or `apps/MyApp.iOS/` counts as an Apple-platform project: Claude gets the session briefing and the line above the prompt shows the doctor's problems. `xcrew setup` without `--container` finds its workspace or project there too. In a generated project it takes the one beside the manifests and says `generate it first` when that isn't there yet. When two folders hold projects equally near (`apps/ios/`, `apps/macos/`), it names them and asks for `--container`.
 - **Generated projects, told apart more carefully.** A source file named `Project.swift` or `Workspace.swift` below the root no longer marks a classic project as Tuist-generated, so Claude can edit its project files again. A Tuist app found by its git root alone is still guarded. The doctor finds Tuist's old macro copy phase in every Tuist app in the project, not only at the root.
