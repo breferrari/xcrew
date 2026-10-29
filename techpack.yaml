@@ -21,6 +21,7 @@ ignore:
   - Package.swift
   - Sources/
   - bin/
+  - libexec/
   - hooks/
   - skills/
   - context/

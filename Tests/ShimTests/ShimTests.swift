@@ -110,7 +110,7 @@ import Testing
         try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
         let inline = #"cd "$1" && PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" exec mobilebuildmcp mcp"#
         let before = try await startMobileBuildMCP("/bin/sh", ["-c", inline, "mobilebuildmcp", project.path], in: project)
-        let after = try await startMobileBuildMCP(repository.appending(path: "bin/mobilebuildmcp-server").path, [project.path], in: project)
+        let after = try await startMobileBuildMCP(repository.appending(path: "libexec/mobilebuildmcp-server").path, [project.path], in: project)
         #expect(before.contains("cwd=\(try await physicalPath(project)) args=mcp path="))
         #expect(before.hasSuffix(":/opt/homebrew/bin:/usr/local/bin\n"))
         #expect(after == before)

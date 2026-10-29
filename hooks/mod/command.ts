@@ -11,13 +11,6 @@ export const USAGE = [
 /** `/xcrew`, answered by the mod itself: nothing reaches Claude, and nothing costs a turn. */
 export const COMMAND = { name: 'xcrew', description: 'Xcrew: doctor, history, failures or close', argumentHint: '[doctor|history|failures|close]' }
 
-export const DOCTOR_ARGS = ['doctor']
-
-/** The store keys `/xcrew history` reads. */
-export function isDurationsKey(key: string): boolean {
-  return key.startsWith(DURATIONS_PREFIX)
-}
-
 /** `/xcrew history`: each tool's usual duration, slowest first, from its stored runs. */
 export function historyText(stored: { key: string; runs: number[] | undefined }[]): string {
   const rows = stored.map(({ key, runs }) => ({ tool: key.slice(DURATIONS_PREFIX.length), runs: runs ?? [] }))

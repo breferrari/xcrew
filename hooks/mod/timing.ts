@@ -50,6 +50,23 @@ export function statusLine(label: string, started: number, now: number, measured
   return `${label} · ${stopwatch(now - started)}${measuredFrom === undefined ? '' : plainEstimate(now - measuredFrom, usual)}${phase ? ` · ${phase}` : ''}`
 }
 
+/** What a running call's log has told the hook so far. */
+export type Following = { logPath?: string; phase?: string }
+
+/**
+ * What the hook does with what `xcrew phase` found: keep the log once it appears, and with it start
+ * the gauge if it waited for the log; and show a phase that changed. Before its log appears xcodebuild
+ * hasn't started (a pre-build hook, a permission prompt or the server's own preparation), so a tool
+ * that writes one says it's preparing.
+ */
+export function phaseStep(following: Following, found: { log?: string; phase?: string }, writesLog: boolean): { following: Following; logAppeared: boolean; newPhase?: string } {
+  const logAppeared = following.logPath === undefined && found.log !== undefined
+  const logPath = logAppeared ? found.log : following.logPath
+  const now = found.phase ?? (writesLog && logPath === undefined ? PREPARING : undefined)
+  const newPhase = now !== undefined && now !== following.phase ? now : undefined
+  return { following: { logPath, phase: newPhase ?? following.phase }, logAppeared, ...(newPhase === undefined ? {} : { newPhase }) }
+}
+
 /** A finished run's ending, for the band and the outcome line. */
 export function endingOf(outcome: Report, at: number, elapsed: number, earlier: readonly number[]): NonNullable<BandRun['ended']> {
   return { at, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: comparison(elapsed, earlier), hasFailures: !outcome.ok && outcome.failures.length > 0 }

@@ -102,9 +102,9 @@ import XcrewCore
     @Test func mobileBuildMCPStartsFromThePluginsScript() throws {
         let servers = try #require(try json(".mcp.json")["mcpServers"] as? [String: [String: Any]])
         let mobile = try #require(servers["MobileBuildMCP"])
-        #expect(mobile["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/bin/mobilebuildmcp-server")
+        #expect(mobile["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/libexec/mobilebuildmcp-server")
         #expect(mobile["args"] as? [String] == ["${CLAUDE_PROJECT_DIR}"])
-        #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: "bin/mobilebuildmcp-server").path))
+        #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: "libexec/mobilebuildmcp-server").path))
     }
 
     /// A flag a command reads but doesn't declare would be refused before the command runs.
@@ -216,14 +216,14 @@ import XcrewCore
     /// The plugin directory reads `$` only in the hooks module: it may go, whole, to a function declared at the top
     /// of the same file, never to a function another file exports. See docs/architecture.md.
     @Test func onlyTheHooksModuleUsesTheModsAPI() throws {
-        #expect(try Self.offenders(/\$\.[a-z]+|EngineInterface|\(\$[,)]/, allowed: ["register.ts"]) == [])
+        #expect(try Self.offenders(/\$\.[a-z]+|EngineInterface|[(,]\s*\$\s*[,)]/, allowed: ["register.ts"]) == [])
     }
 
     /// Every hook is registered in the hooks module, one `on(` call to a line, so the directory finds each.
     @Test func onlyTheHooksModuleRegistersHooks() throws {
-        #expect(try Self.offenders(/\bon\(['"]|: On\b/, allowed: ["register.ts"]) == [])
+        #expect(try Self.offenders(/(?:^|[^\w.$])on\(['"`]|: On\b/, allowed: ["register.ts"]) == [])
         let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
-        let registrations = register.split(separator: "\n").filter { $0.contains("on('") || $0.contains("on(\"") }
+        let registrations = register.split(separator: "\n").filter { $0.contains(/(?:^|[^\w.$])on\(['"`]/) }
         #expect(!registrations.isEmpty)
         #expect(registrations.allSatisfy { $0.trimmingCharacters(in: .whitespaces).hasPrefix("on(") })
     }
@@ -232,8 +232,10 @@ import XcrewCore
     @Test func theHooksModulePassesTheModsAPIOnlyToItsOwnTopLevelFunctions() throws {
         let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
         let topLevel = Set(register.matches(of: /(?m)^(?:export )?(?:async )?function (\w+)\(/).map { String($0.1) })
-        let given = Set(register.matches(of: /(\w+)\(\$[,)]/).map { String($0.1) })
+        // `$` in any argument position, to a function or to a method.
+        let given = Set(register.matches(of: /(?:^|[^\w$])(\w+)\((?:[^()]*?,\s*)?\$\s*[,)]/).map { String($0.1) })
         #expect(given.subtracting(topLevel).subtracting(["read", "update"]).isEmpty, "$ passed to \(given.subtracting(topLevel).subtracting(["read", "update"]).sorted())")
+        #expect(!register.contains(/\.\w+\((?:[^()]*?,\s*)?\$\s*[,)]/), "$ passed to a method")
     }
 
     /// Reading named fields of a server's JSON answer is fine where the mod keeps what it learns; parsing text isn't.

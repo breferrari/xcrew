@@ -67,7 +67,11 @@ The plugin directory, and Claude Code when it loads a mod, read a hooks module's
 
 > You can pass `$` to a function declared at the top level of the same file […] Passing `$` to a method, a function defined inside the hook, or a function you import from another of your files fails validation.
 
-Each `on(...)` call has to be in that file too, and Claude Code's loader reads `$.state` only through atoms declared there. So `register.ts` is the mod's imperative shell and its largest file: the registrations, the state atoms, and a few top-level helpers that take `$` whole. Every other file in `hooks/mod/` is plain data in, data out, with no `$` and no `on`: `cli.ts` says what to run and reads what comes back, `band.ts` and `failures.ts` build their trees from data and the element table a hook passes them, and `timing.ts`, `command.ts`, `problems.ts`, `context.ts`, `format.ts` and `tools.ts` hold the rest. Splitting `register.ts` back into files that take `$` would fail the directory's validation.
+Each `on(...)` call has to be in that file too. And Claude Code's loader reads `$.state` only through atoms declared there; with the atoms in another file, the mod's tests stopped at load with:
+
+> the state library's update takes a source the scan can read: a reference whose plugin and key are string literals, or what atom, memberOf or derive (imported from "claude-code") made of one, written there or in a const of this file, so the values a module reads and writes can be listed; $ is always spelled $.noun.event(...) at the call site, on is always on("<event>", hook), and next.to always next.to(e, "<tier>")
+
+So `register.ts` is the mod's imperative shell and its largest file: the registrations, the state atoms, and a few top-level helpers that take `$` whole. Every other file in `hooks/mod/` is plain data in, data out, with no `$` and no `on`: `cli.ts` says what to run and reads what comes back, `band.ts` and `failures.ts` build their trees from data and the element table a hook passes them, and `timing.ts`, `command.ts`, `problems.ts`, `context.ts`, `format.ts` and `tools.ts` hold the rest. Splitting `register.ts` back into files that take `$` would fail the directory's validation.
 
 ### The mod's boundary
 

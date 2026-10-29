@@ -33,12 +33,6 @@ export type Ran = { stdout: string; stderr: string }
 /** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
 const RECHECK_MS = 30_000
 
-export const BINARY_PATH_ARGS = ['--binary-path']
-export const DEFAULT_TIMEOUT_MS = 60_000
-export const REPORT_TIMEOUT_MS = 120_000
-export const PHASE_TIMEOUT_MS = 10_000
-export const PROJECT_TIMEOUT_MS = 10_000
-export const TEXT_TIMEOUT_MS = 120_000
 
 export function shimPath(pluginRoot: string): string {
   return `${pluginRoot}/bin/xcrew`
@@ -69,9 +63,6 @@ export function phaseArgs(tool: string, since: number, expectedTests: number | u
   return ['phase', '--tool', tool, '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
 }
 
-export const PROBLEMS_ARGS = ['doctor', '--problems', '--json']
-export const PROJECT_ARGS = ['project']
-
 /** The CLI's JSON answer, or nothing when it didn't run or said something else. */
 export function answerOf(ran: Ran | undefined): unknown {
   if (!ran) return undefined
@@ -101,11 +92,6 @@ export function problemsOf(answer: unknown): Problem[] {
 /** Whether Tuist or XcodeGen generates this project; false when the CLI can't say, which leaves XcodeWrite allowed. */
 export function isGeneratedOf(answer: unknown): boolean {
   return (answer as { isGenerated?: boolean } | undefined)?.isGenerated === true
-}
-
-/** A CLI command's own text, for `/xcrew doctor`. */
-export function textOf(ran: Ran): string {
-  return `${ran.stdout}${ran.stderr}`.trimEnd()
 }
 
 /** Why a CLI command couldn't run. */

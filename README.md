@@ -214,7 +214,7 @@ Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads
 | **Writes** | `.mobilebuildmcp/config.yaml` and a line in `.git/info/exclude`, in `xcrew setup`. The skills Xcode ships into `.claude/skills`, in `xcrew xcode-skills`. Nothing else |
 | **Sends** | One request, and only when you run `xcrew doctor` or `/xcrew doctor` yourself: `curl` asks GitHub's releases API for the latest version. Never at session start, whose look for problems leaves that check out. No telemetry |
 
-**The MCP servers**, which `.mcp.json` starts: Apple's `xcrun mcpbridge`; Homebrew's `mobilebuildmcp`, through `bin/mobilebuildmcp-server`, which starts it in your project with Homebrew's folders on `PATH`, and with its telemetry turned off; and Sosumi over HTTPS. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
+**The MCP servers**, which `.mcp.json` starts: Apple's `xcrun mcpbridge`; Homebrew's `mobilebuildmcp`, through `libexec/mobilebuildmcp-server`, which starts it in your project with Homebrew's folders on `PATH`, and with its telemetry turned off; and Sosumi over HTTPS. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
 
 ### Contributing
 

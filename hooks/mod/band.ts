@@ -57,29 +57,32 @@ export function outcomeLine(tool: string, ended: NonNullable<BandRun['ended']>):
 /** The two elements of a `ui.render` hook's element table that this mod's trees use. */
 export type Elements = { Box: ElementConstructor<any>; Text: ElementConstructor<any> }
 
-/**
- * The band above the prompt: the run, or after it hides, the doctor's most serious problem; nothing
- * when there's neither.
- */
-export function bandTree({ Box, Text }: Elements, run: BandRun | null, problems: BandProblems | null, now: number): RenderElement | undefined {
-  if (!run || (run.ended && now - run.ended.at > HIDE_AFTER_MS)) {
-    if (!problems) return undefined
-    const tone = problems.isFailure ? 'error' : 'warning'
-    const more = problems.more > 0 ? [Text({ color: 'subtle', children: [` (+${problems.more} more)`] })] : []
-    return Box({
-      flexDirection: 'row',
-      children: [
-        Text({ color: tone, children: ['⚠'] }),
-        Text({ color: tone, wrap: 'truncate-end', children: [` ${problems.message}`] }),
-        ...more,
-        Text({ color: 'subtle', children: [' · /xcrew doctor'] }),
-      ],
-    })
-  }
+/** Whether the band shows a run: one is going, or ended less than a few minutes ago. */
+export function showsRun(run: BandRun | null, now: number): run is BandRun {
+  return run !== null && !(run.ended && now - run.ended.at > HIDE_AFTER_MS)
+}
+
+/** The run above the prompt, as coloured pieces. */
+export function runTree({ Box, Text }: Elements, run: BandRun, now: number): RenderElement {
   return Box({
     flexDirection: 'row',
     children: segments(run, now)
       .filter(({ text }) => text !== '')
       .map(({ text, color, weight }) => Text({ color, weight, wrap: 'truncate-end', children: [text] })),
+  })
+}
+
+/** Before the first run, or once one has hidden: the doctor's most serious problem. */
+export function problemsTree({ Box, Text }: Elements, problems: BandProblems): RenderElement {
+  const tone = problems.isFailure ? 'error' : 'warning'
+  const more = problems.more > 0 ? [Text({ color: 'subtle', children: [` (+${problems.more} more)`] })] : []
+  return Box({
+    flexDirection: 'row',
+    children: [
+      Text({ color: tone, children: ['⚠'] }),
+      Text({ color: tone, wrap: 'truncate-end', children: [` ${problems.message}`] }),
+      ...more,
+      Text({ color: 'subtle', children: [' · /xcrew doctor'] }),
+    ],
   })
 }

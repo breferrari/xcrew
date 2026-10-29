@@ -22,8 +22,6 @@ export function summary(list: FailureList | null): string {
   return `${count} ${count === 1 ? 'failure' : 'failures'} from ${list.tool}, in the pane.`
 }
 
-export const CLOSED = 'Closed the failures pane.'
-
 /** Each failure: its test or file in the error colour, where it failed, and its message. */
 export function paneTree({ Box, Text }: Elements, list: FailureList | null): RenderElement {
   if (!list) return Box({ children: [Text({ color: 'subtle', children: [NONE] })] })
