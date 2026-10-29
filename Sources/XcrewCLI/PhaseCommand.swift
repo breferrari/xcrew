@@ -20,7 +20,6 @@ struct PhaseCommand: Command {
         guard let tool = invocation.arguments["tool"] else { throw UsageError(description: "phase needs --tool") }
         guard let since = invocation.arguments["since"].flatMap(Double.init) else { throw UsageError(description: "phase needs --since, in milliseconds") }
         let context = invocation.context
-        // Once the mod has the log it passes it back, which saves looking again, and reading the processes.
         let log: URL?
         if let given = invocation.arguments["log"] {
             log = URL(fileURLWithPath: given)

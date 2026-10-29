@@ -65,26 +65,30 @@ public enum RunLog {
     /// SHA-256 (docs/findings.md, *Which log is the run's*).
     static func workspaceKey(root: String) -> String {
         let name = root.split(separator: "/").last.map(String.init) ?? ""
-        let slug = String(name.replacing(/[^A-Za-z0-9._-]+/, with: "-").trimmingPrefix(/[.-]+/).replacing(/[.-]+$/, with: "").prefix(64))
-        let hash = SHA256.hash(data: Data(root.utf8)).map { byte in (byte < 16 ? "0" : "") + String(byte, radix: 16) }.joined().prefix(12)
-        return "\(slug.isEmpty ? "workspace" : slug)-\(hash)"
+        // By Unicode scalar, as JavaScript reads the string: a decomposed accent's mark is replaced apart from its letter.
+        let safe = name.replacing(/[^A-Za-z0-9._-]+/.matchingSemantics(.unicodeScalar), with: "-")
+        let slug = String(safe.replacing(/^[.-]+|[.-]+$/, with: "").prefix(64))
+        return "\(slug.isEmpty ? "workspace" : slug)-\(SHA256.hash(data: Data(root.utf8)).hex.prefix(12))"
     }
 
     /// The run's log for the session running on `machine`: only its own MobileBuildMCP servers' logs count when there
     /// is a session above this process to read them from.
+    /// The processes are read only once a log is there to choose among.
     public static func find(tool: String, since: Date, project: URL, machine: Machine) async -> URL? {
+        guard find(tool: tool, since: since, project: project, home: machine.home) != nil else { return nil }
         let (session, servers) = await ProcessList.load(using: machine.runner).mobileBuildMCPServers(forSessionOf: machine.processID)
         return find(tool: tool, since: since, project: project, home: machine.home, servers: session == nil ? nil : Set(servers.map(\.id)))
     }
 
-
     /// The log of the MobileBuildMCP run that started at `since`: the newest `<tool>_…log` written since then, in this
     /// project's own workspace folder, and when `servers` is given, written by one of them (`_pid<server>_`): two
-    /// sessions in one checkout share the folder. MobileBuildMCP keys the folder by the root as it found its config,
-    /// or by its real path without one, so both are tried.
-    public static func find(tool: String, since: Date, project: URL, home: URL, servers: Set<Int32>? = nil) -> URL? {
+    /// sessions in one checkout share the folder. With no servers recognised, every server's logs count. MobileBuildMCP
+    /// keys the folder by the root as it found its config, or by its real path, `/private` included, without one, so
+    /// both are tried.
+    static func find(tool: String, since: Date, project: URL, home: URL, servers: Set<Int32>? = nil) -> URL? {
         let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
-        let roots = [project.path, project.resolvingSymlinksInPath().path]
+        let servers = servers.flatMap { $0.isEmpty ? nil : $0 }
+        let roots = [project.path, ProjectLayout.canonical(project)]
         let manager = FileManager.default
         var newest: (url: URL, modified: Date)?
         for key in Set(roots.map(workspaceKey(root:))) {

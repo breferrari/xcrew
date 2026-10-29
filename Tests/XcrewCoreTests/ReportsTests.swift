@@ -430,6 +430,8 @@ func failingRunText(passing: Int) -> String {
         #expect(RunLog.workspaceKey(root: "/work/one/App") == "App-720d05200789")
         #expect(RunLog.workspaceKey(root: "/work/My App (2)") == "My-App-2-72c675102e34")
         #expect(RunLog.workspaceKey(root: "/") == "workspace-8a5edab28263")
+        // A decomposed accent, as macOS often stores one: MobileBuildMCP's JavaScript keeps the `e` and drops the mark.
+        #expect(RunLog.workspaceKey(root: "/work/Cafe\u{301}") == "Cafe-0daa8a117d35")
     }
 
     /// Two checkouts of folders with one name each have a workspace; only this one's is followed.
@@ -450,18 +452,23 @@ func failingRunText(passing: Int) -> String {
         try Self.age("App-720d05200789/logs/test_sim_1_pid100_a.log", in: home, to: 2_000)
         let project = URL(fileURLWithPath: "/work/one/App")
         #expect(RunLog.find(tool: "test_sim", since: Date(timeIntervalSince1970: 1_000), project: project, home: home.root, servers: [100])?.lastPathComponent == "test_sim_1_pid100_a.log")
-        // Without a session to read servers from, as from a terminal, the newest is the run's.
+        // Without a session to read servers from, as from a terminal, or with none recognised in it, the newest is the run's.
         #expect(RunLog.find(tool: "test_sim", since: Date(timeIntervalSince1970: 1_000), project: project, home: home.root)?.lastPathComponent == "test_sim_2_pid200_b.log")
+        #expect(RunLog.find(tool: "test_sim", since: Date(timeIntervalSince1970: 1_000), project: project, home: home.root, servers: [])?.lastPathComponent == "test_sim_2_pid200_b.log")
     }
 
-    /// Without its config MobileBuildMCP keys the workspace by the real path; with it, by the path as found.
-    @Test func aProjectReachedThroughALinkIsFollowedByEitherPath() throws {
+    /// Without its config MobileBuildMCP keys the workspace by the real path, as Node's `realpath` gives it, `/private`
+    /// included; with it, by the path as found. The expected key comes from `realpath` and `shasum`.
+    @Test func aProjectReachedThroughALinkIsFollowedByEitherPath() async throws {
         let home = Project.temporary()
         let real = home.root.appending(path: "real/App")
         try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
         let link = home.root.appending(path: "link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: home.root.appending(path: "real"))
-        let key = RunLog.workspaceKey(root: real.resolvingSymlinksInPath().path)
+        let realpath = await SystemCommandRunner().run(["/bin/realpath", link.appending(path: "App").path], stdin: nil, timeout: .seconds(10)).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(realpath.hasPrefix("/private/"))
+        let hash = await SystemCommandRunner().run(["/usr/bin/shasum", "-a", "256"], stdin: Data(realpath.utf8), timeout: .seconds(10)).stdout.prefix(12)
+        let key = "App-\(hash)"
         home.write("mine", to: "\(Self.workspaces)/\(key)/logs/test_sim_1_pid100_a.log")
         #expect(RunLog.find(tool: "test_sim", since: .distantPast, project: link.appending(path: "App"), home: home.root)?.lastPathComponent == "test_sim_1_pid100_a.log")
     }
@@ -477,12 +484,14 @@ func failingRunText(passing: Int) -> String {
     func theWorkspaceKeyIsTheInstalledMobileBuildMCPs() async throws {
         let libexec = try #require(Self.mobileBuildMCP)
         let source = libexec.appending(path: "build/utils/workspace-identity.js")
-        for root in ["/work/one/App", "/work/My App (2)", "/"] {
+        for root in ["/work/one/App", "/work/My App (2)", "/", "/work/Cafe\u{301}"] {
             let script = "import(process.argv[1]).then(m => console.log(m.workspaceKeyForRoot(process.argv[2])))"
             let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, source.path, root], stdin: nil, timeout: .seconds(30))
             let upstream = ran.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(upstream == RunLog.workspaceKey(root: root), "MobileBuildMCP's workspaceKeyForRoot in build/utils/workspace-identity.js names \(root)'s workspace \(upstream), not \(RunLog.workspaceKey(root: root)): RunLog.workspaceKey has to follow it (\(ran.stderr))")
         }
+        let capture = try String(contentsOf: libexec.appending(path: "build/utils/xcodebuild-log-capture.js"), encoding: .utf8)
+        #expect(capture.contains("_pid${process.pid}_"), "MobileBuildMCP's build/utils/xcodebuild-log-capture.js no longer names a log with _pid<server pid>_: RunLog.find's session filter has to follow it")
     }
 
     static func age(_ path: String, in home: Project, to seconds: TimeInterval) throws {

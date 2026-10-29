@@ -24,4 +24,13 @@ import Testing
         #expect(ProcessList.seconds("2-01:00:00") == 176_400)
         #expect(ProcessList.seconds("soon") == nil)
     }
+
+    /// MobileBuildMCP's server, as Homebrew starts it, with or without flags after `mcp`.
+    @Test func aMobileBuildMCPServerIsKnownByItsCommand() {
+        let server = "/opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/node-runtime /opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/build/cli.js mcp"
+        func process(_ command: String) -> ProcessList.Process { .init(id: 1, parent: 0, elapsed: 0, command: command) }
+        #expect(ProcessList.isMobileBuildMCPServer(process(server)))
+        #expect(ProcessList.isMobileBuildMCPServer(process(server + " --socket /tmp/x.sock")))
+        #expect(!ProcessList.isMobileBuildMCPServer(process("/opt/homebrew/bin/mobilebuildmcp --version")))
+    }
 }
