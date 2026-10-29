@@ -1,5 +1,6 @@
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { FailureList } from '../../types'
+import type { CliBuild, FailureList } from '../../types'
 
 /**
  * The mod's one way to the Swift CLI, which reads and parses everything the servers print. The mod
@@ -27,38 +28,61 @@ export type Phase = { log?: string; phase?: string }
 /** One line of `xcrew doctor --problems --json`. */
 export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 
-/** How long a build the shim named is run without asking again: a development checkout rebuilds when its sources change. */
+/** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
 const RECHECK_MS = 30_000
-let built: { path: string; at: number } | undefined
+/** The shim's last answer, for the session: the build to run, or none. */
+const buildState = atom({ plugin: 'xcrew', key: 'build' } as const, null as CliBuild | null)
+/** The question in flight, which callers at the same moment share rather than each starting a shim. */
+let asking: Promise<string | undefined> | undefined
+
+function shim($: EngineInterface): string {
+  return `${$.plugin.root}/bin/xcrew`
+}
 
 /** Starts a program of the CLI's: the mod's one process. */
 function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string) {
   return $.process.run([program, ...args], { timeoutMs, env: { XCREW_ROOT: $.plugin.root }, ...(stdin === undefined ? {} : { stdin }) })
 }
 
-/** The build the shim runs, asked for at most every 30 s. */
-async function build($: EngineInterface): Promise<string | undefined> {
+/**
+ * The build the shim runs, asked for at most every 30 s, within the caller's own time: when the
+ * shim must first build, a caller with ten seconds doesn't wait two minutes.
+ */
+async function build($: EngineInterface, timeoutMs: number): Promise<string | undefined> {
   const now = await $.clock.now()
-  if (built && now - built.at < RECHECK_MS) return built.path
-  const path = (await start($, `${$.plugin.root}/bin/xcrew`, ['--binary-path'], 120_000).catch(() => undefined))?.stdout.trim()
-  built = path ? { path, at: now } : undefined
-  return built?.path
+  const known = await read($, buildState)
+  if (known && now >= known.at && now - known.at < RECHECK_MS) return known.path ?? undefined
+  asking ??= start($, shim($), ['--binary-path'], timeoutMs)
+    .then(async ran => {
+      const path = ran.stdout.trim()
+      // Only a path to a build counts: anything else on stdout leaves the CLI to the shim.
+      const named = path.startsWith('/') && path.endsWith('/xcrew') ? path : null
+      await update($, buildState, () => ({ path: named, at: now }))
+      return named ?? undefined
+    })
+    .finally(() => {
+      asking = undefined
+    })
+  return asking
 }
 
 /**
  * Runs the CLI. The shim's own work is several times the build's, and the band asks once a second,
- * so the build it names runs directly; through the shim when there's none, or the build fails to start.
+ * so the build it names runs directly. When the build can't be started, the shim runs instead; a
+ * command that ran out of time isn't started again, which would double the wait.
  */
 async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string) {
-  const binary = await build($).catch(() => undefined)
+  const binary = await build($, timeoutMs).catch(() => undefined)
   if (binary) {
+    const startedAt = await $.clock.now()
     try {
       return await start($, binary, args, timeoutMs, stdin)
-    } catch {
-      built = undefined
+    } catch (error) {
+      if ((await $.clock.now()) - startedAt >= timeoutMs) throw error
+      await update($, buildState, () => null)
     }
   }
-  return start($, `${$.plugin.root}/bin/xcrew`, args, timeoutMs, stdin)
+  return start($, shim($), args, timeoutMs, stdin)
 }
 
 async function run($: EngineInterface, args: string[], stdin?: string, timeoutMs = 60_000): Promise<unknown> {

@@ -168,10 +168,13 @@ import XcrewCore
         #expect(try Self.offenders(/JSON\.parse\(/, allowed: ["cli.ts", "context.ts"]) == [])
     }
 
-    @Test func theModStartsProcessesFromOnePlace() throws {
-        // One call site, in cli.ts: whatever it starts, every process goes through it.
+    @Test func theModStartsOnlyTheCLIFromOnePlace() throws {
         let wrapper = try #require(try Self.sources().first { $0.name == "cli.ts" }).text
+        // One call site, in `start`, which runs nothing but the shim or the build the shim names.
         #expect(wrapper.matches(of: /\$\.process\.run\(/).count == 1)
+        let programs = Set(wrapper.matches(of: /start\(\$, ([^,]+),/).map { String($0.1) })
+        #expect(programs == ["shim($)", "binary"])
+        #expect(wrapper.contains("const binary = await build("))
     }
 
     @Test func onlyToolNamesAreMatchedByPattern() throws {

@@ -34,7 +34,13 @@ import Testing
         """
         try write(fakeSwift, to: "fakebin/swift", executable: true)
         // Counts the hashing of the sources, the cost a second run should skip.
-        try write("#!/bin/sh\necho hash >> \"\(hashLog.path)\"\nexec /usr/bin/shasum \"$@\"\n", to: "fakebin/shasum", executable: true)
+        try write("""
+        #!/bin/sh
+        echo hash >> "\(hashLog.path)"
+        # Stands for an edit saved while the sources are being hashed.
+        if [ -n "${EDIT_DURING_HASH:-}" ]; then sleep 1; echo "// edited" >> "\(root.appending(path: "Sources/xcrew/main.swift").path)"; fi
+        exec /usr/bin/shasum "$@"
+        """, to: "fakebin/shasum", executable: true)
     }
 
     func write(_ text: String, to path: String, executable: Bool = false) throws {
@@ -200,5 +206,24 @@ extension ShimTests {
         #expect(path.hasPrefix(try await physicalPath(cache)) || path.hasPrefix(cache.path))
         #expect(FileManager.default.isExecutableFile(atPath: path))
         #expect(builds == 1)
+    }
+}
+
+extension ShimTests {
+    /// Unpacking or `cp -p` sets a file's modification time back; its change time still says it's new.
+    @Test func aSourceRestoredWithAnOldTimeStillRebuilds() async throws {
+        _ = try await shim("help")
+        let main = root.appending(path: "Sources/xcrew/main.swift")
+        try "print(5)\n".write(to: main, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -86_400)], ofItemAtPath: main.path)
+        _ = try await shim("help")
+        #expect(builds == 2)
+    }
+
+    /// The key is stamped with the time hashing began, so an edit saved meanwhile is seen next time.
+    @Test func anEditSavedWhileHashingIsSeenNextTime() async throws {
+        _ = try await shim("help", environment: ["EDIT_DURING_HASH": "1"])
+        _ = try await shim("help")
+        #expect(builds == 2)
     }
 }

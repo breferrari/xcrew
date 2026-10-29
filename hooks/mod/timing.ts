@@ -73,7 +73,7 @@ export function registerTiming(on: On): void {
     if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }) }))
     let phase: string | undefined
     const readPhase = async (since: number) => {
-      const found = await readRunPhase($, name, since, expectedTests, logPath)
+      const found = (await quietly(() => readRunPhase($, name, since, expectedTests, logPath))) ?? {}
       if (logPath === undefined && found.log !== undefined) {
         logPath = found.log
         if (!writesLog) await quietly(() => $.store.set(logsKey(name), true))

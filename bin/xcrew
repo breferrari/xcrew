@@ -13,16 +13,22 @@ root=$PWD
 cd "$here"
 cache=${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}
 # Hashing every source takes most of this script's time. The key is kept in the cache, under this
-# checkout's path, and worked out again only when something under the sources is newer: an edit, or
-# a deletion, which changes its folder.
+# checkout's path, and worked out again only when something under the sources changed after it: an
+# edit or a deletion (which changes its folder) by modification time, and a copy or unpacking, which
+# can set that back, by change time.
 stamp="$cache/roots$root.key"
 key=
-if [ -f "$stamp" ] && [ -z "$(find "$root/Package.swift" "$root/Sources" -newer "$stamp" -print -quit 2>/dev/null)" ]; then
+if [ -f "$stamp" ] && [ -z "$(find "$root/Package.swift" "$root/Sources" \( -newer "$stamp" -o -cnewer "$stamp" \) -print -quit 2>/dev/null)" ]; then
     read -r key < "$stamp" || key=
 fi
 if [ -z "$key" ]; then
+    mkdir -p "${stamp%/*}"
+    # The stamp takes the time hashing began, so an edit saved while it runs is newer and seen next time.
+    began="$stamp.$$"
+    : > "$began"
     key=$(cd "$root" && find Package.swift Sources -type f -name '*.swift' | LC_ALL=C sort | xargs cat | shasum | cut -c1-16)
-    mkdir -p "${stamp%/*}" 2>/dev/null && printf '%s\n' "$key" > "$stamp" 2>/dev/null || true
+    { printf '%s\n' "$key" > "$began.key" && touch -r "$began" "$began.key" && mv "$began.key" "$stamp"; } 2>/dev/null || true
+    rm -f "$began" "$began.key"
 fi
 binary="$cache/$key/xcrew"
 

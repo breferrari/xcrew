@@ -16,7 +16,7 @@ export function runCommand($: Engine, command: string, args = '') {
 }
 
 /** One call the mod made to the Swift CLI: its arguments, what it piped in, and the program when it wasn't the shim. */
-export type CliCall = { args: readonly string[]; stdin?: string; program?: string }
+export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number }
 
 /** Where the stand-in shim says its build is, for `--binary-path`. */
 export const BUILT_BINARY = '/cache/0123456789abcdef/xcrew'
@@ -24,18 +24,31 @@ export const BUILT_BINARY = '/cache/0123456789abcdef/xcrew'
 /**
  * Stands for the Swift CLI, which does the reading the mod hands off: each `report` answers with
  * the next of `reports` (the last one repeats), `phase` with what `phase` returns for its
- * arguments, `doctor` with `problems`, and `project` with `project`.
+ * arguments, `doctor` with `problems`, and `project` with `project`. `build` is how the build
+ * itself behaves when the mod runs it directly: answers, can't be started, or runs past its time.
  */
 export function stubCli(
   on: On,
-  answers: { reports?: Partial<Report>[]; phase?: (args: readonly string[]) => Phase; problems?: Problem[]; project?: { isGenerated: boolean }; noBuild?: boolean } = {},
+  answers: {
+    reports?: Partial<Report>[]
+    phase?: (args: readonly string[]) => Phase
+    problems?: Problem[]
+    project?: { isGenerated: boolean }
+    noBuild?: boolean
+    build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
+  } = {},
 ): CliCall[] {
   const calls: CliCall[] = []
   const reports = [...(answers.reports ?? [])]
-  on('process.run', (_, e) => {
+  on('process.run', async (_, e) => {
     const args = e.argv.slice(1)
     const program = e.argv[0] ?? ''
-    calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }) })
+    const timeoutMs = e.init?.timeoutMs
+    calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
+    if (program === BUILT_BINARY && answers.build) {
+      if (answers.build.fails === 'by timing out') await answers.build.clock.advance(timeoutMs ?? 30_000)
+      throw new Error(answers.build.fails === 'to start' ? 'spawn ENOENT' : 'timed out')
+    }
     const answer =
       args[0] === 'report' ? ((reports.length > 1 ? reports.shift() : reports[0]) ?? {})
       : args[0] === 'phase' ? (answers.phase?.(args) ?? {})

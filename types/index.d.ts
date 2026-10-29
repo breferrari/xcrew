@@ -23,8 +23,11 @@ export type FailureList = {
 /** The most serious problem `xcrew doctor` found at session start, and how many more there are. */
 export type BandProblems = { isFailure: boolean; message: string; more: number }
 
+/** The CLI build the shim named, and when it was asked: `path` is null when it named none. */
+export type CliBuild = { path: string | null; at: number }
+
 declare module 'claude-code' {
   interface PluginState {
-    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null }
+    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null }
   }
 }
