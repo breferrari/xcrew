@@ -42,6 +42,10 @@ jobs:
         run: |
           claude plugin validate .
           claude plugin test .
+      - name: xcrew reads back a result Claude Code saved to a file
+        run: |
+          scripts/saved-notice.sh "$(readlink -f "$(command -v claude)")" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
+        shell: bash
       - name: The CLI builds and checks the installed MobileBuildMCP
         run: bin/xcrew doctor --check mobilebuildmcp/version
       - name: MobileBuildMCP still accepts the config xcrew writes

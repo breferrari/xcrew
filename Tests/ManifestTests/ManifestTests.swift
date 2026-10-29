@@ -223,9 +223,11 @@ import Testing
         }
     }
 
-    /// Only the weekly canary can tell an install pull request that's pending from one that was abandoned.
-    @Test func theCanaryChecksTheMarketplaceRef() throws {
-        #expect(try text(".github/workflows/canary.yml").contains("scripts/marketplace-ref.sh "))
+    /// Only the weekly canary can tell an install pull request that's pending from one that was abandoned, and only the
+    /// newest Claude Code can say xcrew still reads its saved-result notice, whose wording isn't documented.
+    @Test(arguments: ["scripts/marketplace-ref.sh ", "scripts/saved-notice.sh "])
+    func theCanaryRunsEachUpstreamCheck(_ script: String) throws {
+        #expect(try text(".github/workflows/canary.yml").contains(script))
     }
 
     /// The mod drops history no run has updated for as long as the shim keeps a build no checkout has run.
