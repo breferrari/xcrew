@@ -44,7 +44,8 @@ import Testing
         let duration = "8.\(Int.random(in: 100_000...999_999))"
         let clock = ContinuousClock()
         let started = clock.now
-        let result = await runner.run(["/bin/sh", "-c", "echo ready; sleep \(duration) &"], stdin: nil, timeout: .milliseconds(200))
+        // A long time limit: the wait after exit is a moment's grace, not what's left of the limit.
+        let result = await runner.run(["/bin/sh", "-c", "echo ready; sleep \(duration) &"], stdin: nil, timeout: .seconds(20))
         _ = await runner.run("/usr/bin/pkill", "-f", "sleep \(duration)")
         #expect(result.status == 0)
         #expect(result.stdout == "ready\n")

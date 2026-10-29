@@ -15,6 +15,7 @@
 - A build or test call that fails beneath Xcrew, such as one that's interrupted, no longer leaves the line above the prompt or the status line counting.
 - The Xcode MCP starts from a script in the plugin, as MobileBuildMCP does, so the plugin directory can read both server commands. Nothing else changes. The README shows its pictures in Markdown, as the directory reads them.
 - The plugin directory's listing names Xcrew, links to its README for documentation and its issues for support, and shows the README's pictures.
+- A command Xcrew runs that exits while a background process it started keeps running no longer holds Xcrew up until that process ends: Xcrew waits at most until the command's own time limit, with a second's grace.
 
 ## 0.7.3 — 2026-10-29
 
