@@ -107,6 +107,8 @@ From the directory's validation of `main` at two commits on October 29, 2026, be
 | It resolves a name in the hooks module without regard to scope: a top-level helper that takes `$`, named like a variable inside a hook, reads as `$` passed to that hook's own binding. Claude Code's local `claude plugin validate` reads the same file correctly | The helper and the hook's variable have different names, and a test fails when a helper that takes `$` shares its name with another binding |
 | It reads an MCP server's command only when it's a file of the plugin with plain arguments: `xcrun` with `mcpbridge`, and `/bin/sh -c`, were each held as a command it couldn't read | Both local servers start from scripts in `libexec/` |
 | It holds a bundled image the README shows with an HTML `<img>` tag; its checklist asks for Markdown's image syntax | The README's images are Markdown, and a test fails on an `<img>` tag |
+| Its listing preview shows the README away from the repository: an image at a relative `assets/` path appeared as its alt text | The README's images are absolute `raw.githubusercontent.com` URLs to this repository's `assets/`, and a test fails on any other image source |
+| Without `documentationUrl`, the listing took the README's first link, Sosumi's site, as the plugin's documentation | `plugin.json` sets `documentationUrl` and `supportUrl`, and a test fails on a field the manifest reference doesn't document |
 
 ## Tried and rejected
 

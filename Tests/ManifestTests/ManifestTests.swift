@@ -84,6 +84,28 @@ import XcrewCore
         #expect(servers["sosumi"]?["url"] as? String == "https://sosumi.ai/mcp")
     }
 
+    /// Claude Code strips a top-level field it doesn't know, and the directory flags it, so a misspelt field would do
+    /// nothing in silence. These are the fields the manifest reference documents.
+    static let manifestFields: Set = [
+        "$schema", "name", "displayName", "version", "description", "author", "homepage", "repository", "license", "keywords",
+        "metadata", "icon", "documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl", "defaultEnabled",
+        "dependencies", "settings", "userConfig", "types", "channels", "skills", "commands", "agents", "hooks", "mcpServers",
+        "lspServers", "outputStyles", "workflows", "experimental",
+    ]
+
+    @Test func theManifestUsesOnlyDocumentedFields() throws {
+        let fields = Set(try json(".claude-plugin/plugin.json").keys)
+        #expect(fields.subtracting(Self.manifestFields).isEmpty, "undocumented: \(fields.subtracting(Self.manifestFields).sorted())")
+    }
+
+    /// What the directory's listing shows and links to.
+    @Test func theListingNamesXcrewAndLinksToItsOwnPages() throws {
+        let manifest = try json(".claude-plugin/plugin.json")
+        #expect(manifest["displayName"] as? String == "Xcrew")
+        #expect(manifest["documentationUrl"] as? String == "https://github.com/breferrari/xcrew#readme")
+        #expect(manifest["supportUrl"] as? String == "https://github.com/breferrari/xcrew/issues")
+    }
+
     /// The directory's listing links to the privacy section; GitHub makes a heading's anchor from its words.
     @Test func thePrivacyLinkLandsOnAREADMEHeading() throws {
         let link = try #require(try json(".claude-plugin/plugin.json")["privacyPolicyUrl"] as? String)
@@ -112,10 +134,13 @@ import XcrewCore
         #expect(!readme.contains("<img"), "an HTML image tag; the directory reads Markdown's ![alt](path)")
         let sources = readme.matches(of: /!\[[^\]]*\]\(([^)\s]+)/).map { String($0.1) }
         #expect(!sources.isEmpty)
-        for source in sources where source.hasPrefix("assets/") {
-            #expect(FileManager.default.fileExists(atPath: Self.repository.appending(path: source).path), "\(source) doesn't exist")
+        // The directory's listing shows the README away from the repository, where a relative path finds nothing.
+        let raw = "https://raw.githubusercontent.com/breferrari/xcrew/main/"
+        for source in sources where !source.hasPrefix("https://img.shields.io/") {
+            #expect(source.hasPrefix(raw + "assets/"), "\(source) isn't one of this repository's assets by absolute URL")
+            #expect(FileManager.default.fileExists(atPath: Self.repository.appending(path: String(source.dropFirst(raw.count))).path), "\(source) doesn't exist")
         }
-        for source in sources where !source.hasPrefix("assets/") {
+        for source in sources where !source.hasPrefix(raw) {
             #expect(source.hasPrefix("https://img.shields.io/"), "\(source) isn't a file under assets/")
         }
     }
