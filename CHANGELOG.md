@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The line above the prompt follows only its own run, so two sessions building in one checkout, or in two checkouts of folders with the same name, no longer show each other's progress.
 - `xcrew doctor` finds the in-place macro copy phase older Tuist generated in a project saved in Xcode 27.2's JSON format too, not only in `project.pbxproj`, and warns as it does there.
 - Installs now follow a `stable` branch that each release moves forward, in place of a tag the marketplace names, so a release reaches `claude plugin update` the moment it is published.
 

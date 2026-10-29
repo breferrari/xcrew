@@ -316,12 +316,12 @@ func failingRunText(passing: Int) -> String {
 
     @Test func theRunsLogIsTheNewestOfItsToolInThisProjectsWorkspace() throws {
         let home = Project.temporary()
-        home.write("old", to: "Library/Developer/MobileBuildMCP/workspaces/App-1234/logs/test_sim_1.log")
-        home.write("other tool", to: "Library/Developer/MobileBuildMCP/workspaces/App-1234/logs/build_sim_2.log")
+        home.write("old", to: "Library/Developer/MobileBuildMCP/workspaces/App-fc001cdb6ae6/logs/test_sim_1.log")
+        home.write("other tool", to: "Library/Developer/MobileBuildMCP/workspaces/App-fc001cdb6ae6/logs/build_sim_2.log")
         home.write("other project", to: "Library/Developer/MobileBuildMCP/workspaces/Other-9999/logs/test_sim_3.log")
-        let logs = home.root.appending(path: "Library/Developer/MobileBuildMCP/workspaces/App-1234/logs")
+        let logs = home.root.appending(path: "Library/Developer/MobileBuildMCP/workspaces/App-fc001cdb6ae6/logs")
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: logs.appending(path: "test_sim_1.log").path)
-        home.write("new", to: "Library/Developer/MobileBuildMCP/workspaces/App-1234/logs/test_sim_4.log")
+        home.write("new", to: "Library/Developer/MobileBuildMCP/workspaces/App-fc001cdb6ae6/logs/test_sim_4.log")
         let found = RunLog.find(tool: "test_sim", since: Date(timeIntervalSince1970: 2_000), project: URL(fileURLWithPath: "/work/App"), home: home.root)
         #expect(found?.lastPathComponent == "test_sim_4.log")
         #expect(RunLog.find(tool: "test_sim", since: .distantFuture, project: URL(fileURLWithPath: "/work/App"), home: home.root) == nil)
@@ -422,11 +422,78 @@ func failingRunText(passing: Int) -> String {
 }
 
 @Suite struct RunLogWorkspaceTests {
+    static let workspaces = "Library/Developer/MobileBuildMCP/workspaces"
+
+    /// MobileBuildMCP's own key: its folder name made safe, then the first 12 hex of the SHA-256 of the root
+    /// (`shasum -a 256` of each path).
+    @Test func theWorkspaceIsNamedAsMobileBuildMCPNamesIt() {
+        #expect(RunLog.workspaceKey(root: "/work/one/App") == "App-720d05200789")
+        #expect(RunLog.workspaceKey(root: "/work/My App (2)") == "My-App-2-72c675102e34")
+        #expect(RunLog.workspaceKey(root: "/") == "workspace-8a5edab28263")
+    }
+
+    /// Two checkouts of folders with one name each have a workspace; only this one's is followed.
+    @Test func aCheckoutOfAnotherFolderWithTheSameNameIsNotFollowed() throws {
+        let home = Project.temporary()
+        home.write("mine", to: "\(Self.workspaces)/App-720d05200789/logs/test_sim_1_pid100_a.log")
+        home.write("theirs", to: "\(Self.workspaces)/App-4c3117e2da91/logs/test_sim_2_pid200_b.log")
+        try Self.age("App-720d05200789/logs/test_sim_1_pid100_a.log", in: home, to: 2_000)
+        let found = RunLog.find(tool: "test_sim", since: Date(timeIntervalSince1970: 1_000), project: URL(fileURLWithPath: "/work/one/App"), home: home.root)
+        #expect(found?.lastPathComponent == "test_sim_1_pid100_a.log")
+    }
+
+    /// Two sessions in one checkout write into one workspace; each follows only its own server's log.
+    @Test func anotherSessionsLogIsNotFollowed() throws {
+        let home = Project.temporary()
+        home.write("mine", to: "\(Self.workspaces)/App-720d05200789/logs/test_sim_1_pid100_a.log")
+        home.write("theirs", to: "\(Self.workspaces)/App-720d05200789/logs/test_sim_2_pid200_b.log")
+        try Self.age("App-720d05200789/logs/test_sim_1_pid100_a.log", in: home, to: 2_000)
+        let project = URL(fileURLWithPath: "/work/one/App")
+        #expect(RunLog.find(tool: "test_sim", since: Date(timeIntervalSince1970: 1_000), project: project, home: home.root, servers: [100])?.lastPathComponent == "test_sim_1_pid100_a.log")
+        // Without a session to read servers from, as from a terminal, the newest is the run's.
+        #expect(RunLog.find(tool: "test_sim", since: Date(timeIntervalSince1970: 1_000), project: project, home: home.root)?.lastPathComponent == "test_sim_2_pid200_b.log")
+    }
+
+    /// Without its config MobileBuildMCP keys the workspace by the real path; with it, by the path as found.
+    @Test func aProjectReachedThroughALinkIsFollowedByEitherPath() throws {
+        let home = Project.temporary()
+        let real = home.root.appending(path: "real/App")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let link = home.root.appending(path: "link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: home.root.appending(path: "real"))
+        let key = RunLog.workspaceKey(root: real.resolvingSymlinksInPath().path)
+        home.write("mine", to: "\(Self.workspaces)/\(key)/logs/test_sim_1_pid100_a.log")
+        #expect(RunLog.find(tool: "test_sim", since: .distantPast, project: link.appending(path: "App"), home: home.root)?.lastPathComponent == "test_sim_1_pid100_a.log")
+    }
+
+    /// MobileBuildMCP's install, from its command on the PATH: `<prefix>/bin/mobilebuildmcp`, beside `<prefix>/libexec`.
+    static var mobileBuildMCP: URL? {
+        SystemCommandRunner().which("mobilebuildmcp").map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent().appending(path: "libexec") }
+    }
+
+    /// The key is MobileBuildMCP's own derivation, so it's checked against the installed one wherever MobileBuildMCP
+    /// is installed (this Mac, the weekly canary), run with the Node it ships.
+    @Test(.enabled(if: mobileBuildMCP != nil))
+    func theWorkspaceKeyIsTheInstalledMobileBuildMCPs() async throws {
+        let libexec = try #require(Self.mobileBuildMCP)
+        let source = libexec.appending(path: "build/utils/workspace-identity.js")
+        for root in ["/work/one/App", "/work/My App (2)", "/"] {
+            let script = "import(process.argv[1]).then(m => console.log(m.workspaceKeyForRoot(process.argv[2])))"
+            let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, source.path, root], stdin: nil, timeout: .seconds(30))
+            let upstream = ran.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(upstream == RunLog.workspaceKey(root: root), "MobileBuildMCP's workspaceKeyForRoot in build/utils/workspace-identity.js names \(root)'s workspace \(upstream), not \(RunLog.workspaceKey(root: root)): RunLog.workspaceKey has to follow it (\(ran.stderr))")
+        }
+    }
+
+    static func age(_ path: String, in home: Project, to seconds: TimeInterval) throws {
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: seconds)], ofItemAtPath: home.root.appending(path: "\(workspaces)/\(path)").path)
+    }
+
     @Test func anotherProjectWhoseNameStartsTheSameIsNotFollowed() {
         let home = Project.temporary()
         home.write("legacy", to: "Library/Developer/MobileBuildMCP/workspaces/App-Legacy-0a1b2c3d4e5f/logs/test_sim_2.log")
         #expect(RunLog.find(tool: "test_sim", since: .distantPast, project: URL(fileURLWithPath: "/work/App"), home: home.root) == nil)
-        home.write("mine", to: "Library/Developer/MobileBuildMCP/workspaces/App-9969f1c198bb/logs/test_sim_1.log")
+        home.write("mine", to: "Library/Developer/MobileBuildMCP/workspaces/App-fc001cdb6ae6/logs/test_sim_1.log")
         #expect(RunLog.find(tool: "test_sim", since: .distantPast, project: URL(fileURLWithPath: "/work/App"), home: home.root)?.lastPathComponent == "test_sim_1.log")
     }
 }

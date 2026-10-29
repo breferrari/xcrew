@@ -400,6 +400,25 @@ import XcrewTestSupport
     @Test func beforeTheLogAppearsThereIsNeitherLogNorPhase() async {
         #expect(await Run("phase", "--tool", "test_sim", "--since", "0").text == "{}")
     }
+
+    /// Two sessions in one checkout share MobileBuildMCP's workspace; each follows the log its own server writes.
+    @Test func aSessionFollowsItsOwnServersLog() async throws {
+        let home = Project.temporary()
+        let server = "/opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/node-runtime /opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/build/cli.js mcp"
+        let ps = "  100 1 01:00:00 claude\n  200 100 05:00 \(server)\n  300 100 00:01 xcrew phase\n  400 1 01:00:00 claude\n  500 400 05:00 \(server)\n"
+        let runner = FakeRunner(responses: [
+            "ps -axo pid=,ppid=,etime=,command=": .init(status: 0, stdout: ps),
+            "ps -axo pid=,comm=": .init(status: 0, stdout: "100 claude\n200 node-runtime\n300 xcrew\n400 claude\n500 node-runtime\n"),
+        ])
+        // `/work/one/App`'s workspace, as MobileBuildMCP names it (`shasum -a 256` of the path).
+        home.write("SwiftCompile normal arm64 /w/A.swift (in target 'Mine' from project 'App')\n", to: "Library/Developer/MobileBuildMCP/workspaces/App-720d05200789/logs/test_sim_1_pid200_a.log")
+        home.write("SwiftCompile normal arm64 /w/B.swift (in target 'Theirs' from project 'App')\n", to: "Library/Developer/MobileBuildMCP/workspaces/App-720d05200789/logs/test_sim_2_pid500_b.log")
+        let logs = home.root.appending(path: "Library/Developer/MobileBuildMCP/workspaces/App-720d05200789/logs")
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -5)], ofItemAtPath: logs.appending(path: "test_sim_1_pid200_a.log").path)
+        let context = CheckContext(project: Project(root: URL(fileURLWithPath: "/work/one/App")), machine: Machine(environment: [:], home: home.root, runner: runner, processID: 300))
+        let run = await Run("phase", "--tool", "test_sim", "--since", "0", context: context)
+        #expect(run.text.contains(#""phase":"compiling Mine""#))
+    }
 }
 
 @Suite struct ProjectCommandTests {

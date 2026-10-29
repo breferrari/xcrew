@@ -20,9 +20,13 @@ struct PhaseCommand: Command {
         guard let tool = invocation.arguments["tool"] else { throw UsageError(description: "phase needs --tool") }
         guard let since = invocation.arguments["since"].flatMap(Double.init) else { throw UsageError(description: "phase needs --since, in milliseconds") }
         let context = invocation.context
-        // Once the mod has the log it passes it back, which saves looking again.
-        let log = invocation.arguments["log"].map { URL(fileURLWithPath: $0) }
-            ?? RunLog.find(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: context.project.root, home: context.machine.home)
+        // Once the mod has the log it passes it back, which saves looking again, and reading the processes.
+        let log: URL?
+        if let given = invocation.arguments["log"] {
+            log = URL(fileURLWithPath: given)
+        } else {
+            log = await RunLog.find(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: context.project.root, machine: context.machine)
+        }
         let phase = log.flatMap { RunLog.phase(ofLogAt: $0, expectedTests: invocation.arguments["expected"].flatMap(Int.init)) }
         let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: phase))
         invocation.print(String(decoding: encoded, as: UTF8.self))

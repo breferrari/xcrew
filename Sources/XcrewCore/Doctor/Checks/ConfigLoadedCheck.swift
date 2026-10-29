@@ -13,11 +13,7 @@ struct ConfigLoadedCheck: Check {
         guard let written = try? FileManager.default.attributesOfItem(atPath: context.project.managedMarker.path)[.modificationDate] as? Date else {
             return .skip("no config xcrew wrote")
         }
-        let list = await ProcessList.load(using: context.runner)
-        let session = list.ancestors(of: context.machine.processID).first { $0.program == "claude" }
-        let candidates = list.processes.filter { process in
-            Self.isServer(process) && list.ancestors(of: process.id).contains { $0.program == "claude" && (session == nil || $0.id == session?.id) }
-        }
+        let (session, candidates) = await ProcessList.load(using: context.runner).mobileBuildMCPServers(forSessionOf: context.machine.processID)
         let root = ProjectLayout.canonical(context.project.root)
         let folders = await Self.folders(of: candidates, using: context.runner)
         guard let server = candidates.filter({ folders[$0.id] == root }).max(by: { $0.elapsed < $1.elapsed }) else {
@@ -29,10 +25,6 @@ struct ConfigLoadedCheck: Check {
         return .warn(session == nil
             ? "a MobileBuildMCP serving this project started before the config changed: restart its Claude Code session to load it"
             : "the config changed after this session's MobileBuildMCP started: restart Claude Code to load it")
-    }
-
-    static func isServer(_ process: ProcessList.Process) -> Bool {
-        process.command.contains("/mobilebuildmcp/") && process.command.hasSuffix("build/cli.js mcp")
     }
 
     /// Each process's working folder, from one `lsof` for all of them: a `p` line names the process, its `n` line the folder.
