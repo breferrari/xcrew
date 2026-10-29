@@ -91,8 +91,14 @@ export function kindOf(tool: XcodeTool): ToolKind | undefined {
 }
 
 
-/** Whether a call builds the project, so a stale one would build it as it was: a build or a test run, but not a clean. */
+/**
+ * Whether a call builds the project, so a stale one would build it as it was: a build, a test run, or a run that builds
+ * first (`RunProject`); not a clean, nor a launch of what was built.
+ */
 export function buildsProject(tool: XcodeTool): boolean {
   const kind = kindOf(tool)
-  return kind === 'test' || (kind === 'build' && !/\bclean\b/.test(wordsOf(tool.tool)))
+  const words = wordsOf(tool.tool)
+  if (kind === 'build') return !/\bclean\b/.test(words)
+  if (kind === 'run') return !/\blaunch\b/.test(words)
+  return kind === 'test'
 }

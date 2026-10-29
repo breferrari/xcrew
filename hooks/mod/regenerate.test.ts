@@ -127,3 +127,11 @@ test('tools that only read are never refused, however stale the project', async 
   expect((await callTool($, 'mcp__xcode__GetBuildLog')).deny).toBeUndefined()
   expect((await build($)).deny).toContain(GENERATE)
 })
+
+test('running the app through the Xcode MCP builds it first, so it is refused once too; a launch alone is not', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  expect((await callTool($, 'mcp__xcode__RunProject')).deny).toContain(GENERATE)
+  await editManifest($)
+  expect((await callTool($, 'mcp__MobileBuildMCP__launch_app_sim')).deny).toBeUndefined()
+})

@@ -44,7 +44,7 @@ export const register: Register = on => {
     const described = await next(e)
     return (await isGeneratedProject($)) ? { ...described, description: describedForGenerated(described.description) } : described
   })
-  // After a manifest edit, the first build or test is refused with the generate command; the next goes through.
+  // After a manifest edit, the first call that builds the project is refused with the generate command; the next goes through.
   on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const parsed = parseTool(e.tool)
     const stale = parsed && buildsProject(parsed) ? await quietly(() => read($, staleState)) : undefined

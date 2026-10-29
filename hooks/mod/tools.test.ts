@@ -85,8 +85,9 @@ test('only tools that build the project are held back after a manifest edit', ()
     const tool = parseTool(name)
     return tool ? buildsProject(tool) : 'not an Xcode tool'
   }
-  for (const name of ['mcp__MobileBuildMCP__build_sim', 'mcp__MobileBuildMCP__build_run_sim', 'mcp__MobileBuildMCP__test_sim', 'mcp__xcode__BuildProject', 'mcp__xcode__RunAllTests']) expect([name, builds(name)]).toEqual([name, true])
-  for (const name of ['mcp__MobileBuildMCP__clean', 'mcp__MobileBuildMCP__launch_app_sim', 'mcp__xcode__GetBuildLog']) expect([name, builds(name)]).toEqual([name, false])
+  // RunProject builds before it launches; a launch alone runs what was built.
+  for (const name of ['mcp__MobileBuildMCP__build_sim', 'mcp__MobileBuildMCP__build_run_sim', 'mcp__MobileBuildMCP__test_sim', 'mcp__xcode__BuildProject', 'mcp__xcode__RunAllTests', 'mcp__xcode__RunProject']) expect([name, builds(name)]).toEqual([name, true])
+  for (const name of ['mcp__MobileBuildMCP__clean', 'mcp__MobileBuildMCP__launch_app_sim', 'mcp__MobileBuildMCP__launch_mac_app', 'mcp__xcode__GetBuildLog']) expect([name, builds(name)]).toEqual([name, false])
 })
 
 test('a shell command that runs xcrew setup is recognised, by any path, quoted or not', () => {
