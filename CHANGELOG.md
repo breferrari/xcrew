@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.2 — 2026-10-29
 
 - `xcrew setup` writes only profiles that have a scheme, finds your unit-test scheme itself, and writes each profile's simulator ID, so `screenshot` works after a profile switch. `xcrew doctor` flags configs from 0.8.1 and earlier: rerun `/xcrew:setup`.
 - A fresh install from the marketplace now gets the tagged release, not the newest code on main under the last release's version. `xcrew doctor` also shows the commit beside the version when Xcrew runs from a git checkout.
