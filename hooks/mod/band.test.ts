@@ -32,7 +32,7 @@ test('while a run is going the band shows it in colour, and the plain status lin
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
     const dot = await ui.find({ type: 'Text', text: '●' })
     const tool = await ui.find({ type: 'Text', text: /^test_sim$/ })
-    const time = await ui.find({ type: 'Text', text: /0:41/ })
+    const time = await ui.find({ type: 'Text', text: '0:41' })
     drawn = { dot: dot?.props.color, tool: tool?.props.weight, time: time?.text }
     await ui.unmount()
     return { result: {}, text: captured.mobileTestsPassed.text }
@@ -40,7 +40,7 @@ test('while a run is going the band shows it in colour, and the plain status lin
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
-  expect(drawn).toEqual({ dot: '#ec501d', tool: 'semibold', time: ' · 0:41' })
+  expect(drawn).toEqual({ dot: '#ec501d', tool: 'semibold', time: '0:41' })
   expect(statuses.filter(Boolean)).toEqual([])
 })
 
@@ -58,7 +58,7 @@ test('when it ends the band shows the outcome: success green, failure and its de
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
   let ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: '✓' }))?.props.color).toBe('success')
-  expect((await ui.find({ type: 'Text', text: / · 3 passed/ }))?.props.color).toBe('subtle')
+  expect((await ui.find({ type: 'Text', text: '3 passed' }))?.props.color).toBeUndefined()
   await ui.unmount()
 
   await callTool($, 'mcp__xcode__BuildProject')
@@ -146,7 +146,7 @@ test('where the band draws, it carries the outcome alone, with no toast repeatin
   expect(toasts).toEqual([])
 })
 
-test('the band carries the phase after the time, in the quiet colour', async ($, on) => {
+test('the band carries the phase after the time, in the theme\'s text colour', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on, { 'tests.test_sim': 959 })
   inTerminal(on)
@@ -156,42 +156,57 @@ test('the band carries the phase after the time, in the quiet colour', async ($,
   on('tool.call', async () => {
     await clock.advance(3_000)
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-    phase = (await ui.find({ type: 'Text', text: ' · testing 1 of 959' }))?.props.color
+    phase = (await ui.find({ type: 'Text', text: 'testing 1 of 959' }))?.props.color
     await ui.unmount()
     return { result: {}, text: captured.mobileTestsPassed.text }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
 
-  expect(phase).toBe('subtle')
+  expect(phase).toBeUndefined()
+})
+
+test('only the separators are faint: the time, the time left, the phase and the target read in the theme\'s text colour', () => {
+  const running = segments({ tool: 'test_sim', target: 'App on iPhone 18 | Unit', startedAt: 0, measuredFrom: 0, usual: 110_000, phase: 'preparing' }, 44_000)
+  const ended = segments({ tool: 'test_sim', target: 'App on iPhone 18 | Unit', startedAt: 0, ended: { at: 50_000, elapsed: 50_000, ok: true, detail: '3 passed' } }, 50_000)
+  for (const drawn of [running, ended]) {
+    expect(drawn.filter(segment => segment.color === 'subtle').map(segment => segment.text)).toEqual(drawn.filter(segment => segment.text === ' · ').map(segment => segment.text))
+    expect(drawn.filter(segment => segment.color === 'subtle').length).toBeGreaterThan(0)
+  }
+  for (const value of ['0:44', '~1:06 left', 'preparing', 'App on iPhone 18 | Unit']) {
+    expect([value, running.find(segment => segment.text.trim() === value)?.color]).toEqual([value, undefined])
+  }
+  for (const value of ['0:50', '3 passed', 'App on iPhone 18 | Unit']) {
+    expect([value, ended.find(segment => segment.text.trim() === value)?.color]).toEqual([value, undefined])
+  }
 })
 
 test('the time and phase come before the target, so a narrow terminal cuts what you already know', () => {
   const run = { tool: 'build_sim', target: 'App on iPhone 12', startedAt: 0, phase: 'compiling Utility' }
-  expect(segments(run, 41_000).map(segment => segment.text)).toEqual(['●', ' ', 'build_sim', ' · 0:41', ' · compiling Utility', ' · App on iPhone 12'])
+  expect(segments(run, 41_000).map(segment => segment.text)).toEqual(['●', ' ', 'build_sim', ' · ', '0:41', ' · ', 'compiling Utility', ' · ', 'App on iPhone 12'])
 })
 
 test('with a usual time to go by, the band draws a gauge and the time left after the clock', () => {
   const run = { tool: 'build_sim', target: 'App on iPhone 12', startedAt: 0, measuredFrom: 0, usual: 36_000, phase: 'compiling Net' }
   const drawn = segments(run, 21_000)
-  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'build_sim', ' · 0:21', ' ', '━━━━╸', '───', ' ~0:15 left', ' · compiling Net', ' · App on iPhone 12'])
-  expect(drawn[5]?.color).toBe('success')
-  expect(drawn[6]?.color).toBe('inactive')
+  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'build_sim', ' · ', '0:21', ' ', '━━━━╸', '───', ' ', '~0:15 left', ' · ', 'compiling Net', ' · ', 'App on iPhone 12'])
+  expect(drawn[6]?.color).toBe('success')
+  expect(drawn[7]?.color).toBe('inactive')
 })
 
 test('past the usual time the gauge turns to the warning colour and says how far over', () => {
   const drawn = segments({ tool: 'test_sim', startedAt: 0, measuredFrom: 0, usual: 44_000 }, 52_000)
-  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · 0:52', ' ', '━━━━━━━━', '', ' 0:08 over'])
-  expect(drawn[5]?.color).toBe('warning')
-  expect(drawn[7]?.color).toBe('warning')
+  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · ', '0:52', ' ', '━━━━━━━━', '', ' ', '0:08 over'])
+  expect(drawn[6]?.color).toBe('warning')
+  expect(drawn[9]?.color).toBe('warning')
 })
 
 test('the gauge measures from when the run itself began, while the clock shows the whole wait', () => {
   const drawn = segments({ tool: 'test_sim', startedAt: 0, measuredFrom: 20_000, usual: 36_000 }, 41_000)
-  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · 0:41', ' ', '━━━━╸', '───', ' ~0:15 left'])
+  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · ', '0:41', ' ', '━━━━╸', '───', ' ', '~0:15 left'])
 })
 
 test('before the run itself begins there is no gauge to draw', () => {
   const drawn = segments({ tool: 'test_sim', startedAt: 0, usual: 36_000, phase: 'preparing' }, 10_000)
-  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · 0:10', ' · preparing'])
+  expect(drawn.map(segment => segment.text)).toEqual(['●', ' ', 'test_sim', ' · ', '0:10', ' · ', 'preparing'])
 })

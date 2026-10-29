@@ -18,14 +18,22 @@ export function endedRun(run: BandRun | null, ended: NonNullable<BandRun['ended'
 
 type Segment = { text: string; color?: string; weight?: 'semibold' }
 
+/** The faint ` · ` between pieces. Only separators are faint: the values read in the theme's own text colour. */
+const SEPARATOR: Segment = { text: ' · ', color: 'subtle' }
+
+/** A value after its separator, in the theme's text colour unless `color` says otherwise. */
+function piece(text: string, color?: string): Segment[] {
+  return [SEPARATOR, color ? { text, color } : { text }]
+}
+
 /** The band's one line, as coloured pieces. */
 export function segments(run: BandRun, now: number): Segment[] {
-  const target: Segment[] = run.target ? [{ text: ` · ${run.target}`, color: 'subtle' }] : []
+  const target = run.target ? piece(run.target) : []
   if (!run.ended) {
     const elapsed = now - run.startedAt
-    const phase: Segment[] = run.phase ? [{ text: ` · ${run.phase}`, color: 'subtle' }] : []
+    const phase = run.phase ? piece(run.phase) : []
     // What changes comes first, so a narrow terminal cuts the target, which the person already knows.
-    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' }, ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase, ...target]
+    return [{ text: '●', color: ORANGE }, { text: ' ' }, { text: run.tool, weight: 'semibold' }, ...piece(stopwatch(elapsed)), ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase, ...target]
   }
   const { ok, elapsed, comparison, detail, hasFailures } = run.ended
   return [
@@ -33,20 +41,20 @@ export function segments(run: BandRun, now: number): Segment[] {
     { text: ' ' },
     { text: run.tool, weight: 'semibold' },
     ...target,
-    { text: ` · ${stopwatch(elapsed)}`, color: 'subtle' },
+    ...piece(stopwatch(elapsed)),
     ...(comparison ? [{ text: ` ${comparison}`, color: ORANGE }] : []),
-    ...(detail ? [{ text: ` · ${detail}`, color: ok ? 'subtle' : 'error' }] : []),
+    ...(detail ? piece(detail, ok ? undefined : 'error') : []),
     // The pane opens only when asked: docked or above the prompt, it takes room the chat needs.
-    ...(hasFailures ? [{ text: ' · /xcrew failures', color: 'subtle' }] : []),
+    ...(hasFailures ? piece('/xcrew failures') : []),
   ]
 }
 
-/** The gauge and time left, coloured: green under the usual time, the warning colour past it. */
+/** The gauge and time left: green under the usual time, the warning colour past it, the time left in the text colour. */
 function gaugeSegments(elapsed: number, usual: number | undefined): Segment[] {
   const parts = estimate(elapsed, usual)
   if (!parts) return []
   const tone = parts.isOver ? 'warning' : 'success'
-  return [{ text: ' ' }, { text: parts.done, color: tone }, { text: parts.rest, color: 'inactive' }, { text: ` ${parts.text}`, color: parts.isOver ? 'warning' : 'subtle' }]
+  return [{ text: ' ' }, { text: parts.done, color: tone }, { text: parts.rest, color: 'inactive' }, { text: ' ' }, parts.isOver ? { text: parts.text, color: 'warning' } : { text: parts.text }]
 }
 
 /** A finished run's line in plain text, for a toast or a notification: the band's own wording, without the target. */
