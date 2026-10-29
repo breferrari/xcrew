@@ -29,7 +29,7 @@ export function namesTarget(tool: XcodeTool): boolean {
 }
 
 /** `mcp__<server>__<tool>`, where server is `xcode`, `MobileBuildMCP`, or either under this plugin. */
-const MCP_TOOL = /^mcp__(?:plugin_xcrew_)?(xcode|MobileBuildMCP)__(\w+)$/
+export const MCP_TOOL = /^mcp__(?:plugin_xcrew_)?(xcode|MobileBuildMCP)__(\w+)$/
 
 export type ToolKind = 'build' | 'test' | 'run'
 

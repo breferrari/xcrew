@@ -1,7 +1,7 @@
-import { atom, read, update } from 'claude-code'
+import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import type { BandProblems, BandRun, CliBuild, FailureList } from '../../types'
-import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, runTree, shownFor, showsRun } from './band'
+import type { BandProblems, BandRun, CliBuild, FailureList, ResultRow } from '../../types'
+import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, isGeneratedOf, knownBuild, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, isStale, keptHistory, USAGE } from './command'
 import { describe, historyOf, observe } from './context'
@@ -10,7 +10,8 @@ import { average } from './format'
 import { describedForGenerated, REASON } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey } from './timing'
-import { kindOf, parseTool, PROJECT_REWRITER, runsSetup } from './tools'
+import { drawsRow, rowOf } from './rows'
+import { kindOf, MCP_TOOL, parseTool, PROJECT_REWRITER, runsSetup } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -20,6 +21,8 @@ const problemsState = atom({ plugin: 'xcrew', key: 'problems' } as const, null a
 const FAILURES_PANE = 'xcrew-failures'
 /** The shim's last answer, for the session: the build to run, or none. */
 const buildState = atom({ plugin: 'xcrew', key: 'build' } as const, null as CliBuild | null)
+/** Each run's outcome for its result row in the transcript, by the call's `tool_use_id`: the row's own `requestId`. */
+const rowState = atom({ plugin: 'xcrew', key: 'row' } as const, null as ResultRow | null)
 
 /**
  * xcrew's mod: the only file that touches `$` or registers a hook. The plugin directory reads `$`
@@ -124,6 +127,8 @@ export const register: Register = on => {
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
     const ending = endingOf(outcome, ended, elapsed, earlier)
     const summaryLine = outcomeLine(name, ending)
+    const row = drawsRow(kind) && e.tool_use_id ? rowOf(ending, outcome.failures) : undefined
+    if (row) await quietly(() => update($, memberOf(rowState, { requestId: e.tool_use_id }), () => row))
     if (usesBand) {
       await quietly(() => update($, runState, run => endedRun(run, ending)))
       // The outcome leaves the band on its own; a later run has replaced it by then, or it's this one.
@@ -146,6 +151,15 @@ export const register: Register = on => {
     if (problems?.isRestart) return problemsTree($.ui.resolve(e), problems)
     if (showsRun(run, now)) return runTree($.ui.resolve(e), run, now)
     return problems ? problemsTree($.ui.resolve(e), problems) : next(e)
+  })
+  // A run's row in the transcript draws its outcome while the surface says it's collapsed; expanded (ctrl+o), or where the
+  // surface doesn't say, it's the result Claude read, which is untouched.
+  on('ui.render', { component: 'ToolResult', props: { tool: MCP_TOOL } }, async ($, e, next) => {
+    const parsed = parseTool(e.props.tool)
+    // Only a build or a test run has a row, so no other call's drawing reads state.
+    if (e.props.isExpanded !== false || !parsed || !drawsRow(kindOf(parsed))) return next(e)
+    const row = await read($, memberOf(rowState, e))
+    return row ? resultTree($.ui.resolve(e), parsed.tool, row) : next(e)
   })
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()

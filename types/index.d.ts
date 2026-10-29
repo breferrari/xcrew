@@ -14,6 +14,13 @@ export type BandRun = {
   ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string; hasFailures?: boolean }
 }
 
+/** A finished run as its row in the transcript draws it: its outcome, the first failures, and how many more. */
+export type ResultRow = {
+  ended: NonNullable<BandRun['ended']>
+  failures: Pick<FailureList['items'][number], 'title' | 'where'>[]
+  more: number
+}
+
 /** The last failing run's failures, for the failure pane. */
 export type FailureList = {
   /** The run that failed: its tool, with the scheme and test selection when known. */
@@ -29,6 +36,6 @@ export type CliBuild = { path: string | null; at: number }
 
 declare module 'claude-code' {
   interface PluginState {
-    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null }
+    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null> }
   }
 }

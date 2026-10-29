@@ -1,5 +1,5 @@
 import type { ElementConstructor, RenderElement } from 'claude-code'
-import type { BandProblems, BandRun } from '../../types'
+import type { BandProblems, BandRun, ResultRow } from '../../types'
 import { estimate, stopwatch } from './format'
 
 /** How long a finished run stays on the band: a pass asks for nothing, a failure asks to be looked at. */
@@ -40,16 +40,19 @@ export function segments(run: BandRun, now: number): Segment[] {
 
 /** The run alone: going, with its time, gauge and phase, or ended, with its outcome. */
 function outcomeSegments(run: BandRun, now: number): Segment[] {
-  if (!run.ended) {
-    const elapsed = now - run.startedAt
-    const phase = run.phase ? piece(run.phase) : []
-    return [segment('●', ORANGE), segment(' '), segment(run.tool, undefined, 'semibold'), ...piece(stopwatch(elapsed)), ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase]
-  }
-  const { ok, elapsed, comparison, detail } = run.ended
+  if (run.ended) return endedSegments(run.tool, run.ended)
+  const elapsed = now - run.startedAt
+  const phase = run.phase ? piece(run.phase) : []
+  return [segment('●', ORANGE), segment(' '), segment(run.tool, undefined, 'semibold'), ...piece(stopwatch(elapsed)), ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase]
+}
+
+/** A finished run's outcome: the mark, the tool, its time and how it compares, and what it came to. */
+function endedSegments(tool: string, ended: NonNullable<BandRun['ended']>): Segment[] {
+  const { ok, elapsed, comparison, detail } = ended
   return [
     segment(ok ? '✓' : '✗', ok ? 'success' : 'error'),
     segment(' '),
-    segment(run.tool, undefined, 'semibold'),
+    segment(tool, undefined, 'semibold'),
     ...piece(stopwatch(elapsed)),
     ...(comparison ? [segment(' '), segment(comparison, ORANGE)] : []),
     ...(detail ? piece(detail, ok ? undefined : 'error') : []),
@@ -77,12 +80,12 @@ function problemSegments(problems: BandProblems): Segment[] {
 
 /** A finished run's outcome in plain text, for a notification, which arrives where no command can be typed. */
 export function outcomeLine(tool: string, ended: NonNullable<BandRun['ended']>): string {
-  return text(outcomeSegments({ tool, startedAt: 0, ended }, 0))
+  return text(endedSegments(tool, ended))
 }
 
 /** The outcome with the pointer to its failures, for a toast, which sits beside the prompt where no band draws. */
 export function promptLine(tool: string, ended: NonNullable<BandRun['ended']>): string {
-  return text([...outcomeSegments({ tool, startedAt: 0, ended }, 0), ...pointer(ended)])
+  return text([...endedSegments(tool, ended), ...pointer(ended)])
 }
 
 function text(parts: Segment[]): string {
@@ -121,6 +124,14 @@ function line({ Box, Text }: Elements, parts: Segment[]): RenderElement {
 /** The run above the prompt. */
 export function runTree(elements: Elements, run: BandRun, now: number): RenderElement {
   return line(elements, segments(run, now))
+}
+
+/** A finished run's row in the transcript: its outcome as the band drew it, then its first failures and how many more.
+ * No `/xcrew failures` here: the pane holds the latest failing run's, and a row stays in the transcript after the next. */
+export function resultTree(elements: Elements, tool: string, row: ResultRow): RenderElement {
+  const failures = row.failures.map(failure => line(elements, [segment('✗', 'error'), segment(' '), segment(failure.title), ...(failure.where ? piece(failure.where) : [])]))
+  const more = row.more > 0 ? [line(elements, [segment(`${row.more} more`, 'subtle')])] : []
+  return elements.Box({ flexDirection: 'column', children: [line(elements, endedSegments(tool, row.ended)), ...failures, ...more] })
 }
 
 /** The doctor's most serious problem: a pending restart over a finished run, anything else while no run shows. */
