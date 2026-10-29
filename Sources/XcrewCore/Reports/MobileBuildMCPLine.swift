@@ -4,9 +4,49 @@ import Foundation
 /// Its emoji markers are matched by scalar: `⏭️` is `⏭` and a variation selector, one character
 /// that a character-level match misses.
 enum MobileBuildMCPLine {
+    /// `🧪 Test`, the first line of a test run's text.
+    static func isTestRunHeader(_ line: String) -> Bool {
+        line.hasPrefix("🧪")
+    }
+
+    enum Heading: Equatable {
+        /// `Test Results:`, the list of every test with its outcome.
+        case testResults
+        /// `Test Failures (2):`, each failing test with its message.
+        case testFailures
+        /// `Errors (3):`, a failing build's errors.
+        case errors
+    }
+
+    static func heading(_ line: String) -> Heading? {
+        if line == "Test Results:" { return .testResults }
+        if line.hasPrefix("Test Failures") { return .testFailures }
+        return errorCount(in: line) != nil ? .errors : nil
+    }
+
+    /// `❌ Test failed`: a test run that ended before its tests ran.
+    static func isTestRunFailure(_ line: String) -> Bool {
+        line.contains("❌ Test failed")
+    }
+
+    /// `❌ Build failed`.
+    static func isBuildFailure(_ line: String) -> Bool {
+        line.contains("❌ Build failed")
+    }
+
+    /// A Test Results line of a test that failed.
+    static func isFailed(_ line: String) -> Bool {
+        line.contains("❌")
+    }
+
     /// `✗ <entry>`: a failing test or a compile error, as the Test Failures and Errors sections list them.
     static func entry(_ line: String) -> String? {
         line.firstMatch(of: #/^\s*✗ (.+)$/#).map { String($0.1) }
+    }
+
+    /// `| \`- error: …`, the compiler's excerpt of an error listed just above, as an entry of its own.
+    static func isExcerpt(_ entry: String) -> Bool {
+        entry.hasPrefix("|")
     }
 
     /// `Suite / test(): message`, the part of a failing test's line after its `✗`.
@@ -22,6 +62,15 @@ enum MobileBuildMCPLine {
     /// `⏭️ Suite/test() (0.000s)`, a skipped test.
     static func skipped(_ line: String) -> TestID? {
         line.firstMatch(of: #/^\s*⏭\x{FE0F}? (\S+?)\/(\S+?) \(/#.matchingSemantics(.unicodeScalar)).map { TestID(suite: $0.1, name: $0.2) }
+    }
+
+    /// The line Xcrew adds under a skipped test, saying why it was skipped.
+    static func skipReason(_ reason: String) -> String {
+        "      skipped: \(reason)"
+    }
+
+    static func isSkipReason(_ line: String) -> Bool {
+        line.contains(#/^\s+skipped: /#)
     }
 
     /// Whether a Test Results line is a skipped test's, whatever follows the marker.
@@ -40,8 +89,8 @@ enum MobileBuildMCPLine {
     }
 
     /// A failing run's counts, from its summary line.
-    static func counts(in line: String) -> (failed: Int, passed: Int, skipped: Int)? {
-        line.firstMatch(of: #/❌ (\d+) tests? failed, (\d+) passed, (\d+) skipped/#).map { (Int($0.1) ?? 0, Int($0.2) ?? 0, Int($0.3) ?? 0) }
+    static func counts(in line: String) -> TestCounts? {
+        line.firstMatch(of: #/❌ (\d+) tests? failed, (\d+) passed, (\d+) skipped/#).map { TestCounts(passed: Int($0.2) ?? 0, failed: Int($0.1) ?? 0, skipped: Int($0.3) ?? 0) }
     }
 
     /// How many tests a summary line, passing or failing, counts as skipped.

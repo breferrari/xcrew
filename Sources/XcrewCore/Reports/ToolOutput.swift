@@ -6,35 +6,44 @@ import Foundation
 /// server reported a tool error, so a server update degrades the summary rather than breaking it.
 public struct ToolOutput: Sendable {
     enum Shape: Sendable {
+        /// MobileBuildMCP's JSON, which it returns when a build or test run succeeds.
         case mobileBuildMCPJSON(MobileBuildMCPResult)
-        /// Any other JSON object: the Xcode MCP's, or one no reader knows.
-        case xcodeMCPJSON(XcodeMCPResult)
-        /// MobileBuildMCP's text, and anything else that isn't a JSON object.
+        /// MobileBuildMCP's text, which it returns instead when one fails.
         case mobileBuildMCPText(MobileText)
+        case xcodeMCPJSON(XcodeMCPResult)
+        /// Output no reader knows.
+        case unrecognized
     }
 
     public let text: String
+    public let server: Server
     public let isError: Bool
     let shape: Shape
 
-    public init(text: String, isError: Bool = false) {
+    public init(text: String, server: Server, isError: Bool = false) {
         self.text = text
+        self.server = server
         self.isError = isError
-        shape = Self.shape(of: text)
+        shape = Self.shape(of: text, from: server)
     }
 
     init(_ text: MobileText, isError: Bool) {
         self.text = text.text
+        server = .mobileBuildMCP
         self.isError = isError
         shape = .mobileBuildMCPText(text)
     }
 
     /// Every field is lenient, so decoding fails only when the text isn't a JSON object.
-    static func shape(of text: String) -> Shape {
+    static func shape(of text: String, from server: Server) -> Shape {
         let data = Data(text.utf8)
-        guard let mobile = try? JSONDecoder().decode(MobileBuildMCPResult.self, from: data) else { return .mobileBuildMCPText(MobileText(text)) }
-        if mobile.schema?.hasPrefix(MobileBuildMCPResult.schemaPrefix) == true { return .mobileBuildMCPJSON(mobile) }
-        return (try? JSONDecoder().decode(XcodeMCPResult.self, from: data)).map(Shape.xcodeMCPJSON) ?? .mobileBuildMCPText(MobileText(text))
+        switch server {
+        case .mobileBuildMCP:
+            guard let result = try? JSONDecoder().decode(MobileBuildMCPResult.self, from: data) else { return .mobileBuildMCPText(MobileText(text)) }
+            return result.schema?.hasPrefix(MobileBuildMCPResult.schemaPrefix) == true ? .mobileBuildMCPJSON(result) : .unrecognized
+        case .xcode:
+            return (try? JSONDecoder().decode(XcodeMCPResult.self, from: data)).map(Shape.xcodeMCPJSON) ?? .unrecognized
+        }
     }
 
     public struct Summary: Sendable, Equatable, Codable {
@@ -71,6 +80,7 @@ public struct ToolOutput: Sendable {
         case let .mobileBuildMCPJSON(result): result.summary
         case let .xcodeMCPJSON(result): result.summary
         case let .mobileBuildMCPText(text): text.summary
+        case .unrecognized: nil
         }
         guard let found else { return Summary(ok: !isError) }
         return Summary(ok: found.ok, detail: found.detail.map(Self.shorten))
@@ -84,6 +94,7 @@ public struct ToolOutput: Sendable {
         case let .mobileBuildMCPJSON(result): result.durationMs
         case let .xcodeMCPJSON(result): result.durationMs
         case let .mobileBuildMCPText(text): text.durationMs
+        case .unrecognized: nil
         }
     }
 
@@ -92,16 +103,17 @@ public struct ToolOutput: Sendable {
         switch shape {
         case let .mobileBuildMCPJSON(result): result.testTotal
         case let .xcodeMCPJSON(result): result.testTotal
-        case let .mobileBuildMCPText(text): text.counts.map { $0.failed + $0.passed + $0.skipped }
+        case let .mobileBuildMCPText(text): text.counts?.sum
+        case .unrecognized: nil
         }
     }
 
     /// Every failure a run reported, from each shape `summary` reads; none for a passing run.
     public var failures: [Failure] {
         switch shape {
-        case .mobileBuildMCPJSON: []
         case let .xcodeMCPJSON(result): result.failures
         case let .mobileBuildMCPText(text): text.failures
+        case .mobileBuildMCPJSON, .unrecognized: []
         }
     }
 
@@ -116,8 +128,8 @@ public struct ToolOutput: Sendable {
     var xcresultPath: String? {
         switch shape {
         case let .mobileBuildMCPJSON(result): result.data?.artifacts?.xcresultPath
-        case .xcodeMCPJSON: nil
         case let .mobileBuildMCPText(text): text.resultBundle
+        case .xcodeMCPJSON, .unrecognized: nil
         }
     }
 
@@ -139,11 +151,12 @@ public struct ToolOutput: Sendable {
     /// A failing test run's text without the passing tests it lists, which it counts instead.
     public var compactTestText: String? { mobileText?.compacted()?.text }
 
-    /// A failing build's text without the compiler's copy of each error.
-    public var cleanBuildText: String? { mobileText?.withoutExcerpts()?.text }
-
     static func object(_ text: String) -> [String: Any]? {
         (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any]
+    }
+
+    static func milliseconds(_ seconds: Double) -> Int {
+        Int((seconds * 1000).rounded())
     }
 
     static func basename(_ path: String) -> String {

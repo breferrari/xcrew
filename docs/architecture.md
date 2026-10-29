@@ -33,7 +33,7 @@ Sources/
     MobileBuildMCP/     profile answers, config rendering and writing, the simulator catalog
     Doctor/             the Check protocol, the registry, and one file per check in Checks/
     Hooks/              hook input and replies, the session briefing
-    Reports/            reading the servers' output for the mod: results, failures, logs, result bundles
+    Reports/            reading the servers' output for the mod: each result decoded once into its server's shape (MobileBuildMCP's text as typed lines, every line shape read in MobileBuildMCPLine), failures, logs, result bundles
     XcodeSkills/        finding and copying the skills Xcode ships
     XcrewVersion.swift  the version, held equal to plugin.json and the changelog
   XcrewCLI/             one Command type per subcommand, and the dispatcher

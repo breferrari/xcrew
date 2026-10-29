@@ -33,21 +33,21 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// A result Claude Code saved to a file is read back from it.
-    public static func make(server: Server, kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning) async -> Report {
+    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning) async -> Report {
         let saved = savedPath(output.text)
-        let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, isError: output.isError) } ?? output
-        // MobileBuildMCP's text omits what its result bundle knows; the Xcode MCP's results carry their own.
-        let isMobile = server == .mobileBuildMCP
+        let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, server: output.server, isError: output.isError) } ?? output
         let isTest = kind == .test
-        let bundle = isMobile && isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
+        // MobileBuildMCP's text omits what its result bundle knows; the Xcode MCP's results carry their own.
+        let bundle = isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
         // The summary is needed whatever the run came to, so it's asked for while the failures are looked up.
         async let bundleSummary: String? = { await bundle?.summary() }()
         var final = read
-        if isMobile, let text = read.mobileText {
+        var edited = false
+        if let text = read.mobileText {
             if let bundle, text.isTestRun {
-                final = ToolOutput(await FailureNotes.adding(to: text, from: bundle), isError: output.isError)
+                if let annotated = await FailureNotes.adding(to: text, from: bundle) { (final, edited) = (ToolOutput(annotated, isError: output.isError), true) }
             } else if let cleaned = text.withoutExcerpts() {
-                final = ToolOutput(cleaned, isError: output.isError)
+                (final, edited) = (ToolOutput(cleaned, isError: output.isError), true)
             }
         }
         let summary = final.summary
@@ -61,14 +61,13 @@ public struct Report: Sendable, Equatable, Codable {
         }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
-        let text = final.text
         return Report(
             ok: summary.ok,
             detail: summary.detail,
             durationMs: final.reportedDuration,
             tests: final.testTotal,
             failures: summary.ok ? [] : final.failures,
-            result: compact ?? (text != read.text ? text : nil),
+            result: compact ?? (edited ? final.text : nil),
             notes: notes
         )
     }

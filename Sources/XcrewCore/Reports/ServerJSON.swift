@@ -17,7 +17,7 @@ struct Lenient<Value: Decodable & Sendable>: Decodable, Sendable {
 
 extension KeyedDecodingContainer {
     func decode<Value>(_ type: Lenient<Value>.Type, forKey key: Key) throws -> Lenient<Value> {
-        (try? decodeIfPresent(type, forKey: key)) ?? Lenient()
+        try decodeIfPresent(type, forKey: key) ?? Lenient()
     }
 }
 
@@ -28,7 +28,16 @@ struct TestCounts: Decodable, Sendable {
     @Lenient var skipped: Int?
     @Lenient var total: Int?
 
+    init(passed: Int?, failed: Int?, skipped: Int?, total: Int? = nil) {
+        _passed = Lenient(wrappedValue: passed)
+        _failed = Lenient(wrappedValue: failed)
+        _skipped = Lenient(wrappedValue: skipped)
+        _total = Lenient(wrappedValue: total)
+    }
+
     var sum: Int { (passed ?? 0) + (failed ?? 0) + (skipped ?? 0) }
+    /// How many tests ran: the total when the server gives one.
+    var ran: Int { total ?? sum }
 }
 
 /// MobileBuildMCP's JSON, which it returns when a build or test run succeeds:
@@ -67,7 +76,7 @@ struct MobileBuildMCPResult: Decodable, Sendable {
     var durationMs: Int? { data?.summary?.durationMs.map { Int($0) } }
 
     var testTotal: Int? {
-        data?.summary?.counts.map { $0.total ?? $0.sum }
+        data?.summary?.counts?.ran
     }
 }
 
@@ -99,6 +108,9 @@ struct XcodeMCPResult: Decodable, Sendable {
     @Lenient var errors: [BuildError]?
     @Lenient var elapsedTime: Double?
 
+    /// The build's errors, without its warnings.
+    var realErrors: [BuildError] { (errors ?? []).filter { !$0.isWarning } }
+
     var summary: ToolOutput.Summary? {
         if type == "error" {
             let message = data ?? ""
@@ -112,25 +124,25 @@ struct XcodeMCPResult: Decodable, Sendable {
             let first = results?.first { $0.state == "Failed" }?.identifier
             return ToolOutput.Summary(ok: false, detail: "\(failed) of \(counts.total ?? failed) failed\(first.map { " · \($0)" } ?? "")")
         }
-        if buildResult != nil, let errors {
-            guard let first = errors.first(where: { !$0.isWarning }) else { return ToolOutput.Summary(ok: true) }
-            let real = errors.filter { !$0.isWarning }.count
-            let count = real > 1 ? "\(real) errors · " : ""
+        if buildResult != nil, errors != nil {
+            let real = realErrors
+            guard let first = real.first else { return ToolOutput.Summary(ok: true) }
+            let count = real.count > 1 ? "\(real.count) errors · " : ""
             let location = first.location.map { "\($0) " } ?? ""
             return ToolOutput.Summary(ok: false, detail: "\(count)\(location)\(first.message ?? "")".trimmingCharacters(in: .whitespaces))
         }
         return nil
     }
 
-    var durationMs: Int? { elapsedTime.map { Int(($0 * 1000).rounded()) } }
+    var durationMs: Int? { elapsedTime.map(ToolOutput.milliseconds) }
 
     var testTotal: Int? {
-        counts.map { $0.total ?? $0.sum }
+        counts?.ran
     }
 
     var failures: [ToolOutput.Failure] {
-        if let errors {
-            return errors.filter { !$0.isWarning }.map { ToolOutput.Failure(title: $0.location ?? "error", message: $0.message ?? "") }
+        if errors != nil {
+            return realErrors.map { ToolOutput.Failure(title: $0.location ?? "error", message: $0.message ?? "") }
         }
         return (results ?? []).filter { $0.state == "Failed" }.map { result in
             let title = result.identifier ?? "test"

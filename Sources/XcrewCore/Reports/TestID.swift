@@ -1,7 +1,7 @@
 import Foundation
 
 /// One test, however a server or `xcresulttool` spells it: `Suite/test`, `Suite/test()`, or
-/// MobileBuildMCP's `Suite / test()`.
+/// MobileBuildMCP's `Suite / test()`, which its line readers split.
 public struct TestID: Sendable, Hashable {
     public let suite: String
     /// The test's name without its `()`.
@@ -12,13 +12,10 @@ public struct TestID: Sendable, Hashable {
         self.name = name.hasSuffix("()") ? String(name.dropLast(2)) : String(name)
     }
 
-    /// A test from any of its spellings; nil for anything that isn't `Suite/test`.
-    public init?(parsing text: some StringProtocol) {
-        guard let slash = text.firstIndex(of: "/") else { return nil }
-        let suite = text[..<slash].trimmingCharacters(in: .whitespaces)
-        let name = text[text.index(after: slash)...].trimmingCharacters(in: .whitespaces)
-        guard !suite.isEmpty, !name.isEmpty else { return nil }
-        self.init(suite: suite, name: name)
+    /// A test from `xcresulttool`'s `Suite/test()`: split at the first `/`, the whole of it the suite when there's none.
+    public init(xcresultID: some StringProtocol) {
+        let parts = xcresultID.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
+        self.init(suite: parts.first ?? "", name: parts.count > 1 ? parts[1] : "")
     }
 
     /// `Suite/test`, as Xcrew shows a test.

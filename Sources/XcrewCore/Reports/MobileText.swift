@@ -10,13 +10,13 @@ struct MobileText: Sendable {
         /// The test and its message, when the entry is a failing test's.
         let failing: (test: TestID, message: String)?
 
-        /// The compiler's excerpt of an error listed just above, drawn with `|`.
-        var isExcerpt: Bool { text.hasPrefix("|") }
+        var isExcerpt: Bool { MobileBuildMCPLine.isExcerpt(text) }
     }
 
     enum Kind: Sendable {
         case entry(Entry)
         case location(path: String, line: String)
+        case heading(MobileBuildMCPLine.Heading)
         /// A skipped test's line, naming the test when it has the usual shape.
         case skipped(TestID?)
         /// The `skipped: <reason>` line Xcrew adds under a skipped test.
@@ -36,11 +36,13 @@ struct MobileText: Sendable {
                 kind = .entry(Entry(text: entry, failing: MobileBuildMCPLine.test(in: entry)))
             } else if let location = MobileBuildMCPLine.location(text) {
                 kind = .location(path: location.path, line: location.line)
+            } else if let heading = MobileBuildMCPLine.heading(text) {
+                kind = .heading(heading)
             } else if MobileBuildMCPLine.isSummary(text) {
                 kind = .summary
             } else if MobileBuildMCPLine.isSkipped(text) {
                 kind = .skipped(MobileBuildMCPLine.skipped(text))
-            } else if text.contains(#/^\s+skipped: /#) {
+            } else if MobileBuildMCPLine.isSkipReason(text) {
                 kind = .skipReason
             } else if MobileBuildMCPLine.isPassed(text) {
                 kind = .passed
@@ -66,6 +68,16 @@ struct MobileText: Sendable {
             return false
         }
 
+        var isPassed: Bool {
+            if case .passed = kind { return true }
+            return false
+        }
+
+        func isHeading(_ heading: MobileBuildMCPLine.Heading) -> Bool {
+            if case .heading(heading) = kind { return true }
+            return false
+        }
+
         var isBlank: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
@@ -82,11 +94,7 @@ struct MobileText: Sendable {
     var text: String { lines.map(\.text).joined(separator: "\n") }
 
     /// A test run's text, as opposed to a build's.
-    var isTestRun: Bool { lines.first?.text.hasPrefix("🧪") == true }
-
-    func contains(_ phrase: String) -> Bool {
-        lines.contains { $0.text.contains(phrase) }
-    }
+    var isTestRun: Bool { lines.first.map { MobileBuildMCPLine.isTestRunHeader($0.text) } == true }
 
     /// The location on the line after `index`, if that line is one.
     func location(after index: Int) -> (path: String, line: String)? {
@@ -96,7 +104,7 @@ struct MobileText: Sendable {
     // MARK: Reading
 
     /// A failing run's counts, from its summary line.
-    var counts: (failed: Int, passed: Int, skipped: Int)? {
+    var counts: TestCounts? {
         lines.lazy.filter(\.isSummary).compactMap { MobileBuildMCPLine.counts(in: $0.text) }.first
     }
 
@@ -107,7 +115,7 @@ struct MobileText: Sendable {
 
     /// The run's `(⏱️ 12.3s)`, in milliseconds.
     var durationMs: Int? {
-        lines.lazy.compactMap { MobileBuildMCPLine.duration(in: $0.text) }.first.map { Int(($0 * 1000).rounded()) }
+        lines.lazy.compactMap { MobileBuildMCPLine.duration(in: $0.text) }.first.map(ToolOutput.milliseconds)
     }
 
     /// The `.xcresult` path the text lists: the workspace folder, then the bundle under it.
@@ -121,10 +129,10 @@ struct MobileText: Sendable {
     var summary: ToolOutput.Summary? {
         if let counts {
             let first = lines.lazy.compactMap(\.failing).first
-            return ToolOutput.Summary(ok: false, detail: "\(counts.failed) of \(counts.failed + counts.passed + counts.skipped) failed\(first.map { " · \($0.test.shown)" } ?? "")")
+            return ToolOutput.Summary(ok: false, detail: "\(counts.failed ?? 0) of \(counts.sum) failed\(first.map { " · \($0.test.shown)" } ?? "")")
         }
-        if isTestRun, contains("❌ Test failed") { return ToolOutput.Summary(ok: false, detail: ToolOutput.testsDidNotRun) }
-        if contains("❌ Build failed") {
+        if isTestRun, lines.contains(where: { MobileBuildMCPLine.isTestRunFailure($0.text) }) { return ToolOutput.Summary(ok: false, detail: ToolOutput.testsDidNotRun) }
+        if lines.contains(where: { MobileBuildMCPLine.isBuildFailure($0.text) }) {
             // The first error MobileBuildMCP gives a location for.
             let first = lines.indices.lazy.compactMap { index in
                 lines[index].entry.flatMap { entry in location(after: index).map { (entry, $0) } }
@@ -168,24 +176,24 @@ struct MobileText: Sendable {
     /// This keeps the failures, the failing and skipped tests' lines and the summary, and counts the
     /// passing ones. Nil when the list is short or the text is another shape.
     func compacted() -> MobileText? {
-        guard lines.first?.text.hasPrefix("🧪 Test") == true, let start = lines.firstIndex(where: { $0.text == "Test Results:" }) else { return nil }
+        guard isTestRun, let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
         // The list runs to the summary line; a blank line inside it is where Claude Code cut a long one.
         let summary = lines.indices.first { $0 > start && lines[$0].isSummary }
         var end = summary ?? start + 1
         if summary == nil { while end < lines.count, !lines[end].isBlank { end += 1 } }
         while end > start + 1, lines[end - 1].isBlank { end -= 1 }
         let section = lines[(start + 1)..<end]
-        let listed = section.filter { if case .passed = $0.kind { true } else { false } }.count
+        let listed = section.filter(\.isPassed).count
         guard listed > Self.passingListLimit else { return nil }
         // The summary's count, since Claude Code may already have cut the middle of a long list.
         let passed = counts?.passed ?? listed
         // Failing tests are listed in full under Test Failures, while this list's ❌ lines come from the
         // parallel runners' log and can miss some, so only skipped tests (⏭️) keep their lines here.
-        let listedAbove = lines.contains { $0.text.hasPrefix("Test Failures") }
+        let listedAbove = lines.contains { $0.isHeading(.testFailures) }
         let kept = section.filter { line in
             switch line.kind {
             case .skipped, .skipReason: true
-            default: !listedAbove && line.text.contains("❌")
+            default: !listedAbove && MobileBuildMCPLine.isFailed(line.text)
             }
         }
         let note = listedAbove ? "  (\(passed) passing tests left out; failing tests are listed in full above)" : "  (\(passed) passing tests left out)"
@@ -206,7 +214,7 @@ struct MobileText: Sendable {
             kept.append(line)
         }
         guard dropped > 0 else { return nil }
-        if let (index, header) = kept.indices.lazy.compactMap({ index in MobileBuildMCPLine.errorCount(in: kept[index].text).map { (index, $0) } }).first {
+        if let index = kept.firstIndex(where: { $0.isHeading(.errors) }), let header = MobileBuildMCPLine.errorCount(in: kept[index].text) {
             kept[index] = Line(kept[index].text.replacingCharacters(in: header.range, with: "Errors (\(max(1, header.count - dropped))):"))
         }
         return MobileText(lines: kept)

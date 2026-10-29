@@ -12,7 +12,7 @@ public enum FailureNotes {
 
     /// `0.006`, as MobileBuildMCP writes a test's time: three decimals, whatever the Mac's locale.
     static func seconds(_ value: Double) -> String {
-        let milliseconds = Int((value * 1000).rounded())
+        let milliseconds = ToolOutput.milliseconds(value)
         let fraction = String(milliseconds % 1000)
         return "\(milliseconds / 1000).\(String(repeating: "0", count: 3 - fraction.count))\(fraction)"
     }
@@ -62,8 +62,8 @@ public enum FailureNotes {
         return MobileText(lines: out)
     }
 
-    /// The failing run's text with what the result bundle adds, or the text as it was when it adds nothing.
-    static func adding(to text: MobileText, from bundle: ResultBundle) async -> MobileText {
+    /// The failing run's text with what the result bundle adds; nil when it adds nothing.
+    static func adding(to text: MobileText, from bundle: ResultBundle) async -> MobileText? {
         var order: [TestID] = []
         var located: Set<TestID> = []
         var crashed: Set<TestID> = []
@@ -79,7 +79,7 @@ public enum FailureNotes {
             return nil
         }
         let isSkipping = text.skippedCount > 0 || !listedSkips.isEmpty
-        guard !lookups.isEmpty || isSkipping else { return text }
+        guard !lookups.isEmpty || isSkipping else { return nil }
 
         var notes = Notes()
         // Each test's lookups are their own xcresulttool calls, so a few run side by side.
@@ -108,7 +108,7 @@ public enum FailureNotes {
         }
         if isSkipping {
             let listed = Set(listedSkips)
-            let reason = { (skip: ResultBundle.Skip) in skip.reason.map { ["      skipped: \($0)"] } ?? [] }
+            let reason = { (skip: ResultBundle.Skip) in skip.reason.map { [MobileBuildMCPLine.skipReason($0)] } ?? [] }
             var unlisted = 0
             for (test, skip) in await bundle.skips() {
                 if listed.contains(test) {
@@ -119,6 +119,6 @@ public enum FailureNotes {
                 }
             }
         }
-        return notes.isEmpty ? text : annotate(text, with: notes)
+        return notes.isEmpty ? nil : annotate(text, with: notes)
     }
 }

@@ -69,7 +69,7 @@ public struct ResultBundle: Sendable {
     public static func skippedTests(listing: String) -> [(test: TestID, skip: Skip)] {
         nodes(parse(listing)).compactMap { node in
             guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Skipped",
-                  let test = (node["nodeIdentifier"] as? String).flatMap(TestID.init(parsing:))
+                  let test = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:))
             else { return nil }
             let message = (node["children"] as? [[String: Any]])?.first { $0["nodeType"] as? String == "Skip Message" }?["name"] as? String
             let reason = message.map { $0.hasPrefix("Test skipped - ") ? String($0.dropFirst("Test skipped - ".count)) : $0 }
