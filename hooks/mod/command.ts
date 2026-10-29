@@ -1,5 +1,5 @@
 import { average, stopwatch } from './format'
-import { DURATIONS_PREFIX, HISTORY } from './timing'
+import { HISTORY, HISTORY_KEPT_MS } from './timing'
 
 export const USAGE = [
   '/xcrew doctor   check this Mac and project, with the fix for anything wrong',
@@ -11,9 +11,25 @@ export const USAGE = [
 /** `/xcrew`, answered by the mod itself: nothing reaches Claude, and nothing costs a turn. */
 export const COMMAND = { name: 'xcrew', description: 'Xcrew: doctor, history, failures or close', argumentHint: '[doctor|history|failures|close]' }
 
+/** Which history lines a look keeps: those a run updated within `HISTORY_KEPT_MS`; an undated one is dated now. */
+export function keptHistory(tools: string[], updated: Readonly<Record<string, unknown>>, now: number): { kept: string[]; stamp: string[]; gone: string[] } {
+  const sorted = { kept: [] as string[], stamp: [] as string[], gone: [] as string[] }
+  for (const tool of tools) {
+    if (typeof updated[tool] !== 'number') sorted.stamp.push(tool)
+    if (isStale(updated[tool], now)) sorted.gone.push(tool)
+    else sorted.kept.push(tool)
+  }
+  return sorted
+}
+
+/** A line dated more than `HISTORY_KEPT_MS` before `now`. An undated one isn't stale: it's dated when next seen. */
+export function isStale(updated: unknown, now: number): boolean {
+  return typeof updated === 'number' && now - updated > HISTORY_KEPT_MS
+}
+
 /** `/xcrew history`: each tool's usual duration, slowest first, from its stored runs. */
-export function historyText(stored: { key: string; runs: number[] | undefined }[]): string {
-  const rows = stored.map(({ key, runs }) => ({ tool: key.slice(DURATIONS_PREFIX.length), runs: runs ?? [] }))
+export function historyText(stored: { tool: string; runs: number[] | undefined }[]): string {
+  const rows = stored.map(({ tool, runs }) => ({ tool, runs: runs ?? [] }))
   const timed = rows.filter(row => row.runs.length > 0).sort((a, b) => average(b.runs) - average(a.runs))
   if (timed.length === 0) return 'No builds or test runs timed yet.'
   // Claude Code puts the plugin's name before the first line; a heading keeps the rows aligned.

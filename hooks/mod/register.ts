@@ -3,13 +3,13 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, isGeneratedOf, knownBuild, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
-import { COMMAND, historyText, USAGE } from './command'
+import { COMMAND, historyText, isStale, keptHistory, USAGE } from './command'
 import { describe, historyOf, observe } from './context'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
 import { describedForGenerated, REASON } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
-import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey } from './timing'
+import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey } from './timing'
 import { kindOf, parseTool, PROJECT_REWRITER, runsSetup } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
@@ -55,7 +55,10 @@ export const register: Register = on => {
     const scope = historyOf(parsed, e as unknown as Record<string, unknown>)
 
     const started = await quietly(() => $.clock.now())
-    const earlier = ((await quietly(() => $.store.get(historyKey(scope)))) as number[] | undefined) ?? []
+    const stored = ((await quietly(() => $.store.get(historyKey(scope)))) as number[] | undefined) ?? []
+    const updated = await quietly(() => $.store.get(updatedKey(scope)))
+    // Runs from weeks ago say nothing about this one: they don't count, and this run starts the line afresh.
+    const earlier = started !== undefined && isStale(updated, started) ? [] : stored
     // What the gauge measures against; a tool's first run has none and shows its time alone.
     const usual = earlier.length > 0 ? average(earlier) : undefined
     const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
@@ -116,6 +119,7 @@ export const register: Register = on => {
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     await quietly(() => $.store.set(historyKey(scope), [...earlier, elapsed].slice(-HISTORY)))
+    await quietly(() => $.store.set(updatedKey(scope), ended))
     await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
     const ending = endingOf(outcome, ended, elapsed, earlier)
@@ -318,6 +322,16 @@ async function closeFailures($: EngineInterface): Promise<string> {
 
 /** `/xcrew history`. */
 async function history($: EngineInterface): Promise<string> {
-  const keys = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX))
-  return historyText(await Promise.all(keys.map(async key => ({ key, runs: (await $.store.get(key)) as number[] | undefined }))))
+  const tools = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX)).map(key => key.slice(DURATIONS_PREFIX.length))
+  const updated = Object.fromEntries(await Promise.all(tools.map(async tool => [tool, await quietly(() => $.store.get(updatedKey(tool)))] as const)))
+  // Dating and dropping lines is bookkeeping: without a clock the history still shows, all of it.
+  const now = await quietly(() => $.clock.now())
+  const { kept, stamp, gone } = now === undefined ? { kept: tools, stamp: [], gone: [] } : keptHistory(tools, updated, now)
+  await Promise.all(stamp.map(tool => quietly(() => $.store.set(updatedKey(tool), now))))
+  // The durations go first: should a later delete fail, nothing undated is left to be dated afresh.
+  await Promise.all(gone.map(async tool => {
+    await quietly(() => $.store.delete(historyKey(tool)))
+    await Promise.all([updatedKey(tool), testsKey(tool)].map(key => quietly(() => $.store.delete(key))))
+  }))
+  return historyText(await Promise.all(kept.map(async tool => ({ tool, runs: (await $.store.get(historyKey(tool))) as number[] | undefined }))))
 }

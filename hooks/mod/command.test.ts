@@ -58,6 +58,54 @@ test('/xcrew history lists each tool\'s usual duration, slowest first', async ($
   expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 5:00 · last 5:00 · 1 run   RunAllTests\navg 1:10 · last 1:20 · 2 runs  build_sim')
 })
 
+const DAY = 24 * 60 * 60_000
+
+test('/xcrew history drops a line no run has updated for two weeks', async ($, on) => {
+  const clock = mock.clock(on)
+  const now = clock.now()
+  mock.store(on, {
+    'durations.test_sim · › AppTests': [60_000],
+    'updated.test_sim · › AppTests': now - 15 * DAY,
+    'durations.test_sim › AppTests': [50_000],
+    'updated.test_sim › AppTests': now - DAY,
+  })
+  engine(on)
+  await start($)
+  await clock.settle()
+
+  const ran = await runCommand($, 'xcrew', 'history')
+
+  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 0:50 · last 0:50 · 1 run  test_sim › AppTests')
+})
+
+/** A month-old run says nothing about today's build: it mustn't count toward the usual time, or come back. */
+test('a run two weeks after its line was last updated starts the line afresh', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on, { 'durations.BuildProject': [600_000, 600_000], 'updated.BuildProject': clock.now() - 15 * DAY })
+  engine(on)
+  on('tool.call', async () => {
+    await clock.advance(30_000)
+    return { result: {}, text: 'built' }
+  })
+  await start($)
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect((await runCommand($, 'xcrew', 'history')).text).toContain('avg 0:30 · last 0:30 · 1 run  BuildProject')
+})
+
+test('/xcrew history keeps an undated line for two weeks from the first look', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on, { 'durations.build_sim': [60_000] })
+  engine(on)
+  await start($)
+
+  expect((await runCommand($, 'xcrew', 'history')).text).toContain('build_sim')
+  await clock.advance(13 * DAY)
+  expect((await runCommand($, 'xcrew', 'history')).text).toContain('build_sim')
+  await clock.advance(2 * DAY)
+  expect((await runCommand($, 'xcrew', 'history')).text).toBe('No builds or test runs timed yet.')
+})
+
 test('/xcrew history with nothing timed yet says so', async ($, on) => {
   mock.store(on)
   engine(on)

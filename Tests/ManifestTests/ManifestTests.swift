@@ -228,6 +228,13 @@ import Testing
         #expect(try text(".github/workflows/canary.yml").contains("scripts/marketplace-ref.sh "))
     }
 
+    /// The mod drops history no run has updated for as long as the shim keeps a build no checkout has run.
+    @Test func historyIsKeptAsLongAsAnUnusedBuild() throws {
+        let kept = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1)
+        let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
+        #expect(kept == shim)
+    }
+
     /// The band puts the doctor's restart warning first and keeps it until done, by that check's id.
     @Test func theModKnowsTheRestartCheck() throws {
         #expect(try text("hooks/mod/problems.ts").contains("export const RESTART_CHECK = '\(ConfigLoadedCheck().id)'"))

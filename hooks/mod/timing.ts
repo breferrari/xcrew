@@ -13,6 +13,10 @@ import { comparison, estimate, stopwatch } from './format'
 export const HISTORY = 10
 export const DURATIONS_PREFIX = 'durations.'
 export const historyKey = (tool: string) => `${DURATIONS_PREFIX}${tool}`
+/** When a run last added to a tool's history. */
+export const updatedKey = (tool: string) => `updated.${tool}`
+/** Two weeks, as long as the CLI keeps an unused build. */
+export const HISTORY_KEPT_MS = 14 * 24 * 60 * 60_000
 /** The last test run's total per tool, for the next run's `testing 312 of 959`. */
 export const testsKey = (tool: string) => `tests.${tool}`
 /** Whether a tool has written a log before: those say they're preparing until this run's appears; `clean` writes none. */
