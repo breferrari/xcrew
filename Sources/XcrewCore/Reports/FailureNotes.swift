@@ -22,6 +22,13 @@ public enum FailureNotes {
         line.firstMatch(of: #/^\s*⏭\x{FE0F}? (\S+?)\/(\S+?) \(/#).map { key(String($0.1), String($0.2)) }
     }
 
+    /// `0.006`, as MobileBuildMCP writes a test's time: three decimals, whatever the Mac's locale.
+    static func seconds(_ value: Double) -> String {
+        let milliseconds = Int((value * 1000).rounded())
+        let fraction = String(milliseconds % 1000)
+        return "\(milliseconds / 1000).\(String(repeating: "0", count: 3 - fraction.count))\(fraction)"
+    }
+
     static func isPath(_ line: String) -> Bool {
         line.contains(#/^\s+\/\S+:\d+\s*$/#)
     }
@@ -102,7 +109,7 @@ public enum FailureNotes {
                     notes.skipped[test] = reason(skip)
                 } else if unlisted < mostLookups {
                     unlisted += 1
-                    notes.unlisted += ["  ⏭️ \(test)() (\(String(format: "%.3f", skip.seconds))s)"] + reason(skip)
+                    notes.unlisted += ["  ⏭️ \(test)() (\(seconds(skip.seconds))s)"] + reason(skip)
                 }
             }
         }

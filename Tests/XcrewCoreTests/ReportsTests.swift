@@ -360,3 +360,11 @@ func failingRunText(passing: Int) -> String {
     }
 }
 
+
+@Suite struct TestTimeTests {
+    @Test func aTestsTimeIsWrittenAsMobileBuildMCPWritesIt() {
+        #expect(FailureNotes.seconds(0) == "0.000")
+        #expect(FailureNotes.seconds(0.0045) == "0.005")
+        #expect(FailureNotes.seconds(12.3) == "12.300")
+    }
+}
