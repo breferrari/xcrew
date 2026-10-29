@@ -1,35 +1,26 @@
-import type { EngineInterface, On } from 'claude-code'
 import { average, stopwatch } from './format'
 import { DURATIONS_PREFIX, HISTORY } from './timing'
-import { closeFailures, openFailures } from './failures'
-import { text } from './cli'
 
-const USAGE = [
+export const USAGE = [
   '/xcrew doctor   check this Mac and project, with the fix for anything wrong',
   '/xcrew history  how long each build, test and app run usually takes',
   '/xcrew failures every failing test and compile error from the last failing run, in a pane',
   '/xcrew close    close that pane',
 ].join('\n')
 
+/** `/xcrew`, answered by the mod itself: nothing reaches Claude, and nothing costs a turn. */
 export const COMMAND = { name: 'xcrew', description: 'Xcrew: doctor, history, failures or close', argumentHint: '[doctor|history|failures|close]' }
 
-/** `/xcrew`, answered by the mod itself: nothing reaches Claude, and nothing costs a turn. */
-export function registerCommand(on: On): void {
-  on('command.run', { command: 'xcrew' }, async ($, e) => {
-    const subcommand = (e.args ?? '').trim()
-    if (subcommand === 'doctor') return { text: await text($, ['doctor']) }
-    if (subcommand === 'history') return { text: await history($) }
-    if (subcommand === 'failures') return { text: await openFailures($) }
-    if (subcommand === 'close') return { text: await closeFailures($) }
-    return { text: USAGE }
-  })
+export const DOCTOR_ARGS = ['doctor']
+
+/** The store keys `/xcrew history` reads. */
+export function isDurationsKey(key: string): boolean {
+  return key.startsWith(DURATIONS_PREFIX)
 }
 
-async function history($: EngineInterface): Promise<string> {
-  const keys = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX))
-  const rows = await Promise.all(
-    keys.map(async key => ({ tool: key.slice(DURATIONS_PREFIX.length), runs: ((await $.store.get(key)) as number[] | undefined) ?? [] })),
-  )
+/** `/xcrew history`: each tool's usual duration, slowest first, from its stored runs. */
+export function historyText(stored: { key: string; runs: number[] | undefined }[]): string {
+  const rows = stored.map(({ key, runs }) => ({ tool: key.slice(DURATIONS_PREFIX.length), runs: runs ?? [] }))
   const timed = rows.filter(row => row.runs.length > 0).sort((a, b) => average(b.runs) - average(a.runs))
   if (timed.length === 0) return 'No builds or test runs timed yet.'
   // Claude Code puts the plugin's name before the first line; a heading keeps the rows aligned.

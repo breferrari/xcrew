@@ -50,16 +50,24 @@ Everything that touches the machine goes through `Machine` (environment, home fo
 
 ## The mod
 
-`hooks/mod/register.ts` registers two `tool.call` hooks. Hooks on one event run in registration order, each wrapping the next:
+`hooks/mod/register.ts` is the hooks module: it registers every hook and makes every `$` call. It registers two `tool.call` hooks. Hooks on one event run in registration order, each wrapping the next:
 
 1. **guard**: matched on `XcodeWrite`; refuses it when `xcrew project` says Tuist or XcodeGen generates the project (manifests at the root or up to two folders below it), and lets it through in a classic project or when the CLI can't say. A `tool.describe` hook on the same tool adds that to its description, so Claude reaches for Write first.
 2. **timing**: the one unmatched hook; times calls `tools.ts` classifies as build, test or run, by name pattern so new tools are timed without a change. It keeps the last ten durations per tool in `$.store`, compares each run with them, and calls out one far slower than usual. Its bookkeeping is best-effort and never fails a build.
 
-`cli.ts` runs the build the shim names directly, asking the shim again every 30 s, so the once-a-second poll skips the shim's work; when that build can't be started, the shim runs the command instead. Timing reads nothing itself. While a MobileBuildMCP run goes it asks `xcrew phase` once a second for the run's log and phase; when the call ends it pipes the result to `xcrew report`, which returns the outcome, the failures, the duration, and the shorter result and notes Claude reads.
+The mod runs the build the shim names directly, asking the shim again every 30 s, so the once-a-second poll skips the shim's work; when that build can't be started, the shim runs the command instead. Timing reads nothing itself. While a MobileBuildMCP run goes it asks `xcrew phase` once a second for the run's log and phase; when the call ends it pipes the result to `xcrew report`, which returns the outcome, the failures, the duration, and the shorter result and notes Claude reads.
 
 Beside those, **band** (`ui.render` on `AbovePrompt`) draws the run that timing records in `$.state`, its gauge and phase, or, before the first run, the problem **problems** found with `xcrew doctor --problems --json`. **session** is the one unmatched `session.start` hook: it registers `/xcrew` and starts that look for problems without holding the session up. **command** answers `/xcrew` itself: `doctor` runs the CLI, `history` reads timing's durations, kept per tool, scheme and test selection, `failures` opens the **failures** pane, which keeps the last failing run's failures, and `close` closes it. The pane opens only when asked, since docked or above the prompt it takes room from the chat; after a failing run the band ends with `/xcrew failures`.
 
 Every tool name is matched under both registrations: `mcp__plugin_xcrew_<server>__<tool>` from this plugin, and `mcp__<server>__<tool>` when the person registered the server themselves, which Claude Code then prefers.
+
+### Why `register.ts` holds every `$` call
+
+The plugin directory, and Claude Code when it loads a mod, read a hooks module's calls without running it, and they read `$` only where it stays in one file. Claude Code's docs ([Check what Claude Code reads from your mod](https://code.claude.com/docs/en/plugins/mods/create#check-what-claude-code-reads-from-your-mod)) put it this way:
+
+> You can pass `$` to a function declared at the top level of the same file […] Passing `$` to a method, a function defined inside the hook, or a function you import from another of your files fails validation.
+
+Each `on(...)` call has to be in that file too, and Claude Code's loader reads `$.state` only through atoms declared there. So `register.ts` is the mod's imperative shell and its largest file: the registrations, the state atoms, and a few top-level helpers that take `$` whole. Every other file in `hooks/mod/` is plain data in, data out, with no `$` and no `on`: `cli.ts` says what to run and reads what comes back, `band.ts` and `failures.ts` build their trees from data and the element table a hook passes them, and `timing.ts`, `command.ts`, `problems.ts`, `context.ts`, `format.ts` and `tools.ts` hold the rest. Splitting `register.ts` back into files that take `$` would fail the directory's validation.
 
 ### The mod's boundary
 
@@ -71,7 +79,13 @@ The mod does what only TypeScript can reach, and hands everything else to the CL
 | Draw the band and the pane, keep `$.state` and `$.store` | Read files, run `xcrun` and other programs |
 | Time calls, and hand a result back to Claude | Decide what a result means and what Claude reads instead |
 
-Reading a few named fields of a JSON answer is fine: **context** learns the scheme and simulator that way. So in `hooks/mod/`, only `cli.ts` runs a process, from one place, and only the CLI: the build `bin/xcrew --binary-path` names, or the shim, only `cli.ts` and `context.ts` parse JSON, only `tools.ts` matches a pattern, and nothing touches the file system. `ModBoundaryTests` in `Tests/ManifestTests` fails on any of these anywhere else. When a change seems to need one, the logic belongs in a Swift command the mod calls through `cli.ts`, tested with Swift Testing against captured output in `Tests/XcrewCoreTests/Fixtures`.
+Reading a few named fields of a JSON answer is fine: **context** learns the scheme and simulator that way. So in `hooks/mod/`:
+
+- Only `register.ts` touches `$` or registers a hook, and passes `$` only to its own top-level functions.
+- One call site starts a process, `start` in `register.ts`, and it runs only the CLI: the build `bin/xcrew --binary-path` names, or the shim. `cli.ts` decides which, with what arguments and time, and reads the answer.
+- Only `cli.ts` and `context.ts` parse JSON, only `tools.ts` matches a pattern, and nothing touches the file system.
+
+`ModBoundaryTests` in `Tests/ManifestTests` fails on any of these. When a change seems to need one, the logic belongs in a Swift command the mod calls through `cli.ts`, tested with Swift Testing against captured output in `Tests/XcrewCoreTests/Fixtures`.
 
 ## Extending
 
@@ -80,4 +94,4 @@ Reading a few named fields of a JSON answer is fine: **context** learns the sche
 | A health check | A `Check` in `Sources/XcrewCore/Doctor/Checks/`, listed in `Doctor.checks` | A wrapper in `mcs/checks/` and an entry in `techpack.yaml`; `ManifestTests` fails until both exist |
 | A CLI command | A `Command` in `Sources/XcrewCLI/`, listed in `CLI.commands` | Tests in `XcrewCLITests` |
 | A setup question | An option in `SetupCommand.mcsKeys` | A prompt in `techpack.yaml`; `ManifestTests` fails until it exists |
-| A mod behaviour | A `register…` function in `hooks/mod/`, called from `register.ts`; anything it needs read or worked out, in a Swift command it calls through `cli.ts` (see *The mod's boundary*) | Tests in `hooks/mod/`, calling tools through `testing.ts` and answering for the CLI with `stubCli`; at most one unmatched hook per event; `scripts/typecheck.sh` clean |
+| A mod behaviour | Its `on(...)` registration and `$` calls in `register.ts`, and its logic as plain functions in a file of their own in `hooks/mod/` (see *Why `register.ts` holds every `$` call*); anything it needs read or worked out, in a Swift command whose arguments and answer `cli.ts` handles (see *The mod's boundary*) | Tests in `hooks/mod/`, calling tools through `testing.ts` and answering for the CLI with `stubCli`; at most one unmatched hook per event; `scripts/typecheck.sh` clean |

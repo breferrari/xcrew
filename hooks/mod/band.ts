@@ -1,33 +1,19 @@
-import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On } from 'claude-code'
-import type { BandRun } from '../../types'
+import type { ElementConstructor, RenderElement } from 'claude-code'
+import type { BandProblems, BandRun } from '../../types'
 import { estimate, stopwatch } from './format'
-import { clearProblems, readProblems } from './problems'
 
 /** The band keeps showing a finished run's outcome this long. */
 const HIDE_AFTER_MS = 3 * 60_000
 /** The X's orange, the brand colour; everything else follows the person's theme. */
 const ORANGE = '#ec501d'
 
-export const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
-
-export async function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
-  await clearProblems($)
-  return update($, runState, () => run)
+/** The run while it's still going, with its phase or the time its own time began changed. */
+export function changedRun(run: BandRun | null, change: Pick<BandRun, 'phase'> | Pick<BandRun, 'measuredFrom'>): BandRun | null {
+  return run && !run.ended ? { ...run, ...change } : run
 }
 
-/** Updates the run while it's still going: its phase, or when its own time began. */
-export function updateRun($: EngineInterface, change: Pick<BandRun, 'phase'> | Pick<BandRun, 'measuredFrom'>): Promise<unknown> {
-  return update($, runState, run => (run && !run.ended ? { ...run, ...change } : run))
-}
-
-/** Takes the run off the band, as for a call that never ran. */
-export function clearRun($: EngineInterface): Promise<unknown> {
-  return update($, runState, () => null)
-}
-
-export function endRun($: EngineInterface, ended: NonNullable<BandRun['ended']>): Promise<unknown> {
-  return update($, runState, run => (run ? { ...run, ended } : run))
+export function endedRun(run: BandRun | null, ended: NonNullable<BandRun['ended']>): BandRun | null {
+  return run ? { ...run, ended } : run
 }
 
 type Segment = { text: string; color?: string; weight?: 'semibold' }
@@ -68,33 +54,32 @@ export function outcomeLine(tool: string, ended: NonNullable<BandRun['ended']>):
   return segments({ tool, startedAt: 0, ended }, 0).map(segment => segment.text).join('')
 }
 
-/** Draws the run above the prompt, and nothing when there's none or it ended a while ago. */
-export function registerBand(on: On): void {
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
-    const run = await read($, runState)
-    const now = await $.clock.now()
-    const { Box, Text } = $.ui.resolve(e)
-    if (!run || (run.ended && now - run.ended.at > HIDE_AFTER_MS)) {
-      const problems = await readProblems($)
-      if (!problems) return next(e)
-      const tone = problems.isFailure ? 'error' : 'warning'
-      const more = problems.more > 0 ? [Text({ color: 'subtle', children: [` (+${problems.more} more)`] })] : []
-      return Box({
-        flexDirection: 'row',
-        children: [
-          Text({ color: tone, children: ['⚠'] }),
-          Text({ color: tone, wrap: 'truncate-end', children: [` ${problems.message}`] }),
-          ...more,
-          Text({ color: 'subtle', children: [' · /xcrew doctor'] }),
-        ],
-      })
-    }
+/** The two elements of a `ui.render` hook's element table that this mod's trees use. */
+export type Elements = { Box: ElementConstructor<any>; Text: ElementConstructor<any> }
+
+/**
+ * The band above the prompt: the run, or after it hides, the doctor's most serious problem; nothing
+ * when there's neither.
+ */
+export function bandTree({ Box, Text }: Elements, run: BandRun | null, problems: BandProblems | null, now: number): RenderElement | undefined {
+  if (!run || (run.ended && now - run.ended.at > HIDE_AFTER_MS)) {
+    if (!problems) return undefined
+    const tone = problems.isFailure ? 'error' : 'warning'
+    const more = problems.more > 0 ? [Text({ color: 'subtle', children: [` (+${problems.more} more)`] })] : []
     return Box({
       flexDirection: 'row',
-      children: segments(run, now)
-        .filter(({ text }) => text !== '')
-        .map(({ text, color, weight }) => Text({ color, weight, wrap: 'truncate-end', children: [text] })),
+      children: [
+        Text({ color: tone, children: ['⚠'] }),
+        Text({ color: tone, wrap: 'truncate-end', children: [` ${problems.message}`] }),
+        ...more,
+        Text({ color: 'subtle', children: [' · /xcrew doctor'] }),
+      ],
     })
+  }
+  return Box({
+    flexDirection: 'row',
+    children: segments(run, now)
+      .filter(({ text }) => text !== '')
+      .map(({ text, color, weight }) => Text({ color, weight, wrap: 'truncate-end', children: [text] })),
   })
 }

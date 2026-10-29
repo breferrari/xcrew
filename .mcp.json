@@ -1,13 +1,8 @@
 {
   "mcpServers": {
     "MobileBuildMCP": {
-      "command": "/bin/sh",
-      "args": [
-        "-c",
-        "cd \"$1\" && PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin\" exec mobilebuildmcp mcp",
-        "mobilebuildmcp",
-        "${CLAUDE_PROJECT_DIR}"
-      ],
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mobilebuildmcp-server",
+      "args": ["${CLAUDE_PROJECT_DIR}"],
       "env": { "MOBILEBUILDMCP_SENTRY_DISABLED": "true" }
     },
     "xcode": {

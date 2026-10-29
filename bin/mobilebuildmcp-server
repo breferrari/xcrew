@@ -1,0 +1,4 @@
+#!/bin/sh
+# Starts MobileBuildMCP in the project Claude Code names, since it reads its config from its working
+# directory. Homebrew's prefixes are appended to PATH because Claude Code can start servers without them.
+cd "$1" && PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" exec mobilebuildmcp mcp

@@ -12,8 +12,13 @@ Thanks for helping. Xcrew is small on purpose: one Swift package does the work, 
 
 macOS 26 or later with Xcode 27 or later, and Claude Code.
 
+Clone the repository, then work from its folder:
+
 ```sh
-git clone https://github.com/breferrari/xcrew && cd xcrew
+git clone https://github.com/breferrari/xcrew
+```
+
+```sh
 swift test                # CLI, core, shim and manifest-parity tests
 claude plugin test .      # the mod's tests, against Claude Code's own engine
 claude plugin validate .
@@ -21,6 +26,8 @@ mcs pack validate .       # when mcs is installed
 claude --plugin-dir .     # try your checkout in a real session
 scripts/typecheck.sh      # the mod's types; needs that session once
 ```
+
+`scripts/typecheck.sh` runs TypeScript 5.6.3, which `npx` fetches from npm on its first run.
 
 ## How changes are made
 

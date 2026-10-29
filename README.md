@@ -189,17 +189,32 @@ Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 2. Optionally, `rm -rf .mobilebuildmcp` in each project (and its line in `.git/info/exclude`), `rm -rf ~/Library/Caches/xcrew`, and `brew uninstall mobilebuildmcp`.
 3. To revoke Claude Code's access to Xcode: find its id in `xcrun mcp-server status`, then `sudo xcrun mcp-server deny <id>`. `sudo xcrun mcp-server disable` turns headless mode off.
 
-### What it runs and reaches
+### Privacy
+
+Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads a token, a key or a password, and it never runs anything with `sudo`: the one `sudo` command, in *Quick start*, is yours to run.
+
+**The mod**, which runs inside Claude Code:
 
 | | |
 | --- | --- |
-| **Builds** | Xcrew's CLI, from this repository's Swift source, into `~/Library/Caches/xcrew`, on first use |
-| **Starts** | Three MCP servers: Apple's `xcrun mcpbridge`, the Homebrew `mobilebuildmcp`, and Sosumi over HTTPS |
-| **Reads** | MobileBuildMCP's run logs, and a failing or skipped test run's result bundle, with `xcrun xcresulttool` |
-| **Sends** | One request: `xcrew doctor`'s check for a newer release, against GitHub's API. No telemetry; MobileBuildMCP's is turned off |
-| **Never** | Runs anything with `sudo`. The one `sudo` command, in *Quick start*, is yours to run |
+| **Reads** | Every tool call Claude makes, with its arguments and result, because it hooks `tool.call`. It acts only on the Xcode MCP's and MobileBuildMCP's tools, by their names, and passes every other call on untouched. It keeps the last ten durations of each build, test and run in Claude Code's own store, and the last failing run's failures for the session |
+| **Hooks** | `tool.call`: the `XcodeWrite` guard, and timing for builds, tests and runs. `tool.describe`: the guard's line in `XcodeWrite`'s description. `ui.render`: the line above the prompt and the failures pane. `command.run`: `/xcrew`. `session.start`: registers `/xcrew` and asks the doctor what's missing |
+| **Changes** | In a Tuist or XcodeGen project, it refuses `XcodeWrite` and says so in that tool's description. After a build or test call, Claude reads the CLI's shorter result and notes in place of the server's. Nothing else |
+| **Shows** | The line above the prompt, the failures pane, a toast or the status line where the line can't draw, and a notification after a run of a minute or more |
+| **Starts** | Only Xcrew's CLI: `bin/xcrew`, or the build it names |
+| **Sends** | Nothing. The mod makes no network request |
 
-Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
+**The CLI**, which the mod, the session hook, the skills and mcs run:
+
+| | |
+| --- | --- |
+| **Builds** | Itself, from this repository's Swift source, with `swift build` into `~/Library/Caches/xcrew`, on first use. It has no dependencies, so the build needs no network |
+| **Starts** | `xcrun`, to list simulators (`simctl`), check the Xcode MCP (`mcp-server status`), read a test run's result bundle (`xcresulttool`) and find the skills Xcode ships (`mcpbridge`). `defaults`, to read whether Xcode accepts unsigned agents. `git`, to find `.git/info/exclude`. `mobilebuildmcp --version` and `tuist version`, for the doctor's checks. `curl`, for the one request below |
+| **Reads** | MobileBuildMCP's run logs, a failing or skipped test run's result bundle, `.mobilebuildmcp/config.yaml`, and your project's manifests and Xcode project files, to tell what kind of project it is |
+| **Writes** | `.mobilebuildmcp/config.yaml` and a line in `.git/info/exclude`, in `xcrew setup`. The skills Xcode ships into `.claude/skills`, in `xcrew xcode-skills`. Nothing else |
+| **Sends** | One request, and only when you run `xcrew doctor` or `/xcrew doctor` yourself: `curl` asks GitHub's releases API for the latest version. Never at session start, whose look for problems leaves that check out. No telemetry |
+
+**The MCP servers**, which `.mcp.json` starts: Apple's `xcrun mcpbridge`; Homebrew's `mobilebuildmcp`, through `bin/mobilebuildmcp-server`, which starts it in your project with Homebrew's folders on `PATH`, and with its telemetry turned off; and Sosumi over HTTPS. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
 
 ### Contributing
 

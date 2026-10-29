@@ -78,4 +78,4 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: ShellCheck
-        run: shellcheck bin/xcrew mcs/*.sh mcs/checks/*.sh scripts/*.sh
+        run: shellcheck bin/xcrew bin/mobilebuildmcp-server mcs/*.sh mcs/checks/*.sh scripts/*.sh

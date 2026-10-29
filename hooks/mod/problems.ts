@@ -1,26 +1,11 @@
-import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
 import type { BandProblems } from '../../types'
-import { problems } from './cli'
-
-const problemsState = atom({ plugin: 'xcrew', key: 'problems' } as const, null as BandProblems | null)
+import type { Problem } from './cli'
 
 /**
- * Asks the doctor what's wrong and keeps the most serious problem for the band. The doctor reports
- * nothing outside an Apple-platform project, so other projects stay quiet.
+ * The most serious problem the doctor found, for the band, and how many more; none when it found
+ * nothing. The doctor lists them worst first, and reports nothing outside an Apple-platform project.
  */
-export async function loadProblems($: EngineInterface): Promise<void> {
-  // The doctor lists them worst first.
-  const found = await problems($)
+export function mostSerious(found: Problem[]): BandProblems | null {
   const [first] = found
-  if (first) await update($, problemsState, () => ({ isFailure: first.status === 'fail', message: first.message, more: found.length - 1 }))
-}
-
-/** The band shows problems only until the first run, which then has the band to itself. */
-export function clearProblems($: EngineInterface): Promise<unknown> {
-  return update($, problemsState, () => null)
-}
-
-export function readProblems($: EngineInterface) {
-  return read($, problemsState)
+  return first ? { isFailure: first.status === 'fail', message: first.message, more: found.length - 1 } : null
 }

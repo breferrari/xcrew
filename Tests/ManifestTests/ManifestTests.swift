@@ -86,6 +86,27 @@ import XcrewCore
         #expect(servers["sosumi"]?["url"] as? String == "https://sosumi.ai/mcp")
     }
 
+    /// The directory's listing links to the privacy section; GitHub makes a heading's anchor from its words.
+    @Test func thePrivacyLinkLandsOnAREADMEHeading() throws {
+        let link = try #require(try json(".claude-plugin/plugin.json")["privacyPolicyUrl"] as? String)
+        let fragment = try #require(link.split(separator: "#", maxSplits: 1).last.map(String.init))
+        let anchors = try text("README.md").split(separator: "\n").filter { $0.hasPrefix("#") }.map { heading in
+            heading.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces).lowercased()
+                .filter { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" || $0 == "_" }
+                .replacingOccurrences(of: " ", with: "-")
+        }
+        #expect(anchors.contains(fragment), "\(link) names no README heading")
+    }
+
+    /// The directory reads a server started as a file of the plugin with plain arguments, not through a shell's `-c`.
+    @Test func mobileBuildMCPStartsFromThePluginsScript() throws {
+        let servers = try #require(try json(".mcp.json")["mcpServers"] as? [String: [String: Any]])
+        let mobile = try #require(servers["MobileBuildMCP"])
+        #expect(mobile["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/bin/mobilebuildmcp-server")
+        #expect(mobile["args"] as? [String] == ["${CLAUDE_PROJECT_DIR}"])
+        #expect(FileManager.default.isExecutableFile(atPath: Self.repository.appending(path: "bin/mobilebuildmcp-server").path))
+    }
+
     /// A flag a command reads but doesn't declare would be refused before the command runs.
     @Test func everyFlagACommandReadsIsDeclared() throws {
         for command in CLI.commands {
@@ -192,8 +213,27 @@ import XcrewCore
         try sources().filter { !allowed.contains($0.name) && $0.text.contains(pattern) }.map(\.name)
     }
 
-    @Test func onlyTheCLIWrapperRunsProcesses() throws {
-        #expect(try Self.offenders(/\$\.process\./, allowed: ["cli.ts"]) == [])
+    /// The plugin directory reads `$` only in the hooks module: it may go, whole, to a function declared at the top
+    /// of the same file, never to a function another file exports. See docs/architecture.md.
+    @Test func onlyTheHooksModuleUsesTheModsAPI() throws {
+        #expect(try Self.offenders(/\$\.[a-z]+|EngineInterface|\(\$[,)]/, allowed: ["register.ts"]) == [])
+    }
+
+    /// Every hook is registered in the hooks module, one `on(` call to a line, so the directory finds each.
+    @Test func onlyTheHooksModuleRegistersHooks() throws {
+        #expect(try Self.offenders(/\bon\(['"]|: On\b/, allowed: ["register.ts"]) == [])
+        let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
+        let registrations = register.split(separator: "\n").filter { $0.contains("on('") || $0.contains("on(\"") }
+        #expect(!registrations.isEmpty)
+        #expect(registrations.allSatisfy { $0.trimmingCharacters(in: .whitespaces).hasPrefix("on(") })
+    }
+
+    /// `$` goes only to the helpers `register.ts` declares at its top level, and to `claude-code`'s `read` and `update`.
+    @Test func theHooksModulePassesTheModsAPIOnlyToItsOwnTopLevelFunctions() throws {
+        let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
+        let topLevel = Set(register.matches(of: /(?m)^(?:export )?(?:async )?function (\w+)\(/).map { String($0.1) })
+        let given = Set(register.matches(of: /(\w+)\(\$[,)]/).map { String($0.1) })
+        #expect(given.subtracting(topLevel).subtracting(["read", "update"]).isEmpty, "$ passed to \(given.subtracting(topLevel).subtracting(["read", "update"]).sorted())")
     }
 
     /// Reading named fields of a server's JSON answer is fine where the mod keeps what it learns; parsing text isn't.
@@ -201,13 +241,16 @@ import XcrewCore
         #expect(try Self.offenders(/JSON\.parse\(/, allowed: ["cli.ts", "context.ts"]) == [])
     }
 
+    /// One call site starts a process, `start` in the hooks module, and it runs only the shim or the build the shim names;
+    /// `cli.ts` decides which and reads what comes back.
     @Test func theModStartsOnlyTheCLIFromOnePlace() throws {
-        let wrapper = try #require(try Self.sources().first { $0.name == "cli.ts" }).text
-        // One call site, in `start`, which runs nothing but the shim or the build the shim names.
-        #expect(wrapper.matches(of: /\$\.process\.run\(/).count == 1)
-        let programs = Set(wrapper.matches(of: /start\(\$, ([^,]+),/).map { String($0.1) })
-        #expect(programs == ["shim($)", "binary"])
-        #expect(wrapper.contains("const binary = await build("))
+        let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
+        #expect(try Self.sources().map(\.text).joined().matches(of: /\$\.process\.run\(/).count == 1)
+        let start = try #require(register.firstMatch(of: /(?ms)^function start\(.*?^}/)).output
+        #expect(start.contains("$.process.run("))
+        let programs = Set(register.matches(of: /start\(\$, ([^,]+),/).map { String($0.1) })
+        #expect(programs == ["shimPath($.plugin.root)", "binary"])
+        #expect(register.contains("const binary = await build("))
     }
 
     @Test func onlyToolNamesAreMatchedByPattern() throws {

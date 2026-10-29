@@ -1,20 +1,258 @@
-import type { Register } from 'claude-code'
-import { registerBand } from './band'
-import { registerCommand } from './command'
-import { registerFailures } from './failures'
-import { registerSession } from './session'
-import { registerGuard } from './guard'
-import { registerTiming } from './timing'
+import { atom, read, update } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
+import type { BandProblems, BandRun, CliBuild, FailureList } from '../../types'
+import { bandTree, changedRun, endedRun, outcomeLine } from './band'
+import {
+  answerOf, BINARY_PATH_ARGS, couldntRun, DEFAULT_TIMEOUT_MS, isGeneratedOf, knownBuild, namedBuild, phaseArgs, PHASE_TIMEOUT_MS, phaseOf,
+  PROBLEMS_ARGS, problemsOf, PROJECT_ARGS, PROJECT_TIMEOUT_MS, ranOutOfTime, reportArgs, reportOf, REPORT_TIMEOUT_MS, shimPath, textOf, TEXT_TIMEOUT_MS,
+  type Failure, type Ran,
+} from './cli'
+import { COMMAND, DOCTOR_ARGS, historyText, isDurationsKey, USAGE } from './command'
+import { describe, historyOf, observe } from './context'
+import { afterRun, CLOSED, paneTree, summary } from './failures'
+import { average } from './format'
+import { describedForGenerated, REASON } from './guard'
+import { mostSerious } from './problems'
+import { drawsBand, endingOf, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, PREPARING, quietly, resultFor, statusLine, testsKey } from './timing'
+import { kindOf, parseTool, PROJECT_REWRITER } from './tools'
+
+// The mod's state, which the loader reads only from atoms declared in the hooks module itself.
+const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
+const failuresState = atom({ plugin: 'xcrew', key: 'failures' } as const, null as FailureList | null)
+const problemsState = atom({ plugin: 'xcrew', key: 'problems' } as const, null as BandProblems | null)
+/** The failures pane's id: a literal here, so the loader can read the pane hook's matcher. */
+const FAILURES_PANE = 'xcrew-failures'
+/** The shim's last answer, for the session: the build to run, or none. */
+const buildState = atom({ plugin: 'xcrew', key: 'build' } as const, null as CliBuild | null)
 
 /**
- * xcrew's mod. Hooks on one event run in the order registered, each wrapping the ones after it:
- * the guard refuses before anything starts, so timing never counts a refused call.
+ * xcrew's mod: the only file that touches `$` or registers a hook. The plugin directory reads `$`
+ * only where a hooks module passes it, whole, to a function declared at the top of the same file,
+ * so every `$` call is here and every other file is plain data in, data out. docs/architecture.md
+ * has the rule and the docs it comes from.
+ *
+ * Hooks on one event run in the order registered, each wrapping the ones after it: the guard
+ * refuses before anything starts, so timing never counts a refused call.
  */
 export const register: Register = on => {
-  registerGuard(on)
-  registerTiming(on)
-  registerBand(on)
-  registerCommand(on)
-  registerFailures(on)
-  registerSession(on)
+  on('tool.call', { tool: PROJECT_REWRITER }, async ($, e, next) => ((await isGeneratedProject($)) ? { deny: REASON } : next(e))).catch(async ($, e, next) => next(e))
+  on('tool.describe', { tool: PROJECT_REWRITER }, async ($, e, next) => {
+    const described = await next(e)
+    return (await isGeneratedProject($)) ? { ...described, description: describedForGenerated(described.description) } : described
+  })
+  on('tool.call', async ($, e, next) => {
+    const parsed = parseTool(e.tool)
+    if (!parsed) return next(e)
+    const name = parsed.tool
+    const kind = kindOf(parsed)
+    if (!kind) {
+      // Not timed, but its answer may say what the next build will use.
+      const result = await next(e)
+      observe(parsed, result.text ?? '')
+      return result
+    }
+    const target = describe(parsed, e as unknown as Record<string, unknown>)
+    const label = labelOf(name, target)
+    // Durations and test totals are kept per scheme and test selection, not only per tool.
+    const history = historyOf(parsed, e as unknown as Record<string, unknown>)
+
+    const started = await quietly(() => $.clock.now())
+    const earlier = ((await quietly(() => $.store.get(historyKey(history)))) as number[] | undefined) ?? []
+    // What the gauge measures against; a tool's first run has none and shows its time alone.
+    const usual = earlier.length > 0 ? average(earlier) : undefined
+    const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
+    // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
+    const followsLog = parsed.server === 'MobileBuildMCP'
+    const expectedTests = followsLog ? ((await quietly(() => $.store.get(testsKey(history)))) as number | undefined) : undefined
+    const writesLog = followsLog && (await quietly(() => $.store.get(logsKey(name)))) === true
+    // The usual time is the server's own, which leaves out a pre-build hook; for a tool that logs,
+    // the gauge starts when the log appears, before which the run itself hasn't begun.
+    let measuredFrom = writesLog ? undefined : started
+    let logPath: string | undefined
+    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }) }))
+    let phase: string | undefined
+    const readPhase = async (since: number) => {
+      const found = (await quietly(() => runPhase($, name, since, expectedTests, logPath))) ?? {}
+      if (logPath === undefined && found.log !== undefined) {
+        logPath = found.log
+        if (!writesLog) await quietly(() => $.store.set(logsKey(name), true))
+        if (measuredFrom === undefined) {
+          measuredFrom = await quietly(() => $.clock.now())
+          const from = measuredFrom
+          if (usesBand && from !== undefined) await quietly(() => changeRun($, { measuredFrom: from }))
+        }
+      }
+      // Before its log appears xcodebuild hasn't started: a pre-build hook, a permission prompt or the server's own preparation.
+      const now = found.phase ?? (writesLog && logPath === undefined ? PREPARING : undefined)
+      if (now === undefined || now === phase) return
+      phase = now
+      if (usesBand) await quietly(() => changeRun($, { phase: now }))
+    }
+    const ticker = started === undefined ? undefined : await quietly(() =>
+      $.clock.every(1000, async () => {
+        if (followsLog) await readPhase(started)
+        if (usesBand) return quietly(() => $.ui.invalidate('ui.render'))
+        const now = await quietly(() => $.clock.now())
+        if (now !== undefined) await quietly(() => $.ui.status(statusLine(label, started, now, measuredFrom, usual, phase)))
+      }),
+    )
+
+    const result = await next(e)
+
+    ticker?.cancel()
+    if (!usesBand) await quietly(() => $.ui.status(undefined))
+    const ended = await quietly(() => $.clock.now())
+    if (started === undefined || ended === undefined) return result
+    // A denied call never ran: it has no outcome to show and no time that says how long a run takes.
+    if (result.deny !== undefined) {
+      if (usesBand) await quietly(() => update($, runState, () => null))
+      return result
+    }
+
+    // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
+    // It never throws: without the CLI it falls back to whether the server reported an error.
+    const outcome = reportOf(await answer($, reportArgs(parsed.server, kind, result.isError === true), REPORT_TIMEOUT_MS, result.text ?? ''), result.isError === true)
+    // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
+    const elapsed = outcome.durationMs ?? ended - started
+    await quietly(() => $.store.set(historyKey(history), [...earlier, elapsed].slice(-HISTORY)))
+    await quietly(() => recordRun($, history, outcome.ok, outcome.failures))
+    if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(history), outcome.tests))
+    const ending = endingOf(outcome, ended, elapsed, earlier)
+    const summaryLine = outcomeLine(name, ending)
+    if (usesBand) {
+      await quietly(() => update($, runState, run => endedRun(run, ending)))
+    } else {
+      // The band stays up with this same line where it draws; elsewhere a toast carries it.
+      await quietly(() => $.ui.toast(summaryLine))
+    }
+    // Long enough that the person has likely looked away; their notification settings decide how it arrives.
+    if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summaryLine))
+    return resultFor(result, outcome)
+  }).catch(async ($, e, next) => next(e))
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const tree = bandTree($.ui.resolve(e), await read($, runState), await read($, problemsState), await $.clock.now())
+    return tree ?? next(e)
+  })
+  on('command.run', { command: 'xcrew' }, async ($, e) => {
+    const subcommand = (e.args ?? '').trim()
+    if (subcommand === 'doctor') return { text: await cliText($, DOCTOR_ARGS) }
+    if (subcommand === 'history') return { text: await history($) }
+    if (subcommand === 'failures') return { text: await openFailures($) }
+    if (subcommand === 'close') return { text: await closeFailures($) }
+    return { text: USAGE }
+  }).catch(async ($, e, next) => (next.called ? next(e) : { text: `/xcrew ${(e.args ?? '').trim()} couldn't answer: ${next.error?.message ?? 'it failed'}` }))
+  on('ui.render', { component: 'Pane', requestId: FAILURES_PANE }, async ($, e) => paneTree($.ui.resolve(e), await read($, failuresState)))
+  // The one unmatched session start hook: offers `/xcrew`, and looks for problems without holding the session up.
+  on('session.start', async ($, e, next) => {
+    const started = await next(e)
+    await $.command.register(COMMAND)
+    void loadProblems($).catch(() => undefined)
+    return started
+  })
+}
+
+/** Starts a program of the CLI's: the mod's one process. */
+function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string) {
+  return $.process.run([program, ...args], { timeoutMs, env: { XCREW_ROOT: $.plugin.root }, ...(stdin === undefined ? {} : { stdin }) })
+}
+
+/** The question to the shim in flight, which callers at the same moment share rather than each starting a shim. */
+let asking: Promise<string | undefined> | undefined
+
+/**
+ * The build the shim runs, asked for at most every 30 s, within the caller's own time: when the
+ * shim must first build, a caller with ten seconds doesn't wait two minutes.
+ */
+async function build($: EngineInterface, timeoutMs: number): Promise<string | undefined> {
+  const now = await $.clock.now()
+  const known = knownBuild(await read($, buildState), now)
+  if (known !== 'ask') return known
+  asking ??= start($, shimPath($.plugin.root), BINARY_PATH_ARGS, timeoutMs)
+    .then(async ran => {
+      const named = namedBuild(ran.stdout)
+      await update($, buildState, () => ({ path: named, at: now }))
+      return named ?? undefined
+    })
+    .finally(() => {
+      asking = undefined
+    })
+  return asking
+}
+
+/**
+ * Runs the CLI. The shim's own work is several times the build's, and the band asks once a second,
+ * so the build it names runs directly. When the build can't be started, the shim runs instead; a
+ * command that ran out of time isn't started again, which would double the wait.
+ */
+async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string): Promise<Ran> {
+  const binary = await build($, timeoutMs).catch(() => undefined)
+  if (binary) {
+    const startedAt = await $.clock.now()
+    try {
+      return await start($, binary, args, timeoutMs, stdin)
+    } catch (error) {
+      if (ranOutOfTime(startedAt, await $.clock.now(), timeoutMs)) throw error
+      await update($, buildState, () => null)
+    }
+  }
+  return start($, shimPath($.plugin.root), args, timeoutMs, stdin)
+}
+
+/** The CLI's JSON answer, or nothing when it couldn't run or said something else. */
+async function answer($: EngineInterface, args: string[], timeoutMs = DEFAULT_TIMEOUT_MS, stdin?: string): Promise<unknown> {
+  return answerOf(await xcrew($, args, timeoutMs, stdin).catch(() => undefined))
+}
+
+function runPhase($: EngineInterface, tool: string, since: number, expectedTests: number | undefined, log: string | undefined) {
+  return answer($, phaseArgs(tool, since, expectedTests, log), PHASE_TIMEOUT_MS).then(phaseOf)
+}
+
+async function isGeneratedProject($: EngineInterface): Promise<boolean> {
+  return isGeneratedOf(await answer($, PROJECT_ARGS, PROJECT_TIMEOUT_MS))
+}
+
+/** A CLI command's own text, for `/xcrew doctor`, or why it couldn't run. */
+function cliText($: EngineInterface, args: string[]): Promise<string> {
+  return xcrew($, args, TEXT_TIMEOUT_MS).then(textOf, error => couldntRun(args, error))
+}
+
+/** The band shows problems only until the first run, which then has the band to itself. */
+async function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
+  await update($, problemsState, () => null)
+  return update($, runState, () => run)
+}
+
+function changeRun($: EngineInterface, change: Pick<BandRun, 'phase'> | Pick<BandRun, 'measuredFrom'>): Promise<unknown> {
+  return update($, runState, run => changedRun(run, change))
+}
+
+/** Asks the doctor what's wrong and keeps the most serious problem for the band. */
+async function loadProblems($: EngineInterface): Promise<void> {
+  const found = mostSerious(problemsOf(await answer($, PROBLEMS_ARGS)))
+  if (found) await update($, problemsState, () => found)
+}
+
+async function recordRun($: EngineInterface, run: string, ok: boolean, items: Failure[]): Promise<void> {
+  const list = await read($, failuresState)
+  const after = afterRun(list, run, ok, items)
+  if (after.list !== list) await update($, failuresState, () => after.list)
+  if (after.closesPane) await $.ui.close({ id: FAILURES_PANE })
+}
+
+/** Opens the pane and says, in one line, what it holds. */
+async function openFailures($: EngineInterface): Promise<string> {
+  await $.ui.open({ id: FAILURES_PANE, title: 'Failures' })
+  return summary(await read($, failuresState))
+}
+
+/** In Claude Code's default layout the pane's close mark can't be clicked; this closes it from the prompt. */
+async function closeFailures($: EngineInterface): Promise<string> {
+  await $.ui.close({ id: FAILURES_PANE })
+  return CLOSED
+}
+
+async function history($: EngineInterface): Promise<string> {
+  const keys = (await $.store.keys()).filter(isDurationsKey)
+  return historyText(await Promise.all(keys.map(async key => ({ key, runs: (await $.store.get(key)) as number[] | undefined }))))
 }

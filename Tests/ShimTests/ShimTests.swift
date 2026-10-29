@@ -89,6 +89,33 @@ import Testing
         for await _ in exit {}
     }
 
+    /// What a fake `mobilebuildmcp` saw when a command started it in `project`: its folder, arguments and PATH.
+    func startMobileBuildMCP(_ executable: String, _ arguments: [String], in project: URL) async throws -> String {
+        try write("#!/bin/sh\necho \"cwd=$(pwd -P) args=$* path=$PATH\"\n", to: "fakemcp/mobilebuildmcp", executable: true)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = ["PATH": "\(root.appending(path: "fakemcp").path):/usr/bin:/bin"]
+        process.standardInput = FileHandle.nullDevice
+        let output = Pipe()
+        process.standardOutput = output
+        try await Self.runToEnd(process)
+        return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    }
+
+    /// The plugin's server script starts MobileBuildMCP exactly as the `sh -c` line in `.mcp.json` did.
+    @Test func theServerScriptStartsMobileBuildMCPAsTheInlineCommandDid() async throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let project = root.appending(path: "project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        let inline = #"cd "$1" && PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" exec mobilebuildmcp mcp"#
+        let before = try await startMobileBuildMCP("/bin/sh", ["-c", inline, "mobilebuildmcp", project.path], in: project)
+        let after = try await startMobileBuildMCP(repository.appending(path: "bin/mobilebuildmcp-server").path, [project.path], in: project)
+        #expect(before.contains("cwd=\(try await physicalPath(project)) args=mcp path="))
+        #expect(before.hasSuffix(":/opt/homebrew/bin:/usr/local/bin\n"))
+        #expect(after == before)
+    }
+
     func lines(in file: URL) -> Int {
         ((try? String(contentsOf: file, encoding: .utf8)) ?? "").split(separator: "\n").count
     }
