@@ -78,14 +78,19 @@ import XcrewTestSupport
         #expect(await SimulatorCatalog.load(using: runner).multiDisplayTypes.isEmpty)
     }
 
+    /// A plain iPhone's CoreSimulator profile on this Mac, where `simctl list devicetypes` puts them.
+    static let plainIPhoneProfile: String? = {
+        let folder = "/Library/Developer/CoreSimulator/Profiles/DeviceTypes"
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? []
+        return names.sorted().first { $0.range(of: #"^iPhone \d+\.simdevicetype$"#, options: .regularExpression) != nil }.map { "\(folder)/\($0)" }
+    }()
+
     /// Pins the undocumented profile shape the catalog reads (docs/findings.md, *The simulator setup picks*), on
     /// this Mac's own Xcode: a platform change that moves or renames it turns this red.
-    @Test(.enabled(if: FileManager.default.fileExists(atPath: "/Library/Developer/CoreSimulator/Profiles/DeviceTypes")))
+    @Test(.enabled(if: plainIPhoneProfile != nil))
     func aPlainIPhonesInstalledProfileHasOneBuiltInDisplay() async throws {
-        let runner = SystemCommandRunner()
-        let types = try JSONDecoder().decode(SimulatorCatalog.DeviceTypes.self, from: Data(await runner.run("xcrun", "simctl", "list", "devicetypes", "--json").stdout.utf8))
-        let plain = try #require(types.devicetypes.compactMap(\.bundlePath).first { $0.range(of: #"/iPhone \d+\.simdevicetype$"#, options: .regularExpression) != nil })
-        let read = await runner.run("plutil", "-extract", "capabilities.displays", "json", "-o", "-", "\(plain)/Contents/Resources/capabilities.plist")
+        let plain = try #require(Self.plainIPhoneProfile)
+        let read = await SystemCommandRunner().run("plutil", "-extract", "capabilities.displays", "json", "-o", "-", "\(plain)/Contents/Resources/capabilities.plist")
         let displays = try JSONDecoder().decode([SimulatorCatalog.Display].self, from: Data(read.stdout.utf8))
         #expect(displays.filter { $0.powerState == 1 }.count == 1)
     }
