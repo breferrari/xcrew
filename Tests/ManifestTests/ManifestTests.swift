@@ -694,6 +694,13 @@ import Testing
         #expect(runs == [2, 1])
     }
 
+    /// The canary opens an issue only for a failed run on main, the schedule's or a dispatch there: a dispatch on a branch
+    /// tests the canary itself, and its failure is that branch's to fix.
+    @Test func theCanaryOpensAnIssueOnlyOnMain() throws {
+        let step = try #require(try text(".github/workflows/canary.yml").firstMatch(of: /- name: Open an issue when something broke\n\s+if: ([^\n]+)/)).1
+        #expect(step == "failure() && github.ref == 'refs/heads/main'")
+    }
+
     /// Only the weekly canary can tell a `stable` still settling after a release from one left behind, and only the
     /// newest Claude Code can say xcrew still reads its saved-result notice, whose wording isn't documented, and still
     /// updates a plugin that follows a branch by its version, and only the newest MobileBuildMCP can say it still registers
