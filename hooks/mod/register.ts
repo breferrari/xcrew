@@ -18,7 +18,7 @@ import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from '
 import { afterGenerate, editedNote, letThroughNote, marked, marksOf, refusal } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, isStale, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, whereKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
-import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup } from './tools'
+import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -193,54 +193,52 @@ export const register: Register = on => {
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
     // its real end comes later, as a task notification (`UserMessage` below).
+    const input = e as unknown as Record<string, unknown>
+    const run: Ending = { tool: name, scope, server: parsed.server, kind, earlier, usesBand, ranAll: runsWholeScope(parsed, input), fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}) }
     if (outcome.isUnread && buildsProject(parsed)) {
-      if (e.tool_use_id) {
-        unreadCalls.set(e.tool_use_id, name)
-        // Kept until a notification names one; the oldest go first, so calls that never get one don't pile up.
-        for (const old of [...unreadCalls.keys()].slice(0, Math.max(0, unreadCalls.size - UNREAD_KEPT))) unreadCalls.delete(old)
+      if (outcome.backgroundTask) {
+        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }) })
+        // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
+        for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) backgrounded.delete(old)
       }
       await showEnding($, name, { at: ended, elapsed, ok: true, isUnread: true }, usesBand)
       return resultFor(result, outcome)
     }
-    await quietly(() => $.store.set(historyKey(scope), [...earlier, elapsed].slice(-HISTORY)))
-    await quietly(() => $.store.set(updatedKey(scope), ended))
-    await quietly(async () => $.store.set(whereKey(scope), await $.session.cwd()))
-    await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
-    // Only what the CLI read goes in the ledger: without it, the outcome is a guess no test plan should cite.
-    if (kind === 'test' && reported !== undefined) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: runsWholeScope(parsed, e as unknown as Record<string, unknown>), repeated: outcome.repeated ?? [], bundle: outcome.bundle })
-    if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
-    saveCard($)
-    const ending = endingOf(outcome, ended, elapsed, earlier)
-    const summaryLine = outcomeLine(name, ending)
-    const row = drawsRow(kind) && e.tool_use_id ? rowOf(ending, outcome.failures) : undefined
-    if (row) await quietly(() => update($, memberOf(rowState, { requestId: e.tool_use_id }), () => row))
-    await showEnding($, name, ending, usesBand)
-    // Long enough that the person has likely looked away; their notification settings decide how it arrives.
-    if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summaryLine))
+    const loop = await recordEnding($, run, outcome, reported !== undefined, ended, elapsed)
     const resulting = resultFor(result, outcome)
-    // A whole suite run again and again: past the budget, the tests the change can break would do.
-    // Only a run the CLI read and that ran tests counts: a test build that failed ran none.
-    const ranTests = outcome.tests === undefined ? outcome.ok || outcome.failures.some(failure => failure.isTest) : outcome.tests > 0
-    const isFullRun = kind === 'test' && reported !== undefined && ranTests && isFullSuiteRun(parsed, e as unknown as Record<string, unknown>)
-    const loop = isFullRun ? await quietly(() => countFullRun($, scope, { at: ended, ms: elapsed })) : undefined
-    return loop ? withContext(resulting, loopNote(scope, loop, parsed.server === 'MobileBuildMCP')) : resulting
+    return loop ? withContext(resulting, loop) : resulting
   }).catch(async ($, e, next) => next(e))
-  // A background task's notification names the call that started it: one whose result said no outcome gets its line.
-  // Drawing changes nothing; the line is shown just after, outside the drawing.
+  // A background task's notification carries the result of the call moved there: read as that call's, it ends the run
+  // as a call answering in the foreground does, and Claude reads the shorter result with xcrew's notes. The call is
+  // found by its task's id in the text; the CLI reads the rest. A result that can't be read leaves the run's log.
+  on('prompt.submit', { origin: { kind: 'task-notification' } }, async ($, e, next) => {
+    const task = [...backgrounded.keys()].find(id => !backgrounded.get(id)?.read && e.text.includes(id))
+    const call = task === undefined ? undefined : backgrounded.get(task)
+    if (task === undefined || !call) return next(e)
+    const reading = readTask($, call, e.text)
+    backgrounded.set(task, { ...call, read: reading.then(Boolean) })
+    const read = await reading
+    if (!read) return next(e)
+    const context = [...(e.context ?? []), ...read.notes]
+    return next({ ...e, ...(read.result === undefined ? {} : { text: read.result }), ...(context.length > 0 ? { context } : {}) })
+  }).catch(async ($, e, next) => next(e))
+  // The notification's row names its task: one whose result wasn't read gets its line, just after the drawing, which
+  // changes nothing itself.
   on('ui.render', { component: 'UserMessage', props: { origin: { kind: 'task-notification' } } }, async ($, e, next) => {
-    const task = (e.props as { task?: { toolUseId?: string; status?: string; durationMs?: number } }).task
-    const tool = task?.toolUseId ? unreadCalls.get(task.toolUseId) : undefined
-    if (task?.toolUseId && tool) {
-      unreadCalls.delete(task.toolUseId)
+    const task = (e.props as { task?: { id?: string; status?: string; durationMs?: number } }).task
+    const call = task?.id === undefined ? undefined : backgrounded.get(task.id)
+    // A row drawn before its notification is read leaves the call to the reading; a later drawing says what it found.
+    if (task?.id !== undefined && call?.read) {
+      backgrounded.delete(task.id)
       void quietly(() =>
         $.clock.after(0, async () => {
+          if (await call?.read) return
           const now = await quietly(() => $.clock.now())
           if (now === undefined) return
           const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
           // A run going meanwhile keeps the band: the notification is an earlier call's.
-          const going = usesBand ? await quietly(() => read($, runState)) : undefined
-          if (going && !going.ended) return
-          await showEnding($, tool, { at: now, elapsed: task.durationMs ?? 0, ok: true, background: { ...(task.status ? { status: task.status } : {}), ...(task.durationMs === undefined ? {} : { durationMs: task.durationMs }) } }, usesBand)
+          if (usesBand && (await anotherRunGoing($))) return
+          await showEnding($, call.tool, { at: now, elapsed: task.durationMs ?? 0, ok: true, background: { ...(task.status ? { status: task.status } : {}), ...(task.durationMs === undefined ? {} : { durationMs: task.durationMs }) } }, usesBand)
         }),
       )
     }
@@ -323,6 +321,66 @@ export const register: Register = on => {
     if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, stale => afterGenerate(stale, e.command))
     return result
   }).catch(async ($, e, next) => next(e))
+}
+
+/** A finished build, test or run call, as its ending is recorded. */
+type Ending = { tool: string; scope: string; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; ranAll: boolean; fullSuite: boolean; toolUseId?: string }
+
+/** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
+type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean> }
+
+/**
+ * Records how a run ended: its time in the history, its failures, the ledger when the CLI read the run (`isRead`) and
+ * read more than a log's verdict, the card, its row and the band; the loop note, when a full run crossed the budget.
+ */
+async function recordEnding($: EngineInterface, run: Ending, outcome: Report, isRead: boolean, ended: number, elapsed: number): Promise<string | undefined> {
+  const { tool, scope, kind, earlier } = run
+  await quietly(() => $.store.set(historyKey(scope), [...earlier, elapsed].slice(-HISTORY)))
+  await quietly(() => $.store.set(updatedKey(scope), ended))
+  await quietly(async () => $.store.set(whereKey(scope), await $.session.cwd()))
+  await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
+  // Only what the CLI read goes in the ledger: without it, or from a log's verdict alone, the outcome says no test's own.
+  const readTests = kind === 'test' && isRead && !outcome.isVerdictOnly
+  if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: run.ranAll, repeated: outcome.repeated ?? [], bundle: outcome.bundle })
+  if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
+  saveCard($)
+  const ending = endingOf(outcome, ended, elapsed, earlier)
+  const requestId = run.toolUseId
+  if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures)))
+  await showEnding($, tool, ending, run.usesBand)
+  // Long enough that the person has likely looked away; their notification settings decide how it arrives.
+  if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
+  // A whole suite run again and again: past the budget, the tests the change can break would do.
+  // Only a run the CLI read and that ran tests counts: a test build that failed ran none.
+  const ranTests = outcome.tests === undefined ? outcome.ok || outcome.failures.some(failure => failure.isTest) : outcome.tests > 0
+  const loop = readTests && ranTests && run.fullSuite ? await quietly(() => countFullRun($, scope, { at: ended, ms: elapsed })) : undefined
+  return loop ? loopNote(scope, loop, run.server === 'MobileBuildMCP') : undefined
+}
+
+/**
+ * Reads a backgrounded call's notification for its result, or the run's log when that has none to read, and records
+ * how the run ended, from the call to the notification. Nothing, when neither says.
+ */
+async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
+  const reported = await answer($, args, 120_000, text)
+  const outcome = withPinNamedOnce(reportOf(reported, false))
+  if (reported === undefined || outcome.isUnread) return undefined
+  const ended = await quietly(() => $.clock.now())
+  if (ended === undefined) return undefined
+  // A run going meanwhile keeps the band: this one ended earlier, in the background.
+  const usesBand = call.usesBand && !(await anotherRunGoing($))
+  // The runs that ended meanwhile count among the earlier ones; the server's time leaves out the wait for the notification.
+  const stored = ((await quietly(() => $.store.get(historyKey(call.scope)))) as number[] | undefined) ?? []
+  const earlier = isStale(await quietly(() => $.store.get(updatedKey(call.scope))), ended) ? [] : stored
+  const loop = await recordEnding($, { ...call, usesBand, earlier }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
+  return { ...(outcome.result === undefined ? {} : { result: outcome.result }), notes: [...outcome.notes, ...(loop ? [loop] : [])] }
+}
+
+/** Whether a run is going now: it keeps the band from a call that ended in the background meanwhile. */
+async function anotherRunGoing($: EngineInterface): Promise<boolean> {
+  const going = await quietly(() => read($, runState))
+  return going !== undefined && going !== null && !going.ended
 }
 
 /** Changes the marks of a stale project; false when the state couldn't be written. */
@@ -568,9 +626,9 @@ let cardWrites: Promise<unknown> = Promise.resolve()
 let lastSavedCard: string | undefined
 /** How long one save may take before the next goes ahead. */
 const CARD_SAVE_MS = 15_000
-/** The calls whose result said no outcome, by `tool_use_id`, until a task notification names one: its tool's name. */
-const unreadCalls = new Map<string, string>()
-/** How many such calls are kept waiting for their notification. */
+/** The calls moved to the background, by the task their handle named, until its notification's row is drawn. */
+const backgrounded = new Map<string, Backgrounded>()
+/** How many calls are kept waiting for their notification. */
 const UNREAD_KEPT = 20
 
 /** The pins Claude has read of this session: each is named with the first failure it may explain, and not again. */

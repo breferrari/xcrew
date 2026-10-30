@@ -64,6 +64,18 @@ public struct ResultBundle: Sendable {
         return nil
     }
 
+    /// Each failed test in `xcresulttool get test-results tests` output, once whatever configurations it failed under,
+    /// with its first failure message; nil when the output isn't a listing, as when `xcresulttool` couldn't read the bundle.
+    public static func failedTests(listing: String) -> [ToolOutput.Failure]? {
+        guard let json = parse(listing) as? [String: Any], json["testNodes"] != nil else { return nil }
+        let found = nodes(json)
+        let cases = testCases(in: found)
+        return failedTests(in: found).map { test in
+            let message = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" }?["name"] as? String }.first
+            return ToolOutput.Failure(title: test.shown, message: message ?? "", isTest: true)
+        }
+    }
+
     /// Each skipped test in `xcresulttool get test-results tests` output, in the listing's order, with
     /// why it was skipped (its `Test skipped - <reason>` message) and how long it ran.
     public static func skippedTests(listing: String) -> [(test: TestID, skip: Skip)] {

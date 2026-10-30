@@ -855,10 +855,10 @@ import Testing
     }
 
     /// Only the weekly canary can tell a `stable` still settling after a release from one left behind, and only the
-    /// newest Claude Code can say xcrew still reads its saved-result notice, whose wording isn't documented, and still
-    /// updates a plugin that follows a branch by its version, and only the newest MobileBuildMCP can say it still registers
-    /// every tool the config xcrew writes asks for.
-    @Test(arguments: ["scripts/stable-check.sh ", "scripts/saved-notice.sh ", "scripts/stable-follows.sh ", "scripts/registered-tools.sh "])
+    /// newest Claude Code can say xcrew still reads its saved-result notice and a backgrounded call's handle and
+    /// notification, whose wordings aren't documented, and still updates a plugin that follows a branch by its version,
+    /// and only the newest MobileBuildMCP can say it still registers every tool the config xcrew writes asks for.
+    @Test(arguments: ["scripts/stable-check.sh ", "scripts/saved-notice.sh ", "scripts/background-texts.sh ", "scripts/stable-follows.sh ", "scripts/registered-tools.sh "])
     func theCanaryRunsEachUpstreamCheck(_ script: String) throws {
         #expect(try text(".github/workflows/canary.yml").contains(script))
     }

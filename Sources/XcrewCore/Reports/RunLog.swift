@@ -122,3 +122,33 @@ public enum RunLog {
         return newest?.url
     }
 }
+
+extension RunLog {
+    /// Whether the log's run succeeded, by the last verdict xcodebuild printed (`** BUILD SUCCEEDED **`,
+    /// `** TEST EXECUTE FAILED **`); nil before it printed one, when that verdict is neither, as for a run interrupted,
+    /// and for a test run when it isn't its tests' own, as after building for testing.
+    public static func outcome(of log: String, kind: Report.Kind) -> Bool? {
+        guard let verdict = log.split(separator: "\n").reversed().lazy.map({ $0.trimmingCharacters(in: .whitespaces) }).first(where: { $0.hasPrefix("** ") && $0.hasSuffix(" **") }) else { return nil }
+        if kind == .test, !verdict.hasPrefix("** TEST ") || verdict.hasPrefix("** TEST BUILD ") { return nil }
+        return verdict.hasSuffix(" SUCCEEDED **") ? true : verdict.hasSuffix(" FAILED **") ? false : nil
+    }
+
+    /// How much of a finished log's end holds its verdict and the result bundle it names, with a long list of failing
+    /// tests between them.
+    static let endBytes = 1024 * 1024
+
+    /// The end of the log at `path`, where a finished run's verdict and result bundle are: a clean build's log runs to
+    /// tens of megabytes. Empty when it can't be read.
+    public static func end(ofLogAt path: String) -> String {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) else { return "" }
+        return String(decoding: data.suffix(endBytes), as: UTF8.self)
+    }
+
+    /// The result bundle a test run's log names, on the line after xcodebuild's `Test session results`.
+    public static func resultBundle(in log: String) -> String? {
+        let lines = log.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let heading = lines.firstIndex(where: { $0.hasPrefix("Test session results") }), heading + 1 < lines.count else { return nil }
+        let path = lines[heading + 1].trimmingCharacters(in: .whitespaces)
+        return path.hasSuffix(".xcresult") ? path : nil
+    }
+}

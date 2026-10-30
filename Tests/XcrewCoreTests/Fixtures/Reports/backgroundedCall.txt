@@ -1,0 +1,1 @@
+MCP tool "plugin:notifyprobe:slow/wait" is still running after 120s. It was moved to the background as task k4q5tm9v2 and keeps running; you'll receive a notification with the result when it completes. You can keep working in the meantime. To stop it, use TaskStop with task_id "k4q5tm9v2". Note: it does not survive exiting this session.

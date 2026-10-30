@@ -29,6 +29,10 @@ public struct Report: Sendable, Equatable, Codable {
     public var pinNote: String?
     /// The pin `pinNote` names, `26.5 (.xcode-version)`: the mod names each pin once a session, however the note is worded.
     public var pin: String?
+    /// The task a call Claude Code moved to the background answers with, from its handle: the id its notification names.
+    public var backgroundTask: String?
+    /// The outcome comes from a run log's last verdict alone, with no result or bundle read: no test's own result.
+    public var isVerdictOnly: Bool?
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
@@ -78,6 +82,46 @@ public struct Report: Sendable, Equatable, Codable {
             let test = TestID(xcresultID: failure.title)
             return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: images[test]?.shown, moreImages: images[test]?.more, target: targets[test])
         }
+    }
+
+    /// The task Claude Code named in a handle: the one after "moved to the background as task", in each of its wordings
+    /// (docs/findings.md, *A call moved to the background*). A server-side task's own id comes earlier and isn't it.
+    static func backgroundTask(in text: String) -> String? {
+        text.firstMatch(of: #/moved to the background as task ([A-Za-z0-9_-]+)/#).map { String($0.output.1) }
+    }
+
+    /// No outcome: what a call moved to the background answers with, or a task that ended with no result to read.
+    public static let unread = Report(ok: false, failures: [], notes: [], isUnread: true)
+
+    /// A finished run told from its MobileBuildMCP log, for a task whose result couldn't be read: the log's last verdict,
+    /// and for a test run each failing test from the result bundle the log names, with each repeated test's runs when
+    /// `repeated`. Without a bundle `xcresulttool` reads, the verdict alone, said to be so; without a verdict, no outcome.
+    public static func make(kind: Kind, log: String, runner: any CommandRunning, repeated: Bool = false) async -> Report {
+        guard let ok = RunLog.outcome(of: log, kind: kind) else { return unread }
+        let path = kind == .test ? RunLog.resultBundle(in: log) : nil
+        if let path {
+            let listing = await ResultBundle(path: path, runner: runner).tests()
+            if let failed = ResultBundle.failedTests(listing: listing) {
+                return Report(ok: ok, failures: ok ? [] : failed, notes: [], repeated: repeated ? ResultBundle.repetitions(listing: listing) : nil, bundle: path)
+            }
+        }
+        return Report(ok: ok, failures: [], notes: [], bundle: path, isVerdictOnly: true)
+    }
+
+    /// A call moved to the background, from its task's notification: the result of a task that completed, read as the
+    /// call's own, its shorter result put back in the notification Claude reads; else the run's log at `log`, when there
+    /// is one; else no outcome.
+    public static func make(kind: Kind, notification text: String, log: String?, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
+        let notification = TaskNotification(text)
+        if let notification, let result = notification.completedResult {
+            var read = await make(kind: kind, output: ToolOutput(text: result, server: server, isError: false), home: home, runner: runner, repeated: repeated, project: project, machine: machine)
+            if read.isUnread != true {
+                if let shorter = read.result { read.result = notification.replacingResult(with: shorter) }
+                return read
+            }
+        }
+        guard let log else { return unread }
+        return await make(kind: kind, log: RunLog.end(ofLogAt: log), runner: runner, repeated: repeated)
     }
 
     /// A result Claude Code saved to a file is read back from it.
@@ -161,6 +205,7 @@ public struct Report: Sendable, Equatable, Codable {
 
         // A failing test's target, from the run's test list, which skips and expected failures read too.
         let targets = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { ResultBundle.targets(listing: await bundle.tests()) } else { [TestID: String]() }
+        let isUnread = kind != .run && !final.isError && final.isNotTheServers
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(
             ok: summary.ok,
@@ -171,10 +216,11 @@ public struct Report: Sendable, Equatable, Codable {
             result: compact ?? (edited ? final.text : nil),
             notes: notes,
             repeated: repeatedTests,
-            isUnread: kind != .run && !final.isError && final.isNotTheServers ? true : nil,
+            isUnread: isUnread ? true : nil,
             bundle: bundle?.path,
             pinNote: await pinNote,
-            pin: await pinNote == nil ? nil : project?.xcodePin.map { "\($0.version) (\($0.file))" }
+            pin: await pinNote == nil ? nil : project?.xcodePin.map { "\($0.version) (\($0.file))" },
+            backgroundTask: isUnread ? Self.backgroundTask(in: final.text) : nil
         )
     }
 }

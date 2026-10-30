@@ -32,6 +32,10 @@ export type Report = {
   pinNote?: string
   /** The pin it names, which the mod names once a session. */
   pin?: string
+  /** The task a call moved to the background answers with, which its notification names. */
+  backgroundTask?: string
+  /** The outcome is a run log's last verdict alone, with no test's own result read. */
+  isVerdictOnly?: boolean
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */
