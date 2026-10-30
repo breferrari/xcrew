@@ -85,6 +85,10 @@ public struct Report: Sendable, Equatable, Codable {
                 return await ChangedLineCoverage.of(covered, in: listed, bundle: bundle, project: project, using: runner)
             }
         }()
+        async let why: String? = {
+            guard let project, !read.summary.ok else { return nil }
+            return await Why.note(for: read, home: home, project: project, runner: runner)
+        }()
         var final = read
         var edited = false
         // A saved result stays saved unless it's compacted below: Claude Code saved it for its size, which the collapse alone may not cut enough.
@@ -125,6 +129,9 @@ public struct Report: Sendable, Equatable, Codable {
         }
 
         if let note = await coverage?.note { notes.append(note) }
+
+        // A run that failed because of the Mac says so first: its errors would read as the code's.
+        if let why = await why { notes.insert(why, at: 0) }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(

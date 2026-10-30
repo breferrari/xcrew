@@ -149,6 +149,28 @@ public struct ToolOutput: Sendable {
         warnings.map { Warning(message: $0.message, path: $0.location?.path, line: $0.location?.line.flatMap { Int($0) }) }
     }
 
+    /// Each error a failed build or test run reported.
+    var reportedErrors: [ReportedError] {
+        switch shape {
+        case let .mobileBuildMCPText(text): text.reportedErrors
+        case let .xcodeMCPJSON(result):
+            result.realErrors.map { error in
+                ReportedError(message: error.message ?? "", path: error.filePath, line: error.lineNumber.flatMap { Int($0.text) })
+            }
+        case .mobileBuildMCPJSON, .unrecognized: []
+        }
+    }
+
+    /// The build log MobileBuildMCP names in a failed run's text, with `~` read as `home`.
+    func buildLog(home: String) -> String? {
+        mobileText?.buildLog.map { Self.expandingHome($0, home: home) }
+    }
+
+    /// A path MobileBuildMCP writes with `~` for the home folder, made absolute.
+    static func expandingHome(_ path: String, home: String) -> String {
+        path.hasPrefix("~") ? home + path.dropFirst() : path
+    }
+
     /// MobileBuildMCP's text, when the output is in that shape.
     var mobileText: MobileText? {
         if case let .mobileBuildMCPText(text) = shape { return text }

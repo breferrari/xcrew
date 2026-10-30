@@ -128,6 +128,12 @@ enum MobileBuildMCPLine {
         line.firstMatch(of: #/(result-bundles\/\S+\.xcresult) — Result Bundle/#).map { String($0.1) }
     }
 
+    /// `….log — Build Logs`: the run's build log, by its full path or under the workspace folder.
+    static func buildLog(_ line: String) -> String? {
+        guard line.contains(" — Build Logs") else { return nil }
+        return line.firstMatch(of: #/(\S+\.log) — Build Logs/#).map { String($0.1) }
+    }
+
     /// `Errors (3):`, the head of a failing build's error list, and where its count is written.
     static func errorCount(in line: String) -> (range: Range<String.Index>, count: Int)? {
         line.firstMatch(of: #/^Errors \((\d+)\):/#).flatMap { match in Int(match.1).map { (match.range, $0) } }

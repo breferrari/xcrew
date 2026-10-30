@@ -75,9 +75,20 @@ public enum RunLog {
     /// is a session above this process to read them from.
     /// The processes are read only once a log is there to choose among.
     public static func find(tool: String, since: Date, project: URL, machine: Machine) async -> URL? {
-        guard find(tool: tool, since: since, project: project, home: machine.home) != nil else { return nil }
+        await find(since: since, project: project, machine: machine) { $0.hasPrefix("\(tool)_") }
+    }
+
+    /// The newest log MobileBuildMCP wrote for a build or test of this project, whichever tool ran it (`build_sim_…`,
+    /// `test_sim_…`, `build_run_sim_…`) and whichever server: an earlier failure's may be a server since restarted, or
+    /// another session's.
+    public static func newestBuild(project: URL, home: URL) -> URL? {
+        find(since: .distantPast, project: project, home: home) { ($0.hasPrefix("build") || $0.hasPrefix("test")) && $0.hasSuffix(".log") }
+    }
+
+    static func find(since: Date, project: URL, machine: Machine, named matches: (String) -> Bool) async -> URL? {
+        guard find(since: since, project: project, home: machine.home, named: matches) != nil else { return nil }
         let (session, servers) = await ProcessList.load(using: machine.runner).mobileBuildMCPServers(forSessionOf: machine.processID)
-        return find(tool: tool, since: since, project: project, home: machine.home, servers: session == nil ? nil : Set(servers.map(\.id)))
+        return find(since: since, project: project, home: machine.home, servers: session == nil ? nil : Set(servers.map(\.id)), named: matches)
     }
 
     /// The log of the MobileBuildMCP run that started at `since`: the newest `<tool>_…log` written since then, in this
@@ -86,6 +97,11 @@ public enum RunLog {
     /// keys the folder by the root as it found its config, or by its real path, `/private` included, without one, so
     /// both are tried.
     static func find(tool: String, since: Date, project: URL, home: URL, servers: Set<Int32>? = nil) -> URL? {
+        find(since: since, project: project, home: home, servers: servers) { $0.hasPrefix("\(tool)_") }
+    }
+
+    /// The newest log `matches` names, as `find(tool:…)` picks it.
+    static func find(since: Date, project: URL, home: URL, servers: Set<Int32>? = nil, named matches: (String) -> Bool) -> URL? {
         let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
         let servers = servers.flatMap { $0.isEmpty ? nil : $0 }
         let roots = [project.path, ProjectLayout.canonical(project)]
@@ -93,7 +109,7 @@ public enum RunLog {
         var newest: (url: URL, modified: Date)?
         for key in Set(roots.map(workspaceKey(root:))) {
             let logs = workspaces.appending(path: key).appending(path: "logs")
-            for name in (try? manager.contentsOfDirectory(atPath: logs.path)) ?? [] where name.hasPrefix("\(tool)_") && !name.contains("parser-debug") {
+            for name in (try? manager.contentsOfDirectory(atPath: logs.path)) ?? [] where !name.contains("parser-debug") && matches(name) {
                 if let servers, !servers.contains(where: { name.contains("_pid\($0)_") }) { continue }
                 let url = logs.appending(path: name)
                 guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,

@@ -280,6 +280,20 @@ struct TestbedPrivacyTests {
         #expect(leaks == [])
     }
 
+    /// Nor does a capture hold the id of the Mac's devices or simulators: the test bed numbers each one it names, from
+    /// `00000000-0000-0000-0000-000000000001`.
+    @Test func noCaptureHoldsADevicesID() throws {
+        let captures = Testbed.root.appending(path: "captures")
+        let files = try FileManager.default.subpathsOfDirectory(atPath: captures.path)
+        let ids = files.flatMap { file -> [String] in
+            guard let text = try? String(contentsOf: captures.appending(path: file), encoding: .utf8) else { return [] }
+            return text.matches(of: /[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/).map { String($0.output) }
+                .filter { !$0.hasPrefix("00000000-0000-0000-0000-") }.map { "\(file): \($0)" }
+        }
+        #expect(!files.isEmpty)
+        #expect(ids == [])
+    }
+
     /// A home folder's path, as written or as JSON escapes it: `\/Users\/`.
     static func holdsAHomePath(_ text: String) -> Bool {
         let plain = text.replacingOccurrences(of: "\\/", with: "/")
@@ -332,5 +346,39 @@ struct TestbedCoverageTests {
         let output = #"{"schema":"mobilebuildmcp.output.test-result","didError":false,"data":{"summary":{"status":"SUCCEEDED"},"artifacts":{"xcresultPath":"\#(Self.bundle)"}}}"#
         let report = await Report.make(kind: .test, output: ToolOutput(text: output, server: .mobileBuildMCP), home: "/home", runner: runner, project: project)
         #expect(report.notes.contains("xcrew: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5."), "\(report.notes)")
+    }
+}
+
+/// The test bed's captures of builds that failed because of the Mac, replayed through `xcrew why`: the result
+/// MobileBuildMCP gave, and the build log it named. They hold what a real failure says, not how many errors it gave:
+/// a corrupt cache doesn't fail the same way twice.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedWhyTests {
+    func context() -> CheckContext {
+        .fake(.simulators(["iPhone 17"]), project: Project(root: Testbed.root.appending(path: "captures/environment")))
+    }
+
+    @Test(arguments: [
+        ("module-cache-malformed", "a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Remove the cached modules, then build again: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
+        ("module-cache-invalid", "is not a valid module file\"). Remove the cached modules, then build again: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
+        ("simulator-missing", "no simulator here is named iPhone 1, which the build asked for"),
+    ])
+    func aRealBuildLogNamesItsCause(capture: String, cause: String) async {
+        let run = await Run("why", "--log", Testbed.root.appending(path: "captures/environment/\(capture).log").path, context: context())
+        #expect(run.text.hasPrefix("xcrew: this build failed because of the Mac, not the code: "), "\(run.text)")
+        #expect(run.text.contains(cause), "\(run.text)")
+    }
+
+    /// MobileBuildMCP's own result names the same cause. The log it points at isn't on this Mac, so the DerivedData
+    /// goes unnamed where the result doesn't name it.
+    @Test(arguments: [
+        ("module-cache-malformed", "\"malformed or corrupted precompiled file\"). Remove ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used"),
+        ("module-cache-invalid", "rm -rf '/testbed/DerivedData/ModuleCache.noindex'"),
+        ("simulator-missing", "no simulator here is named iPhone 1"),
+    ])
+    func aRealResultNamesItsCause(capture: String, cause: String) async throws {
+        let result = try String(contentsOf: Testbed.root.appending(path: "captures/environment/\(capture).txt"), encoding: .utf8)
+        let run = await Run("why", "--server", "MobileBuildMCP", context: context(), stdin: result)
+        #expect(run.text.contains(cause), "\(run.text)")
     }
 }

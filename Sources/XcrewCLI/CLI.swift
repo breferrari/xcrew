@@ -11,6 +11,7 @@ public enum CLI {
         ProjectCommand(),
         XcodeSkillsCommand(),
         XcodeCommand(),
+        WhyCommand(),
         HookCommand(),
     ]
 

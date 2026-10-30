@@ -26,7 +26,7 @@ public struct ResultBundle: Sendable {
 
     /// The run's `.xcresult`, from a passing run's JSON or a failing run's text, with `~` expanded.
     public static func path(in output: ToolOutput, home: String) -> String? {
-        output.xcresultPath.map { $0.hasPrefix("~") ? home + $0.dropFirst() : $0 }
+        output.xcresultPath.map { ToolOutput.expandingHome($0, home: home) }
     }
 
     // MARK: Reading xcresulttool's output

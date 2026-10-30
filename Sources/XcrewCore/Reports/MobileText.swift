@@ -136,10 +136,35 @@ struct MobileText: Sendable {
 
     /// The `.xcresult` path the text lists: the workspace folder, then the bundle under it.
     var resultBundle: String? {
-        guard let folder = lines.lazy.compactMap({ MobileBuildMCPLine.workspaceFolder($0.text) }).first,
-              let bundle = lines.lazy.compactMap({ MobileBuildMCPLine.resultBundle($0.text) }).first
-        else { return nil }
+        guard let folder = workspaceFolder, let bundle = lines.lazy.compactMap({ MobileBuildMCPLine.resultBundle($0.text) }).first else { return nil }
         return folder + bundle
+    }
+
+    /// The run's workspace folder, which the artifacts the text lists below it are under.
+    var workspaceFolder: String? {
+        lines.lazy.compactMap { MobileBuildMCPLine.workspaceFolder($0.text) }.first
+    }
+
+    /// The build log the text lists: by itself, or under the workspace folder.
+    var buildLog: String? {
+        guard let log = lines.lazy.compactMap({ MobileBuildMCPLine.buildLog($0.text) }).first else { return nil }
+        if log.hasPrefix("/") || log.hasPrefix("~") { return log }
+        return workspaceFolder.map { $0 + log }
+    }
+
+    /// Each error, with the file it names and the lines that go on from it. A failing test's starts with its name.
+    var reportedErrors: [ReportedError] {
+        lines.indices.compactMap { index in
+            guard let entry = lines[index].entry, !entry.isExcerpt else { return nil }
+            let location = location(after: index)
+            var detail: [String] = []
+            var next = index + (location == nil ? 1 : 2)
+            while next < lines.count, case .other = lines[next].kind, !lines[next].isBlank {
+                detail.append(lines[next].text.trimmingCharacters(in: .whitespaces))
+                next += 1
+            }
+            return ReportedError(message: entry.text, detail: detail, path: location?.path, line: location.flatMap { Int($0.line.prefix { $0.isNumber }) })
+        }
     }
 
     var summary: ToolOutput.Summary? {

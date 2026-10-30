@@ -20,6 +20,12 @@ public struct FakeRunner: CommandRunning {
     public func which(_ name: String) -> String? {
         paths[name] ?? (installed.contains(name) ? "/nonexistent/bin/\(name)" : nil)
     }
+
+    /// A Mac whose available simulators are these, on one iOS runtime, as `simctl list devices available` lists them.
+    public static func simulators(_ names: [String]) -> FakeRunner {
+        let devices = names.enumerated().map { #"{"name":"\#($1)","udid":"\#($0)","isAvailable":true}"# }.joined(separator: ",")
+        return FakeRunner(responses: ["xcrun simctl list devices available --json": .init(status: 0, stdout: #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-2":[\#(devices)]}}"#)])
+    }
 }
 
 extension CheckContext {

@@ -94,6 +94,7 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
 - **Warnings in lines your branch changed**, named apart from the rest of a build's warnings.
 - **The changed lines a test run didn't run**, from its coverage, on a run with coverage on.
 - **A loop budget**: after the whole suite runs again and again in a short while, Claude is sent to the tests the change can break.
+- **A build that failed because of the Mac**, not the code, such as a corrupt module cache or a simulator that's gone: the cause, and the fix to run, named but never run. A failure the Mac doesn't explain gets no such note.
 - **Compile errors counted once.**
 - **Passing tests left out**, with the full list a file read away.
 
@@ -148,6 +149,7 @@ The `/xcrew` commands answer without a turn for Claude.
 | Command | What it does |
 | --- | --- |
 | `xcrew affected` | The tests your branch's changes can break |
+| `xcrew why` | Why the last build failed, when the cause is this Mac rather than the code, and the fix |
 | `xcrew xcode-skills` | Copies the agent skills your Xcode ships into the project |
 
 ### The right server for each job
@@ -213,7 +215,7 @@ ok    xcrew/up-to-date                 0.8.9, the latest release
 | Session briefing | The routing rules in [`context/routing.md`](context/routing.md), plus what this project or Mac still lacks, the pinned Xcode, the simulators booted, and where builds go when MobileBuildMCP isn't usable; silent outside Apple-platform projects. `xcrew hook` writes it |
 | Mod | The live line above the prompt, the failures pane, the project card, the `XcodeWrite` and generated-file guards and a note in `XcodeWrite`'s description (in generated projects), the refusal of a build after a manifest edit, the `/xcrew` command, and the `affected` and ledger tools Claude asks. It hands each result to the CLI and passes on what the CLI makes of it |
 | Skills | `/xcrew:setup`, and `xcrew:reference`, which Claude loads when something fails (it isn't in the `/` menu) |
-| CLI | `xcrew setup`, `doctor`, `xcode`, `affected`, `xcode-skills`, on the `PATH` of Claude's Bash tool and of your `!` commands while the plugin is enabled; `report`, `phase` and `project`, which read the servers' output and the project for the mod and the skills |
+| CLI | `xcrew setup`, `doctor`, `xcode`, `affected`, `why`, `xcode-skills`, on the `PATH` of Claude's Bash tool and of your `!` commands while the plugin is enabled; `report`, `phase` and `project`, which read the servers' output and the project for the mod and the skills |
 
 - **One implementation.** All logic lives in one dependency-free Swift package; the plugin, the mod and mcs call its CLI.
 - **No drift.** `Tests/ManifestTests` fails when an install path disagrees with the CLI.
