@@ -43,6 +43,7 @@ import XcrewTestSupport
     func report(xcodes: Bool = true) async throws -> SpaceReport {
         let purge = Self.fixture("purgeReportAll").replacingOccurrences(of: "kit-0a1b2c3d4e5f", with: key).replacingOccurrences(of: "field-09f4495eb86d", with: "Gone-86d710d9ba22")
         try write("xcodebuild build -workspace /work/Gone/Gone.xcworkspace -scheme Gone\n", to: "Library/Developer/MobileBuildMCP/workspaces/Gone-86d710d9ba22/logs/build_sim_1.log")
+        try FileManager.default.createDirectory(at: project.root.appending(path: "App.xcworkspace"), withIntermediateDirectories: true)
         try derivedData("App-abc", workspace: "\(root)/App.xcworkspace")
         try derivedData("Old-def", workspace: "/work/Old/Old.xcodeproj")
         try write("", to: "Library/Developer/Xcode/Archives/2026-10-30/App.xcarchive/Info.plist")
@@ -72,14 +73,16 @@ import XcrewTestSupport
 
     @Test func thisProjectsWorkspaceIsNamedWithTheCommandThatWouldReclaimIt() async throws {
         let text = try await report().text
-        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key)\n"), "\(text)")
+        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData,logs,resultBundles,stateTransients,testProducts\n"), "\(text)")
+        #expect(text.contains("  Each `--dry-run` lists what it would delete; with `--delete` in its place and `--confirm delete-mobilebuildmcp-storage`, it deletes.\n"), "\(text)")
     }
 
     /// Only a root its log names and its key confirms is said to be gone; the rest are counted, with what age would take.
     @Test func aGoneProjectsWorkspaceIsNamedAndTheUnknownAreCounted() async throws {
         let text = try await report().text
-        #expect(text.contains("  Gone-86d710d9ba22: 305.5 KB; its project, /work/Gone, is gone\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key Gone-86d710d9ba22\n"), "\(text)")
-        #expect(text.contains("  2 workspaces whose project isn't known: 3.3 MB\n      mobilebuildmcp purge --dry-run --scope all --older-than 30d\n"), "\(text)")
+        #expect(text.contains("  Gone-86d710d9ba22: 305.5 KB; its project, /work/Gone, is gone\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key Gone-86d710d9ba22 --classes logs,resultBundles,stateTransients,testProducts\n"), "\(text)")
+        #expect(text.contains("  2 workspaces whose project isn't known: 3.3 MB; `mobilebuildmcp purge --report --json` lists each\n"), "\(text)")
+        #expect(!text.contains("--scope all"), "a command over every workspace would reach this project's too")
     }
 
     /// Xcode's DerivedData records its workspace, so one whose workspace is gone is named; nothing offers to delete it.
@@ -87,7 +90,7 @@ import XcrewTestSupport
         let text = try await report().text
         #expect(text.contains("  App-abc, for this project: 1.2 MB\n"), "\(text)")
         #expect(text.contains("  Old-def: 3.1 MB; its workspace, /work/Old/Old.xcodeproj, is gone\n"), "\(text)")
-        #expect(!text.contains("rm "))
+        #expect(!text.contains("rm -"))
     }
 
     @Test func eachRuntimeIsSizedWithItsLastUseAsSimctlRecordsIt() async throws {
@@ -107,6 +110,32 @@ import XcrewTestSupport
         let text = try await report().text
         #expect(text.contains("  Xcode 27.2, selected: 3.6 GB\n  Xcode 26.4, pinned: 3.4 GB\n  Xcode 26.0: 3.1 GB\n      xcodes uninstall 26.0\n"), "\(text)")
         #expect(!(try await report(xcodes: false).text.contains("xcodes uninstall")))
+    }
+
+    /// `xcodes uninstall` names a version, so an Xcode whose version another install shares isn't offered: it could
+    /// reach the selected or the pinned one.
+    @Test func anXcodeSharingItsVersionIsntOffered() async throws {
+        FakeXcode.install(in: home.appending(path: "Applications"), "Xcode-26.0-copy.app", version: "26.0", build: "17A100")
+        let text = try await report().text
+        #expect(!text.contains("xcodes uninstall"), "\(text)")
+    }
+
+    /// A removed worktree's DerivedData is gone though its path sits in the project; one at the project's own root is
+    /// the project's.
+    @Test func derivedDataOfARemovedWorktreeIsGoneAndOfTheRootIsTheProjects() async throws {
+        try derivedData("Fix-ghi", workspace: "\(root)/.claude/worktrees/fix/App.xcworkspace")
+        try derivedData("Root-jkl", workspace: root)
+        let text = try await report().text
+        #expect(text.contains("  Fix-ghi: not measured; its workspace, \(root)/.claude/worktrees/fix/App.xcworkspace, is gone\n"), "\(text)")
+        #expect(text.contains("  Root-jkl, for this project: not measured\n"), "\(text)")
+    }
+
+    /// Xcode's DerivedData kept beside each workspace, a relative location, can't be listed from one folder: said so.
+    @Test func aRelativeDerivedDataLocationIsSaidNotRead() async {
+        let runner = FakeRunner(responses: ["defaults read com.apple.dt.Xcode IDECustomDerivedDataLocation": .init(status: 0, stdout: "DerivedData\n")])
+        let machine = Machine(environment: [:], home: home, runner: runner)
+        let part = await Space.xcodeDerivedData(in: await Space.derivedDataFolder(machine: machine), live: Task { [] }, machine: machine)
+        #expect(part?.lines.map(\.text) == ["not read: Xcode keeps DerivedData in each workspace's folder (`DerivedData`)"])
     }
 
     /// Archives are the person's builds: sized, never offered.

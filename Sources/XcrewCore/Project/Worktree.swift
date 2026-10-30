@@ -34,9 +34,18 @@ public enum Worktree {
         else { return nil }
         // The main worktree is the first `git worktree list` names; a bare repository's is marked `bare`.
         let listed = await runner.run("git", "-C", project.root.path, "worktree", "list", "--porcelain").stdout
-        let first = listed.components(separatedBy: "\n\n").first?.split(separator: "\n") ?? []
-        guard let top = first.first(where: { $0.hasPrefix("worktree ") })?.dropFirst("worktree ".count), !first.contains("bare") else { return nil }
-        return (URL(fileURLWithPath: String(top)), lines.count > 2 ? lines[2] : "")
+        guard let first = checkouts(listed: listed).first, !first.isBare else { return nil }
+        return (URL(fileURLWithPath: first.top), lines.count > 2 ? lines[2] : "")
+    }
+
+    /// Each checkout `git worktree list --porcelain` names, the main one first: its top folder, whether it's a bare
+    /// repository's, and whether git calls it prunable, its folder gone.
+    static func checkouts(listed: String) -> [(top: String, isBare: Bool, isPrunable: Bool)] {
+        listed.components(separatedBy: "\n\n").compactMap { block in
+            let lines = block.split(separator: "\n")
+            guard let top = lines.first(where: { $0.hasPrefix("worktree ") })?.dropFirst("worktree ".count) else { return nil }
+            return (String(top), lines.contains("bare"), lines.contains { $0.hasPrefix("prunable") })
+        }
     }
 
     /// The main checkout's config as a worktree takes it, each path MobileBuildMCP reads (`ConfigRenderer.pathKeys`)
