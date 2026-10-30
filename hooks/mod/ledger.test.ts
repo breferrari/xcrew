@@ -123,7 +123,7 @@ test('a branch\'s ledger no run has written for two weeks is dropped', async ($,
 test('Claude reads the ledger through a tool registered behind ToolSearch, and /xcrew ledger shows the same text', async ($, on) => {
   const { registered } = project(on, [FAILED])
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
-  expect(registered).toEqual([{ name: 'ledger', isDeferred: undefined }])
+  expect(registered).toContainEqual({ name: 'ledger', isDeferred: undefined })
   await run($)
   const shown = await runCommand($, 'xcrew', 'ledger')
   expect(shown.text).toBe(await ledgerText($))

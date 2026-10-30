@@ -128,6 +128,19 @@ import Testing
         }
     }
 
+    /// The routing rules send Claude to the affected tool before a full test run, by its name, with the guarantee it
+    /// gives and when to run everything; the hook answering it matches the name it's registered under.
+    @Test func theRoutingRulesAskTheAffectedToolAndNameItsGuarantee() throws {
+        let routing = try text("context/routing.md")
+        let affected = try text("hooks/mod/affected.ts")
+        let plugin = try #require(try json(".claude-plugin/plugin.json")["name"] as? String)
+        let name = try #require(affected.firstMatch(of: /export const AFFECTED_TOOL = \{\n  name: '(\w+)'/)?.1)
+        #expect(affected.contains("export const AFFECTED_TOOL_NAME = 'mcp__\(plugin)__\(name)'"))
+        #expect(routing.contains("`\(name)`"))
+        #expect(routing.contains("as the project declares them, nothing more"))
+        #expect(routing.contains("run the whole suite"))
+    }
+
     /// The hook answering the ledger tool matches the name Claude calls it by: `mcp__<plugin>__<name>`, from the plugin's
     /// name and the name the mod registers. A rename of either would leave every call unanswered.
     @Test func theLedgerToolsHookMatchesItsRegisteredName() throws {

@@ -47,6 +47,8 @@ export function stubCli(
     reportFails?: () => boolean
     /** A function may answer later, as a CLI that takes its time does. */
     project?: ProjectAnswer | ((args: readonly string[]) => ProjectAnswer | Promise<ProjectAnswer>)
+    /** What `xcrew affected` answers, for its arguments. */
+    affected?: (args: readonly string[]) => unknown
     noBuild?: boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
   } = {},
@@ -69,6 +71,7 @@ export function stubCli(
       : args[0] === 'phase' ? (answers.phase?.(args) ?? {})
       : args[0] === 'doctor' ? (answers.problems ?? [])
       : args[0] === 'project' ? ((typeof answers.project === 'function' ? answers.project(args) : answers.project) ?? { isGenerated: false })
+      : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
       : null
     )
     const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : JSON.stringify(answer)

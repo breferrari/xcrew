@@ -4,6 +4,7 @@ import type { BandProblems, BandRun, CliBuild, FailureList, ResultRow, StaleProj
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
+import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_BLOCK, CARD_WAIT_MS, cardText } from './card'
 import { describe, historyOf, observe, runsWholeScope } from './context'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
@@ -208,6 +209,8 @@ export const register: Register = on => {
     const row = await read($, memberOf(rowState, e))
     return row ? resultTree($.ui.resolve(e), parsed.tool, row) : next(e)
   })
+  // Claude's question before a full test run: which tests the branch's changes can break.
+  on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => ({ result: affectedText(await answer($, affectedArgs(e as unknown as Record<string, unknown>), 60_000)) }))
   // Claude's read of the ledger, for a pull request's test plan.
   on('tool.call', { tool: LEDGER_TOOL_NAME }, async $ => ({ result: await ledgerNow($) }))
   on('command.run', { command: 'xcrew' }, async ($, e) => {
@@ -231,6 +234,7 @@ export const register: Register = on => {
     const started = await next(e)
     await $.command.register(COMMAND)
     await quietly(() => $.tool.register(LEDGER_TOOL))
+    await quietly(() => $.tool.register(AFFECTED_TOOL))
     // A cleared conversation is a new session: its warnings show again.
     found = []
     seenAt = {}
