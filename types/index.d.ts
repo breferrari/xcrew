@@ -12,10 +12,10 @@ export type BandRun = {
   phase?: string
   /** `hasFailures`: the run left failures in the pane, which the band points to. */
   /**
-   * `isUnread`: the result said no outcome, as a call moved to the background answers. `background`: what a background
-   * task's notification said of the call, after its name.
+   * `isUnread`: the result said no outcome, as a call moved to the background answers. `background`: how the call's background
+   * task ended, as its notification said.
    */
-  ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string; hasFailures?: boolean; isUnread?: boolean; background?: string }
+  ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string; hasFailures?: boolean; isUnread?: boolean; background?: { status?: string; durationMs?: number } }
 }
 
 /** A finished run as its row in the transcript draws it: its outcome, the first failures, and how many more. */

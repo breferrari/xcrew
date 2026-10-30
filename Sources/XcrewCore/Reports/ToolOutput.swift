@@ -83,6 +83,17 @@ public struct ToolOutput: Sendable {
         return Summary(ok: found.ok, detail: found.detail.map(Self.shorten))
     }
 
+    /// Whether the text holds nothing in its server's own forms: no JSON shape it uses, and from MobileBuildMCP not one
+    /// line of the kinds it writes. A call moved to the background answers with such a text, Claude Code's and not the
+    /// server's; a result in any of the server's forms, passing or failing, is never one.
+    var isNotTheServers: Bool {
+        switch shape {
+        case .mobileBuildMCPJSON, .xcodeMCPJSON: false
+        case let .mobileBuildMCPText(text): !text.hasServersLine
+        case .unrecognized: true
+        }
+    }
+
     /// The outcome the result itself says, in the shape its server gives one; nil when it says none.
     var foundSummary: Summary? {
         switch shape {

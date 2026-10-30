@@ -24,6 +24,18 @@ import XcrewTestSupport
         #expect(await report(Self.handle, server: .mobileBuildMCP, kind: .run).isUnread == nil)
     }
 
+    /// No real result either server gave reads as unread: the test for a handle is that the text has nothing of the
+    /// server's own, not that it says no outcome, so a passing text result or a format change stays a result.
+    @Test(arguments: ["mobileBuildPassed", "mobileBuildFailed", "mobileTestsPassed", "mobileTestsPassedWithWarnings", "mobileTestsPassedWithWarningsJSON", "mobileTestsFailed", "mobileTestsFailedUnlocated", "mobileTestsNoneRan", "mobileTestsCrashedAndSkipped", "mobileTestsBuildFailed", "xcodeBuildPassed", "xcodeBuildFailed", "xcodeTestsPassed", "xcodeTestsFailed", "xcodeTestsBuildFailed"])
+    func noCapturedResultIsUnread(_ name: String) async throws {
+        let url = try #require(Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures/Reports"))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let server: Server = name.hasPrefix("mobile") ? .mobileBuildMCP : .xcode
+        for kind in [Report.Kind.build, .test] {
+            #expect(await report(text, server: server, kind: kind).isUnread == nil, "\(name) as \(kind)")
+        }
+    }
+
     @Test func aResultThatSaysAnOutcomeIsRead() async {
         let succeeded = #"{"schema":"mobilebuildmcp.output.build-result","data":{"summary":{"status":"SUCCEEDED"}}}"#
         #expect(await report(succeeded, server: .mobileBuildMCP).isUnread == nil)

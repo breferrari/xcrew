@@ -50,7 +50,7 @@ function outcomeSegments(run: BandRun, now: number): Segment[] {
 function endedSegments(tool: string, ended: NonNullable<BandRun['ended']>): Segment[] {
   const { ok, elapsed, comparison, detail } = ended
   // Neither passed nor failed: no mark, and no colour that reads as either.
-  if (ended.background) return [segment(tool, undefined, 'semibold'), segment(ended.background)]
+  if (ended.background) return [segment(tool, undefined, 'semibold'), segment(backgroundNote(ended.background.status, ended.background.durationMs))]
   if (ended.isUnread) return [segment(tool, undefined, 'semibold'), ...piece(`no result yet, ${stopwatch(elapsed)}`)]
   return [
     segment(ok ? '✓' : '✗', ok ? 'success' : 'error'),

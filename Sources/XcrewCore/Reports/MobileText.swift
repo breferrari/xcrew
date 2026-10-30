@@ -167,6 +167,14 @@ struct MobileText: Sendable {
         }
     }
 
+    /// Whether any line is one of the kinds MobileBuildMCP writes.
+    var hasServersLine: Bool {
+        lines.contains { line in
+            if case .other = line.kind { return false }
+            return true
+        }
+    }
+
     var summary: ToolOutput.Summary? {
         if let counts {
             let first = lines.lazy.compactMap(\.failing).first
