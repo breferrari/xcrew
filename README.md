@@ -117,13 +117,25 @@ After a failing run, the line above the prompt ends with `/xcrew failures`, or t
 
 **In the chat**
 
+**Setting up**
+
 | Command | What it does |
 | --- | --- |
 | `/xcrew:setup` | Writes MobileBuildMCP's per-project profiles from your schemes and installed simulators |
+
+**Around a run**
+
+| Command | What it does |
+| --- | --- |
 | `/xcrew failures` | Opens the failures pane, with every failing test and compile error of the last failing run. After a failing run the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw |
 | `/xcrew close` | Closes the failures pane |
 | `/xcrew ledger` | The tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan |
 | `/xcrew history` | Each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped |
+
+**When something's off**
+
+| Command | What it does |
+| --- | --- |
 | `/xcrew doctor` | The doctor's report, with the fix for anything wrong |
 | `/xcrew xcode` | Which Xcode is which: those installed, the selected one, the project's pin, CI's, and the one open |
 
@@ -212,8 +224,8 @@ ok    xcrew/up-to-date                 0.8.9, the latest release
 ### Configuration
 
 - **Profiles:** `.mobilebuildmcp/config.yaml` holds `unit` for the scheme that runs your unit tests, which setup finds itself, plus `app` and `ui` for your app and UI-test schemes: `/xcrew:setup` picks those from your schemes and asks you to confirm, and `xcrew setup` takes them as `--app-scheme` and `--ui-scheme`. Each has its scheme and simulator, so it can build as soon as it's active.
-  - Rerun `/xcrew:setup` or `!xcrew setup` to change them.
-  - A config Xcrew didn't write is left alone, unless you pass `--force`, which keeps a backup.
+  - Rerun `/xcrew:setup` to change them.
+  - A config Xcrew didn't write is left alone, unless you tell `/xcrew:setup` to replace it, which keeps a backup.
   - It holds this Mac's absolute paths, so setup keeps it out of git through `.git/info/exclude`.
 - **Your own server entries:** Claude Code prefers your `xcode` and `MobileBuildMCP` entries over the plugin's. Remove yours with `claude mcp remove <name>`, or keep them: the mod works with either.
 
