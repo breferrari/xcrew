@@ -192,7 +192,9 @@ export const register: Register = on => {
     if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summaryLine))
     const resulting = resultFor(result, outcome)
     // A whole suite run again and again: past the budget, the tests the change can break would do.
-    const isFullRun = kind === 'test' && isFullSuiteRun(parsed, e as unknown as Record<string, unknown>)
+    // Only a run the CLI read and that ran tests counts: a test build that failed ran none.
+    const ranTests = outcome.tests === undefined ? outcome.ok || outcome.failures.some(failure => failure.isTest) : outcome.tests > 0
+    const isFullRun = kind === 'test' && reported !== undefined && ranTests && isFullSuiteRun(parsed, e as unknown as Record<string, unknown>)
     const loop = isFullRun ? await quietly(() => countFullRun($, scope, { at: ended, ms: elapsed })) : undefined
     return loop ? withContext(resulting, loopNote(scope, loop, parsed.server === 'MobileBuildMCP')) : resulting
   }).catch(async ($, e, next) => next(e))

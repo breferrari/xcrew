@@ -29,11 +29,11 @@ export function afterFullRun(earlier: readonly FullRun[], run: FullRun): { runs:
 export function loopNote(scope: string, crossed: Crossing, selectsWithOnlyTesting: boolean): string {
   const first = crossed.runs[0]
   const last = crossed.runs[crossed.runs.length - 1] ?? first
-  const span = Math.round((last.at - (first.at - first.ms)) / 60_000)
+  const span = Math.round((last.at - first.at) / 60_000)
   const select = selectsWithOnlyTesting ? 'run those with `-only-testing:`' : 'run only those'
   return (
     `xcrew: that's ${crossed.runs.length} full runs of \`${scope}\` in ${span} min, with ${stopwatch(crossed.testing)} of testing. ` +
-    `Before the next one, ask the \`${AFFECTED_TOOL.name}\` tool which test targets this branch's changes can break, and ${select}. ` +
+    `Before the next one, ask the \`${AFFECTED_TOOL.name}\` tool (search for it) which test targets this branch's changes can break, and ${select}. ` +
     'When it says to run the whole suite, run it; and run the whole suite again before the pull request.'
   )
 }

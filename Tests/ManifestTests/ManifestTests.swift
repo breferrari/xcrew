@@ -153,10 +153,14 @@ import Testing
     /// The loop budget's note sends Claude to the affected tool as the routing rules do, with the same promise to run
     /// the whole suite when it says so.
     @Test func theLoopNoteAndTheRoutingRulesAgreeOnTheAffectedTool() throws {
-        let routing = try text("context/routing.md"), loop = try text("hooks/mod/loop.ts")
+        let routing = try text("context/routing.md"), loop = try text("hooks/mod/loop.ts"), affected = try text("hooks/mod/affected.ts")
+        let name = try #require(affected.firstMatch(of: /name: '([a-z-]+)'/)?.1)
+        // The note names the tool by the constant; the routing rules by its name, behind ToolSearch.
+        #expect(loop.contains(#"\`${AFFECTED_TOOL.name}\` tool (search for it)"#))
+        #expect(routing.contains("`\(name)` tool (search for it)"))
         let promise = "When it says to run the whole suite"
         #expect(routing.contains(promise) && loop.contains(promise))
-        #expect(loop.contains("AFFECTED_TOOL.name") && routing.contains("`-only-testing:`") && loop.contains("`-only-testing:`"))
+        #expect(routing.contains("`-only-testing:`") && loop.contains("`-only-testing:`"))
     }
 
     /// The routing rules tell Claude how to turn coverage on, which the changed-line note needs, and what it costs, so
