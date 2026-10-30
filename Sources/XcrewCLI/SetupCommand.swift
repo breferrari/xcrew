@@ -120,6 +120,7 @@ struct SetupCommand: Command {
         if answers.appScheme == nil {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
         }
+        // It names this Mac's simulators by ID, and DerivedData may live beside it, so it never belongs in the repository.
         if await GitExclusion.exclude(".mobilebuildmcp/", in: context.project, using: context.runner) == .added {
             invocation.print("xcrew: kept .mobilebuildmcp/ out of git (in .git/info/exclude, which isn't committed)")
         }
