@@ -11,13 +11,18 @@ extension Project {
         write("// !$*UTF8*$!\n{ archiveVersion = 1; objects = { \(objects.joined(separator: " ")) }; rootObject = T0; }\n", to: "\(container)/project.pbxproj")
     }
 
-    /// A scheme whose test action runs `targets`, and optionally a test plan, laid out as Xcode writes one.
-    public func writeScheme(_ name: String, testing targets: [String] = [], skipped: Bool = false, plan: String? = nil, container: String = "App.xcodeproj", folder: String = "App.xcodeproj/xcshareddata") {
+    /// A scheme whose build action builds `building` for running and whose test action runs `targets`, and optionally a
+    /// test plan, laid out as Xcode writes one.
+    public func writeScheme(_ name: String, building: [String] = [], testing targets: [String] = [], skipped: Bool = false, plan: String? = nil, container: String = "App.xcodeproj", folder: String = "App.xcodeproj/xcshareddata") {
+        let entries = building.map { target in
+            "<BuildActionEntry buildForTesting = \"YES\" buildForRunning = \"YES\"><BuildableReference BuildableIdentifier = \"primary\" BuildableName = \"\(target).app\" BlueprintName = \"\(target)\" ReferencedContainer = \"container:\(container)\"></BuildableReference></BuildActionEntry>"
+        }
+        let build = entries.isEmpty ? "" : "<BuildAction><BuildActionEntries>\(entries.joined())</BuildActionEntries></BuildAction>"
         let testables = targets.map { target in
             "<TestableReference skipped = \"\(skipped ? "YES" : "NO")\"><BuildableReference BuildableIdentifier = \"primary\" BuildableName = \"\(target).xctest\" BlueprintName = \"\(target)\" ReferencedContainer = \"container:\(container)\"></BuildableReference></TestableReference>"
         }
         let plans = plan.map { "<TestPlans><TestPlanReference reference = \"container:\($0)\" default = \"YES\"></TestPlanReference></TestPlans>" } ?? ""
-        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Scheme LastUpgradeVersion = \"2700\" version = \"1.7\"><TestAction buildConfiguration = \"Debug\">\(plans)<Testables>\(testables.joined())</Testables></TestAction></Scheme>\n"
+        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Scheme LastUpgradeVersion = \"2700\" version = \"1.7\">\(build)<TestAction buildConfiguration = \"Debug\">\(plans)<Testables>\(testables.joined())</Testables></TestAction></Scheme>\n"
         write(xml, to: "\(folder)/xcschemes/\(name).xcscheme")
     }
 }

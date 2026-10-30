@@ -48,10 +48,27 @@ struct ProjectGraph: Sendable {
     /// Targets in other projects a target depends on, by name, through a proxy into that project, for the workspace to
     /// resolve.
     var external: [String: Set<String>] = [:]
-    /// The values a target's own settings give `PRODUCT_MODULE_NAME`, across its configurations, by target.
-    var moduleNameSettings: [String: Set<String>] = [:]
-    /// The targets whose settings give `PRODUCT_MODULE_NAME` for some configurations only.
-    var partialModuleNames: Set<String> = []
+    /// What a target's own settings give one build setting, across its configurations.
+    struct Setting: Sendable, Equatable {
+        var values: Set<String> = []
+        /// Set for some configurations only, the others left to what's around the target.
+        var isPartial = false
+
+        /// The value, when every configuration sets the same one and it names no other setting.
+        var literal: String? {
+            guard values.count == 1, !isPartial, let value = values.first, !value.contains("$") else { return nil }
+            return value
+        }
+
+        func merged(with other: Setting) -> Setting {
+            Setting(values: values.union(other.values), isPartial: isPartial || other.isPartial)
+        }
+    }
+
+    /// The settings read from each target, the module graph's and setup's: by setting, then by target.
+    static let moduleName = "PRODUCT_MODULE_NAME", bundleIdentifier = "PRODUCT_BUNDLE_IDENTIFIER"
+    static let readSettings = [moduleName, bundleIdentifier]
+    var settings: [String: [String: Setting]] = [:]
     /// Each target's product, by its file name: `Core.framework`.
     var productFiles: [String: String] = [:]
     /// Something the reading didn't model: the selection can't be trusted.
@@ -176,13 +193,14 @@ struct ProjectGraph: Sendable {
             let productType = target["productType"] as? String ?? ""
             graph.targets[name] = Target(name: name, productType: productType, dependencies: dependencies)
             let configurations = (target["buildConfigurationList"] as? String).flatMap { objects[$0]?["buildConfigurations"] as? [String] } ?? []
-            let setting = configurations.filter { configuration in
-                (objects[configuration]?["buildSettings"] as? [String: Any] ?? [:]).keys.contains { Self.isModuleNameKey($0) }
+            let configured = configurations.map { objects[$0]?["buildSettings"] as? [String: Any] ?? [:] }
+            for key in Self.readSettings {
+                let setting = configured.filter { $0.keys.contains { Self.names($0, key) } }
+                guard !setting.isEmpty else { continue }
+                var read = Setting(isPartial: setting.count < configured.count)
+                for settings in setting { read.values.formUnion(Self.values(of: key, in: settings)) }
+                graph.settings[key, default: [:]][name] = read
             }
-            for configuration in setting {
-                graph.addModuleNameSettings(objects[configuration]?["buildSettings"] as? [String: Any] ?? [:], of: name)
-            }
-            if !setting.isEmpty && setting.count < configurations.count { graph.partialModuleNames.insert(name) }
             for group in target["fileSystemSynchronizedGroups"] as? [String] ?? [] {
                 guard let url = location(group) else { graph.unmodeled = "a folder of \(name) isn't in the project folder"; continue }
                 let excepted = (objects[group]?["exceptions"] as? [String] ?? []).flatMap { objects[$0]?["membershipExceptions"] as? [String] ?? [] }
@@ -227,15 +245,14 @@ struct ProjectGraph: Sendable {
         return "/" + parts.joined(separator: "/")
     }
 
-    /// Keeps `PRODUCT_MODULE_NAME` from a target's settings, a conditional one (`PRODUCT_MODULE_NAME[config=Debug]`) too.
-    mutating func addModuleNameSettings(_ settings: [String: Any], of target: String) {
-        for (key, value) in settings where Self.isModuleNameKey(key) {
-            if let value = value as? String { moduleNameSettings[target, default: []].insert(value) }
-        }
+    /// Whether a settings key sets `setting`, a conditional one (`PRODUCT_MODULE_NAME[config=Debug]`) too.
+    static func names(_ key: String, _ setting: String) -> Bool {
+        key == setting || key.hasPrefix(setting + "[")
     }
 
-    static func isModuleNameKey(_ key: String) -> Bool {
-        key == "PRODUCT_MODULE_NAME" || key.hasPrefix("PRODUCT_MODULE_NAME[")
+    /// The values `settings` give `setting`, its conditional keys' included.
+    static func values(of setting: String, in settings: [String: Any]) -> Set<String> {
+        Set(settings.filter { names($0.key, setting) }.compactMap { $0.value as? String })
     }
 
     mutating func addFolder(_ path: String, targets: Set<String>, excepted: [String]) {
@@ -279,9 +296,10 @@ struct ProjectGraph: Sendable {
             let productType = target["product-type"] as? String ?? ""
             graph.targets[name] = Target(name: name, productType: productType, dependencies: dependencies)
             let settings = target["build-settings"] as? [String: Any] ?? [:]
-            graph.addModuleNameSettings(settings, of: name)
-            // A conditional key alone sets it for the configurations it names, and leaves the others to the default.
-            if settings.keys.contains(where: Self.isModuleNameKey), settings["PRODUCT_MODULE_NAME"] == nil { graph.partialModuleNames.insert(name) }
+            for key in Self.readSettings where settings.keys.contains(where: { Self.names($0, key) }) {
+                // A conditional key alone sets it for the configurations it names, and leaves the others to the default.
+                graph.settings[key, default: [:]][name] = Setting(values: Self.values(of: key, in: settings), isPartial: settings[key] == nil)
+            }
             if let product = target["product"] as? String { graph.productFiles[name] = (product as NSString).lastPathComponent }
         }
         func walk(_ nodes: [[String: Any]], in base: URL) {

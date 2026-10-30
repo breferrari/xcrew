@@ -77,13 +77,11 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
         var graph = ModuleGraph()
         var projectOf: [String: String] = [:]
         var productFiles: [String: String] = [:]
-        var partial = Set<String>()
-        var settings: [String: Set<String>] = [:]
+        var settings: [String: ProjectGraph.Setting] = [:]
         for (bundle, read) in workspace.projects {
             for name in read.targets.keys where projectOf[name] == nil { projectOf[name] = fromRoot(bundle) }
             productFiles.merge(read.productFiles) { first, _ in first }
-            settings.merge(read.moduleNameSettings) { $0.union($1) }
-            partial.formUnion(read.partialModuleNames)
+            settings.merge(read.settings[ProjectGraph.moduleName] ?? [:]) { $0.merged(with: $1) }
         }
         // Embedding alone carries a framework's binary, not its module: the layers are what's linked or named.
         let targets = workspace.targets.mapValues { target in
@@ -94,14 +92,15 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
         var moduleNames: [String: String] = [:]
         for target in targets.keys.sorted() {
             let fallback = identifier(productFiles[target].map(productName) ?? target)
-            let set = settings[target, default: []].sorted()
-            if set.count == 1, !set[0].contains("$"), !partial.contains(target) {
-                moduleNames[target] = set[0]
+            let setting = settings[target] ?? ProjectGraph.Setting()
+            let set = setting.values.sorted()
+            if let literal = setting.literal {
+                moduleNames[target] = literal
             } else {
                 moduleNames[target] = fallback
                 if set.contains(where: { $0.contains("$") }) {
                     graph.notes.append("\(target)'s module name is set from another setting (\(set.joined(separator: ", "))), so imports of it are read under \(fallback)")
-                } else if partial.contains(target) {
+                } else if setting.isPartial {
                     graph.notes.append("\(target)'s module name is set for some configurations only (\(set.joined(separator: ", "))), so imports of it are read under \(fallback)")
                 } else if set.count > 1 {
                     graph.notes.append("\(target)'s module name differs between configurations (\(set.joined(separator: ", "))), so imports of it are read under \(fallback)")

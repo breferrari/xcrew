@@ -23,7 +23,7 @@ struct SimulatorsCheck: Check {
                     ?? "missing: \(name): no installed runtime supports it, so \(replace)"
             }.joined(separator: "; "))
         }
-        let twoDisplays = wanted.filter { name in catalog.devices.contains { $0.name == name && $0.deviceType.map(catalog.multiDisplayTypes.contains) == true } }
+        let twoDisplays = wanted.filter { name in catalog.devices.contains { $0.name == name && catalog.hasTwoDisplays($0) } }
         if let name = twoDisplays.first {
             return .warn("\(name) has two displays, and MobileBuildMCP's screenshot fails on it: xcrew setup --test-simulator <name> picks another")
         }

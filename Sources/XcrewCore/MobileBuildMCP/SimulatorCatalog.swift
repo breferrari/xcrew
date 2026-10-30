@@ -125,6 +125,11 @@ public struct SimulatorCatalog: Sendable {
 
     public var names: Set<String> { Set(devices.map(\.name)) }
 
+    /// Whether a device's type has more than one built-in display, where MobileBuildMCP's `screenshot` fails.
+    public func hasTwoDisplays(_ device: Device) -> Bool {
+        device.deviceType.map(multiDisplayTypes.contains) ?? false
+    }
+
     /// The installed iPhones' names, each once, in numeric order.
     public var iPhoneNames: [String] { Array(Set(devices.filter(\.isIPhone).map(\.name))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
 
@@ -136,7 +141,7 @@ public struct SimulatorCatalog: Sendable {
     /// The newest plain iPhone ("iPhone 17", not "iPhone 17 Pro Max") on the newest iOS version,
     /// else any iPhone there, never one with two displays.
     public var defaultIPhone: String? {
-        let iOS = devices.filter { $0.isIPhone && !($0.deviceType.map(multiDisplayTypes.contains) ?? false) }
+        let iOS = devices.filter { $0.isIPhone && !hasTwoDisplays($0) }
         guard let newest = iOS.map({ Version($0.runtimeVersion) }).max() else { return nil }
         let onNewest = iOS.filter { Version($0.runtimeVersion) == newest }.map(\.name)
         let plain = onNewest.filter { $0.range(of: #"^iPhone \d+$"#, options: .regularExpression) != nil }

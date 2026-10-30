@@ -676,3 +676,21 @@ struct TestbedModuleGraphTests {
         #expect(FileOwners.of(file, in: Project(root: root)).targets == [owner])
     }
 }
+
+/// The setup form's choices on the field fixture: one shared scheme per module, the App's building the app and running
+/// its unit and UI tests, each other module's running its own unit tests.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedSetupChoicesTests {
+    @Test func theFieldFixturesSchemesSayWhatTheyDo() throws {
+        let root = try TestbedTests.copy("field")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let choices = SetupChoices.read(container: "Field.xcworkspace", containers: ["Field.xcworkspace"], containerProblem: nil, in: Project(root: root), catalog: SimulatorCatalog(devices: []))
+        #expect(choices.schemes.map { "\($0.name) \($0.container) \($0.roles.map(\.rawValue).joined(separator: ","))" }.sorted() == [
+            "App Modules/App/App.xcodeproj app,unit-tests,ui-tests",
+            "Core Modules/Core/Core.xcodeproj unit-tests",
+            "Data Modules/Data/Data.xcodeproj unit-tests",
+            "Feature Modules/Feature/Feature.xcodeproj unit-tests",
+        ])
+        #expect(choices.picks == SetupChoices.Picks(appScheme: "App", uiScheme: "App", testScheme: "App", bundleID: "dev.xcrew.testbed.App"))
+    }
+}
