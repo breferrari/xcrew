@@ -209,15 +209,6 @@ public struct ResultBundle: Sendable {
         else { return nil }
         return crashSummary(log: text)
     }
-
-    /// A failed test's images, moved to `<folder>/<run>/<suite>/<test>/` under the names their attachments suggest, so
-    /// Claude can Read them later in the session. Every attachment is exported: the snapshot libraries' images aren't
-    /// associated with the failure, so `--only-failures` would leave them out.
-    public func images(of test: TestID, keptIn folder: URL) async -> FailureImages? {
-        await attachments(of: test, onlyFailures: false) { export in
-            FailureImages.keep(of: test, from: export, in: runFolder(in: folder))
-        }
-    }
 }
 
 extension ResultBundle {

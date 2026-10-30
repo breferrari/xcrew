@@ -410,7 +410,8 @@ struct TestbedSnapshotTests {
     func eachLibrarysImagesComeReferenceFailureDifference(suite: String, name: String, expected: [String]) async throws {
         let (bundle, root) = Self.bundle("xcodebuild")
         defer { try? FileManager.default.removeItem(at: root) }
-        let images = try #require(await bundle.images(of: TestID(suite: suite, name: name), keptIn: root.appending(path: "images")))
+        let test = TestID(suite: suite, name: name)
+        let images = try #require(await bundle.attachments(of: test, onlyFailures: false) { FailureImages.keep(of: test, from: $0, in: root.appending(path: "images")) })
         #expect(images.paths.map { URL(fileURLWithPath: $0).lastPathComponent } == expected)
         // Each is a PNG, though pointfree's XCTest images export with no extension.
         for path in images.paths { #expect(FileManager.default.contents(atPath: path)?.prefix(4) == Data([0x89, 0x50, 0x4E, 0x47])) }
