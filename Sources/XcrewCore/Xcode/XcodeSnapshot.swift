@@ -26,13 +26,14 @@ public struct XcodeSnapshot: Sendable {
     static let ageSlack: TimeInterval = 1
 
     public static func take(of project: Project, on machine: Machine) async -> XcodeSnapshot {
-        await take(of: project, on: machine, processes: ProcessList.load(using: machine.runner))
+        await take(of: project, on: machine, processes: Once { await ProcessList.load(using: machine.runner) })
     }
 
-    /// The snapshot from a process list another reader shares.
-    static func take(of project: Project, on machine: Machine, processes list: ProcessList) async -> XcodeSnapshot {
+    /// The snapshot from a process list another reader shares, listed alongside the Xcodes.
+    static func take(of project: Project, on machine: Machine, processes: Once<ProcessList>) async -> XcodeSnapshot {
         async let installed = Xcodes.installed(on: machine)
         async let selected = Xcodes.selected(on: machine)
+        let list = await processes.value()
         let server = await list.mobileBuildMCPServer(serving: project, forSessionOf: machine.processID, using: machine.runner)?.server
         // The launcher writes its record and then becomes the server, so the server's record is no older than its start.
         let started = server.map { Date(timeIntervalSinceNow: -TimeInterval($0.elapsed) - ageSlack) }

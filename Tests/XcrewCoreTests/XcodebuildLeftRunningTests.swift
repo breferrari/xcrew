@@ -28,7 +28,7 @@ import XcrewTestSupport
         await XcodebuildLeftRunningCheck().run(.fake(runner(lines, folders: folders), project: project, processID: 600))
     }
 
-    static let left = "an xcodebuild still builds this project after its Claude Code session ended, holding its build folder: pid 900, for platform=iOS Simulator,name=iPhone 17, running 12 min. Stopping it frees the folder: kill 900"
+    static let left = "an xcodebuild whose starter has exited still builds this project, holding its build folder: pid 900, for platform=iOS Simulator,name=iPhone 17, running 12 min. A call stopped partway leaves one once its session ends. Stopping it frees the folder: kill 900"
 
     @Test func anXcodebuildWhoseSessionEndedIsNamedWithHowToStopIt() async {
         let project = Project.temporary()
@@ -85,5 +85,58 @@ import XcrewTestSupport
     @Test func withoutTheProcessListTheCheckSkips() async {
         let result = await XcodebuildLeftRunningCheck().run(.fake(FakeRunner(), processID: 600))
         #expect(result == .skip("couldn't list the processes"))
+    }
+    static let none = CheckResult.pass("no xcodebuild left running for this project")
+
+    /// A Claude Code killed outright can leave its MobileBuildMCP server running under launchd, with its xcodebuild.
+    @Test func anXcodebuildUnderAServerWhoseSessionEndedIsOnThePrompt() async {
+        let project = Project.temporary()
+        let lines: [(Int32, Int32, String, String, String)] = [
+            (200, 1, "50:00", FakeSession.server, "node-runtime"),
+            (900, 200, "12:05", Self.build, "xcodebuild"),
+        ]
+        let result = await Self.run(lines, folders: [900: project.root.path], project: project)
+        #expect(result == .warn(Self.left))
+        #expect(!result.isOffThePrompt)
+    }
+
+    /// A worktree inside the project, as Claude Code's `--worktree` makes, is its own checkout with its own build folder.
+    @Test func anXcodebuildOfAWorktreeInsideTheProjectIsntThisOnes() async {
+        let project = Project.temporary()
+        project.write("gitdir: /elsewhere\n", to: ".claude/worktrees/feature/.git")
+        let command = Self.build + " -workspace \(project.root.path)/.claude/worktrees/feature/App.xcworkspace"
+        #expect(await Self.run([(900, 1, "12:05", command, "xcodebuild")], folders: [900: project.root.path + "/.claude/worktrees/feature"], project: project) == Self.none)
+    }
+
+    /// The app may sit in a folder of the project, built from there with relative paths.
+    @Test func anXcodebuildRunInAFolderOfTheProjectIsTheProjects() async {
+        let project = Project.temporary(containing: ["ios"])
+        let command = "/x/xcodebuild build -workspace App.xcworkspace -destination \(Self.destination)"
+        #expect(await Self.run([(900, 1, "12:05", command, "xcodebuild")], folders: [900: project.root.path + "/ios"], project: project) == .warn(Self.left))
+    }
+
+    @Test func withoutTheXcodebuildsFoldersTheCheckSkips() async {
+        let project = Project.temporary()
+        let command = "/x/xcodebuild build -workspace App.xcworkspace"
+        let runner = Self.runner([(900, 1, "12:05", command, "xcodebuild")], folders: [:])
+        #expect(await XcodebuildLeftRunningCheck().run(.fake(runner, project: project, processID: 600)) == .skip("couldn't read the xcodebuilds' folders"))
+    }
+
+    /// An xcodebuild that only answers a question opens no build folder.
+    @Test(arguments: ["-showBuildSettings", "-list", "-version", "-showdestinations"])
+    func anXcodebuildAskingAQuestionIsntOne(_ question: String) async {
+        let project = Project.temporary()
+        let command = "/x/xcodebuild \(question) -workspace \(project.root.path)/App.xcworkspace"
+        #expect(await Self.run([(900, 1, "12:05", command, "xcodebuild")], folders: [900: project.root.path], project: project) == Self.none)
+    }
+
+    /// Without `comm`, the xcrun that ran it is still known by its command.
+    @Test func anXcrunWithoutItsProgramNameIsStillReadPast() async {
+        let project = Project.temporary()
+        let lines: [(Int32, Int32, String, String, String)] = [
+            (899, 1, "12:06", "/usr/bin/xcrun xcodebuild build -scheme App", ""),
+            (900, 899, "12:05", Self.build, ""),
+        ]
+        #expect(await Self.run(lines, folders: [900: project.root.path], project: project) == .warn(Self.left))
     }
 }
