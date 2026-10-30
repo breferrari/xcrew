@@ -284,20 +284,83 @@ import Testing
     @Test func theListingNamesXcrewAndLinksToItsOwnPages() throws {
         let manifest = try json(".claude-plugin/plugin.json")
         #expect(manifest["displayName"] as? String == "Xcrew")
-        #expect(manifest["documentationUrl"] as? String == "https://github.com/breferrari/xcrew#readme")
+        #expect(manifest["documentationUrl"] as? String == "https://github.com/breferrari/xcrew#your-xcode-crew-inside-claude-code")
         #expect(manifest["supportUrl"] as? String == "https://github.com/breferrari/xcrew/issues")
     }
 
-    /// The directory's listing links to the privacy section; GitHub makes a heading's anchor from its words.
-    @Test func thePrivacyLinkLandsOnAREADMEHeading() throws {
-        let link = try #require(try json(".claude-plugin/plugin.json")["privacyPolicyUrl"] as? String)
-        let fragment = try #require(link.split(separator: "#", maxSplits: 1).last.map(String.init))
-        let anchors = try text("README.md").split(separator: "\n").filter { $0.hasPrefix("#") }.map { heading in
-            heading.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces).lowercased()
-                .filter { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" || $0 == "_" }
-                .replacingOccurrences(of: " ", with: "-")
+    // MARK: Anchors
+
+    /// A heading's anchor as GitHub makes it: the words it shows (a link's text, not its URL), lowercased, with
+    /// everything but letters, digits, spaces, hyphens and underscores dropped, and each space a hyphen.
+    static func anchor(of heading: some StringProtocol) -> String {
+        String(heading.drop { $0 == "#" }).replacing(/\[([^\]]*)\]\([^)]*\)/, with: { (link) -> String in String(link.1) })
+            .trimmingCharacters(in: .whitespaces).lowercased()
+            .filter { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" || $0 == "_" }
+            .replacingOccurrences(of: " ", with: "-")
+    }
+
+    /// A Markdown file's anchors, from its headings outside code blocks.
+    func anchors(in path: String) throws -> Set<String> {
+        var anchors: Set<String> = []
+        var inCode = false
+        for line in try text(path).split(separator: "\n") {
+            if line.hasPrefix("```") { inCode.toggle() }
+            let level = line.prefix { $0 == "#" }.count
+            guard !inCode, (1...6).contains(level), line.dropFirst(level).first == " " else { continue }
+            anchors.insert(Self.anchor(of: line))
         }
-        #expect(anchors.contains(fragment), "\(link) names no README heading")
+        return anchors
+    }
+
+    /// GitHub's ids for headings in the README, docs and a skill, read from its rendered HTML on October 30, 2026,
+    /// including bold and code markup.
+    @Test(arguments: [
+        ("### Your **Xcode** crew inside **Claude Code**.", "your-xcode-crew-inside-claude-code"),
+        ("## Quick start", "quick-start"),
+        ("### Test results Claude can act on", "test-results-claude-can-act-on"),
+        ("### A guard for generated projects", "a-guard-for-generated-projects"),
+        ("### Why `register.ts` holds every `$` call", "why-registerts-holds-every--call"),
+        ("## SourceKit `No such module` errors", "sourcekit-no-such-module-errors"),
+    ])
+    func anAnchorIsGitHubs(heading: String, id: String) {
+        #expect(Self.anchor(of: heading) == id)
+    }
+
+    /// The Markdown files of the repository, which link to each other's headings.
+    func markdownFiles() throws -> [String] {
+        let root = Self.repository.path + "/"
+        let enumerator = try #require(FileManager.default.enumerator(atPath: root))
+        var files: [String] = []
+        while let path = enumerator.nextObject() as? String {
+            let name = URL(fileURLWithPath: path).lastPathComponent
+            if [".build", ".git", "node_modules", ".claude"].contains(name) || path.hasPrefix("Tests/XcrewCoreTests/Fixtures") { enumerator.skipDescendants(); continue }
+            if path.hasSuffix(".md") { files.append(path) }
+        }
+        return files.sorted()
+    }
+
+    /// A link to a heading, in the same file or another of the repository's, goes nowhere unless the heading is there.
+    @Test func everyLinkToAHeadingLandsOnOne() throws {
+        let files = try markdownFiles()
+        #expect(files.contains("README.md") && files.contains("docs/architecture.md"))
+        var checked = 0
+        for file in files {
+            let folder = (file as NSString).deletingLastPathComponent
+            for link in try text(file).matches(of: /\]\(([^)\s:]*)#([^)\s]+)\)/) {
+                let target = link.1.isEmpty ? file : ((folder as NSString).appendingPathComponent(String(link.1)) as NSString).standardizingPath
+                #expect(try anchors(in: target).contains(String(link.2)), "\(file): \(link.1)#\(link.2) names no heading")
+                checked += 1
+            }
+        }
+        #expect(checked > 0)
+    }
+
+    /// The directory's listing links to the README's top and its privacy section.
+    @Test(arguments: ["documentationUrl", "privacyPolicyUrl"])
+    func theListingsLinksLandOnREADMEHeadings(_ field: String) throws {
+        let link = try #require(try json(".claude-plugin/plugin.json")[field] as? String)
+        let fragment = try #require(link.firstMatch(of: /^https:\/\/github\.com\/breferrari\/xcrew#(.+)$/)).1
+        #expect(try anchors(in: "README.md").contains(String(fragment)), "\(link) names no README heading")
     }
 
     /// The directory reads a server started as a file of the plugin with plain arguments, not through a shell's `-c`.
@@ -395,6 +458,70 @@ import Testing
         // Outside the pictures, only the badges are images.
         let others = readme.replacing(/(?s)<picture>.*?<\/picture>/, with: "").matches(of: /!\[[^\]]*\]\(([^)\s]+)/).map { String($0.1) }
         #expect(others.allSatisfy { $0.hasPrefix("https://img.shields.io/") }, "\(others)")
+    }
+
+    /// A README section: from its heading to the next heading at its level or above.
+    func readmeSection(_ heading: String) throws -> Substring {
+        let readme = try text("README.md")
+        let start = try #require(readme.range(of: "\n\(heading)\n")).upperBound
+        let level = heading.prefix { $0 == "#" }.count
+        let end = readme[start...].ranges(of: "\n#").map(\.upperBound).first { hash in
+            let hashes = readme[hash...].prefix { $0 == "#" }.count + 1
+            return hashes <= level && readme[readme.index(hash, offsetBy: hashes - 1)...].first == " "
+        }
+        return readme[start..<(end ?? readme.endIndex)]
+    }
+
+    /// A row of a table in the README's Privacy section, under the part that names who does it (`**The mod**`, `**The CLI**`).
+    func privacyRow(_ row: String, of part: String) throws -> String {
+        let privacy = try readmeSection("### Privacy")
+        let after = try #require(privacy.range(of: "**\(part)**")).upperBound
+        let rows = privacy[after...].matches(of: /\n\| \*\*([^*]+)\*\* \| ([^\n]+)/)
+        return try #require(rows.first { $0.1 == row }.map { String($0.2) }, "no \(row) row under \(part)")
+    }
+
+    /// Privacy names every program the CLI starts: each one its source runs by name.
+    @Test func privacyNamesEveryProgramTheCLIStarts() throws {
+        let sources = try FileManager.default.subpathsOfDirectory(atPath: Self.repository.appending(path: "Sources").path).filter { $0.hasSuffix(".swift") }
+        let programs = try Set(sources.flatMap { file in
+            try text("Sources/\(file)").matches(of: /\.run\(\[?"([\w.-]+)"/).map { String($0.1) }
+        })
+        #expect(programs.isSuperset(of: ["xcrun", "git", "curl"]))
+        let starts = try privacyRow("Starts", of: "The CLI")
+        for program in programs {
+            #expect(starts.contains("`\(program)"), "Privacy doesn't say why the CLI starts \(program)")
+        }
+    }
+
+    /// Privacy names every event the mod hooks.
+    @Test func privacyNamesEveryEventTheModHooks() throws {
+        let events = Set(try text("hooks/mod/register.ts").matches(of: /on\('([a-z.]+)'/).map { String($0.1) })
+        #expect(events.contains("tool.call"))
+        let hooks = try privacyRow("Hooks", of: "The mod")
+        for event in events {
+            #expect(hooks.contains("`\(event)`"), "Privacy doesn't say what the mod's \(event) hook does")
+        }
+    }
+
+    /// The README's doctor report lists the doctor's checks, in the order the doctor prints them.
+    @Test func theREADMEsDoctorReportListsEveryCheck() throws {
+        let report = try #require(try text("README.md").firstMatch(of: /(?s)```\n(ok    mobilebuildmcp\/version.*?)```/)).1
+        let listed = report.split(separator: "\n").compactMap { $0.split(separator: " ", omittingEmptySubsequences: true).dropFirst().first.map(String.init) }
+        #expect(listed == Doctor.checks.map(\.id))
+    }
+
+    /// The README names each of the CLI's commands in what it says of how Xcrew works.
+    @Test func howItWorksNamesEveryCommand() throws {
+        let table = try readmeSection("## How it works")
+        for command in CLI.commands {
+            #expect(table.contains("`\(command.name)`") || table.contains("`xcrew \(command.name)"), "How it works doesn't name \(command.name)")
+        }
+    }
+
+    /// Nothing in the README or the contributing guide pipes a download into a shell.
+    @Test(arguments: ["README.md", "CONTRIBUTING.md"])
+    func noDocumentRunsADownload(_ file: String) throws {
+        #expect(try text(file).firstMatch(of: /(curl|wget)[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b/) == nil)
     }
 
     @Test func everyFlagACommandReadsIsDeclared() throws {
