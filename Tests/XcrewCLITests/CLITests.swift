@@ -736,6 +736,7 @@ import XcrewTestSupport
     @Test func outsideGitEverythingRuns() async throws {
         let answer = try await run(project(), FakeRunner())
         #expect(answer["selections"] == nil)
+        #expect(answer["base"] == nil)
         #expect((answer["runAll"] as? String)?.contains("git") == true)
     }
 }
@@ -781,5 +782,20 @@ import XcrewTestSupport
             "ls-files -z --others --exclude-standard --full-name": .init(status: 0),
         ])
         #expect(answer["changed"] as? [String] == ["App/Café.swift", "Core/Old Name.swift"])
+    }
+}
+
+/// A base git would read as one of its options isn't a base: it could compare with HEAD and drop the branch's commits.
+@Suite struct AffectedBaseTests {
+    @Test func aBaseThatLooksLikeAnOptionRunsEverything() async throws {
+        let project = Project.temporary()
+        let runner = FakeRunner(responses: [
+            "git -C \(project.root.path) rev-parse --show-toplevel": .init(status: 0, stdout: "\(project.root.path)\n"),
+            "git -C \(project.root.path) merge-base HEAD --independent": .init(status: 0, stdout: "0123456789abcdef0123456789abcdef01234567\n"),
+        ])
+        let text = await Run("affected", "--base", "--independent", context: .fake(runner, project: project)).text
+        let answer = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        #expect(answer["selections"] == nil)
+        #expect((answer["runAll"] as? String)?.contains("--independent") == true)
     }
 }

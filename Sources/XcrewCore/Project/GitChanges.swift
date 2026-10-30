@@ -22,6 +22,7 @@ public enum GitChanges {
         let git = { (arguments: [String]) in await runner.run(["git", "-C", project.root.path] + arguments, stdin: nil, timeout: .seconds(30)) }
         let top = await git(["rev-parse", "--show-toplevel"])
         guard top.succeeded, let topLevel = GitHead.firstLine(top.stdout) else { return .failure(Failure(description: "this isn't a git repository, so the change can't be told apart")) }
+        if let base, base.hasPrefix("-") { return .failure(Failure(description: "\(base) isn't a branch or commit git can compare with")) }
         var reference = base
         if reference == nil {
             let remoteHead = await git(["rev-parse", "--abbrev-ref", "origin/HEAD"])

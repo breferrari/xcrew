@@ -10,7 +10,8 @@ struct AffectedCommand: Command {
     let usage = ["affected [--base <ref>]   the tests a change can break, as JSON: since the merge base with <ref>, or with the remote's default branch"]
 
     struct Answer: Codable, Equatable {
-        let base: String
+        /// The base compared with, in words; none when git couldn't say what changed.
+        let base: String?
         let changed: [String]
         let selections: [String]?
         let runAll: String?
@@ -21,7 +22,7 @@ struct AffectedCommand: Command {
         let answer: Answer
         switch await GitChanges.since(invocation.arguments["base"], in: project, using: invocation.context.machine.runner) {
         case let .failure(failure):
-            answer = Answer(base: "none", changed: [], selections: nil, runAll: failure.description)
+            answer = Answer(base: nil, changed: [], selections: nil, runAll: failure.description)
         case let .success(change):
             let affected = AffectedTests.of(changed: change.files, in: project)
             let root = project.canonicalRoot + "/"

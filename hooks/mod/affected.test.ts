@@ -58,3 +58,27 @@ test('a base Claude names is passed to the CLI', async ($, on) => {
   await ask($, { base: 'release/2.0' })
   expect(seen.calls.find(call => call.args[0] === 'affected')?.args).toEqual(['affected', '--base', 'release/2.0'])
 })
+
+test('changed files no test target covers are said to be changed, not missing', async ($, on) => {
+  session(on, { base: 'origin/main, from 0123456789ab', changed: ['Widget/Timeline.swift'], selections: [] })
+  const text = await ask($)
+  expect(text).toContain('1 changed file')
+  expect(text).not.toContain('Nothing has changed')
+})
+
+test('without a base the answer names none', async ($, on) => {
+  session(on, { runAll: "this isn't a git repository, so the change can't be told apart" })
+  expect(await ask($)).not.toContain('Compared with')
+})
+
+test('the CLI gets the time a first build needs', async ($, on) => {
+  const seen = session(on, { base: 'b', changed: [], selections: [] })
+  await ask($)
+  expect(seen.calls.find(call => call.args[0] === 'affected')?.timeoutMs).toBe(120_000)
+})
+
+test('session start registers exactly the ledger and affected tools, once each', async ($, on) => {
+  const seen = session(on, {})
+  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  expect(seen.registered).toEqual([{ name: 'ledger', isDeferred: undefined }, { name: 'affected', isDeferred: undefined }])
+})

@@ -8,7 +8,7 @@
 export const AFFECTED_TOOL = {
   name: 'affected',
   description:
-    'Xcrew: which test targets the changes on this git branch can break, since its merge base with the default branch, uncommitted and untracked files included. ' +
+    'Xcrew: which test targets the changes on this git branch can break, since its merge base with the default branch, uncommitted and untracked files included; with no remote, the uncommitted and untracked files alone. ' +
     'Ask before running the whole test suite. It covers the targets that own or depend on the changed files, as the project declares them; when it says to run the whole suite, run it.',
   inputSchema: {
     type: 'object',
@@ -33,8 +33,10 @@ export function affectedText(answer: unknown): string {
   if (!Array.isArray(affected.selections)) {
     return `Run the whole suite: ${affected.runAll ?? "xcrew couldn't say which tests the changes can break"}.${since}`
   }
-  if (affected.selections.length === 0) return `Nothing has changed, so no tests are affected.${since}`
   const changed = affected.changed?.length ?? 0
+  if (affected.selections.length === 0) {
+    return changed === 0 ? `Nothing has changed, so no tests are affected.${since}` : `No test target covers the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}`
+  }
   return (
     `Run these test targets: ${affected.selections.join(', ')} (${affected.selections.map(target => `-only-testing:${target}`).join(' ')}). ` +
     `They cover the targets that own or depend on the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}`

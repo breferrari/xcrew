@@ -141,6 +141,15 @@ import Testing
         #expect(routing.contains("run the whole suite"))
     }
 
+    /// Each tool the mod defines is registered at session start and answered by a hook matching its full name.
+    @Test(arguments: [("hooks/mod/ledger.ts", "LEDGER_TOOL"), ("hooks/mod/affected.ts", "AFFECTED_TOOL")])
+    func eachToolOfTheModsIsRegisteredAndAnswered(file: String, tool: String) throws {
+        let register = try text("hooks/mod/register.ts")
+        #expect(try text(file).contains("export const \(tool)_NAME = "))
+        #expect(register.contains("{ tool: \(tool)_NAME }"))
+        #expect(try #require(register.firstMatch(of: /for \(const tool of \[([^\]]*)\]\) await quietly\(\(\) => \$\.tool\.register\(tool\)\)/)?.1).split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.contains(tool))
+    }
+
     /// The hook answering the ledger tool matches the name Claude calls it by: `mcp__<plugin>__<name>`, from the plugin's
     /// name and the name the mod registers. A rename of either would leave every call unanswered.
     @Test func theLedgerToolsHookMatchesItsRegisteredName() throws {
