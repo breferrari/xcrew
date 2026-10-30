@@ -14,15 +14,20 @@ enum TestPlans {
     static let mostSchemes = 50
 
     /// Each such plan once, in the order of the first scheme that runs it, from these containers and the projects their
-    /// workspaces list; each plan file read once, whichever schemes name it.
-    static func configured(containers: [URL]) -> [Configured] {
+    /// workspaces list; each plan file read once, whichever schemes name it. `complete` is false when reading stopped at
+    /// `mostSchemes` with schemes left unread.
+    static func configured(containers: [URL]) -> (plans: [Configured], complete: Bool) {
+        var complete = true
         var order: [String] = []
         var plans: [String: (name: String, configurations: [String], schemes: Set<String>)] = [:]
         var read = 0
         scan: for container in TestSchemes.containers(from: containers) {
             let base = container.deletingLastPathComponent()
             for file in TestSchemes.sharedSchemeFiles(of: container) {
-                guard read < mostSchemes else { break scan }
+                guard read < mostSchemes else {
+                    complete = false
+                    break scan
+                }
                 read += 1
                 guard let scheme = TestSchemes.parse(scheme: file) else { continue }
                 let references = ((try? scheme.document.nodes(forXPath: "//TestAction/TestPlans/TestPlanReference")) ?? []).compactMap { $0 as? XMLElement }
@@ -40,9 +45,10 @@ enum TestPlans {
                 plans[key]?.schemes.insert(scheme.name)
             }
         }
-        return order.compactMap { key in
+        let configured = order.compactMap { key -> Configured? in
             guard let found = plans[key], found.configurations.count > 1 else { return nil }
             return Configured(plan: found.name, schemes: found.schemes.sorted(), configurations: found.configurations)
         }
+        return (configured, complete)
     }
 }

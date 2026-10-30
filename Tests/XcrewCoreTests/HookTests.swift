@@ -71,8 +71,8 @@ import XcrewTestSupport
             project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "\(name).xctestplan")
         }
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
-        // 50 schemes read: 5 named, 45 counted.
-        #expect(text.contains("- **xcrew:** and 45 more test plans run each test under several configurations."), "\(text)")
+        // 50 schemes read: 5 named, 45 counted, and more unread.
+        #expect(text.contains("- **xcrew:** and at least 45 more test plans run each test under several configurations."), "\(text)")
     }
 
     /// One line per test plan, whichever schemes share it, and a few plans at most: a large modular app's schemes would

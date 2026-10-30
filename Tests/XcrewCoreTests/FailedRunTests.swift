@@ -75,7 +75,7 @@ import Testing
         let test = TestID(suite: "T", name: "t")
         let activities = Self.runs([("Light", false), ("Dark", true), ("Light", false), ("Dark", false), ("Sepia", false)])
         let listing = Self.listing([("Light", "Passed"), ("Dark", "Passed"), ("Sepia", "Skipped")])
-        #expect(FailedRun.passed(activities: activities, listing: listing, of: test) == ["Light · iPhone 17, iOS 27.2"])
+        #expect(Self.passed(activities, listing, test) == ["Light · iPhone 17, iOS 27.2"])
     }
 
     /// With several devices, the test list nests each device's result for a configuration: a pass on one device never
@@ -88,9 +88,20 @@ import Testing
             #"{"device":\#($0),"testPlanConfiguration":{"configurationId":"1","configurationName":"Light"},"activities":[{"title":"Check","isAssociatedWithFailure":false,"startTime":1}]}"#
         }.joined(separator: ",") + "]}"
         let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"T/t()","name":"t()","result":"Failed","children":[{"nodeType":"Test Plan Configuration","name":"Light","result":"Failed","children":[{"nodeType":"Device","name":"A","result":"Passed"},{"nodeType":"Device","name":"B","result":"Failed"}]}]}]}"#
-        #expect(FailedRun.passed(activities: activities, listing: listing, of: test) == [])
+        #expect(Self.passed(activities, listing, test) == [])
         let nested = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"T/t()","name":"t()","result":"Failed","children":[{"nodeType":"Device","name":"A","result":"Passed","children":[{"nodeType":"Test Plan Configuration","name":"Light","result":"Passed"}]},{"nodeType":"Device","name":"B","result":"Failed","children":[{"nodeType":"Test Plan Configuration","name":"Light","result":"Failed"}]}]}]}"#
-        #expect(FailedRun.passed(activities: activities, listing: nested, of: test) == [])
+        #expect(Self.passed(activities, nested, test) == [])
+    }
+
+    /// Where a test passed, the way `look` reads it: the test list indexed once, then the test's activities.
+    static func passed(_ activities: String, _ listing: String, _ test: TestID) -> [String] {
+        FailedRun.read(activities: activities, passedUnder: FailedRun.passedConfigurations(of: ResultBundle.testCases(in: listing)[test] ?? []))?.passed ?? []
+    }
+
+    /// A device node that carries no result says nothing either way, and doesn't hide a pass.
+    @Test func aDeviceWithoutAResultDoesNotHideAPass() {
+        let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"T/t()","name":"t()","result":"Failed","children":[{"nodeType":"Test Plan Configuration","name":"Light","result":"Passed","children":[{"nodeType":"Device","name":"A"}]},{"nodeType":"Test Plan Configuration","name":"Dark","result":"Failed"}]}]}"#
+        #expect(Self.passed(Self.runs([("Light", false), ("Dark", true)]), listing, TestID(suite: "T", name: "t")) == ["Light · iPhone 17, iOS 27.2"])
     }
 
     /// No answer, as `xcresulttool` gives when it fails, is not a run that passed.

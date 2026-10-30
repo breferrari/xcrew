@@ -13,19 +13,38 @@ public enum Look {
     /// What `look` says about one test in `bundle`, or, with none named, about its failed UI tests: those whose failed
     /// runs kept a screen recording. Screens are kept under `folder`, in a folder per run, and runs kept there too long
     /// are removed.
-    public static func report(bundle: ResultBundle, test: TestID?, keptIn folder: URL) async -> String {
+    public static func report(bundle: ResultBundle, named: String?, keptIn folder: URL) async -> String {
+        let listing = ResultBundle.parse(await bundle.tests())
+        let nodes = ResultBundle.nodes(listing)
+        let cases = ResultBundle.testCases(in: nodes)
+        return await report(bundle: bundle, test: named.map { test($0, among: cases) }, cases: cases, failed: listing == nil ? nil : ResultBundle.failedTests(in: nodes), keptIn: folder)
+    }
+
+    /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,
+    /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way. When the
+    /// bundle lists neither, a name ending `()` is taken as the bundle's own and one without as `-only-testing:`'s.
+    static func test(_ named: String, among cases: [TestID: [[String: Any]]]) -> TestID {
+        let exact = TestID(xcresultID: named)
+        let parts = named.split(separator: "/", maxSplits: 1)
+        let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
+        if cases[exact] != nil { return exact }
+        if let withoutTarget, cases[withoutTarget] != nil { return withoutTarget }
+        return named.hasSuffix("()") ? exact : withoutTarget ?? exact
+    }
+
+    /// `failed` is the run's failed tests, nil when its test list couldn't be read.
+    static func report(bundle: ResultBundle, test: TestID?, cases: [TestID: [[String: Any]]], failed: [TestID]?, keptIn folder: URL) async -> String {
         let name = URL(fileURLWithPath: bundle.path).lastPathComponent
         let run = bundle.runFolder(in: folder)
         FailureImages.prune(in: folder)
         if let test {
-            let passedUnder = FailedRun.passedConfigurations(of: test, in: ResultBundle.nodes(ResultBundle.parse(await bundle.tests())))
+            let passedUnder = FailedRun.passedConfigurations(of: cases[test] ?? [])
             guard let read = FailedRun.read(activities: await bundle.activities(of: test), passedUnder: passedUnder) else {
                 return "xcrew: couldn't read \(test.shown)'s steps in \(name); xcrun xcresulttool get test-results activities --test-id \(test.xcresultID) --path \(bundle.path) says why"
             }
             return await look(at: test, runs: read.failed, passed: read.passed, in: bundle, named: name, keptIn: run) ?? "xcrew: \(test.shown) didn't fail in \(name)"
         }
-        let listing = ResultBundle.nodes(ResultBundle.parse(await bundle.tests()))
-        guard let failed = await bundle.failedTests() else {
+        guard let failed else {
             return "xcrew: couldn't read the tests in \(name); xcrun xcresulttool get test-results tests --path \(bundle.path) says why"
         }
         guard !failed.isEmpty else { return "xcrew: nothing failed in \(name)" }
@@ -37,7 +56,7 @@ public enum Look {
         while next < scanned.count, shown.count < mostTests {
             let batch = Array(scanned[next..<min(next + FailureNotes.mostAtOnce, scanned.count)])
             next += batch.count
-            let passedUnder = batch.map { FailedRun.passedConfigurations(of: $0, in: listing) }
+            let passedUnder = batch.map { FailedRun.passedConfigurations(of: cases[$0] ?? []) }
             let looked = await withTaskGroup(of: (Int, String?).self) { group in
                 for (index, test) in batch.enumerated() {
                     let passed = passedUnder[index]

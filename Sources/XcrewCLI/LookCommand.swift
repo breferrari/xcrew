@@ -11,19 +11,6 @@ struct LookCommand: Command {
         "look [<Suite/test>] [--bundle <path>]   a failed UI test's steps and the screen at its failure, per configuration and device: from MobileBuildMCP's newest test run, or a result bundle",
     ]
 
-    /// The test a name means. `Target/Suite/test`, as `-only-testing:` names it, is `Suite/test` in the bundle; a name
-    /// ending `()` is the bundle's own, a nested suite's `/` included, unless the bundle lists no such test and the name
-    /// still reads as a target's.
-    static func test(_ named: String, in bundle: ResultBundle) async -> TestID {
-        let parts = named.split(separator: "/")
-        guard parts.count > 2 else { return TestID(xcresultID: named) }
-        let withoutTarget = TestID(suite: parts[parts.count - 2], name: parts[parts.count - 1])
-        guard named.hasSuffix("()") else { return withoutTarget }
-        let exact = TestID(xcresultID: named)
-        if await bundle.lists(exact) { return exact }
-        return await bundle.lists(withoutTarget) ? withoutTarget : exact
-    }
-
     static let noBundle = "xcrew: MobileBuildMCP has kept no test run for this project; pass --bundle <path> for another"
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -35,11 +22,8 @@ struct LookCommand: Command {
             invocation.print(Self.noBundle)
             return 1
         }
-        // `Target/Suite/test`, as `-only-testing:` names it, is `Suite/test` in the result bundle; a name ending `()` is
-        // the bundle's own, a nested suite's `/` included.
         let bundle = ResultBundle(path: path, runner: context.runner)
-        let test: TestID? = if let named = invocation.arguments.positional.first { await Self.test(named, in: bundle) } else { nil }
-        invocation.print(await Look.report(bundle: bundle, test: test, keptIn: context.machine.cacheFolder.appending(path: "images")))
+        invocation.print(await Look.report(bundle: bundle, named: invocation.arguments.positional.first, keptIn: context.machine.cacheFolder.appending(path: "images")))
         return 0
     }
 }

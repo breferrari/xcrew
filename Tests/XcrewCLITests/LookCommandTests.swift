@@ -63,6 +63,14 @@ import XcrewTestSupport
         #expect(run.text.hasPrefix("xcrew look: LoginTests/testLogin, in Run.xcresult\n"), "\(run.text)")
     }
 
+    /// A nested suite's test named with or without its target, with or without `()`: whichever the bundle lists.
+    @Test(arguments: ["AppUITests/Outer/Inner/testX()", "AppUITests/Outer/Inner/testX", "Outer/Inner/testX"])
+    func aNestedSuitesTestIsFoundWithOrWithoutItsTarget(named: String) async {
+        let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Outer/Inner/testX()","name":"testX()","result":"Failed"}]}"#
+        let run = await Run("look", named, "--bundle", "/runs/Run.xcresult", context: context([Self.listing("/runs/Run.xcresult"): listing, Self.steps("Outer/Inner/testX"): Self.activities(recorded: false)]))
+        #expect(run.text.hasPrefix("xcrew look: Outer/Inner/testX, in Run.xcresult\n"), "\(run.text)")
+    }
+
     /// When `xcresulttool` gives no answer, `look` says it couldn't read the bundle, never that nothing failed.
     @Test func aBundleThatCantBeReadIsSaidSo() async {
         let all = await Run("look", "--bundle", "/runs/Run.xcresult", context: context())

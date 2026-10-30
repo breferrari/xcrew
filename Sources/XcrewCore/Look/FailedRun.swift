@@ -50,25 +50,18 @@ struct FailedRun: Sendable, Equatable {
         return (failures, passed)
     }
 
-    /// Where a test passed, as `read` finds it; none when the activities can't be read.
-    static func passed(activities: String, listing: String, of test: TestID) -> [String] {
-        read(activities: activities, passedUnder: passedConfigurations(of: test, in: ResultBundle.nodes(ResultBundle.parse(listing))))?.passed ?? []
-    }
-
     /// The configurations the test list says a test passed under: every result recorded for one, its own and each of
     /// its devices', whether the list nests devices under configurations or configurations under devices, passed. A pass
     /// on one device never vouches for another device's run.
-    static func passedConfigurations(of test: TestID, in listing: [[String: Any]]) -> Set<String> {
+    static func passedConfigurations(of testCases: [[String: Any]]) -> Set<String> {
         var results: [String: [String]] = [:]
         func walk(_ node: [String: Any], under configuration: String?) {
             let type = node["nodeType"] as? String
             let current = type == "Test Plan Configuration" ? node["name"] as? String : configuration
-            if let current, type == "Test Plan Configuration" || type == "Device" { results[current, default: []].append(node["result"] as? String ?? "") }
+            if let current, type == "Test Plan Configuration" || type == "Device", let result = node["result"] as? String { results[current, default: []].append(result) }
             for child in node["children"] as? [[String: Any]] ?? [] { walk(child, under: current) }
         }
-        for node in listing where node["nodeType"] as? String == "Test Case" && (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)) == test {
-            walk(node, under: nil)
-        }
+        for node in testCases { walk(node, under: nil) }
         return Set(results.filter { $0.value.allSatisfy { $0 == "Passed" } }.keys)
     }
 

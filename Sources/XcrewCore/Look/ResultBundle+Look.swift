@@ -6,16 +6,21 @@ extension ResultBundle {
         await xcresulttool(["get", "test-results", "activities", "--test-id", test.xcresultID, "--path", path, "--compact"])
     }
 
-    /// Whether the test list names `test`, as the bundle spells it.
-    public func lists(_ test: TestID) async -> Bool {
-        Self.nodes(Self.parse(await tests())).contains { $0["nodeIdentifier"] as? String == test.xcresultID }
+    /// The test list's `Test Case` nodes by test, read once for every lookup a report makes.
+    static func testCases(in listing: String) -> [TestID: [[String: Any]]] {
+        testCases(in: nodes(parse(listing)))
     }
 
-    /// The tests that failed under any configuration, in the listing's order; nil when the listing can't be read.
-    func failedTests() async -> [TestID]? {
-        guard let listing = Self.parse(await tests()) else { return nil }
+    static func testCases(in nodes: [[String: Any]]) -> [TestID: [[String: Any]]] {
+        Dictionary(grouping: nodes.filter { $0["nodeType"] as? String == "Test Case" && $0["nodeIdentifier"] is String }) {
+            TestID(xcresultID: $0["nodeIdentifier"] as? String ?? "")
+        }
+    }
+
+    /// The tests that failed under any configuration, in the listing's order, from its nodes.
+    static func failedTests(in nodes: [[String: Any]]) -> [TestID] {
         var seen: Set<TestID> = []
-        return Self.nodes(listing).compactMap { node in
+        return nodes.compactMap { node in
             guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Failed", let id = node["nodeIdentifier"] as? String else { return nil }
             let test = TestID(xcresultID: id)
             return seen.insert(test).inserted ? test : nil
