@@ -15,6 +15,8 @@ struct AffectedCommand: Command {
         let changed: [String]
         let selections: [String]?
         let runAll: String?
+        /// The shared schemes that test only targets in `selections`; absent when there are none.
+        var schemes: [ModuleSchemes.Scheme]?
     }
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -26,7 +28,9 @@ struct AffectedCommand: Command {
         case let .success(change):
             let affected = AffectedTests.of(changed: change.files, in: project)
             let root = project.canonicalRoot + "/"
-            answer = Answer(base: change.base, changed: change.files.map { $0.hasPrefix(root) ? String($0.dropFirst(root.count)) : $0 }, selections: affected.selections, runAll: affected.runAll)
+            let containers = project.layout(.anywhereButHome).containers.map { project.root.appending(path: $0) }
+            let schemes = affected.selections.map { ModuleSchemes.testingOnly(Set($0), in: containers) } ?? []
+            answer = Answer(base: change.base, changed: change.files.map { $0.hasPrefix(root) ? String($0.dropFirst(root.count)) : $0 }, selections: affected.selections, runAll: affected.runAll, schemes: schemes.isEmpty ? nil : schemes)
         }
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(answer), as: UTF8.self))
         return 0

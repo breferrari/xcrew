@@ -41,6 +41,16 @@ test('a selection names the test targets and the -only-testing arguments that ru
   expect(text).toContain('origin/main, from 0123456789ab')
 })
 
+test('the schemes that test only the selected targets are named with their sizes', async ($, on) => {
+  session(on, { changed: ['Modules/Feature/Sources/Feature.swift'], selections: ['AppTests', 'AppUITests', 'FeatureTests'], schemes: [{ name: 'Feature', targets: 1 }, { name: 'App', targets: 2 }] })
+  expect(await ask($)).toContain(' Schemes that test only these targets: `Feature` (1 target) and `App` (2 targets).')
+})
+
+test('without such schemes no scheme is named', async ($, on) => {
+  session(on, { changed: ['Core/Store.swift'], selections: ['AppTests', 'CoreTests'] })
+  expect(await ask($)).not.toContain('Schemes that test')
+})
+
 test('when nothing narrower can be said, it names the whole suite with the reason', async ($, on) => {
   session(on, { base: 'origin/main, from 0123456789ab', changed: ['Package.resolved'], runAll: 'Package.resolved changes what the build does in a way this doesn\'t read' })
   const text = await ask($)

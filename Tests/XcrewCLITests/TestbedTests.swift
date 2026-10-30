@@ -596,3 +596,30 @@ struct TestbedFieldTests {
         #expect(lines.contains("      FeatureTests  CrashTests.testOutOfRange()"), "\(added.text.text)")
     }
 }
+
+/// The field fixture, one scheme per module, with a workspace scheme that tests every module: `affected` names the
+/// schemes that test only targets the change can break, so a test builds one module rather than every one.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedAffectedSchemeTests {
+    static func answer(changed: [String]) async throws -> [String: Any] {
+        let root = try TestbedTests.copy("field")
+        let project = Project(root: root)
+        project.writeScheme("UnitTests", testing: ["CoreTests", "DataTests", "FeatureTests", "AppTests"], container: "Field.xcworkspace", folder: "Field.xcworkspace/xcshareddata")
+        let runner = FakeRunner(responses: FakeRunner.branch(at: root, changed: changed, diffed: [], diff: ""))
+        let text = await Run("affected", context: .fake(runner, project: project)).text
+        return try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any], "\(text)")
+    }
+
+    @Test func aChangeInOneModuleNamesTheSchemesThatTestOnlyWhatItCanBreak() async throws {
+        let answer = try await Self.answer(changed: ["Modules/Feature/Sources/Feature.swift"])
+        let schemes = try #require(answer["schemes"] as? [[String: Any]], "\(answer)")
+        #expect(schemes.map { $0["name"] as? String } == ["Feature", "App"])
+        #expect(schemes.map { $0["targets"] as? Int } == [1, 2])
+    }
+
+    /// A change the reading can't place can break anything: no selection, so no scheme.
+    @Test func aChangeThatRunsEverythingNamesNoScheme() async throws {
+        let answer = try await Self.answer(changed: ["Modules/Feature/Project.swift"])
+        #expect(answer["schemes"] == nil, "\(answer)")
+    }
+}

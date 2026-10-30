@@ -20,10 +20,18 @@ export const AFFECTED_TOOL = {
 export const AFFECTED_TOOL_NAME = 'mcp__xcrew__affected'
 
 /** What `xcrew affected` answers. */
-export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null }
+export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null; schemes?: { name: string; targets: number }[] }
 
 export function affectedArgs(input: Record<string, unknown>): string[] {
   return ['affected', ...(typeof input.base === 'string' && input.base !== '' ? ['--base', input.base] : [])]
+}
+
+/** The shared schemes that test only the selected targets: one builds only what they test, `-only-testing:` on a wider scheme builds all it tests. */
+function schemesText(schemes: Affected['schemes']): string {
+  if (!Array.isArray(schemes) || schemes.length === 0) return ''
+  const named = schemes.map(scheme => `\`${scheme.name}\` (${scheme.targets} ${scheme.targets === 1 ? 'target' : 'targets'})`)
+  const listed = named.length === 1 ? named[0] : `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}`
+  return ` Schemes that test only these targets: ${listed}.`
 }
 
 /** The answer as Claude reads it; without one from the CLI, the whole suite. */
@@ -39,6 +47,7 @@ export function affectedText(answer: unknown): string {
   }
   return (
     `The changes can break these test targets: ${affected.selections.join(', ')} (${affected.selections.map(target => `-only-testing:${target}`).join(' ')}). ` +
-    `They cover the targets that own or depend on the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}`
+    `They cover the targets that own or depend on the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}` +
+    schemesText(affected.schemes)
   )
 }
