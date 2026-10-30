@@ -21,6 +21,12 @@ public enum Worktree {
     /// the same folder below it when the project sits a folder down. Nil in a main checkout, in a worktree of a bare
     /// repository, which has no main checkout, and outside git.
     public static func mainCheckout(of project: Project, using runner: any CommandRunning) async -> URL? {
+        await checkout(of: project, using: runner).map { $0.main.appending(path: $0.prefix) }
+    }
+
+    /// The main checkout's top level, and the project's folder below a checkout's top: empty when the project is at it.
+    /// Nil where `mainCheckout` is.
+    public static func checkout(of project: Project, using runner: any CommandRunning) async -> (main: URL, prefix: String)? {
         let ran = await runner.run("git", "-C", project.root.path, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--show-prefix")
         let lines = ran.stdout.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         guard ran.succeeded, lines.count >= 2,
@@ -30,8 +36,7 @@ public enum Worktree {
         let listed = await runner.run("git", "-C", project.root.path, "worktree", "list", "--porcelain").stdout
         let first = listed.components(separatedBy: "\n\n").first?.split(separator: "\n") ?? []
         guard let top = first.first(where: { $0.hasPrefix("worktree ") })?.dropFirst("worktree ".count), !first.contains("bare") else { return nil }
-        let prefix = lines.count > 2 ? lines[2] : ""
-        return URL(fileURLWithPath: String(top)).appending(path: prefix)
+        return (URL(fileURLWithPath: String(top)), lines.count > 2 ? lines[2] : "")
     }
 
     /// The main checkout's config as a worktree takes it, each path MobileBuildMCP reads (`ConfigRenderer.pathKeys`)

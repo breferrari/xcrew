@@ -57,6 +57,9 @@ struct SetupCommand: Command {
     func run(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         if invocation.arguments.has("worktree") { return try await worktree(invocation) }
+        if invocation.arguments.has("no-simulator") {
+            throw UsageError(description: "setup --no-simulator goes with --worktree: plain setup makes no simulator")
+        }
         func answer(_ option: String) -> String? {
             invocation.arguments[option] ?? Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") }
         }
@@ -144,30 +147,32 @@ struct SetupCommand: Command {
     }
 
     /// A linked worktree's config, from its main checkout's: the same profiles and schemes, with an absolute path the
-    /// main checkout uses left out, so the worktree's builds don't share its DerivedData.
+    /// main checkout uses left out, so the worktree's builds don't share its DerivedData, and unless `--no-simulator`,
+    /// simulators of its own; none while a config setup won't replace keeps its own.
     func worktree(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         guard invocation.arguments.values.isEmpty else {
             throw UsageError(description: "setup --worktree takes no option but --force and --no-simulator: the profiles are the main checkout's")
         }
-        guard let main = await Worktree.mainCheckout(of: context.project, using: context.runner) else {
+        guard let checkout = await Worktree.checkout(of: context.project, using: context.runner) else {
             throw UsageError(description: "setup --worktree runs in a linked git worktree; this is a main checkout, or not in git")
         }
+        let main = checkout.main.appending(path: checkout.prefix)
         guard let yaml = try? String(contentsOf: Project(root: main).mobileBuildMCPConfig, encoding: .utf8) else {
             invocation.print("xcrew: the main checkout (\(main.path)) has no .mobilebuildmcp/config.yaml; xcrew setup there, or plain xcrew setup here, writes one")
             return 1
         }
         var (config, leftOut) = Worktree.config(from: yaml, main: main)
         let force = invocation.arguments.has("force")
-        // A simulator of its own, unless the person shares the main checkout's, or a config setup won't replace keeps its own.
-        var simulator: String?
+        var simulators: [String] = []
         if !invocation.arguments.has("no-simulator"), force || ConfigWriter.keeping(context.project) == nil {
-            (config, simulator) = await WorktreeSimulator.make(for: context.project.root, main: main, config: config, using: context.runner)
+            let worktreeTop = checkout.prefix.split(separator: "/").reduce(context.project.root) { folder, _ in folder.deletingLastPathComponent() }
+            (config, simulators) = await WorktreeSimulator.make(for: worktreeTop, main: checkout.main, config: config, using: context.runner)
         }
         let outcome = try ConfigWriter.write(config, to: context.project, force: force)
         Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path)); restart Claude Code so MobileBuildMCP reads it"]
             + leftOut.map { "xcrew: left out \($0.key) \($0.path), which the main checkout uses: this worktree's builds go in a DerivedData of its own" }
-            + (simulator.map { [$0] } ?? []))
+            + simulators)
         await Self.keepOutOfGit(in: invocation)
         return 0
     }

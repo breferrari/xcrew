@@ -7,7 +7,8 @@ public enum WorktreeSimulator {
     /// What marks a simulator as one xcrew made for a worktree, so a person's own is never taken for one.
     public static let prefix = "xcrew · "
 
-    /// The simulator's name: the prefix, the main checkout's folder, and the worktree's.
+    /// The simulator's name: the prefix, then the main checkout's repository folder and the worktree's, so a project a
+    /// folder down in its repository still names its worktree.
     public static func name(main: URL, worktree: URL) -> String {
         "\(prefix)\(main.lastPathComponent) · \(worktree.lastPathComponent)"
     }
@@ -15,45 +16,82 @@ public enum WorktreeSimulator {
     /// The keys a MobileBuildMCP profile names its simulator by.
     static let keys = ["simulatorId", "simulatorName"]
 
-    /// The worktree's config with its own simulator in place of the main checkout's, and what setup says of it: a
-    /// simulator made for it earlier is used again, and none is made when the main checkout names none or one this Mac
-    /// doesn't have. Nothing is said when there's nothing to say.
-    public static func make(for worktree: URL, main: URL, config yaml: String, using runner: any CommandRunning) async -> (yaml: String, line: String?) {
-        guard let named = named(in: yaml) else { return (yaml, nil) }
+    /// The simulator lines of one mapping (a profile, or the global defaults), by line, and what they name.
+    struct Mapping {
+        var lines: [Int] = []
+        var id: String?
+        var name: String?
+    }
+
+    /// The worktree's config with simulators of its own in place of the main checkout's, and what setup says of them.
+    /// `main` and `worktree` are the two repositories' top folders, which the names come from. Each simulator the
+    /// profiles use gets one, on its device type and runtime, named by its device type when they use more than one; one
+    /// made earlier is used again; none is made for one this Mac doesn't have. A mapping that named its simulator twice,
+    /// by name and by id, names its own once, by id.
+    public static func make(for worktree: URL, main: URL, config yaml: String, using runner: any CommandRunning) async -> (yaml: String, lines: [String]) {
+        var lines = yaml.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let mappings = mappings(in: lines)
+        guard !mappings.isEmpty else { return (yaml, []) }
         let catalog = await SimulatorCatalog.load(using: runner)
-        guard let source = catalog.devices.first(where: { named.key == "simulatorId" ? $0.udid == named.value : $0.name == named.value }),
-              let deviceType = source.deviceType, let runtime = source.runtime
-        else { return (yaml, "xcrew: the main checkout's simulator, \(named.value), isn't on this Mac, so none was made for this worktree; its profile names that one") }
-        let name = name(main: main, worktree: worktree)
-        let label = "\(typeName(deviceType)), \(source.platform) \(source.runtimeVersion)"
-        if let earlier = catalog.devices.first(where: { $0.name == name })?.udid {
-            return (naming(earlier, in: yaml), "xcrew: this worktree uses simulator `\(name)` (\(label)), made for it earlier")
+        // Each mapping's simulator, by the id it names when it names one: a name may be on two runtimes.
+        let sources = mappings.map { mapping in
+            (mapping.id ?? mapping.name.flatMap(catalog.udid(of:))).flatMap { udid in catalog.devices.first { $0.udid == udid } }
         }
-        let created = await runner.run("xcrun", "simctl", "create", name, deviceType, runtime)
-        let udid = created.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard created.succeeded, !udid.isEmpty else {
-            let why = created.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            return (yaml, "xcrew: couldn't create a simulator for this worktree (xcrun simctl create: \(why.isEmpty ? "no answer" : why)); its profile names the main checkout's")
+        var said: [String] = []
+        for (mapping, source) in zip(mappings, sources) where source == nil {
+            let named = mapping.name ?? mapping.id ?? ""
+            let line = "xcrew: the main checkout's simulator, \(named), isn't on this Mac, so none was made for it in this worktree; its profile names that one"
+            if !said.contains(line) { said.append(line) }
         }
-        return (naming(udid, in: yaml), "xcrew: created simulator `\(name)` (\(label)) for this worktree")
-    }
-
-    /// The first simulator the config names, and by which key.
-    static func named(in yaml: String) -> (key: String, value: String)? {
-        for line in yaml.split(separator: "\n") {
-            for key in keys {
-                if let value = ConfigRenderer.value(of: key, in: line), !value.isEmpty { return (key, value) }
+        var distinct: [SimulatorCatalog.Device] = []
+        for case let source? in sources where !distinct.contains(where: { $0.udid == source.udid }) { distinct.append(source) }
+        let base = name(main: main, worktree: worktree)
+        var made: [String: String] = [:]
+        for source in distinct {
+            guard let deviceType = source.deviceType, let runtime = source.runtime, let from = source.udid else { continue }
+            let name = distinct.count > 1 ? "\(base) · \(typeName(deviceType))" : base
+            let label = "\(typeName(deviceType)), \(source.platform) \(source.runtimeVersion)"
+            if let earlier = catalog.devices.first(where: { $0.name == name })?.udid {
+                made[from] = earlier
+                said.append("xcrew: this worktree uses simulator `\(name)` (\(label)), made for it earlier")
+                continue
             }
+            let created = await runner.run("xcrun", "simctl", "create", name, deviceType, runtime)
+            let udid = created.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard created.succeeded, !udid.isEmpty else {
+                let why = created.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                said.append("xcrew: couldn't create `\(name)` for this worktree (xcrun simctl create: \(why.isEmpty ? "no answer" : why)); its profile names the main checkout's simulator")
+                continue
+            }
+            made[from] = udid
+            said.append("xcrew: created simulator `\(name)` (\(label)) for this worktree")
         }
-        return nil
+        var dropped = Set<Int>()
+        for (mapping, source) in zip(mappings, sources) {
+            guard let from = source?.udid, let udid = made[from], let first = mapping.lines.first else { continue }
+            lines[first] = String(lines[first].prefix { $0 == " " }) + "simulatorId: " + ConfigRenderer.quoted(udid)
+            dropped.formUnion(mapping.lines.dropFirst())
+        }
+        return (lines.enumerated().filter { !dropped.contains($0.offset) }.map(\.element).joined(separator: "\n"), said)
     }
 
-    /// The config with every simulator it names replaced by `udid`, by id.
-    static func naming(_ udid: String, in yaml: String) -> String {
-        yaml.split(separator: "\n", omittingEmptySubsequences: false).map { line in
-            guard keys.contains(where: { ConfigRenderer.value(of: $0, in: line) != nil }) else { return String(line) }
-            return String(line.prefix { $0 == " " }) + "simulatorId: " + ConfigRenderer.quoted(udid)
-        }.joined(separator: "\n")
+    /// The mappings that name a simulator, in the config's order: lines are one mapping's when the nearest line above them
+    /// at a smaller indent is the same.
+    static func mappings(in lines: [String]) -> [Mapping] {
+        var byParent: [Int: Mapping] = [:]
+        var order: [Int] = []
+        for (index, line) in lines.enumerated() {
+            guard let key = keys.first(where: { ConfigRenderer.value(of: $0, in: line).map { !$0.isEmpty } ?? false }), let value = ConfigRenderer.value(of: key, in: line) else { continue }
+            let indent = line.prefix { $0 == " " }.count
+            let parent = lines[..<index].lastIndex { above in
+                let trimmed = above.trimmingCharacters(in: .whitespaces)
+                return !trimmed.isEmpty && !trimmed.hasPrefix("#") && above.prefix { $0 == " " }.count < indent
+            } ?? -1
+            if byParent[parent] == nil { order.append(parent) }
+            byParent[parent, default: Mapping()].lines.append(index)
+            if key == "simulatorId" { byParent[parent]?.id = value } else { byParent[parent]?.name = value }
+        }
+        return order.compactMap { byParent[$0] }
     }
 
     /// A device type's name as its identifier spells it: `iPhone 18 Pro` for `….SimDeviceType.iPhone-18-Pro`.
