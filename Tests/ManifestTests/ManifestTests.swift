@@ -732,10 +732,24 @@ import Testing
         #expect(Int(kept) == ProjectCard.keptDays)
     }
 
-    /// The mod writes the card in the format the CLI reads.
+    /// The mod writes the card in the format the CLI reads: its version and its fields.
     @Test func theCardsFormatIsTheCLIs() throws {
-        let version = try #require(try text("hooks/mod/card.ts").firstMatch(of: /CARD_VERSION = (\d+)/)?.1)
+        let card = try text("hooks/mod/card.ts")
+        let version = try #require(card.firstMatch(of: /CARD_VERSION = (\d+)/)?.1)
         #expect(Int(version) == ProjectCard.version)
+        let type = try #require(card.firstMatch(of: /export type SavedCard = \{([^}]*)\}/)?.1)
+        let fields = Set(type.matches(of: /(\w+)\??:/).map { String($0.1) })
+        let entry = ProjectCard.Entry(folder: "", branch: "", updated: 0, text: nil)
+        #expect(fields == Set(Mirror(reflecting: entry).children.compactMap(\.label)))
+    }
+
+    /// The card is filed under the branch as the mod's ledger names it: the branch, else `commit <sha>`.
+    @Test func theCardsBranchIsTheLedgers() throws {
+        let label = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /(?s)export function label\(head: Head, isShort: boolean\): string \{(.*?)\n\}/)?.1)
+        #expect(label.contains("if (head.branch) return head.branch"))
+        #expect(label.contains("if (head.commit) return `commit ${isShort ? head.commit.slice(0, 12) : head.commit}`"))
+        #expect(ProjectCard.branchKey(.branch("main")) == "main")
+        #expect(ProjectCard.branchKey(.commit("0123456789abcdef0123")) == "commit 0123456789abcdef0123")
     }
 
     /// On a Team plan Claude Code's own security plugin seats itself outermost and passes over a user plugin's prompt

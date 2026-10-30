@@ -52,7 +52,7 @@ async function start(tool: Engine, clock: { settle: () => Promise<void> }): Prom
 }
 
 /** The card the mod last gave `xcrew card --save`, which the session-start hook prints. */
-function saved(): { folder?: string; branch?: string; updated?: number; text?: string } | undefined {
+function saved(): { folder?: string; branch?: string; updated?: number; oldest?: number; text?: string } | undefined {
   const save = calls.filter(call => call.args.join(' ') === 'card --save').at(-1)
   return save?.stdin === undefined ? undefined : JSON.parse(save.stdin)
 }
@@ -153,6 +153,31 @@ test('the saved card carries its folder, its branch and the time of its data', a
   const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }))
   await start($, clock)
   expect(saved()).toMatchObject({ folder: '/work/App', branch: 'feat/card', updated: NOW - 60_000 })
+})
+
+/** The card is dropped by its oldest line's age, as the mod dropped each line by its own. */
+test('the saved card carries the time of its oldest line too', async ($, on) => {
+  const old = NOW - 5 * 24 * 60 * 60_000
+  const clock = session(on, { ...runs({ 'build_sim · App': { runs: [45_000] }, 'test_sim · App': { runs: [90_000] } }), 'updated.test_sim · App': old })
+  await start($, clock)
+  expect(saved()).toMatchObject({ updated: NOW - 60_000, oldest: old })
+})
+
+test('a save stuck on the CLI holds no later one back', async ($, on) => {
+  let asked = 0
+  const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }), { branch: () => (asked++ === 0 ? new Promise(() => {}) : Promise.resolve('feat/card')) })
+  await start($, clock)
+  await clock.advance(30_000)
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'App' })
+  await clock.settle()
+  expect(saved()?.text).toContain('test_sim · App: usually')
+})
+
+test('a card that hasn\'t changed isn\'t saved again', async ($, on) => {
+  const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }))
+  await start($, clock)
+  await start($, clock)
+  expect(calls.filter(call => call.args.join(' ') === 'card --save')).toHaveLength(1)
 })
 
 test('a run saves the card again, as of that run', async ($, on) => {

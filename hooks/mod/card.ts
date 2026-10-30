@@ -9,7 +9,7 @@ import { covers, flakyLabel, isWholeScope, type LedgerEntry } from './ledger'
 
 /** The saved card's format, which the CLI reads (`ProjectCard` in the Swift package). */
 export const CARD_VERSION = 1
-export type SavedCard = { version: number; folder: string; branch: string; updated: number; text?: string }
+export type SavedCard = { version: number; folder: string; branch: string; updated: number; oldest: number; text?: string }
 export const CARD_MAX_LINES = 10
 export const CARD_MAX_CHARACTERS = 800
 /** A full run at least this long is worth a selection instead. */

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// The project card the mod saves after each run and at session start, for `xcrew hook session-start` to print. It used
@@ -5,64 +6,71 @@ import Foundation
 /// *Prompt hooks a plugin can't count on*), so its rules are that hook's: one card per folder and branch, dropped once
 /// its data is older than the mod keeps its history.
 public enum ProjectCard {
-    /// One folder's and branch's card: what the mod built, and when its newest data was written, in milliseconds since
-    /// 1970 as the mod's clock gives it. No text clears the card.
+    /// One folder's and branch's card: what the mod built, the time of its newest data and of its oldest, in
+    /// milliseconds since 1970 as the mod's clock gives them. No text clears the card.
     public struct Entry: Codable, Sendable, Equatable {
+        public var version: Int?
         public var folder: String
         public var branch: String
         public var updated: Double
+        /// The time of the card's oldest line: once that one is stale the card is, as the mod drops each line by its own
+        /// age. Absent, the card's lines are as old as `updated`.
+        public var oldest: Double?
         public var text: String?
 
-        public init(folder: String, branch: String, updated: Double, text: String?) {
+        public init(folder: String, branch: String, updated: Double, oldest: Double? = nil, text: String?) {
             self.folder = folder
             self.branch = branch
             self.updated = updated
+            self.oldest = oldest
             self.text = text
         }
-    }
-
-    struct Saved: Codable {
-        var version: Int
-        var entries: [Entry]
     }
 
     static let version = 1
     /// As long as the mod keeps its history (`HISTORY_KEPT_MS` in hooks/mod/timing.ts).
     static let keptDays = 14
 
-    static func file(on machine: Machine) -> URL {
-        machine.cacheFolder.appending(path: "cards.json")
+    static func folder(on machine: Machine) -> URL {
+        machine.cacheFolder.appending(path: "cards")
     }
 
-    /// Saves one card in place of that folder's and branch's last, dropping the stale ones. A file a newer xcrew wrote
-    /// is left as it is. Written whole, through a file beside it renamed over it, so two sessions can't tear it.
+    /// Each folder's and branch's card is a file of its own, so a save replaces only its own: two sessions saving at once
+    /// can't lose the other's.
+    static func file(folder: String, branch: String, on machine: Machine) -> URL {
+        let key = SHA256.hash(data: Data("\(folder)\n\(branch)".utf8)).hex
+        return Self.folder(on: machine).appending(path: "\(key.prefix(32)).json")
+    }
+
+    /// Saves one card in place of that folder's and branch's last, written whole through a file renamed over it, and
+    /// drops the stale cards. A card a newer xcrew wrote is left as it is.
     public static func save(_ entry: Entry, on machine: Machine, now: Date = Date()) {
-        let file = file(on: machine)
-        var saved = Saved(version: version, entries: [])
-        if let data = try? Data(contentsOf: file) {
-            guard let read = try? JSONDecoder().decode(Saved.self, from: data) else { return write(saved, entry, to: file, now: now) }
-            guard read.version <= version else { return }
-            saved.entries = read.entries
+        let folder = ProjectLayout.canonicalPath(entry.folder)
+        let file = file(folder: folder, branch: entry.branch, on: machine)
+        if let existing = read(file), (existing.version ?? version) > version { return }
+        if entry.text == nil {
+            try? FileManager.default.removeItem(at: file)
+        } else {
+            var saved = entry
+            (saved.version, saved.folder) = (version, folder)
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? JSONEncoder().encode(saved).write(to: file, options: .atomic)
         }
-        write(saved, entry, to: file, now: now)
+        let others = (try? FileManager.default.contentsOfDirectory(at: Self.folder(on: machine), includingPropertiesForKeys: nil)) ?? []
+        for other in others where other != file {
+            if let card = read(other), (card.version ?? version) <= version, isStale(card, now: now) { try? FileManager.default.removeItem(at: other) }
+        }
     }
 
-    private static func write(_ saved: Saved, _ entry: Entry, to file: URL, now: Date) {
-        var saved = saved
-        let folder = ProjectLayout.canonicalPath(entry.folder)
-        saved.entries.removeAll { ($0.folder == folder && $0.branch == entry.branch) || isStale($0, now: now) }
-        if entry.text != nil { saved.entries.append(Entry(folder: folder, branch: entry.branch, updated: entry.updated, text: entry.text)) }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? JSONEncoder().encode(saved).write(to: file, options: .atomic)
+    static func read(_ file: URL) -> Entry? {
+        (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(Entry.self, from: $0) }
     }
 
     /// The card for this folder and branch, its first line saying how old it is, or nothing when there's none or it's
-    /// stale.
+    /// stale. `folder` is as the file system spells it.
     public static func text(folder: String, branch: String, now: Date, on machine: Machine) -> String? {
-        guard let data = try? Data(contentsOf: file(on: machine)),
-              let saved = try? JSONDecoder().decode(Saved.self, from: data), saved.version <= version,
-              let entry = saved.entries.last(where: { $0.folder == ProjectLayout.canonicalPath(folder) && $0.branch == branch }),
-              !isStale(entry, now: now), let text = entry.text
+        guard let entry = read(file(folder: folder, branch: branch, on: machine)), (entry.version ?? version) <= version,
+              entry.folder == folder, entry.branch == branch, !isStale(entry, now: now), let text = entry.text
         else { return nil }
         let age = "as of the run \(ago(now.timeIntervalSince1970 - entry.updated / 1000))"
         var lines = text.components(separatedBy: "\n")
@@ -70,9 +78,9 @@ public enum ProjectCard {
         return lines.joined(separator: "\n")
     }
 
-    /// The mod's `isStale`: more than the kept days before now.
+    /// The mod's `isStale`, for the card's oldest line: more than the kept days before now.
     static func isStale(_ entry: Entry, now: Date) -> Bool {
-        now.timeIntervalSince1970 - entry.updated / 1000 > TimeInterval(keptDays * 24 * 3600)
+        now.timeIntervalSince1970 - (entry.oldest ?? entry.updated) / 1000 > TimeInterval(keptDays * 24 * 3600)
     }
 
     static func ago(_ seconds: TimeInterval) -> String {

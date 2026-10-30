@@ -372,7 +372,6 @@ function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
   return update($, runState, () => run)
 }
 
-/** The project card from what earlier runs in this folder stored: their durations, and the branch's red tests. */
 /**
  * Saves the project card for this folder and branch, for the session-start hook to print: Claude Code passes over a
  * plugin's prompt hooks on some plans, so the card can't ride on a prompt. After the ledger's own writes; best-effort,
@@ -380,11 +379,20 @@ function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
  */
 function saveCard($: EngineInterface): void {
   cardWrites = cardWrites
-    .then(async () => {
-      await ledgerWrites
-      const card = await cardNow($)
-      if (card) await answer($, ['card', '--save'], 10_000, JSON.stringify(card))
-    })
+    .then(() =>
+      // A save the CLI never answers gives way, so the next one still lands.
+      Promise.race([
+        (async () => {
+          await ledgerWrites
+          const card = await cardNow($)
+          const saved = card && JSON.stringify(card)
+          if (!saved || saved === lastSavedCard) return
+          await answer($, ['card', '--save'], 10_000, saved)
+          lastSavedCard = saved
+        })(),
+        $.clock.sleep(CARD_SAVE_MS),
+      ]),
+    )
     .catch(() => undefined)
 }
 
@@ -397,7 +405,8 @@ async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
   const red = ledger && !isStale(ledger.updated, now) ? ledger.entries.filter(entry => !entry.green && !isStale(entry.last, now)) : []
   const text = cardText(scopes, red, label(head, true))
   const times = [...scopes.map(entry => entry.updated), ...red.map(entry => entry.last)].filter((time): time is number => typeof time === 'number')
-  return { version: CARD_VERSION, folder, branch: label(head, false), updated: times.length > 0 ? Math.max(...times) : now, ...(text ? { text } : {}) }
+  const [updated, oldest] = times.length > 0 ? [Math.max(...times), Math.min(...times)] : [now, now]
+  return { version: CARD_VERSION, folder, branch: label(head, false), updated, oldest, ...(text ? { text } : {}) }
 }
 
 /** Every run scope the store holds, with its durations, when a run last updated it, its test total and its folder. */
@@ -490,9 +499,13 @@ async function closeFailures($: EngineInterface): Promise<string> {
   return 'Closed the failures pane.'
 }
 
-/** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */
 /** The card's saves, one after another, so a later one never lands before an earlier. */
-let cardWrites: Promise<void> = Promise.resolve()
+let cardWrites: Promise<unknown> = Promise.resolve()
+/** The card last saved, so one that hasn't changed isn't saved again. */
+let lastSavedCard: string | undefined
+/** How long one save may take before the next goes ahead. */
+const CARD_SAVE_MS = 15_000
+/** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */
 let ledgerWrites: Promise<unknown> = Promise.resolve()
 
 /** Writes a finished test run into its branch's ledger, after the writes before it, without holding up the run's result. */

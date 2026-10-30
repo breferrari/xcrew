@@ -17,11 +17,12 @@ public struct SessionBriefing: Sendable {
         guard project.isApplePlatformProject else { return nil }
         async let status = MobileBuildMCPStatus.assess(machine, timeout: Self.versionTimeout)
         async let bootedNow = booted()
+        async let head = GitHead.of(project, using: machine.runner)
         let mobileBuildMCP = await status
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
         let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + gaps()
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
-        let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await GitHead.of(project, using: machine.runner)), now: Date(), on: machine)
+        let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), now: Date(), on: machine)
         return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "")
     }
 
