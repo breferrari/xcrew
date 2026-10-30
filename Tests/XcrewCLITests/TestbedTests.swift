@@ -399,7 +399,7 @@ struct TestbedSnapshotTests {
             try? FileManager.default.copyItem(at: captures.appending(path: capture), to: folder)
             return folder
         }
-        return (ResultBundle(path: "/snapshots/Snapshots.xcresult", runner: FakeRunner(), exportFolder: export, imagesFolder: root.appending(path: "images")), root)
+        return (ResultBundle(path: "/snapshots/Snapshots.xcresult", runner: FakeRunner(), exportFolder: export), root)
     }
 
     @Test(arguments: [
@@ -410,7 +410,7 @@ struct TestbedSnapshotTests {
     func eachLibrarysImagesComeReferenceFailureDifference(suite: String, name: String, expected: [String]) async throws {
         let (bundle, root) = Self.bundle("xcodebuild")
         defer { try? FileManager.default.removeItem(at: root) }
-        let images = try #require(await bundle.images(of: TestID(suite: suite, name: name)))
+        let images = try #require(await bundle.images(of: TestID(suite: suite, name: name), keptIn: root.appending(path: "images")).images)
         #expect(images.paths.map { URL(fileURLWithPath: $0).lastPathComponent } == expected)
         // Each is a PNG, though pointfree's XCTest images export with no extension.
         for path in images.paths { #expect(FileManager.default.contents(atPath: path)?.prefix(4) == Data([0x89, 0x50, 0x4E, 0x47])) }
@@ -422,7 +422,7 @@ struct TestbedSnapshotTests {
         let (bundle, root) = Self.bundle("mobilebuildmcp")
         defer { try? FileManager.default.removeItem(at: root) }
         let text = try String(contentsOf: Self.captures.appending(path: "test_sim.txt"), encoding: .utf8)
-        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle)).text.text
+        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: root.appending(path: "images"))).text.text
         let listed = added.components(separatedBy: "\n").filter { $0.hasPrefix("      image: ") }.map { URL(fileURLWithPath: String($0.dropFirst("      image: ".count))).lastPathComponent }
         #expect(listed == [
             "reference_0_00000000-0000-0000-0000-000000000016.png", "failure_0_00000000-0000-0000-0000-000000000008.png", "difference_0_00000000-0000-0000-0000-000000000014.png",

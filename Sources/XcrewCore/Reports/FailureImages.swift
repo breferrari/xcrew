@@ -18,6 +18,39 @@ public struct FailureImages: Sendable, Equatable {
         return "and \(count) more \(count == 1 ? "image" : "images") in \(folder)"
     }
 
+    /// How long a run's images are kept: as long as the shim keeps a build no checkout has run.
+    static let keptDays = 14
+
+    /// A test's images among its exported attachments, moved to `<run>/<suite>/<test>/`: a snapshot's reference, failing
+    /// render and difference first, then the rest in the order they were attached. Nil when it attached none.
+    static func keep(of test: TestID, from export: URL, in run: URL) -> FailureImages? {
+        let manifest = (try? JSONSerialization.jsonObject(with: Data(contentsOf: export.appending(path: "manifest.json")))) as? [[String: Any]] ?? []
+        let attachments = manifest.filter { ($0["testIdentifier"] as? String).map(TestID.init(xcresultID:)) == test }.flatMap { $0["attachments"] as? [[String: Any]] ?? [] }
+        let images = attachments.enumerated().compactMap { index, attachment -> (name: String, file: URL, index: Int)? in
+            guard let exported = attachment["exportedFileName"] as? String, let suggested = attachment["suggestedHumanReadableName"] as? String else { return nil }
+            let file = export.appending(path: exported)
+            return keptName(suggested: suggested, content: file).map { ($0, file, index) }
+        }.sorted { (rank($0.name), $0.index) < (rank($1.name), $1.index) }
+        guard !images.isEmpty else { return nil }
+        let folder = [test.suite, test.name].reduce(run) { $0.appending(path: $1.replacingOccurrences(of: "/", with: "-")) }
+        try? FileManager.default.removeItem(at: folder)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let kept = images.compactMap { image -> String? in
+            let destination = folder.appending(path: image.name)
+            return (try? FileManager.default.moveItem(at: image.file, to: destination)) != nil ? destination.path : nil
+        }
+        return kept.isEmpty ? nil : FailureImages(paths: kept, folder: folder.path)
+    }
+
+    /// Removes each run's images kept longer than `keptDays`.
+    static func prune(in folder: URL) {
+        let runs = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let oldest = Date.now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
+        for run in runs where (try? run.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now < oldest {
+            try? FileManager.default.removeItem(at: run)
+        }
+    }
+
     /// Image formats Claude's Read shows, by extension.
     static let extensions: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"]
 

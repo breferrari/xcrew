@@ -562,8 +562,8 @@ func failingRunText(passing: Int) -> String {
 
 extension FailureNotes {
     /// The notes on a text as text, as the assertions above read them.
-    static func addingText(to text: String, from bundle: ResultBundle) async -> String {
-        await adding(to: MobileText(text), from: bundle)?.text.text ?? text
+    static func addingText(to text: String, from bundle: ResultBundle, keepingImagesIn images: URL? = nil) async -> String {
+        await adding(to: MobileText(text), from: bundle, keepingImagesIn: images)?.text.text ?? text
     }
 }
 

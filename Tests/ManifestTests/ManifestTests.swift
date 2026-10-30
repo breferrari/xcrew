@@ -729,7 +729,7 @@ import Testing
     /// A failed test's images are kept as long as the shim keeps a build no checkout has run.
     @Test func failureImagesAreKeptAsLongAsAnUnusedBuild() throws {
         let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
-        #expect(Int(shim) == ResultBundle.imagesKeptDays)
+        #expect(Int(shim) == FailureImages.keptDays)
     }
 
     /// The routing rules send Claude to a failed test's images by the word its notes list them with, to Read them before

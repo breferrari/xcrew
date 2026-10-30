@@ -80,8 +80,9 @@ public enum FailureNotes {
         let images: [TestID: FailureImages]
     }
 
-    /// The failing run's text with what the result bundle adds; nil when it adds nothing.
-    static func adding(to text: MobileText, from bundle: ResultBundle) async -> Added? {
+    /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `imagesFolder`, each failed
+    /// test's images are kept there, and runs kept there too long are removed.
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn imagesFolder: URL? = nil) async -> Added? {
         var order: [TestID] = []
         var located: Set<TestID> = []
         var crashed: Set<TestID> = []
@@ -91,8 +92,8 @@ public enum FailureNotes {
             if text.location(after: index) != nil { located.insert(failing.test) }
             if isCrash(failing.message) { crashed.insert(failing.test) }
         }
-        // Every failed test may have attached images; otherwise only one the text doesn't place, or that crashed.
-        let lookups = order.filter { bundle.imagesFolder != nil || !located.contains($0) || crashed.contains($0) }.prefix(mostLookups)
+        // Any failed test may have attached images; without them, only one the text doesn't place, or that crashed.
+        let lookups = (imagesFolder == nil ? order.filter { !located.contains($0) || crashed.contains($0) } : order).prefix(mostLookups)
         let listedSkips = text.lines.compactMap { line -> TestID? in
             if case let .skipped(test) = line.kind { return test }
             return nil
@@ -100,6 +101,7 @@ public enum FailureNotes {
         let isSkipping = text.skippedCount > 0 || !listedSkips.isEmpty
         guard !lookups.isEmpty || isSkipping else { return nil }
 
+        if let imagesFolder, !lookups.isEmpty { FailureImages.prune(in: imagesFolder) }
         var notes = Notes()
         var images: [TestID: FailureImages] = [:]
         // Each test's lookups are their own xcresulttool calls, so a few run side by side.
@@ -114,8 +116,9 @@ public enum FailureNotes {
                     if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: test)) {
                         added.append("    \(location)")
                     }
-                    if isCrashed { added += (await bundle.crash(of: test) ?? [noCrashLog]).map { "      \($0)" } }
-                    let attached = await bundle.images(of: test)
+                    // One export gives both the images and a crash's log.
+                    let (attached, crash) = if let imagesFolder { await bundle.images(of: test, keptIn: imagesFolder, crashed: isCrashed) } else { (nil, isCrashed ? await bundle.crash(of: test) : nil) }
+                    if isCrashed { added += (crash ?? [noCrashLog]).map { "      \($0)" } }
                     if let attached { added += attached.shown.map { "      \(imageLabel) \($0)" } + (attached.more.map { ["      \($0)"] } ?? []) }
                     return (test, added, attached)
                 }

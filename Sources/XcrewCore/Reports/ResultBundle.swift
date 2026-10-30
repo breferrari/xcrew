@@ -14,16 +14,13 @@ public struct ResultBundle: Sendable {
     let runner: any CommandRunning
     /// A fresh folder for one crash log export; tests pass one they have filled.
     let exportFolder: @Sendable () -> URL
-    /// Where a failed test's images are kept; none are looked up without one.
-    let imagesFolder: URL?
     /// The run's test list, which skips and expected failures both read: asked for once, when first needed.
     let listing: Once<String>
 
-    public init(path: String, runner: any CommandRunning, exportFolder: @escaping @Sendable () -> URL = { FileManager.default.temporaryDirectory.appending(path: "xcrew-crash-\(UUID().uuidString)") }, imagesFolder: URL? = nil) {
+    public init(path: String, runner: any CommandRunning, exportFolder: @escaping @Sendable () -> URL = { FileManager.default.temporaryDirectory.appending(path: "xcrew-crash-\(UUID().uuidString)") }) {
         self.path = path
         self.runner = runner
         self.exportFolder = exportFolder
-        self.imagesFolder = imagesFolder
         listing = Once { await Self.xcresulttool(["get", "test-results", "tests", "--path", path, "--compact"], runner: runner) }
     }
 
@@ -184,62 +181,38 @@ public struct ResultBundle: Sendable {
         return ran.succeeded ? ran.stdout : ""
     }
 
-    /// A crash's summary, from the crash log the result bundle attached to the test.
-    public func crash(of test: TestID) async -> [String]? {
+    /// A test's attachments, exported to a fresh folder that `read` reads before it's removed: every one, or with
+    /// `onlyFailures` only those associated with its failure.
+    func attachments<T>(of test: TestID, onlyFailures: Bool, _ read: (URL) -> T) async -> T {
         let folder = exportFolder()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        _ = await xcresulttool(["export", "attachments", "--path", path, "--output-path", folder.path, "--test-id", test.xcresultID, "--only-failures"])
+        _ = await xcresulttool(["export", "attachments", "--path", path, "--output-path", folder.path, "--test-id", test.xcresultID] + (onlyFailures ? ["--only-failures"] : []))
+        return read(folder)
+    }
+
+    /// A crash's summary, from the crash log the result bundle attached to the test.
+    public func crash(of test: TestID) async -> [String]? {
+        await attachments(of: test, onlyFailures: true, Self.crashSummary(in:))
+    }
+
+    /// A crash's summary, from the crash log among a test's exported attachments.
+    static func crashSummary(in folder: URL) -> [String]? {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         guard let log = names.sorted().first(where: { $0.hasSuffix(".ips") }),
               let text = try? String(contentsOf: folder.appending(path: log), encoding: .utf8)
         else { return nil }
-        return Self.crashSummary(log: text)
-    }
-}
-
-extension ResultBundle {
-    /// How long a run's images are kept: as long as the shim keeps a build no checkout has run.
-    static let imagesKeptDays = 14
-
-    /// A failed test's images, moved to `<imagesFolder>/<run>/<suite>/<test>/` under the names their attachments
-    /// suggest, so Claude can Read them later in the session: a snapshot's reference, failing render and difference
-    /// first, then the rest in the order they were attached. Nil when it attached none, or there's nowhere to keep them.
-    public func images(of test: TestID) async -> FailureImages? {
-        guard let imagesFolder else { return nil }
-        let export = exportFolder()
-        try? FileManager.default.createDirectory(at: export, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: export) }
-        // Every attachment: the snapshot libraries' images aren't associated with the failure, so --only-failures would
-        // leave them out. Only a failed test is asked about, so none is a passing run's.
-        _ = await xcresulttool(["export", "attachments", "--path", path, "--output-path", export.path, "--test-id", test.xcresultID])
-        let manifest = Self.parse(String(decoding: FileManager.default.contents(atPath: export.appending(path: "manifest.json").path) ?? Data(), as: UTF8.self)) as? [[String: Any]] ?? []
-        let attachments = manifest.filter { ($0["testIdentifier"] as? String).map(TestID.init(xcresultID:)) == test }.flatMap { $0["attachments"] as? [[String: Any]] ?? [] }
-        let images = attachments.enumerated().compactMap { index, attachment -> (name: String, file: URL, index: Int)? in
-            guard let exported = attachment["exportedFileName"] as? String, let suggested = attachment["suggestedHumanReadableName"] as? String else { return nil }
-            let file = export.appending(path: exported)
-            return FailureImages.keptName(suggested: suggested, content: file).map { ($0, file, index) }
-        }.sorted { (FailureImages.rank($0.name), $0.index) < (FailureImages.rank($1.name), $1.index) }
-        guard !images.isEmpty else { return nil }
-
-        Self.pruneImages(in: imagesFolder, now: .now)
-        let run = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-        let folder = [test.suite, test.name].reduce(imagesFolder.appending(path: run)) { $0.appending(path: $1.replacingOccurrences(of: "/", with: "-")) }
-        try? FileManager.default.removeItem(at: folder)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let kept = images.compactMap { image -> String? in
-            let destination = folder.appending(path: image.name)
-            return (try? FileManager.default.moveItem(at: image.file, to: destination)) != nil ? destination.path : nil
-        }
-        return kept.isEmpty ? nil : FailureImages(paths: kept, folder: folder.path)
+        return crashSummary(log: text)
     }
 
-    /// Removes each run's images kept longer than `imagesKeptDays`.
-    static func pruneImages(in folder: URL, now: Date) {
-        let runs = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        let oldest = now.addingTimeInterval(-Double(imagesKeptDays) * 24 * 3600)
-        for run in runs where (try? run.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? now < oldest {
-            try? FileManager.default.removeItem(at: run)
+    /// A failed test's images, moved to `<folder>/<run>/<suite>/<test>/` under the names their attachments suggest, so
+    /// Claude can Read them later in the session, and with `crashed`, its crash's summary, both from one export. Every
+    /// attachment is exported: the snapshot libraries' images aren't associated with the failure, so `--only-failures`
+    /// would leave them out, and the crash log is among them.
+    public func images(of test: TestID, keptIn folder: URL, crashed: Bool = false) async -> (images: FailureImages?, crash: [String]?) {
+        await attachments(of: test, onlyFailures: false) { export in
+            (FailureImages.keep(of: test, from: export, in: folder.appending(path: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)),
+             crashed ? Self.crashSummary(in: export) : nil)
         }
     }
 }

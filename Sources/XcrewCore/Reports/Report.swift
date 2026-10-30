@@ -61,14 +61,9 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest.
     static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
-        guard !images.isEmpty else { return failures }
-        let byTitle = Dictionary(images.map { ($0.key.shown, $0.value) }, uniquingKeysWith: { first, _ in first })
-        return failures.map { failure in
-            guard failure.isTest, let attached = byTitle[failure.title] else { return failure }
-            var failure = failure
-            failure.images = attached.shown
-            failure.moreImages = attached.more
-            return failure
+        failures.map { failure in
+            guard failure.isTest, let attached = images[TestID(xcresultID: failure.title)] else { return failure }
+            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: attached.shown, moreImages: attached.more)
         }
     }
 
@@ -78,8 +73,7 @@ public struct Report: Sendable, Equatable, Codable {
         let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, server: output.server, isError: output.isError) } ?? output
         let isTest = kind == .test
         // MobileBuildMCP's text omits what its result bundle knows; the Xcode MCP's results carry their own.
-        // A failed test's images are kept in the CLI's cache, which the machine names.
-        let bundle = isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner, imagesFolder: machine?.cacheFolder.appending(path: "images")) } : nil
+        let bundle = isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
         // The summary is needed whatever the run came to, so it's asked for while the failures are looked up.
         async let bundleSummary: String? = { await bundle?.summary() }()
         // What the branch changed is listed once, by whichever asks first, meanwhile: for the warnings that name a
@@ -118,7 +112,7 @@ public struct Report: Sendable, Equatable, Codable {
         if let collapsed = read.collapsingWarnings() { (final, edited) = (collapsed, saved == nil) }
         if let text = final.mobileText {
             if let bundle, text.isTestRun {
-                if let annotated = await FailureNotes.adding(to: text, from: bundle) { (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images) }
+                if let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images")) { (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images) }
             } else if let cleaned = text.withoutExcerpts() {
                 (final, edited) = (ToolOutput(cleaned, isError: output.isError), true)
             }
