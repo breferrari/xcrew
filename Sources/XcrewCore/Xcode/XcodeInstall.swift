@@ -9,6 +9,12 @@ public struct XcodeInstall: Sendable, Equatable {
     /// `Xcode 26.4`, as the doctor and `xcrew xcode` name it.
     public var label: String { "Xcode \(version)" }
 
+    /// Whether it shows simulators in DeviceHub and has no Simulator.app, as from Xcode 27, read from the bundle.
+    var hasDeviceHubOnly: Bool {
+        FileManager.default.fileExists(atPath: "\(path)/Contents/Applications/DeviceHub.app")
+            && !FileManager.default.fileExists(atPath: "\(developerFolder)/Applications/Simulator.app")
+    }
+
     /// The folder `DEVELOPER_DIR` names for it.
     public var developerFolder: String { "\(path)/Contents/Developer" }
 

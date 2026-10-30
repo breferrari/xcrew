@@ -34,7 +34,7 @@ struct MobileText: Sendable {
 
         init(_ text: String) {
             self.text = text
-            if let entry = MobileBuildMCPLine.entry(text) {
+            if let entry = MobileBuildMCPLine.entry(text), !MobileBuildMCPLine.isCoverageRuntime(entry) {
                 kind = .entry(Entry(text: entry, failing: MobileBuildMCPLine.test(in: entry)))
             } else if let location = MobileBuildMCPLine.location(text) {
                 kind = .location(path: location.path, line: location.line)
@@ -195,16 +195,12 @@ struct MobileText: Sendable {
         return nil
     }
 
-    /// What the coverage runtime prints when it can't write `default.profraw`, such as in a folder it may not write to:
-    /// the run goes on, so it isn't why the run failed.
-    static let coverageRuntime = "LLVM Profile Error: "
-
-    /// `✗ Suite / test: message` or `✗ message`, each maybe followed by its `/path:line`, without the coverage runtime's.
+    /// `✗ Suite / test: message` or `✗ message`, each maybe followed by its `/path:line`.
     var failures: [ToolOutput.Failure] {
         var failures: [ToolOutput.Failure] = []
         var seen: Set<TestID> = []
         for (index, line) in lines.enumerated() {
-            guard let entry = line.entry, !entry.isExcerpt, !entry.text.hasPrefix(Self.coverageRuntime) else { continue }
+            guard let entry = line.entry, !entry.isExcerpt else { continue }
             let location = location(after: index).map { "\(ToolOutput.basename($0.path)):\($0.line)" }
             if let failing = entry.failing {
                 // It lists a failing test twice, once with its location; the first is kept.

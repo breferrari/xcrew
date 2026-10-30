@@ -113,6 +113,7 @@ enum Captured {
         let failures = Captured.output("mobileTestsBuildFailed").failures
         #expect(failures.map(\.title) == ["Failed to build workspace MacroProbe with scheme MacroProbe-Package."], "the coverage runtime failing to write its profile is not why the run failed")
         #expect(failures.last?.message.hasPrefix("Cannot test target “MacroProbeTests” on “iPhone 16”: Missing test product") == true)
+        #expect(Captured.output("mobileTestsBuildFailed").reportedErrors.map { String($0.message.prefix(18)) } == ["Failed to build wo"], "why reads these")
     }
 
     @Test func theXcodeMCPFailingTestsCarryTheirOwnMessageAndLocation() {

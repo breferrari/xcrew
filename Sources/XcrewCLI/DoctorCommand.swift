@@ -37,7 +37,8 @@ struct DoctorCommand: Command {
         // line above the prompt doesn't show.
         let checks = Doctor.checks.filter { !onlyProblems || !$0.reachesNetwork }
         let ran = await Doctor.run(checks, in: invocation.context)
-        let entries = onlyProblems ? Doctor.problems(ran).filter { !$0.result.isOffThePrompt } : ran
+        let problems = onlyProblems ? Doctor.problems(ran) : []
+        let entries = onlyProblems ? problems.filter { !$0.result.isOffThePrompt } : ran
         if invocation.arguments.has("json") {
             let lines = entries.map { JSONLine(status: $0.result.status.tag.lowercased(), id: $0.check.id, message: $0.result.message) }
             invocation.print(String(decoding: try JSONEncoder.sorted.encode(lines), as: UTF8.self))
@@ -49,7 +50,7 @@ struct DoctorCommand: Command {
             let id = entry.check.id.padding(toLength: width, withPad: " ", startingAt: 0)
             return "\(tag)  \(id)  \(entry.result.message)"
         }
-        let kept = Doctor.problems(ran).filter(\.result.isOffThePrompt).map(\.check.id)
+        let kept = problems.filter(\.result.isOffThePrompt).map(\.check.id)
         (onlyProblems ? Doctor.problemsText(lines: lines, kept: kept) : lines).forEach(invocation.print)
         return onlyProblems ? 0 : Doctor.worst(entries).rawValue
     }

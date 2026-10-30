@@ -19,12 +19,17 @@ struct HeadlessXcodeMCPCheck: Check {
         return .skip("\(newer.label) is installed: `sudo xcode-select -s \(newer.path)` turns on headless Xcode MCP")
     }
 
+    /// Whether `xcrun mcp-server status` says the headless server is on.
+    static func isEnabled(_ status: CommandResult) -> Bool {
+        status.succeeded && status.stdout.contains("Permission: enabled")
+    }
+
     func run(_ context: CheckContext) async -> CheckResult {
         let status = await context.xcodeMCPStatus.value()
         guard status.succeeded else {
             return await Self.unavailable(context) ?? .fail("xcrun mcp-server unavailable (needs Xcode \(Self.introduced) or later)")
         }
-        guard status.stdout.contains("Permission: enabled") else {
+        guard Self.isEnabled(status) else {
             return .fail("headless Xcode MCP is off: sudo xcrun mcp-server enable")
         }
         return .pass("enabled")

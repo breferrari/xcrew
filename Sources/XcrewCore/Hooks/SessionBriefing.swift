@@ -39,10 +39,7 @@ public struct SessionBriefing: Sendable {
 
     /// The selected Xcode's simulator app when it's DeviceHub, as from Xcode 27, which has no Simulator.app to open.
     func simulatorApp() async -> String? {
-        guard let xcode = await Xcodes.selected(on: machine) else { return nil }
-        let app = URL(fileURLWithPath: xcode.path)
-        let has = { (path: String) in FileManager.default.fileExists(atPath: app.appending(path: path).path) }
-        guard has("Contents/Applications/DeviceHub.app"), !has("Contents/Developer/Applications/Simulator.app") else { return nil }
+        guard let xcode = await Xcodes.selected(on: machine, timeout: Self.versionTimeout), xcode.hasDeviceHubOnly else { return nil }
         return Self.deviceHubNote(xcode.label)
     }
 

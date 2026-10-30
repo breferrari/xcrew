@@ -10,8 +10,8 @@ struct XcodeOpenCheck: Check {
     func run(_ context: CheckContext) async -> CheckResult {
         let xcodes = await context.xcodes.value()
         guard !xcodes.open.isEmpty else {
-            let headless = await context.xcodeMCPStatus.value()
-            return .pass(headless.succeeded && headless.stdout.contains("Permission: enabled") ? "no Xcode window is open; the Xcode MCP runs headless" : "Xcode isn't open")
+            let headless = HeadlessXcodeMCPCheck.isEnabled(await context.xcodeMCPStatus.value())
+            return .pass(headless ? "no Xcode window is open; the Xcode MCP runs headless" : "Xcode isn't open")
         }
         guard let builds = xcodes.forBuilds else { return .skip("no Xcode is selected here") }
         guard let other = xcodes.open.first(where: { !$0.isSameToolchain(as: builds) }) else {

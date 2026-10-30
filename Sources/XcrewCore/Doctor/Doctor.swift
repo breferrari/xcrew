@@ -54,7 +54,7 @@ public enum Doctor {
         let shown = lines.isEmpty ? ["No problems."] : lines
         guard !kept.isEmpty else { return shown }
         let one = kept.count == 1
-        return shown + ["Kept off the prompt, as \(one ? "a choice" : "choices") you may have made: \(ResultBundle.listed(kept).dropFirst(2)). `xcrew doctor` shows \(one ? "it" : "them")."]
+        return shown + ["Kept off the prompt, as \(one ? "a choice" : "choices") you may have made\(ResultBundle.listed(kept)). `xcrew doctor` shows \(one ? "it" : "them")."]
     }
 
     public static func worst(_ entries: [Entry]) -> CheckStatus {

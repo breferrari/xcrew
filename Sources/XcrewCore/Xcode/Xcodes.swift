@@ -94,10 +94,10 @@ public enum Xcodes {
     }
 
     /// The Xcode builds use when nothing overrides it: the one `DEVELOPER_DIR` names, else `xcode-select`'s.
-    public static func selected(on machine: Machine) async -> XcodeInstall? {
+    public static func selected(on machine: Machine, timeout: Duration = .seconds(10)) async -> XcodeInstall? {
         var developer = machine.value("DEVELOPER_DIR")
         if developer == nil {
-            let selected = await machine.runner.run(["xcode-select", "-p"], stdin: nil, timeout: .seconds(10))
+            let selected = await machine.runner.run(["xcode-select", "-p"], stdin: nil, timeout: timeout)
             developer = selected.succeeded ? GitHead.firstLine(selected.stdout) : nil
         }
         return developer.flatMap(app(holding:)).flatMap(install)
