@@ -215,3 +215,43 @@ import XcrewTestSupport
         #expect(!report.notes.contains { $0.contains("because of the Mac") })
     }
 }
+
+/// A build that found its build database locked: an xcodebuild a stopped call left running still holds the DerivedData.
+/// The error is Xcode's own wording; the field report saw it after a MobileBuildMCP call was stopped mid-build.
+@Suite struct LockedBuildDatabaseTests {
+    static let derivedData = "/Users/dev/Library/Developer/Xcode/DerivedData/App-abcdef"
+    static let locked = """
+
+        🔨 Build
+
+        Errors (1):
+
+          ✗ unable to attach DB: error: accessing build database "\(derivedData)/Build/Intermediates.noindex/XCBuildData/build.db": database is locked Possibly there are two concurrent builds running in the same filesystem location.
+
+        ❌ Build failed. (⏱️ 1.1s)
+        """
+
+    /// The Mac's processes, as `ps` lists them: one xcodebuild building into `building`, if any.
+    static func note(building: String?) async -> String? {
+        let command = building.map { "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -workspace App.xcworkspace -scheme App -destination platform=iOS Simulator,name=iPhone 17 -derivedDataPath \($0)" }
+        let runner = FakeRunner(responses: [
+            "ps -axo pid=,ppid=,etime=,command=": .init(status: 0, stdout: "    1     0 3-00:00:00 /sbin/launchd\n" + (command.map { " 4242     1    12:05 \($0)\n" } ?? "")),
+            "ps -axo pid=,comm=": .init(status: 0, stdout: "    1 /sbin/launchd\n" + (command == nil ? "" : " 4242 /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild\n")),
+        ])
+        return await Why.note(for: ToolOutput(text: locked, server: .mobileBuildMCP, isError: true), home: "/home", project: .temporary(), runner: runner)
+    }
+
+    @Test func anXcodebuildLeftRunningIsNamedWithItsStop() async {
+        #expect(await Self.note(building: Self.derivedData) == "xcrew: this build failed because of the Mac, not the code: an xcodebuild left running holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A build stopped before it finished leaves one. Stop it, then build again: kill 4242")
+    }
+
+    /// With none running, the build that held it has ended, and building again is the fix.
+    @Test func withNoneRunningTheLockHasPassed() async {
+        #expect(await Self.note(building: nil) == "xcrew: this build failed because of the Mac, not the code: another build held its build database (\"database is locked\") and has since ended. Build again.")
+    }
+
+    /// An xcodebuild building into other DerivedData doesn't hold this one.
+    @Test func anXcodebuildElsewhereIsntTheOne() async {
+        #expect(await Self.note(building: "/Users/dev/Library/Developer/Xcode/DerivedData/Other-123456") == "xcrew: this build failed because of the Mac, not the code: another build held its build database (\"database is locked\") and has since ended. Build again.")
+    }
+}

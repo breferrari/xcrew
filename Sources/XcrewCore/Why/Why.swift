@@ -9,6 +9,7 @@ public enum Why {
     static let causes: [any MachineCause] = [
         CorruptModuleCache(),
         MissingSimulator(),
+        LockedBuildDatabase(),
     ]
 
     /// For a failed run's result: its errors, and the build log it names for what they leave out.
