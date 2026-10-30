@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.8 — 2026-10-30
 
 - Before Claude edits a file your Tuist or XcodeGen project generates (inside the `.xcodeproj` or `.xcworkspace`, or Tuist's `Derived` folder), Xcrew asks you, since the next generate overwrites the edit. Say no, and Claude is pointed at the manifest to edit instead and the generate command. `XcodeWrite` in a generated project now asks the same way instead of being refused outright.
 - Each conversation starts with a short card in Claude's context: how long builds and test runs usually take in this folder, the tests still failing on the branch, and, when a full test run is slow, the selections run before. It's built from what Xcrew already recorded, sent once per conversation, and kept to a few lines.
