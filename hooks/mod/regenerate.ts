@@ -42,12 +42,24 @@ export function marksOf(stale: StaleProject | null | undefined): readonly Mark[]
 
 /**
  * The marks after an edit to an app's manifests: one per app, and a build refused again for it. Of two commands for
- * the app, the one that holds the other stays, so an install a dependency edit needs isn't lost to a later edit.
+ * the app, the one that holds the other stays, so an install a dependency edit needs isn't lost to a later edit. The
+ * mark keeps each edited file's hash from before its first edit since the last generate (`before`, null when it couldn't
+ * be read), so an edit undone can be told.
  */
-export function marked(stale: StaleProject | null, mark: Mark): StaleProject {
+export function marked(stale: StaleProject | null, mark: { app: string; generate: string }, file?: { path: string; before: string | null }): StaleProject {
   const earlier = marksOf(stale).find(other => other.app === mark.app)
   const generate = earlier?.generate.includes(mark.generate) ? earlier.generate : mark.generate
-  return { marks: [...marksOf(stale).filter(other => other.app !== mark.app), { app: mark.app, generate }], refused: false }
+  const files = { ...(earlier?.files ?? {}), ...(file && !(file.path in (earlier?.files ?? {})) ? { [file.path]: file.before } : {}) }
+  return { marks: [...marksOf(stale).filter(other => other.app !== mark.app), { app: mark.app, generate, ...(Object.keys(files).length > 0 ? { files } : {}) }], refused: false }
+}
+
+/**
+ * Whether a mark's edits are all undone: each file it holds has the hash it had before its first edit, `now` giving
+ * the hashes read now. A file whose hash couldn't be read, then or now, leaves the edit standing.
+ */
+export function isUndone(mark: Mark, now: Readonly<Record<string, string | undefined>>): boolean {
+  const files = Object.entries(mark.files ?? {})
+  return files.length > 0 && files.every(([path, before]) => before !== null && now[path] === before)
 }
 
 /**

@@ -44,7 +44,7 @@ export type CliBuild = { path: string | null; at: number }
 
 /** Manifest edits the project hasn't been generated since: one mark per app they changed, with the path the CLI gives the
  * app and the command that generates it, and whether a build was refused for them. */
-export type StaleProject = { marks: { app: string; generate: string }[]; refused: boolean }
+export type StaleProject = { marks: { app: string; generate: string; files?: Record<string, string | null> }[]; refused: boolean }
 
 /** A full-suite run this session: when it ended, and how long it took. */
 export type FullRun = { at: number; ms: number }

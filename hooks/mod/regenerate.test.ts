@@ -6,20 +6,32 @@ const GENERATE = 'tuist generate --no-open --path ios'
 const MANIFEST = '/work/App/ios/Project.swift'
 
 /**
- * A Tuist project whose CLI names `GENERATE` for an edit to `MANIFEST` and nothing for any other file. Beneath the
- * mod, every tool answers, and a Bash command fails when `failing` holds it.
+ * A Tuist project whose CLI names `GENERATE` for an edit to `MANIFEST` and nothing for any other file, and gives each
+ * file's hash by how far edits have moved it: an edit from `a` to `b` or a Write moves it on, one from `b` to `a` back. Beneath
+ * the mod, every tool answers, and a Bash command fails when `failing` holds it.
  */
 function tuistProject(on: On, failing: string[] = []): CliCall[] {
   mock.store(on)
-  const calls = stubCli(on, { project: args => ({ isGenerated: true, ...(args.includes(MANIFEST) ? { generate: GENERATE, app: 'ios' } : {}) }) })
+  const versions = new Map<string, number>()
+  const hashArgument = (args: readonly string[]) => args[args.indexOf('--hash') + 1] ?? ''
+  const calls = stubCli(on, {
+    project: args => ({
+      isGenerated: true,
+      ...(args.includes('--manifest') && args.includes(MANIFEST) ? { generate: GENERATE, app: 'ios' } : {}),
+      ...(args.includes('--hash') ? { hash: `v${versions.get(hashArgument(args)) ?? 0}` } : {}),
+    }),
+  })
   on('tool.call', (_, e) => {
     if (e.tool === 'Bash' && failing.includes(e.command)) return { isError: true, result: 'Exit code 1', text: 'Exit code 1' }
+    if (e.tool === 'Edit') versions.set(e.file_path, (versions.get(e.file_path) ?? 0) + (e.new_string === 'a' ? -1 : 1))
+    if (e.tool === 'Write') versions.set(e.file_path, (versions.get(e.file_path) ?? 0) + 1)
     return { result: {}, text: 'done' }
   })
   return calls
 }
 
 const editManifest = (tool: Parameters<typeof callTool>[0]) => callTool(tool, 'Edit', { file_path: MANIFEST, old_string: 'a', new_string: 'b' })
+const undoEdit = (tool: Parameters<typeof callTool>[0]) => callTool(tool, 'Edit', { file_path: MANIFEST, old_string: 'b', new_string: 'a' })
 const build = (tool: Parameters<typeof callTool>[0], name = 'mcp__plugin_xcrew_MobileBuildMCP__build_sim') => callTool(tool, name)
 const contextOf = (result: ToolCallResult) => (result.context ?? []).join('\n')
 
@@ -35,6 +47,25 @@ test('a build MobileBuildMCP forwards to the Xcode MCP is refused after a manife
   await editManifest($)
   const refused = await callTool($, 'mcp__MobileBuildMCP__xcode_ide_call_tool', { remoteTool: 'BuildProject', arguments: '{}' })
   expect(refused.deny).toContain(`\`${GENERATE}\``)
+})
+
+/** An edit undone leaves the manifests as the last generate read them: nothing to generate, so nothing is refused. */
+test('a manifest edit undone before the build lets the build run', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  await undoEdit($)
+  const built = await build($)
+  expect(built.deny).toBeUndefined()
+  expect(contextOf(built)).not.toContain(GENERATE)
+})
+
+/** Undone, then edited again: the manifests differ from the last generate's once more. */
+test('an edit made again after an undo is refused again', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  await undoEdit($)
+  await editManifest($)
+  expect((await build($)).deny).toContain(GENERATE)
 })
 
 test('a second build without a generate goes through, says why, and the next one runs plainly', async ($, on) => {

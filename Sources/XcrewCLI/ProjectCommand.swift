@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 import XcrewCore
@@ -8,9 +9,9 @@ import XcrewCore
 struct ProjectCommand: Command {
     let name = "project"
     let flags: Set<String> = ["setup", "profiles", "branch"]
-    let valuedOptions: Set<String> = ["manifest", "generated"]
+    let valuedOptions: Set<String> = ["manifest", "generated", "hash"]
     let usage = [
-        "project [--setup] [--profiles] [--manifest <file>] [--generated <file>] [--branch]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --profiles the line offering setup while MobileBuildMCP has no scheme to build with, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, and --branch the real root with the branch or commit checked out",
+        "project [--setup] [--profiles] [--manifest <file>] [--generated <file>] [--branch] [--hash <file>]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --profiles the line offering setup while MobileBuildMCP has no scheme to build with, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, --branch the real root with the branch or commit checked out, and --hash <file>'s SHA-256, for telling an edit undone",
     ]
 
     struct Answer: Codable, Equatable {
@@ -29,6 +30,8 @@ struct ProjectCommand: Command {
         var commit: String?
         /// With `--generated`: the manifest to edit instead of the file, when a generator writes it, from the root.
         var manifest: String?
+        /// With `--hash`: the file's SHA-256 in hex, for the manifest guard to tell an edit undone; empty when it isn't there.
+        var hash: String?
     }
 
     /// A file the mod names: absolute, as an edit tool gives it, or from the project's root.
@@ -49,6 +52,9 @@ struct ProjectCommand: Command {
             if let writer = layout.writer(of: Self.file(generated, in: project), nearest: nearest) {
                 (answer.manifest, answer.generate, answer.app) = (writer.manifest, writer.manifests.generateCommand, writer.manifests.path)
             }
+        }
+        if let file = invocation.arguments["hash"] {
+            answer.hash = (try? Data(contentsOf: Self.file(file, in: project))).map { SHA256.hash(data: $0).hex } ?? ""
         }
         if invocation.arguments.has("branch") {
             answer.root = project.canonicalRoot

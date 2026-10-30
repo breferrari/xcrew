@@ -2,7 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, type Failure, type Problem, type Ran, type Report } from './cli'
+import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
@@ -15,7 +15,7 @@ import { afterFullRun, type Crossing, loopNote } from './loop'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
-import { afterGenerate, editedNote, letThroughNote, marked, marksOf, refusal } from './regenerate'
+import { afterGenerate, editedNote, isUndone, letThroughNote, marked, marksOf, refusal } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, isStale, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, whereKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
@@ -63,7 +63,9 @@ export const register: Register = on => {
   on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const parsed = parseTool(e.tool)
     const target = parsed && (forwardedTool(parsed, e as unknown as Record<string, unknown>) ?? parsed)
-    const stale = target && buildsProject(target) ? await quietly(() => read($, staleState)) : undefined
+    const stored = target && buildsProject(target) ? await quietly(() => read($, staleState)) : undefined
+    // Edits undone since leave the manifests as the last generate read them: those marks go.
+    const stale = stored && (await withoutUndone($, stored))
     const generates = marksOf(stale).map(mark => mark.generate)
     if (!stale || generates.length === 0) return next(e)
     if (!stale.refused) {
@@ -101,11 +103,13 @@ export const register: Register = on => {
         if (!decision.allows) return { deny: editRefusal(shown, generated, decision.said) }
       }
     }
+    // What the file held before, so an edit undone later can be told; read only for a name a manifest may have.
+    const before = path !== undefined && mayBeManifest(path) ? hashOf(await answer($, ['project', '--hash', path], 10_000)) : undefined
     const result = await next(e)
     if (path === undefined || result.deny !== undefined || result.isError || !mayBeManifest(path)) return result
     const edit = manifestEditOf(await answer($, ['project', '--manifest', path], 10_000))
     if (!edit) return result
-    return (await markStale($, stale => marked(stale, edit))) ? withContext(result, editedNote(edit.generate)) : result
+    return (await markStale($, stale => marked(stale, edit, { path, before: before ?? null }))) ? withContext(result, editedNote(edit.generate)) : result
   }).catch(async ($, e, next) => next(e))
   on('tool.call', async ($, e, next) => {
     const parsed = parseTool(e.tool)
@@ -381,6 +385,18 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
 async function anotherRunGoing($: EngineInterface): Promise<boolean> {
   const going = await quietly(() => read($, runState))
   return going !== undefined && going !== null && !going.ended
+}
+
+/** The stale project without the marks whose edits are undone, written back when any went; null when none is left. */
+async function withoutUndone($: EngineInterface, stale: StaleProject): Promise<StaleProject | null> {
+  const files = [...new Set(marksOf(stale).flatMap(mark => Object.keys(mark.files ?? {})))]
+  if (files.length === 0) return stale
+  const now = Object.fromEntries(await Promise.all(files.map(async file => [file, hashOf(await answer($, ['project', '--hash', file], 10_000))] as const)))
+  const left = marksOf(stale).filter(mark => !isUndone(mark, now))
+  if (left.length === marksOf(stale).length) return stale
+  const kept = left.length > 0 ? { ...stale, marks: left } : null
+  await markStale($, () => kept)
+  return kept
 }
 
 /** Changes the marks of a stale project; false when the state couldn't be written. */

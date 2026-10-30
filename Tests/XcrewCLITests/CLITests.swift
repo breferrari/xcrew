@@ -582,6 +582,16 @@ import XcrewTestSupport
 }
 
 @Suite struct ProjectCommandTests {
+    /// A file's content hash, for the manifest guard to tell an edit reverted since the last generate: SHA-256, in hex,
+    /// and empty for a file that isn't there.
+    @Test func projectHashesAFile() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("let project = 1\n", to: "Project.swift")
+        // `printf 'let project = 1\n' | shasum -a 256`
+        #expect(await Run("project", "--hash", "Project.swift", context: .fake(project: project)).text == #"{"hash":"5e1ed27607f9dcae1c94968c6098a2b4b8212d629d2ce41df57138765aba2f5b","isGenerated":true}"#)
+        #expect(await Run("project", "--hash", "Missing.swift", context: .fake(project: project)).text == #"{"hash":"","isGenerated":true}"#)
+    }
+
     @Test func aTuistProjectInASubfolderIsGenerated() async {
         let project = Project.temporary(containing: ["ios/Tuist.swift"])
         #expect(await Run("project", context: .fake(project: project)).text == #"{"isGenerated":true}"#)
