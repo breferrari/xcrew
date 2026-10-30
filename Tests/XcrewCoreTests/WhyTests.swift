@@ -232,47 +232,83 @@ import XcrewTestSupport
         """
 
     static let database = "\(derivedData)/Build/Intermediates.noindex/XCBuildData/build.db"
-    static let free = "xcrew: this build failed because of the Mac, not the code: its build database is locked (\"database is locked\") by another build, and no process holds it now. Build again."
+    static let because = "xcrew: this build failed because of the Mac, not the code: "
+    static let free = because + "its build database is locked (\"database is locked\") by another build, and no process holds it now. Build again."
 
-    /// The note `why` gives for `locked`: with `holder` holding the database, as `lsof` names it, and an xcodebuild building
-    /// into `building`, if any.
-    static func note(building: String?, holder: (id: Int32, program: String)? = nil) async -> String? {
-        let xcodebuild = "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
-        var ps = "    1     0 3-00:00:00 /sbin/launchd\n", comm = "    1 /sbin/launchd\n"
-        if let building {
-            ps += " 4242     1    12:05 \(xcodebuild) build -workspace App.xcworkspace -scheme App -destination platform=iOS Simulator,name=iPhone 17 -derivedDataPath \(building)\n"
-            comm += " 4242 \(xcodebuild)\n"
-        }
-        if let holder {
-            ps += " \(holder.id)     1       00:40 /Applications/Xcode.app/Contents/SharedFrameworks/XCBuild.framework/\(holder.program)\n"
-            comm += " \(holder.id) /Applications/Xcode.app/Contents/SharedFrameworks/XCBuild.framework/\(holder.program)\n"
-        }
-        let runner = FakeRunner(responses: [
+    /// One process, as the two `ps` calls and `lsof` see it.
+    struct Running {
+        var id: Int32 = 4242
+        var etime = "12:05"
+        var path = "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
+        var arguments = "build -workspace App.xcworkspace -scheme App -destination platform=iOS Simulator,name=iPhone 17 -derivedDataPath \(LockedBuildDatabaseTests.derivedData)"
+        var holds = false
+        var named = true
+    }
+
+    /// The note `why` gives for `text`, with these processes running; `ps` and `lsof` failing when `listed` is false.
+    static func note(_ running: [Running], text: String = locked, listed: Bool = true) async -> String? {
+        let ps = "    1     0 3-00:00:00 /sbin/launchd\n" + running.map { " \($0.id)     1 \($0.etime) \($0.path) \($0.arguments)\n" }.joined()
+        let comm = "    1 /sbin/launchd\n" + running.filter(\.named).map { " \($0.id) \($0.path)\n" }.joined()
+        let holders = running.filter(\.holds).map { "\($0.id)\n" }.joined()
+        let database = text.firstMatch(of: #/build database "([^"]+)"/#).map { String($0.1) } ?? Self.database
+        let runner = FakeRunner(responses: listed ? [
             "ps -axo pid=,ppid=,etime=,command=": .init(status: 0, stdout: ps),
             "ps -axo pid=,comm=": .init(status: 0, stdout: comm),
-            "lsof -t \(database)": holder.map { .init(status: 0, stdout: "\($0.id)\n") } ?? .init(status: 1),
-        ])
-        return await Why.note(for: ToolOutput(text: locked, server: .mobileBuildMCP, isError: true), home: "/home", project: .temporary(), runner: runner)
+            "lsof -t \(database)": holders.isEmpty ? .init(status: 1) : .init(status: 0, stdout: holders),
+        ] : [:])
+        return await Why.note(for: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: "/home", project: .temporary(), runner: runner)
     }
 
-    @Test func anXcodebuildLeftRunningIsNamedWithItsStop() async {
-        #expect(await Self.note(building: Self.derivedData) == "xcrew: this build failed because of the Mac, not the code: an xcodebuild left running holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A build stopped partway leaves one. Stop it, then build again: kill 4242")
+    @Test func anXcodebuildBuildingIntoItIsNamedWithHowToStopIt() async {
+        #expect(await Self.note([Running()]) == Self.because + "an xcodebuild holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A call stopped partway leaves its xcodebuild running; stopping it frees the database: kill 4242")
     }
 
-    /// Whatever holds the database open is named, though it isn't an xcodebuild building into that folder: the build
-    /// service of a newer Xcode.
-    @Test func whateverHoldsTheDatabaseIsNamed() async {
-        #expect(await Self.note(building: nil, holder: (5151, "SWBBuildService")) == "xcrew: this build failed because of the Mac, not the code: SWBBuildService holds its build database (\"database is locked\"): pid 5151, running 40 s. A build stopped partway leaves one. Stop it, then build again: kill 5151")
+    /// Of the processes holding it, an xcodebuild is the one named; Xcode's build service is never the one to stop.
+    @Test func anXcodebuildIsNamedBeforeTheBuildService() async {
+        let service = Running(id: 5151, etime: "00:40", path: "/Applications/Xcode.app/Contents/SharedFrameworks/SWBBuildService", arguments: "", holds: true)
+        #expect(await Self.note([service, Running(holds: true)])?.hasSuffix("kill 4242") == true)
+        #expect(await Self.note([service]) == Self.because + "SWBBuildService holds its build database (\"database is locked\"): pid 5151, running 40 s, a build still going, in Xcode or another session. The database is free once it ends.")
     }
 
-    /// With nothing holding it, the note says so, not that a build has ended, which it didn't see.
     @Test func withNoneRunningNothingHoldsItNow() async {
-        #expect(await Self.note(building: nil) == Self.free)
+        #expect(await Self.note([]) == Self.free)
+    }
+
+    /// When the processes can't be listed, nothing is said about whether one holds it.
+    @Test func withoutTheProcessListItSaysItCouldntTell() async {
+        #expect(await Self.note([], listed: false) == Self.because + "its build database is locked (\"database is locked\") by another build; xcrew couldn't list the processes to say which.")
     }
 
     /// An xcodebuild building into other DerivedData, one whose name only starts the same included, doesn't hold this one.
-    @Test(arguments: ["/Users/dev/Library/Developer/Xcode/DerivedData/Other-123456", "\(derivedData)-2"])
+    @Test(arguments: ["/Users/dev/Library/Developer/Xcode/DerivedData/Other-123456", "\(Self.derivedData)-2"])
     func anXcodebuildElsewhereIsntTheOne(_ building: String) async {
-        #expect(await Self.note(building: building) == Self.free)
+        #expect(await Self.note([Running(arguments: "build -derivedDataPath \(building)")]) == Self.free)
+    }
+
+    /// The same folder spelled with a trailing slash, and an xcodebuild ps gave no program name for, are still found.
+    @Test func theSameFolderSpelledAnotherWayIsFound() async {
+        #expect(await Self.note([Running(arguments: "build -derivedDataPath \(Self.derivedData)/", named: false)])?.hasSuffix("kill 4242") == true)
+    }
+
+    /// A build database outside DerivedData's usual layout is still read, and its holder named.
+    @Test func aBuildDatabaseElsewhereIsReadToo() async {
+        let text = Self.locked.replacingOccurrences(of: Self.database, with: "/Users/dev/App/build/XCBuildData/build.db")
+        #expect(await Self.note([Running(holds: true)], text: text)?.hasSuffix("kill 4242") == true)
+    }
+
+    /// A test's own SQLite error says the same words: it's the code's, and nothing is said.
+    @Test func aTestsDatabaseErrorIsTheCodes() async {
+        let text = "\n🧪 Test\n\nTest Failures (1):\n\n  ✗ StoreTests / testWrites: SQLite error 5: database is locked\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)"
+        #expect(await Self.note([Running()], text: text) == nil)
+    }
+
+    /// An xcodebuild running since yesterday reads in days and hours, not thousands of minutes.
+    @Test func aLongRunReadsInHoursAndDays() async {
+        #expect(await Self.note([Running(etime: "1-02:00:00")])?.contains("running 1 d 2 h") == true)
+    }
+
+    /// A destination with a dash in its name is read to the next option.
+    @Test func aDestinationWithADashIsReadWhole() async {
+        #expect(await Self.note([Running(arguments: "build -destination platform=iOS Simulator,name=Test - iPhone 17 -derivedDataPath \(Self.derivedData)")])?.contains("for platform=iOS Simulator,name=Test - iPhone 17,") == true)
     }
 }

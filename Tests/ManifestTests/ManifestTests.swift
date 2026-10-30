@@ -164,7 +164,9 @@ import Testing
             ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":5,"expectedFailures":1}"#, names: ["S/t()"]) ?? "",
             Report.warningsNote([ToolOutput.Warning(message: "unused", path: "/a/A.swift", line: 3)], of: 2) ?? "",
             LockedBuildDatabase.free,
+            LockedBuildDatabase.unknown,
             LockedBuildDatabase.held(by: ProcessList.Process(id: 42, parent: 1, elapsed: 90, command: "/x/xcodebuild build -destination platform=iOS Simulator,name=iPhone 17", program: "xcodebuild")),
+            LockedBuildDatabase.heldElsewhere(by: ProcessList.Process(id: 43, parent: 1, elapsed: 40, command: "/x/SWBBuildService", program: "SWBBuildService")),
         ] + (try Self.modTools.map { try toolDescription($0.constant, in: $0.file) })
         var sentences: [String] = []
         for text in texts {
