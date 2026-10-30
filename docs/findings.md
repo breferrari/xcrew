@@ -142,6 +142,13 @@ MobileBuildMCP 2.7.1 documents none of this, upstream or in its Homebrew install
 - **A named profile stands alone.** `session-store.js` reads a profile as `profiles[name] ?? {}`, with nothing from the global `sessionDefaults`. So an active profile without a scheme can't build or test, whether it's empty or absent.
 - **`simulatorId` is filled at startup, for the active profile only.** `bootstrap-runtime.js` resolves the active profile's `simulatorName` to an ID. `session_use_defaults_profile` never does, so after a switch, tools that need an ID, such as `screenshot`, fail with `simulatorId is required`. Setup writes each profile's ID itself, from `simctl`.
 - **`session_set_defaults` with a `simulatorId` clears `simulatorName`**, and **`screenshot` takes no display parameter**, so it fails on a simulator with two displays. Both were seen with Xcode 27.2 beta 3.
+- **Xcode's scheme selection writes over the active profile's scheme** (read October 30, 2026). A `test_sim` call names no scheme, so it uses the active profile's. Four things set that scheme:
+  - the config's `activeSessionDefaultsProfile` and that profile's `scheme`, at startup (`runtime/bootstrap-runtime.js`);
+  - `session_use_defaults_profile`;
+  - `session_set_defaults`;
+  - Xcode's own selection, unless the config sets `disableXcodeAutoSync`. `server/bootstrap.js` reads it from Xcode's `xcuserstate` at startup and calls `sessionStore.setDefaults({ scheme })`, which writes into the active profile. `utils/xcode-state-watcher.js` then follows that file and does the same on every change (`processFileChange`). Setup doesn't set `disableXcodeAutoSync`.
+
+  So neither the config nor the profile switches Claude makes say which scheme a run used. The mod keys a run's history by the call's `scheme` argument, and a run without one under its tool alone, mixing schemes rather than naming a wrong one. `test_sim` does build an `invocationRequest` from the defaults it used (`mcp/tools/simulator/test_sim.js`): the result schema has `data.request.scheme`, and the text renderer (`utils/renderers/domain-result-text.js`) prints a `Scheme:` line from it. No result captured here carries either, so whether one reaches Claude is still to be seen on a live run.
 
 `mobilebuildmcp --version` takes about 0.5 s, most of what `xcrew doctor --problems` costs (0.51 to 0.56 s in a one-project tree on October 29, 2026, M1 Max, macOS 27.0.1). The band asks the doctor again after prompts, so the CLI keeps the answer in its cache folder, keyed by the binary's resolved path and modification time. Homebrew links the command into a folder named for the version, so an upgrade changes the key.
 
