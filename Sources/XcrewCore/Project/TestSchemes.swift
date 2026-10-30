@@ -25,8 +25,7 @@ public enum TestSchemes {
     static let xmlOptions: XMLNode.Options = [.nodeLoadExternalEntitiesNever]
 
     public static func choose(in container: URL, preferring appScheme: String?) -> Choice {
-        var seen: Set<String> = []
-        let containers = ([container] + projects(in: container)).filter { seen.insert(key($0)).inserted }
+        let containers = containers(from: [container])
         let types = containers.reduce(into: [String: [String: String]]()) { types, project in
             types[key(project)] = productTypes(of: project)
         }
@@ -46,6 +45,26 @@ public enum TestSchemes {
         let found = runs.sorted()
         if found.isEmpty { return unsure.isEmpty ? .none : .unknown(unsure.sorted()) }
         return found.count == 1 ? .scheme(found[0]) : .several(found)
+    }
+
+    /// The containers whose schemes count: these, then the projects their workspaces list, each once.
+    static func containers(from roots: [URL]) -> [URL] {
+        var seen: Set<String> = []
+        return (roots + roots.flatMap(projects(in:))).filter { seen.insert(key($0)).inserted }
+    }
+
+    /// A container's shared schemes, parsed, in the order of their names.
+    static func sharedSchemes(of container: URL) -> [(name: String, document: XMLDocument)] {
+        let folder = container.appending(path: "xcshareddata/xcschemes")
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { $0.pathExtension == "xcscheme" }.sorted { $0.lastPathComponent < $1.lastPathComponent }.compactMap { file in
+            (try? XMLDocument(contentsOf: file, options: xmlOptions)).map { (file.deletingPathExtension().lastPathComponent, $0) }
+        }
+    }
+
+    /// A test plan as its JSON reads.
+    static func plan(at file: URL) -> [String: Any]? {
+        (try? Data(contentsOf: file)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
     }
 
     static func key(_ url: URL) -> String {
@@ -83,10 +102,8 @@ public enum TestSchemes {
     /// Each shared scheme's testables that run: its `TestableReference`s not skipped, and every target of its test plans.
     static func schemes(of container: URL) -> [String: [Testable]] {
         let base = container.deletingLastPathComponent()
-        let folder = container.appending(path: "xcshareddata/xcschemes")
-        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        return files.filter { $0.pathExtension == "xcscheme" }.reduce(into: [:]) { schemes, file in
-            guard let document = try? XMLDocument(contentsOf: file, options: xmlOptions) else { return }
+        return sharedSchemes(of: container).reduce(into: [:]) { schemes, scheme in
+            let document = scheme.document
             let references = (try? document.nodes(forXPath: "//TestAction/Testables/TestableReference[not(@skipped='YES')]/BuildableReference")) ?? []
             let testables = references.compactMap { $0 as? XMLElement }.compactMap { reference -> Testable? in
                 guard let name = reference.attribute(forName: "BlueprintName")?.stringValue else { return nil }
@@ -94,14 +111,12 @@ public enum TestSchemes {
             }
             let plans = (try? document.nodes(forXPath: "//TestAction/TestPlans/TestPlanReference/@reference")) ?? []
             let planTargets = plans.compactMap(\.stringValue).flatMap { targets(ofPlan: resolve($0, from: base), from: base) }
-            schemes[file.deletingPathExtension().lastPathComponent] = testables + planTargets
+            schemes[scheme.name] = testables + planTargets
         }
     }
 
     static func targets(ofPlan file: URL, from base: URL) -> [Testable] {
-        guard let data = try? Data(contentsOf: file),
-              let plan = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let entries = plan["testTargets"] as? [[String: Any]] else { return [] }
+        guard let entries = plan(at: file)?["testTargets"] as? [[String: Any]] else { return [] }
         return entries.filter { $0["enabled"] as? Bool ?? true }.compactMap { entry in
             guard let target = entry["target"] as? [String: Any], let name = target["name"] as? String else { return nil }
             return Testable(name: name, project: (target["containerPath"] as? String).map { key(resolve($0, from: base)) })

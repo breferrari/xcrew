@@ -18,11 +18,10 @@ public enum Look {
         let run = bundle.runFolder(in: folder)
         FailureImages.prune(in: folder)
         if let test {
-            let activities = await bundle.activities(of: test)
-            guard let runs = FailedRun.runs(activities: activities) else {
+            guard let read = FailedRun.read(activities: await bundle.activities(of: test), listing: await bundle.tests(), of: test) else {
                 return "xcrew: couldn't read \(test.shown)'s steps in \(name); xcrun xcresulttool get test-results activities --test-id \(test.xcresultID) --path \(bundle.path) says why"
             }
-            return await look(at: test, runs: runs, passed: FailedRun.passed(activities: activities), in: bundle, named: name, keptIn: run) ?? "xcrew: \(test.shown) didn't fail in \(name)"
+            return await look(at: test, runs: read.failed, passed: read.passed, in: bundle, named: name, keptIn: run) ?? "xcrew: \(test.shown) didn't fail in \(name)"
         }
         guard let failed = await bundle.failedTests() else {
             return "xcrew: couldn't read the tests in \(name); xcrun xcresulttool get test-results tests --path \(bundle.path) says why"
@@ -39,10 +38,10 @@ public enum Look {
             let looked = await withTaskGroup(of: (Int, String?).self) { group in
                 for (index, test) in batch.enumerated() {
                     group.addTask {
-                        let activities = await bundle.activities(of: test)
-                        let runs = FailedRun.runs(activities: activities) ?? []
-                        guard runs.contains(where: \.hasRecording) else { return (index, nil) }
-                        return (index, await look(at: test, runs: runs, passed: FailedRun.passed(activities: activities), in: bundle, named: name, keptIn: run))
+                        guard let read = FailedRun.read(activities: await bundle.activities(of: test), listing: await bundle.tests(), of: test),
+                              read.failed.contains(where: \.hasRecording)
+                        else { return (index, nil) }
+                        return (index, await look(at: test, runs: read.failed, passed: read.passed, in: bundle, named: name, keptIn: run))
                     }
                 }
                 var found = [String?](repeating: nil, count: batch.count)
@@ -68,9 +67,9 @@ public enum Look {
     /// does.
     static func look(at test: TestID, runs: [FailedRun], passed: [String], in bundle: ResultBundle, named name: String, keptIn run: URL) async -> String? {
         guard !runs.isEmpty else { return nil }
-        let key = { (failed: FailedRun) in [failed.deviceID, failed.configuration] }
+        // Numbered by the label the kept file is named by: parallel clones of one simulator share it.
         let numbers = runs.indices.map { index in
-            runs.filter { key($0) == key(runs[index]) }.count > 1 ? runs[..<index].filter { key($0) == key(runs[index]) }.count + 1 : nil
+            runs.filter { $0.label == runs[index].label }.count > 1 ? runs[..<index].filter { $0.label == runs[index].label }.count + 1 : nil
         }
         // Every attachment, and only for runs that attached any, as a unit test's don't: the hierarchy is told by its
         // content, and the recordings make up nearly all of an export (docs/findings.md).
@@ -88,14 +87,13 @@ public enum Look {
         }
         var lines = ["xcrew look: \(test.shown), in \(name)"]
         for (failed, found) in zip(runs, kept) {
-            lines.append("  " + [failed.configuration, failed.device].filter { !$0.isEmpty }.joined(separator: " · "))
+            lines.append("  " + failed.label)
             lines += failed.steps.map { "    \(firstLine($0))" }
             lines.append("    ✗ \(firstLine(failed.failure))")
             guard !failed.attachments.isEmpty else { continue }
             lines.append("    " + screenLine(found.screen, recorded: failed.hasRecording))
             lines += hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps)).map { "    \($0)" }
         }
-        // Where it passed: a failure under some configurations or devices only is theirs.
         if !passed.isEmpty { lines.append("  passed under: " + passed.joined(separator: "; ")) }
         return lines.joined(separator: "\n")
     }

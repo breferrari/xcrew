@@ -55,12 +55,27 @@ import Testing
         ])
     }
 
-    /// The runs that passed, by configuration and device, each once however often it repeated.
-    @Test func theRunsThatPassedAreNamed() {
-        let runs = #"{"testIdentifier":"T","testName":"T","testRuns":["# + [("Light", false), ("Dark", true), ("Light", false)].map { name, failed in
+    /// Activities with one run per configuration named, failed or not.
+    static func runs(_ runs: [(String, Bool)]) -> String {
+        #"{"testIdentifier":"T/t()","testName":"t()","testRuns":["# + runs.map { name, failed in
             #"{"device":{"deviceId":"D","deviceName":"Sim","architecture":"arm64","modelName":"iPhone 17","platform":"iOS Simulator","osVersion":"27.2"},"testPlanConfiguration":{"configurationId":"1","configurationName":"\#(name)"},"activities":[{"title":"Check","isAssociatedWithFailure":\#(failed),"startTime":1}]}"#
         }.joined(separator: ",") + "]}"
-        #expect(FailedRun.passed(activities: runs) == ["Light · iPhone 17, iOS 27.2"])
+    }
+
+    /// The test list's result for each of a test's configurations, as `xcresulttool get test-results tests` gives them.
+    static func listing(_ results: [(String, String)]) -> String {
+        #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"T/t()","name":"t()","result":"Failed","children":["# + results.map { name, result in
+            #"{"nodeType":"Test Plan Configuration","name":"\#(name)","nodeIdentifier":"1","result":"\#(result)"}"#
+        }.joined(separator: ",") + "]}]}"
+    }
+
+    /// Where a test passed, each once however often it repeated: a configuration the test list says it passed under,
+    /// never one where a run of it also failed, as a retry or another repetition can, nor one it was skipped under.
+    @Test func whereItPassedIsWhatTheTestListSays() {
+        let test = TestID(suite: "T", name: "t")
+        let activities = Self.runs([("Light", false), ("Dark", true), ("Light", false), ("Dark", false), ("Sepia", false)])
+        let listing = Self.listing([("Light", "Passed"), ("Dark", "Passed"), ("Sepia", "Skipped")])
+        #expect(FailedRun.passed(activities: activities, listing: listing, of: test) == ["Light · iPhone 17, iOS 27.2"])
     }
 
     /// No answer, as `xcresulttool` gives when it fails, is not a run that passed.
