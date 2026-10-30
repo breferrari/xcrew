@@ -65,8 +65,26 @@ export function runsGenerate(command: string): boolean {
   return first !== undefined && !/[|;&\n]/.test(first.after.replace(/\d*>&\d+|&&/g, ' '))
 }
 
-/** The matcher for the guard: the engine calls a hook only for the tools its matcher matches. */
-export const PROJECT_REWRITER = bothRegistrations('xcode', ['XcodeWrite'])
+/** The Xcode MCP's tool that rewrites the project file, under its own name or as MobileBuildMCP's bridge registers it. */
+export const PROJECT_REWRITER = /^mcp__(?:plugin_xcrew_)?(?:xcode__XcodeWrite|MobileBuildMCP__xcode_tools_XcodeWrite)$/
+
+/**
+ * The matcher for the guard: the engine calls a hook only for the tools its matcher matches. It takes in MobileBuildMCP's
+ * call tool too, which can forward XcodeWrite; the hook lets every other forwarded tool through.
+ */
+export const PROJECT_REWRITER_CALL = /^mcp__(?:plugin_xcrew_)?(?:xcode__XcodeWrite|MobileBuildMCP__(?:xcode_tools_XcodeWrite|xcode_ide_call_tool))$/
+
+/**
+ * The Xcode MCP tool a MobileBuildMCP call forwards through its `xcode-ide` bridge: `xcode_ide_call_tool` names it in
+ * `remoteTool`, and the bridge registers each one again as `xcode_tools_<name>` (MobileBuildMCP 2.7.1's
+ * `mcp/tools/xcode-ide/xcode_ide_call_tool.js:14` and `integrations/xcode-tools-bridge/registry.js:84`).
+ */
+export function forwardedTool(tool: XcodeTool, input: Record<string, unknown>): XcodeTool | undefined {
+  if (tool.server !== 'MobileBuildMCP') return undefined
+  if (tool.tool === 'xcode_ide_call_tool') return typeof input.remoteTool === 'string' ? { server: 'xcode', tool: input.remoteTool } : undefined
+  const proxied = /^xcode_tools_(\w+)$/.exec(tool.tool)?.[1]
+  return proxied ? { server: 'xcode', tool: proxied } : undefined
+}
 
 /**
  * Whether a tool's answer can name what the next build will use: any of MobileBuildMCP's session

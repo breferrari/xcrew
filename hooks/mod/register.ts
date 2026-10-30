@@ -6,7 +6,7 @@ import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, kn
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_BLOCK, CARD_WAIT_MS, cardText } from './card'
-import { describe, historyOf, isFullSuiteRun, isRepeatedRun, observe, runsWholeScope } from './context'
+import { describe, forwardedText, historyOf, isFullSuiteRun, isRepeatedRun, observe, runsWholeScope } from './context'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { afterFullRun, type Crossing, loopNote } from './loop'
@@ -16,7 +16,7 @@ import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from '
 import { afterGenerate, editedNote, letThroughNote, marked, marksOf, refusal } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, isStale, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, whereKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
-import { buildsProject, FILE_EDITOR, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
+import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -46,8 +46,10 @@ const staleState = atom({ plugin: 'xcrew', key: 'stale' } as const, null as Stal
 export const register: Register = on => {
   // The two tool.call hooks fail open, as the engine would without a handler; it's stated so validate reads it, and so
   // a later change can't turn either into a refusal by accident. Nothing below them throws today.
-  on('tool.call', { tool: PROJECT_REWRITER }, async ($, e, next) => {
-    if (!(await isGeneratedProject($))) return next(e)
+  on('tool.call', { tool: PROJECT_REWRITER_CALL }, async ($, e, next) => {
+    const parsed = parseTool(e.tool)
+    const target = parsed && (forwardedTool(parsed, e as unknown as Record<string, unknown>) ?? parsed)
+    if (target?.tool !== 'XcodeWrite' || !(await isGeneratedProject($))) return next(e)
     const decision = decided(XCODE_WRITE_QUESTION, await ask($, XCODE_WRITE_QUESTION))
     return decision.allows ? next(e) : { deny: xcodeWriteRefusal(decision.said) }
   }).catch(async ($, e, next) => next(e))
@@ -110,7 +112,8 @@ export const register: Register = on => {
     if (!kind) {
       // Not timed, but its answer may say what the next build will use.
       const result = await next(e)
-      observe(parsed, result.text ?? '')
+      const forwarded = forwardedTool(parsed, e as unknown as Record<string, unknown>)
+      observe(forwarded ?? parsed, forwarded ? forwardedText(parsed, result.text ?? '') : (result.text ?? ''))
       return result
     }
     const target = describe(parsed, e as unknown as Record<string, unknown>)

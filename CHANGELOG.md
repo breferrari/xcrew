@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- In a generated project, Xcrew also asks you before `XcodeWrite` when MobileBuildMCP's `xcode-ide` group forwards it, in a config of your own that still enables the group. A scheme or workspace switched that way shows in the status line too.
+
 ## 0.9.1 — 2026-10-30
 
 - The doctor no longer reports an error when the project's pinned Xcode isn't installed: it warns, naming both versions, and says when the build may fail (another major version, or a newer pin). It no longer reports an error for headless Xcode MCP on a Mac whose Xcodes all predate Xcode 27, and when Xcode 27 is installed but an older one is selected, it names the `xcode-select` command that turns headless Xcode MCP on. Its fix for a missing Xcode names `xcodes install` only when `xcodes` is installed, and Apple's download page otherwise.

@@ -41,6 +41,29 @@ test('in a generated project XcodeWrite is refused under either registration, wi
   expect(asked.map(call => call.args)).toContainEqual(['project'])
 })
 
+/**
+ * MobileBuildMCP's `xcode-ide` group forwards any Xcode MCP tool: `xcode_ide_call_tool` names it in `remoteTool`, with
+ * its arguments as a JSON string, and the bridge registers each one again as `xcode_tools_<name>` (2.7.1's
+ * `mcp/tools/xcode-ide/xcode_ide_call_tool.js` and `integrations/xcode-tools-bridge/registry.js`).
+ */
+test('in a generated project XcodeWrite forwarded through MobileBuildMCP is refused too', async ($, on) => {
+  projectThatIs(on, 'generated')
+  on('tool.call', () => ({ result: {} }))
+  const forwarded = await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__xcode_ide_call_tool', { remoteTool: 'XcodeWrite', arguments: '{"filePath":"App/New.swift","content":""}' })
+  expect(forwarded.deny).toContain('Write tool')
+  const proxied = await callTool($, 'mcp__MobileBuildMCP__xcode_tools_XcodeWrite', { filePath: 'App/New.swift', content: '' })
+  expect(proxied.deny).toContain('Write tool')
+})
+
+test('other tools forwarded through MobileBuildMCP run, and its call tool keeps its own description', async ($, on) => {
+  projectThatIs(on, 'generated')
+  on('tool.call', () => ({ result: {}, text: 'ok' }))
+  const read = await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__xcode_ide_call_tool', { remoteTool: 'XcodeRead', arguments: '{"filePath":"App/App.swift"}' })
+  expect(read.deny).toBeUndefined()
+  const described = await $.tool.describe({ tool: 'mcp__plugin_xcrew_MobileBuildMCP__xcode_ide_call_tool', description: 'Calls a tool.', provider: { plugin: 'xcrew', tier: 'user' } })
+  expect(described.description).toBe('Calls a tool.')
+})
+
 test('when the CLI can\'t say, XcodeWrite is let through: refusing it would block a classic project', async ($, on) => {
   on('process.run', () => {
     throw new Error('xcrew not built')
@@ -531,6 +554,24 @@ test('switching the Xcode MCP\'s scheme changes what the status line names', asy
 
   await callTool($, 'mcp__xcode__XcodeOpenWorkspace', { path: '/Users/dev/MacroProbe' })
   await callTool($, 'mcp__xcode__XcodeSwitchScheme', { schemeName: 'MacroProbe' })
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect(statuses).toContain('BuildProject · MacroProbe on iPhone 18 Pro · 0:03')
+})
+
+/** How MobileBuildMCP answers a forwarded call: its own envelope, the Xcode MCP's answer in `data.content` (2.7.1's
+ * `toBridgeCallResultDomainResult` in `mcp/tools/xcode-ide/shared.js`; built from the source, not captured). */
+function bridged(remoteTool: string, answer: { text: string }) {
+  return { isError: false, text: JSON.stringify({ schema: 'mobilebuildmcp.output.xcode-bridge-call-result', schemaVersion: '1', didError: false, error: null, data: { remoteTool, succeeded: true, content: [{ type: 'text', text: answer.text }] } }) }
+}
+
+test('a scheme switched through MobileBuildMCP\'s bridge changes what the status line names', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  const statuses = serve(on, { xcode_ide_call_tool: bridged('XcodeSwitchScheme', captured.xcodeSchemeSwitched), xcode_tools_XcodeOpenWorkspace: captured.xcodeWorkspaceOpened }, clock)
+
+  await callTool($, 'mcp__MobileBuildMCP__xcode_tools_XcodeOpenWorkspace', { path: '/Users/dev/MacroProbe' })
+  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__xcode_ide_call_tool', { remoteTool: 'XcodeSwitchScheme', arguments: '{"schemeName":"MacroProbe"}' })
   await callTool($, 'mcp__xcode__BuildProject')
 
   expect(statuses).toContain('BuildProject · MacroProbe on iPhone 18 Pro · 0:03')
