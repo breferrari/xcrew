@@ -74,23 +74,6 @@ struct TestbedLookTests {
         #expect(runs.map(\.configuration) == ["Plan B"])
     }
 
-    /// `look` exports only the recordings, by a glob over their file names: every recording in both captures is named
-    /// `….mp4`, as exported and as suggested, so the glob matches it whichever name it reads, and nothing else is.
-    @Test(arguments: ["xcodebuild", "mobilebuildmcp"])
-    func theRecordingsFilterNamesEveryRecordingAndNothingElse(capture: String) throws {
-        let folder = Self.captures.appending(path: capture)
-        let manifest = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: folder.appending(path: "manifest.json"))) as? [[String: Any]])
-        let attachments = manifest.flatMap { $0["attachments"] as? [[String: Any]] ?? [] }
-        #expect(FailureScreen.recordings == "*.mp4")
-        #expect(attachments.contains { FailureScreen.isMovie(folder.appending(path: $0["exportedFileName"] as? String ?? "")) })
-        for attachment in attachments {
-            let isRecording = FailureScreen.isMovie(folder.appending(path: attachment["exportedFileName"] as? String ?? ""))
-            for key in ["exportedFileName", "suggestedHumanReadableName"] {
-                #expect(((attachment[key] as? String) ?? "").hasSuffix(".mp4") == isRecording, "\(attachment)")
-            }
-        }
-    }
-
     /// The screen at a failure is the last frame of that run's own recording, which stops at the failure: Plan B's,
     /// not Plan A's, for a test that failed under both.
     @Test(arguments: ["xcodebuild", "mobilebuildmcp"])
@@ -155,9 +138,9 @@ struct TestbedLookTests {
             #"    Find the "title" StaticText"#,
             #"    ✗ XCTAssertEqual failed: ("Done") is not equal to ("Welcome")"#,
         ], "\(text)")
-        try #require(lines.count > 8, "\(text)")
+        try #require(lines.count > 9, "\(text)")
         #expect(lines[7].hasPrefix("    screen: \(images.appending(path: "UITests/UITests/testFailsAfterTaps").path)/"), "\(text)")
-        #expect(lines[8] == "  Plan B · iPhone 18 Pro Max, iOS 27.2", "\(text)")
+        #expect(lines[9] == "  Plan B · iPhone 18 Pro Max, iOS 27.2", "\(text)")
     }
 
     /// Without a test named, it looks at the failed tests that kept a recording, in the run's order; a passing test and
@@ -174,5 +157,58 @@ struct TestbedLookTests {
         let planA = try #require(text.components(separatedBy: "xcrew look: ").first { $0.hasPrefix("UITests/testPlanA,") })
         #expect(!planA.contains("Plan A ·"), "\(planA)")
         #expect(planA.contains("Plan B ·"), "\(planA)")
+    }
+
+    /// Under the screen, the elements on it when the query failed, from the hierarchy XCTest attached, with the query's
+    /// element named missing when it isn't among them.
+    @Test func aFailedQueryShowsTheElementsOnScreen() async throws {
+        let (text, _) = try await Self.report(TestID(suite: "UITests", name: "testMissingElement"))
+        let lines = text.components(separatedBy: "\n")
+        let screen = try #require(lines.firstIndex { $0.hasPrefix("    screen: ") }, "\(text)")
+        #expect(Array(lines[(screen + 1)...].prefix(5)) == [
+            #"    on screen, nothing the query's "checkout" Button matches:"#,
+            #"      Application "App""#,
+            #"        StaticText "Welcome", identifier "title""#,
+            #"        StaticText "Plan A", identifier "plan""#,
+            #"        Button "Continue", identifier "continue""#,
+        ], "\(text)")
+    }
+
+    /// An assertion on an element that was found leaves no hierarchy: XCTest attaches one only when a query fails.
+    @Test func anAssertionLeavesNoHierarchy() async throws {
+        let (text, _) = try await Self.report(TestID(suite: "UITests", name: "testFailsAfterTaps"))
+        let lines = text.components(separatedBy: "\n")
+        let screen = try #require(lines.firstIndex { $0.hasPrefix("    screen: ") }, "\(text)")
+        #expect(lines.dropFirst(screen + 1).first == "    on screen: no hierarchy kept; XCTest attaches one when a query fails", "\(text)")
+    }
+
+    /// The hierarchy is told from the query's debug descriptions beside it by its shape, and kept whole beside the screen.
+    @Test func theHierarchyIsFoundByItsShapeAndKeptWhole() async throws {
+        try await Self.inFolder { root in
+            let export = root.appending(path: "export")
+            try FileManager.default.copyItem(at: Self.captures.appending(path: "xcodebuild"), to: export)
+            let test = TestID(suite: "UITests", name: "testPlanA")
+            let run = try #require(FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testPlanA.json"))?.first)
+            let kept = try #require(FailureHierarchy.keep(of: test, run: run, number: nil, attachments: FailureImages.attachments(of: test, in: export), from: export, in: root.appending(path: "images")))
+            #expect(kept.hierarchy?.elements.contains { $0.label == "Plan B" } == true)
+            #expect(try String(contentsOfFile: kept.path, encoding: .utf8).hasPrefix("Application, 0x"))
+            #expect(kept.path.hasPrefix(root.appending(path: "images/UITests/testPlanA").path))
+        }
+    }
+
+    /// When XCTest's hierarchy changes shape, the attachment its name says is the hierarchy is shown as XCTest wrote it.
+    @Test func aHierarchyOfAnotherShapeIsShownAsWritten() async throws {
+        try await Self.inFolder { root in
+            let export = root.appending(path: "export")
+            try FileManager.default.copyItem(at: Self.captures.appending(path: "xcodebuild"), to: export)
+            let test = TestID(suite: "UITests", name: "testMissingElement")
+            let attachments = FailureImages.attachments(of: test, in: export)
+            let run = try #require(FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testMissingElement.json"))?.first)
+            let named = try #require(attachments.first { ($0["suggestedHumanReadableName"] as? String)?.hasPrefix("App UI hierarchy") == true && $0["configurationName"] as? String == run.configuration })
+            try "a shape XCTest may use one day\n  with a second line".write(to: export.appending(path: try #require(named["exportedFileName"] as? String)), atomically: true, encoding: .utf8)
+            let kept = try #require(FailureHierarchy.keep(of: test, run: run, number: nil, attachments: attachments, from: export, in: root.appending(path: "images")))
+            #expect(kept.hierarchy == nil)
+            #expect(kept.text == "a shape XCTest may use one day\n  with a second line")
+        }
     }
 }

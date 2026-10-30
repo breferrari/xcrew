@@ -7,6 +7,8 @@ public enum Look {
     static let mostTests = 3
     /// Failed tests whose steps are read, when none is named, for whether they're UI tests.
     static let mostScanned = 40
+    /// Elements of a hierarchy shown under a failed run; the rest are counted, with the file that holds them all.
+    static let mostElements = 30
 
     /// What `look` says about one test in `bundle`, or, with none named, about its failed UI tests: those whose failed
     /// runs kept a screen recording. Screens are kept under `folder`, in a folder per run, and runs kept there too long
@@ -67,23 +69,22 @@ public enum Look {
         let numbers = runs.indices.map { index in
             runs.filter { key($0) == key(runs[index]) }.count > 1 ? runs[..<index].filter { key($0) == key(runs[index]) }.count + 1 : nil
         }
-        let screens: [FailureScreen?] = if runs.contains(where: \.hasRecording) {
-            await bundle.attachments(of: test, onlyFailures: false, filter: FailureScreen.recordings) { export in
-                let attachments = FailureImages.attachments(of: test, in: export)
-                var screens: [FailureScreen?] = []
-                for (failed, number) in zip(runs, numbers) {
-                    screens.append(failed.hasRecording ? await FailureScreen.keep(of: test, run: failed, number: number, attachments: attachments, from: export, in: run) : nil)
-                }
-                return screens
+        // Every attachment: the hierarchy is told by its content, and the recordings make up nearly all of an export.
+        let kept = await bundle.attachments(of: test, onlyFailures: false) { export in
+            let attachments = FailureImages.attachments(of: test, in: export)
+            var kept: [(screen: FailureScreen?, hierarchy: FailureHierarchy?)] = []
+            for (failed, number) in zip(runs, numbers) {
+                let screen = failed.hasRecording ? await FailureScreen.keep(of: test, run: failed, number: number, attachments: attachments, from: export, in: run) : nil
+                kept.append((screen, FailureHierarchy.keep(of: test, run: failed, number: number, attachments: attachments, from: export, in: run)))
             }
-        } else {
-            runs.map { _ in nil }
+            return kept
         }
         var lines = ["xcrew look: \(test.shown), in \(name)"]
-        for (failed, screen) in zip(runs, screens) {
+        for (failed, found) in zip(runs, kept) {
             lines.append("  " + [failed.configuration, failed.device].filter { !$0.isEmpty }.joined(separator: " · "))
             lines += failed.steps.map { "    \(firstLine($0))" }
-            lines += ["    ✗ \(firstLine(failed.failure))", "    " + screenLine(screen, recorded: failed.hasRecording)]
+            lines += ["    ✗ \(firstLine(failed.failure))", "    " + screenLine(found.screen, recorded: failed.hasRecording)]
+            lines += hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps)).map { "    \($0)" }
         }
         return lines.joined(separator: "\n")
     }
@@ -91,6 +92,20 @@ public enum Look {
     static func screenLine(_ screen: FailureScreen?, recorded: Bool) -> String {
         guard let screen else { return recorded ? "screen: none; its recording couldn't be read" : "screen: none; the run kept no screen recording" }
         return screen.secondsBefore < 1 ? "screen: \(screen.path)" : "screen: \(screen.path) (\(Int(screen.secondsBefore.rounded())) s before the failure)"
+    }
+
+    /// The elements on screen at the failure, the query's marked or named missing; or, for a hierarchy in a shape xcrew
+    /// doesn't read, its text as XCTest wrote it.
+    static func hierarchyLines(_ kept: FailureHierarchy?, query: UIQuery?) -> [String] {
+        guard let kept else { return ["on screen: no hierarchy kept; XCTest attaches one when a query fails"] }
+        let more = { (count: Int) in count > 0 ? ["  and \(count) more in \(kept.path)"] : [] }
+        guard let hierarchy = kept.hierarchy else {
+            let raw = kept.text.split(separator: "\n").map(String.init)
+            return ["on screen, as XCTest wrote it:"] + raw.prefix(mostElements).map { "  \($0)" } + more(raw.count - mostElements)
+        }
+        let shown = hierarchy.lines(query: query, most: mostElements)
+        let head = if let query, !shown.found { "on screen, nothing the query's \"\(query.text)\" \(query.type) matches:" } else { "on screen:" }
+        return [head] + shown.lines.map { "  \($0)" } + more(shown.more)
     }
 
     static func firstLine(_ text: String) -> String {

@@ -11,8 +11,6 @@ struct FailureScreen: Sendable, Equatable {
 
     /// How XCTest names a recording, as exported and as suggested (docs/findings.md).
     static let recordingSuffix = ".mp4"
-    /// What `look` asks an export for: the recordings.
-    static let recordings = "*" + recordingSuffix
 
     /// The screen at `run`'s failure, from its recording among `attachments`, the test's in `export`'s manifest, kept in
     /// `<run folder>/<suite>/<test>/`, numbered when the test failed more than once on one device and configuration.
