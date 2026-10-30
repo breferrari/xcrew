@@ -16,6 +16,7 @@ public enum ConfigWriter {
         _ answers: ProfileAnswers,
         to project: Project,
         simulatorIDs: [String: String] = [:],
+        carried: CarriedDefaults = .init(),
         force: Bool = false,
         now: Date = Date()
     ) throws -> Outcome {
@@ -32,7 +33,7 @@ public enum ConfigWriter {
             backup = config.appendingPathExtension("backup-\(stamp)")
             try fileManager.copyItem(at: config, to: backup!)
         }
-        let content = Data(ConfigRenderer.render(answers, root: project.root, simulatorIDs: simulatorIDs).utf8)
+        let content = Data(ConfigRenderer.render(answers, root: project.root, simulatorIDs: simulatorIDs, carried: carried).utf8)
         // The doctor asks for a restart when the marker is newer than MobileBuildMCP, so the same config isn't written again.
         if existing == content, marker == Self.fingerprint(content) { return .written(backup: nil) }
         try fileManager.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)

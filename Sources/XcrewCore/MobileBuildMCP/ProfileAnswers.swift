@@ -29,6 +29,11 @@ public struct ProfileAnswers: Sendable, Equatable {
         self.uiTestScheme = uiTestScheme.nonEmpty
         self.testScheme = testScheme.nonEmpty
     }
+
+    /// The profiles these answers write, each only with a scheme.
+    public var profileNames: [String] {
+        [("unit", testScheme), ("app", appScheme), ("ui", uiTestScheme)].compactMap { $0.1 == nil ? nil : $0.0 }
+    }
 }
 
 extension Optional where Wrapped == String {

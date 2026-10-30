@@ -77,6 +77,46 @@ import XcrewTestSupport
         #expect(config(project).contains("simulatorName: 'iPhone 18'"))
     }
 
+    /// A profile stands alone in MobileBuildMCP, so the old config's session defaults that setup doesn't set itself go
+    /// into each profile rather than being dropped.
+    static let ownConfig = "schemaVersion: 1\nsessionDefaults:\n  workspacePath: ./App.xcworkspace\n  derivedDataPath: ./.mobilebuildmcp/DerivedData\n  suppressWarnings: false\n  platform: iOS\n  env:\n    APP_MODE: test\n"
+
+    @Test func theOldSessionDefaultsSetupDoesntSetGoIntoEachProfile() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write(Self.ownConfig, to: ".mobilebuildmcp/config.yaml")
+        let run = await Run("setup", "--force", "--test-scheme", "AppTests", "--app-scheme", "App", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        #expect(run.status == 0)
+        let carried = "    derivedDataPath: ./.mobilebuildmcp/DerivedData\n    suppressWarnings: false\n    platform: iOS\n    env:\n      APP_MODE: test\n"
+        #expect(config(project).contains("  unit:\n    workspacePath: '\(project.root.path)/App.xcworkspace'\n    scheme: 'AppTests'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n" + carried))
+        #expect(config(project).contains("  app:\n    workspacePath: '\(project.root.path)/App.xcworkspace'\n    scheme: 'App'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n" + carried))
+        #expect(!config(project).contains("./App.xcworkspace"))
+        #expect(run.text.contains("xcrew: carried derivedDataPath, env, platform, suppressWarnings from the old config into each profile"))
+    }
+
+    /// Setup run again over its own config keeps what it carried, in each profile.
+    @Test func whatSetupCarriedStaysWhenItRunsAgain() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write(Self.ownConfig, to: ".mobilebuildmcp/config.yaml")
+        _ = await Run("setup", "--force", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        let first = config(project)
+        let again = await Run("setup", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        #expect(again.status == 0)
+        #expect(config(project) == first)
+        #expect(first.contains("    derivedDataPath: ./.mobilebuildmcp/DerivedData\n"))
+    }
+
+    /// A simulator that isn't installed gets no ID, and MobileBuildMCP finds one only for the active profile: setup says
+    /// so, and which are installed, but writes it, since the person may add it next.
+    @Test func aSimulatorThatIsntInstalledIsNamedWithTheInstalledOnes() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let run = await Run("setup", "--test-scheme", "AppTests", "--app-scheme", "App", "--app-simulator", "iPhone 16", context: .fake(simulators, project: project))
+        #expect(run.status == 0)
+        #expect(config(project).contains("simulatorName: 'iPhone 16'"))
+        #expect(run.text.contains("xcrew: no simulator named iPhone 16 is installed (installed iPhones: iPhone 18): add it in Xcode, or rerun with --app-simulator and one of those"))
+        let test = await Run("setup", "--force", "--test-scheme", "AppTests", "--test-simulator", "iPhone 17", context: .fake(simulators, project: project))
+        #expect(test.text.contains("xcrew: no simulator named iPhone 17 is installed (installed iPhones: iPhone 18): add it in Xcode, or rerun with --test-simulator and one of those"))
+    }
+
     @Test func mcsAnswersFillWhatOptionsLeaveOut() async {
         let project = Project.temporary(containing: ["App.xcworkspace", "Other.xcworkspace"])
         let environment = ["MCS_RESOLVED_PROJECT": "./Other.xcworkspace", "MCS_RESOLVED_APP_SCHEME": "App", "MCS_RESOLVED_TEST_SIMULATOR": ""]

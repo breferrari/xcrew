@@ -90,7 +90,20 @@ struct SetupCommand: Command {
         let simulatorIDs = [answers.testSimulator, answers.appSimulator].reduce(into: [String: String]()) { ids, name in
             ids[name] = catalog.udid(of: name)
         }
-        switch try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, force: invocation.arguments.has("force")) {
+        // A name that isn't installed gets no ID, and MobileBuildMCP looks one up only for the active profile; it's still
+        // written, since the person may add that simulator next.
+        let installed = catalog.iPhoneNames.joined(separator: ", ")
+        var named: Set<String> = []
+        for (name, option) in [(answers.testSimulator, "test-simulator"), (answers.appSimulator, "app-simulator")] where simulatorIDs[name] == nil && named.insert(name).inserted {
+            notes.append("xcrew: no simulator named \(name) is installed (installed iPhones: \(installed.isEmpty ? "none" : installed)): add it in Xcode, or rerun with --\(option) and one of those")
+        }
+        // The old config's session defaults that setup doesn't set go into each profile, rather than being dropped.
+        let carried = (try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)).map(CarriedDefaults.init) ?? CarriedDefaults()
+        let carriedKeys = carried.keys(for: answers.profileNames)
+        if !carriedKeys.isEmpty {
+            notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into each profile")
+        }
+        switch try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force")) {
         case .keptEdited:
             invocation.print("xcrew: .mobilebuildmcp/config.yaml was edited after xcrew wrote it; left as is (--force replaces it, keeping a backup)")
         case .keptUnmanaged:

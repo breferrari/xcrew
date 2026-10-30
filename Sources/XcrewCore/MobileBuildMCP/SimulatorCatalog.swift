@@ -105,6 +105,9 @@ public struct SimulatorCatalog: Sendable {
 
     public var names: Set<String> { Set(devices.map(\.name)) }
 
+    /// The installed iPhones' names, each once, sorted.
+    public var iPhoneNames: [String] { Array(Set(devices.filter(\.isIPhone).map(\.name))).sorted() }
+
     /// The UDID of the simulator called `name`, on the newest runtime that has one, as `defaultIPhone` picks runtimes.
     public func udid(of name: String) -> String? {
         devices.filter { $0.name == name && $0.udid != nil }.max { Version($0.runtimeVersion) < Version($1.runtimeVersion) }?.udid
