@@ -37,14 +37,17 @@ public struct SessionBriefing: Sendable {
         project.xcodePin.map { "This project pins Xcode \($0.version) (`\($0.file)`). MobileBuildMCP starts with it when it's installed and xcrew's CLI is ready, and `xcrew doctor` says when it didn't. The Xcode MCP works through whichever Xcode is open." }
     }
 
-    /// The selected Xcode's simulator app when it's DeviceHub, as from Xcode 27, which has no Simulator.app to open.
+    /// The selected Xcode's simulator app when it's DeviceHub, as from Xcode 27, and no Xcode in the applications folder
+    /// has a Simulator.app for `open -a Simulator` to open.
     func simulatorApp() async -> String? {
-        guard let xcode = await Xcodes.selected(on: machine, timeout: Self.versionTimeout), xcode.hasDeviceHubOnly else { return nil }
+        guard let xcode = await Xcodes.selected(on: machine, timeout: Self.versionTimeout), xcode.hasDeviceHubOnly,
+              !Xcodes.applications(on: machine).compactMap(Xcodes.install(at:)).contains(where: \.hasSimulatorApp)
+        else { return nil }
         return Self.deviceHubNote(xcode.label)
     }
 
     static func deviceHubNote(_ xcode: String) -> String {
-        "\(xcode) shows simulators in DeviceHub (`open -a DeviceHub`); it has no Simulator.app."
+        "\(xcode) shows simulators in DeviceHub (`open -a DeviceHub`); no Xcode here has Simulator.app."
     }
 
     /// Each test plan the schemes run by default that tests under several configurations, so Claude knows a test can fail

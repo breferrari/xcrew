@@ -267,8 +267,8 @@ import XcrewTestSupport
     }
 
     /// The headless Xcode MCP serves with no Xcode window open, and runs no Xcode app the process list shows.
-    @Test func noOpenXcodeWithTheHeadlessMCPSaysItServes() async {
+    @Test func noOpenXcodeWithTheHeadlessMCPSaysItIsEnabled() async {
         let result = await XcodeOpenCheck().run(context(mcpStatus: "Permission: enabled\nApproved agents:\n  com.anthropic.claude-code\n"))
-        #expect(result == .pass("no Xcode window is open; the Xcode MCP runs headless"))
+        #expect(result == .pass("no Xcode window is open; the headless Xcode MCP is enabled"))
     }
 }

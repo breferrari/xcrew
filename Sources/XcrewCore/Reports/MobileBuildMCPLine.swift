@@ -54,10 +54,10 @@ enum MobileBuildMCPLine {
         line.firstMatch(of: #/^(\s*)⚠ (.+)$/#).map { (String($0.1), String($0.2)) }
     }
 
-    /// `LLVM Profile Error: Failed to write file "default.profraw": …`, the coverage runtime's own complaint, such as in a
-    /// folder it may not write to: the run goes on, so it is no error of the run's.
+    /// `LLVM Profile Error: Failed to write file "default.profraw": …`, the coverage runtime failing to write its profile,
+    /// such as in a folder it may not write to: the run goes on, so it is no error of the run's. Its other errors are.
     static func isCoverageRuntime(_ entry: String) -> Bool {
-        entry.hasPrefix("LLVM Profile Error: ")
+        entry.hasPrefix(#"LLVM Profile Error: Failed to write file ""#) && entry.contains(#".profraw":"#)
     }
 
     /// `| \`- error: …`, the compiler's excerpt of an error listed just above, as an entry of its own.

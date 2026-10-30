@@ -10,9 +10,9 @@
 - A CI workflow that chooses its Xcode from `.xcode-version` now counts as CI using the pinned Xcode, so `xcrew xcode` and the doctor name it instead of saying CI names none.
 - `xcrew why`, and a failed build's notes, now recognise a build database another build still holds (`database is locked`) and name the `xcodebuild` left running, with its pid and how to stop it, instead of blaming the code.
 - `xcrew doctor` names an `xcodebuild` still building the project after what started it exited, such as a call stopped before its session ended, which holds the build folder so the next build fails, with its pid and how to stop it. One MobileBuildMCP still runs in a live session, from a stopped call or one moved to the background, shows in the full doctor.
-- With Xcode 27, Claude learns at the start that simulators show in DeviceHub, which has replaced Simulator.app, so it opens the right app.
-- A test run's failures no longer list the coverage runtime's `default.profraw` error, which isn't why a run fails.
-- `xcrew doctor` says the Xcode MCP runs headless when no Xcode window is open, instead of only "Xcode isn't open".
+- With Xcode 27 and no older Xcode beside it, Claude learns at the start that simulators show in DeviceHub, which has replaced Simulator.app, so it opens the right app.
+- A test run's failures, and `xcrew why`, no longer count the coverage runtime's failure to write `default.profraw`, which isn't why a run fails.
+- `xcrew doctor` says the headless Xcode MCP is enabled when no Xcode window is open, instead of only "Xcode isn't open".
 - `xcrew doctor --problems` names the warnings it keeps off the prompt, such as the pinned Xcode's, so its "No problems." no longer contradicts the full doctor.
 - xcrew's notes to Claude now state facts and offer tools instead of prescribing steps. It still routes work across its servers and guards your work: DerivedData isn't deleted unless you ask, and a snapshot's reference is re-recorded only with your agreement.
 - The red-to-green ledger turns a test green once any run that ran it passes, a run of its class or target after it failed under its own method filter included, and a test that failed every repeated run reads "failed every run" rather than "failed some of its repeated runs".

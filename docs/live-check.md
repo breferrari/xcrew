@@ -29,7 +29,7 @@ C. A clean run. Delete the probe file and run the target again. It passes, and t
 
 D. Doctor. Find the plugin's `bin/xcrew` (under ~/.claude/plugins/cache) and run:
    1. `xcrew doctor`: every check, including `xcrew/up-to-date`.
-   2. `xcrew doctor --problems`: only failures and warnings, or `No problems.`, with no `xcrew/up-to-date` line.
+   2. `xcrew doctor --problems`: only failures and warnings, or `No problems.`, then a `Kept off the prompt:` line naming any warning it leaves off the prompt (such as `xcode/pin`), with no `xcrew/up-to-date` line.
    3. `HTTPS_PROXY=http://10.255.255.1:9 xcrew doctor`: `xcrew/up-to-date` is skipped with "<version>: couldn't reach GitHub to compare", within about 5 seconds.
 
 E. The CLI's shim, with the same `bin/xcrew`:

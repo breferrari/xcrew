@@ -197,6 +197,17 @@ func failingRunText(passing: Int) -> String {
         #expect(Captured.output("mobileTestsFailed").mobileText?.withoutExcerpts() == nil)
     }
 
+    /// The coverage runtime's write failure is left out of the shortened text and its count, and is never read as the
+    /// lines that go on from an error above it; another of its errors stays.
+    @Test func theCoverageRuntimesWriteFailureIsLeftOut() {
+        let shortened = Captured.output("mobileTestsBuildFailed").mobileText?.withoutExcerpts()?.text ?? ""
+        #expect(shortened.contains("Errors (1):") && !shortened.contains("LLVM Profile Error"))
+        let adjoining = "🧪 Test\n\nErrors (2):\n\n  ✗ Build failed: linker error\n  ✗ LLVM Profile Error: Failed to write file \"default.profraw\": Operation not permitted\n"
+        #expect(ToolOutput(text: adjoining, server: .mobileBuildMCP).reportedErrors.map(\.detail) == [[]])
+        let corrupt = "🧪 Test\n\nErrors (1):\n\n  ✗ LLVM Profile Error: Invalid profile data to merge\n"
+        #expect(ToolOutput(text: corrupt, server: .mobileBuildMCP).failures.map(\.title) == ["LLVM Profile Error"])
+    }
+
     @Test func aLeftOutListIsPointedToWithoutACountOfItsOwn() throws {
         let compact = try #require(Captured.output("mobileTestsPassed").compactTestResult(savedPath: "/saved.txt"))
         let json = try #require((ResultBundle.parse(compact) as? [String: Any])?["data"] as? [String: Any])
@@ -500,10 +511,10 @@ func failingRunText(passing: Int) -> String {
 
     /// A warning kept off the prompt, such as the pin's, is named, so "No problems." doesn't contradict the full doctor.
     @Test func doctorProblemsNamesWhatItKeepsOffThePrompt() {
-        let kept = "Kept off the prompt, as a choice you may have made: xcode/pin. `xcrew doctor` shows it."
+        let kept = "Kept off the prompt: xcode/pin. `xcrew doctor` shows it."
         #expect(Doctor.problemsText(lines: [], kept: ["xcode/pin"]) == ["No problems.", kept])
         #expect(Doctor.problemsText(lines: ["warn  a/b  c"], kept: ["xcode/pin"]) == ["warn  a/b  c", kept])
-        #expect(Doctor.problemsText(lines: [], kept: ["xcode/pin", "xcode/ci"]) == ["No problems.", "Kept off the prompt, as choices you may have made: xcode/pin and xcode/ci. `xcrew doctor` shows them."])
+        #expect(Doctor.problemsText(lines: [], kept: ["xcode/pin", "xcode/ci"]) == ["No problems.", "Kept off the prompt: xcode/pin and xcode/ci. `xcrew doctor` shows them."])
     }
 }
 

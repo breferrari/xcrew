@@ -11,8 +11,12 @@ public struct XcodeInstall: Sendable, Equatable {
 
     /// Whether it shows simulators in DeviceHub and has no Simulator.app, as from Xcode 27, read from the bundle.
     var hasDeviceHubOnly: Bool {
-        FileManager.default.fileExists(atPath: "\(path)/Contents/Applications/DeviceHub.app")
-            && !FileManager.default.fileExists(atPath: "\(developerFolder)/Applications/Simulator.app")
+        FileManager.default.fileExists(atPath: "\(path)/Contents/Applications/DeviceHub.app") && !hasSimulatorApp
+    }
+
+    /// Whether it ships Simulator.app, which `open -a Simulator` opens.
+    var hasSimulatorApp: Bool {
+        FileManager.default.fileExists(atPath: "\(developerFolder)/Applications/Simulator.app")
     }
 
     /// The folder `DEVELOPER_DIR` names for it.

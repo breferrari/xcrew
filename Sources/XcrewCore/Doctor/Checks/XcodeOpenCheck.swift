@@ -2,7 +2,7 @@ import Foundation
 
 /// The Xcode MCP works through the Xcode that's open, which no pin changes; MobileBuildMCP builds with the pinned or
 /// selected one. Two different ones are two toolchains in one session. The headless Xcode MCP runs with no Xcode app
-/// open, which the process list doesn't show.
+/// open, which the process list doesn't show; which Xcode it serves through isn't known here, so it isn't compared.
 struct XcodeOpenCheck: Check {
     let id = "xcode/open"
     let title = "The open Xcode is the one builds use"
@@ -11,7 +11,7 @@ struct XcodeOpenCheck: Check {
         let xcodes = await context.xcodes.value()
         guard !xcodes.open.isEmpty else {
             let headless = HeadlessXcodeMCPCheck.isEnabled(await context.xcodeMCPStatus.value())
-            return .pass(headless ? "no Xcode window is open; the Xcode MCP runs headless" : "Xcode isn't open")
+            return .pass(headless ? "no Xcode window is open; the headless Xcode MCP is enabled" : "Xcode isn't open")
         }
         guard let builds = xcodes.forBuilds else { return .skip("no Xcode is selected here") }
         guard let other = xcodes.open.first(where: { !$0.isSameToolchain(as: builds) }) else {

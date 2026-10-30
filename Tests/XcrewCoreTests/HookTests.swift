@@ -59,8 +59,34 @@ import XcrewTestSupport
         let base = Self.machine(project, version: "2.7.1")
         let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps)
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
-        #expect(text.contains("- **xcrew:** Xcode 27.2 shows simulators in DeviceHub (`open -a DeviceHub`); it has no Simulator.app.") == named, "\(text)")
+        #expect(text.contains("- **xcrew:** Xcode 27.2 shows simulators in DeviceHub (`open -a DeviceHub`); no Xcode here has Simulator.app.") == named, "\(text)")
     }
+
+    /// Another Xcode's Simulator.app still opens with `open -a Simulator`, so DeviceHub isn't named over it.
+    @Test func briefingLeavesDeviceHubOutWhileAnotherXcodeHasSimulatorApp() async throws {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let apps = FileManager.default.temporaryDirectory.appending(path: "xcrew-apps-\(UUID().uuidString)")
+        FakeXcode.install(in: apps, "Xcode-27.2.app", version: "27.2", build: "27C5")
+        FakeXcode.install(in: apps, "Xcode-26.4.app", version: "26.4", build: "17E192")
+        try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-27.2.app/Contents/Applications/DeviceHub.app"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-26.4.app/Contents/Developer/Applications/Simulator.app"), withIntermediateDirectories: true)
+        let base = Self.machine(project, version: "2.7.1")
+        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps)
+        let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
+        #expect(!text.contains("DeviceHub"), "\(text)")
+    }
+
+    /// The installed Xcode the tests run with, from 27 on, keeps its simulator app where the briefing looks.
+    @Test(.enabled(if: (Version.major(of: Self.installedXcode?.version ?? "") ?? 0) >= 27, "no Xcode 27 or later selected"))
+    func theSelectedXcodeKeepsDeviceHubWhereTheBriefingLooks() async throws {
+        let xcode = try #require(Self.installedXcode)
+        #expect(xcode.hasDeviceHubOnly, "\(xcode.path) moved DeviceHub.app or ships Simulator.app again")
+    }
+
+    static let installedXcode: XcodeInstall? = {
+        let developer = ProcessInfo.processInfo.environment["DEVELOPER_DIR"] ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
+        return developer.flatMap(Xcodes.app(holding:)).flatMap(Xcodes.install(at:))
+    }()
 
     /// A worktree whose main checkout has a config is offered the worktree's setup, which copies it, not a fresh one.
     @Test func briefingOffersAWorktreeTheMainCheckoutsConfig() async {

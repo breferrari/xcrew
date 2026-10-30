@@ -25,6 +25,8 @@ struct MobileText: Sendable {
         case skipReason
         case passed
         case summary
+        /// The coverage runtime's failure to write its profile, which is no error of the run's.
+        case coverageRuntime
         case other
     }
 
@@ -34,7 +36,9 @@ struct MobileText: Sendable {
 
         init(_ text: String) {
             self.text = text
-            if let entry = MobileBuildMCPLine.entry(text), !MobileBuildMCPLine.isCoverageRuntime(entry) {
+            if let entry = MobileBuildMCPLine.entry(text), MobileBuildMCPLine.isCoverageRuntime(entry) {
+                kind = .coverageRuntime
+            } else if let entry = MobileBuildMCPLine.entry(text) {
                 kind = .entry(Entry(text: entry, failing: MobileBuildMCPLine.test(in: entry)))
             } else if let location = MobileBuildMCPLine.location(text) {
                 kind = .location(path: location.path, line: location.line)
@@ -88,6 +92,11 @@ struct MobileText: Sendable {
         }
 
         var isBlank: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
+
+        var isCoverageRuntime: Bool {
+            if case .coverageRuntime = kind { return true }
+            return false
+        }
     }
 
     var lines: [Line]
@@ -258,7 +267,7 @@ struct MobileText: Sendable {
         var kept: [Line] = []
         var dropped = 0
         for line in lines {
-            if line.entry?.isExcerpt == true {
+            if line.entry?.isExcerpt == true || line.isCoverageRuntime {
                 dropped += 1
                 if kept.last?.isBlank == true { kept.removeLast() }
                 continue
