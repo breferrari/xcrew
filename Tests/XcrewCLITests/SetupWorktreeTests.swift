@@ -87,7 +87,7 @@ import XcrewTestSupport
         let (worktree, context) = Self.worktree(main: main)
         let run = await Run("setup", "--worktree", "--test-scheme", "AppTests", context: context)
         #expect(run.status == 64)
-        #expect(run.errors == ["setup --worktree takes no option but --force and --no-simulator: the profiles are the main checkout's"])
+        #expect(run.errors == ["setup --worktree takes no option but --force, --no-simulator and --fresh-simulator: the profiles are the main checkout's"])
         #expect(Self.config(worktree) == nil)
     }
 
@@ -239,7 +239,7 @@ import XcrewTestSupport
 
     // MARK: Cloned when it can be
 
-    /// A worktree of a main checkout whose simulator is shut down, where `simctl clone` answers `cloned`.
+    /// A worktree of a main checkout whose simulator is shut down, where `simctl clone` answers `CLONE-UDID`.
     static func withShutDownSimulator() -> (worktree: Project, runner: FakeRunner, name: String) {
         let (_, worktree, context, name) = withSimulator()
         var runner = context.runner as? FakeRunner ?? FakeRunner()
@@ -248,8 +248,7 @@ import XcrewTestSupport
         return (worktree, runner, name)
     }
 
-    /// A shut-down main simulator is cloned: settled already, its first boot in the worktree skips a fresh device's
-    /// daemon crashes, and it brings the main checkout's apps and data, as setup says.
+    /// A shut-down main simulator is cloned: settled already, and bringing the main checkout's apps and data, as setup says.
     @Test func aShutDownMainSimulatorIsCloned() async {
         let (worktree, runner, name) = Self.withShutDownSimulator()
         let run = await Run("setup", "--worktree", context: .fake(runner, project: worktree))
@@ -270,5 +269,46 @@ import XcrewTestSupport
         let run = await Run("setup", "--worktree", "--fresh-simulator", context: .fake(runner, project: worktree))
         #expect(run.output.contains("xcrew: created simulator `\(name)` (iPhone 18 Pro, iOS 27.2) for this worktree"), "\(run.output)")
         #expect(Self.config(worktree)?.contains("    simulatorId: 'NEW-UDID'\n") == true)
+    }
+
+    /// A clone that fails falls back to a fresh one, saying why.
+    @Test func aFailedCloneFallsBackToAFreshOne() async {
+        let (worktree, shutDown, name) = Self.withShutDownSimulator()
+        var runner = shutDown
+        runner.responses["xcrun simctl clone MAIN-UDID \(name)"] = CommandResult(status: 1, stdout: "", stderr: "Unable to clone device.\n")
+        let run = await Run("setup", "--worktree", context: .fake(runner, project: worktree))
+        #expect(run.output.contains("xcrew: created simulator `\(name)` (iPhone 18 Pro, iOS 27.2) fresh for this worktree: cloning iPhone 18 Pro failed (Unable to clone device.)"), "\(run.output)")
+        #expect(Self.config(worktree)?.contains("    simulatorId: 'NEW-UDID'\n") == true)
+    }
+
+    /// One made earlier stays the worktree's: `--fresh-simulator` says how to start clean rather than make a twin.
+    @Test func freshSimulatorKeepsOneMadeEarlierAndSaysHowToStartClean() async {
+        let (worktree, shutDown, name) = Self.withShutDownSimulator()
+        var runner = shutDown
+        runner.responses["xcrun simctl list devices available --json"] = CommandResult(status: 0, stdout: Self.listed([("iPhone 18 Pro", "MAIN-UDID"), (name, "EARLIER-UDID")], state: "Shutdown"))
+        let run = await Run("setup", "--worktree", "--fresh-simulator", context: .fake(runner, project: worktree))
+        #expect(run.output.contains("xcrew: this worktree uses simulator `\(name)` (iPhone 18 Pro, iOS 27.2), made for it earlier; `xcrun simctl delete EARLIER-UDID` and setup again make a fresh one"), "\(run.output)")
+    }
+
+    /// Sharing the main checkout's simulator and making a fresh one can't both be.
+    @Test func noSimulatorAndFreshSimulatorTogetherAreAUsageError() async {
+        let (_, _, context, _) = Self.withSimulator()
+        let run = await Run("setup", "--worktree", "--no-simulator", "--fresh-simulator", context: context)
+        #expect(run.status == 64)
+        #expect(run.errors == ["setup --worktree takes --no-simulator or --fresh-simulator, not both"])
+    }
+
+    @Test func freshSimulatorWithoutWorktreeIsAUsageError() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        #expect(await Run("setup", "--fresh-simulator", context: .fake(project: project)).errors == ["setup --fresh-simulator goes with --worktree: plain setup makes no simulator"])
+    }
+
+    /// A main simulator neither shut down nor booted, as one still shutting down, is said as it is.
+    @Test func aMainSimulatorShuttingDownIsSaidAsItIs() async {
+        let (worktree, shutDown, name) = Self.withShutDownSimulator()
+        var runner = shutDown
+        runner.responses["xcrun simctl list devices available --json"] = CommandResult(status: 0, stdout: Self.listed([("iPhone 18 Pro", "MAIN-UDID")], state: "Shutting Down"))
+        let run = await Run("setup", "--worktree", context: .fake(runner, project: worktree))
+        #expect(run.output.contains("xcrew: created simulator `\(name)` (iPhone 18 Pro, iOS 27.2) fresh for this worktree: iPhone 18 Pro isn't shut down (Shutting Down), and only a shut-down simulator can be cloned"), "\(run.output)")
     }
 }

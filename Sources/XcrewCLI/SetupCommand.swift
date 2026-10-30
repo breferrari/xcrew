@@ -152,7 +152,10 @@ struct SetupCommand: Command {
     func worktree(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         guard invocation.arguments.values.isEmpty else {
-            throw UsageError(description: "setup --worktree takes no option but --force and --no-simulator: the profiles are the main checkout's")
+            throw UsageError(description: "setup --worktree takes no option but --force, --no-simulator and --fresh-simulator: the profiles are the main checkout's")
+        }
+        if invocation.arguments.has("no-simulator"), invocation.arguments.has("fresh-simulator") {
+            throw UsageError(description: "setup --worktree takes --no-simulator or --fresh-simulator, not both")
         }
         guard let checkout = await Worktree.checkout(of: context.project, using: context.runner) else {
             throw UsageError(description: "setup --worktree runs in a linked git worktree; this is a main checkout, or not in git")
