@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.2 — 2026-10-30
 
 - In a config of your own that still enables MobileBuildMCP's `xcode-ide` group, Xcode MCP tools it forwards get Xcrew's checks too. In a generated project you're asked before `XcodeWrite`, and a build after a manifest edit is held back for the generate. Tools it proxies are timed and named in the status line as the Xcode MCP's own.
 
