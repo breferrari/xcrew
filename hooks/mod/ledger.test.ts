@@ -68,6 +68,30 @@ test('a pass of another selection never ran the test: it stays red', async ($, o
   expect(text).not.toContain('Red, then green')
 })
 
+for (const selection of ['AppTests/GreetingTests', 'AppTests']) {
+  test(`a test red under its method is green once a run of ${selection} passes`, async ($, on) => {
+    project(on, [FAILED, PASSED])
+    await run($, 'AppTests/GreetingTests/testHello')
+    await run($, selection)
+    expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
+  })
+}
+
+test('a pass of a sibling class or another target never ran the test: it stays red', async ($, on) => {
+  project(on, [FAILED, PASSED, PASSED])
+  await run($, 'AppTests/GreetingTests/testHello')
+  await run($, 'AppTests/FarewellTests')
+  await run($, 'OtherTests/GreetingTests')
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+})
+
+test('a test red under its target is green once a run of its class in that target passes', async ($, on) => {
+  project(on, [FAILED, PASSED])
+  await run($, 'AppTests')
+  await run($, 'AppTests/GreetingTests')
+  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
+})
+
 test('a pass of the whole suite on the same tool and scheme turns a selection\'s red green', async ($, on) => {
   project(on, [FAILED, PASSED])
   await run($, 'AppTests')
@@ -266,6 +290,17 @@ test('a mixed result is flaky even when the failures leave the test out', async 
   await run($, 'AppTests/GreetingTests/testHello')
   await repeat($)
   expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs)`)
+})
+
+test('a test that failed every repeated run, with no failure of its own listed, reads as the verdict says', async ($, on) => {
+  project(on, [{ ok: false, repeated: [{ test: TEST, failed: 5, passed: 0, runs: 5, verdict: 'real' }] }, { ok: true, repeated: [{ test: 'GreetingTests/testBye', failed: 2, passed: 3, runs: 5, verdict: 'flaky' }] }])
+  await repeat($)
+  await repeat($)
+  const text = await ledgerText($)
+  expect(text).toContain(`- ${TEST}: red`)
+  expect(text).toContain(': failed every run, a real failure')
+  expect(text).toContain(': flaky, failing 2 of 5')
+  expect(text).not.toContain('failed some of its repeated runs')
 })
 
 test('runs that gave no verdict clear nothing', async ($, on) => {
