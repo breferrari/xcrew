@@ -49,6 +49,8 @@ export function stubCli(
     project?: ProjectAnswer | ((args: readonly string[]) => ProjectAnswer | Promise<ProjectAnswer>)
     /** What `xcrew affected` answers, for its arguments. */
     affected?: (args: readonly string[]) => unknown
+    /** The text `xcrew look` prints, for its arguments, or the Error it fails with. */
+    look?: (args: readonly string[]) => string | Error
     noBuild?: boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
   } = {},
@@ -62,6 +64,8 @@ export function stubCli(
     calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
     if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
+    const looked = args[0] === 'look' ? (answers.look?.(args) ?? '') : undefined
+    if (looked instanceof Error) throw looked
     if (program === BUILT_BINARY && answers.build) {
       if (answers.build.fails === 'by timing out') await answers.build.clock.advance(timeoutMs ?? 30_000)
       throw new Error(answers.build.fails === 'to start' ? 'spawn ENOENT' : 'timed out')
@@ -74,7 +78,7 @@ export function stubCli(
       : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
       : null
     )
-    const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : JSON.stringify(answer)
+    const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : (looked ?? JSON.stringify(answer))
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return calls

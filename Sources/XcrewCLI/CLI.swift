@@ -13,6 +13,7 @@ public enum CLI {
         XcodeSkillsCommand(),
         XcodeCommand(),
         WhyCommand(),
+        LookCommand(),
         HookCommand(),
     ]
 

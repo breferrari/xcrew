@@ -7,6 +7,7 @@ import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { describe, historyOf, isFullSuiteRun, isRepeatedRun, lost, observe, runsWholeScope } from './context'
+import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { afterFullRun, type Crossing, loopNote } from './loop'
@@ -269,6 +270,8 @@ export const register: Register = on => {
   on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => ({ result: affectedText(await answer($, affectedArgs(e as unknown as Record<string, unknown>), 120_000)) }))
   // Claude's read of the ledger, for a pull request's test plan.
   on('tool.call', { tool: LEDGER_TOOL_NAME }, async $ => ({ result: await ledgerNow($) }))
+  // Claude's look at a failed UI test: the steps before the failure and the screen at it.
+  on('tool.call', { tool: LOOK_TOOL_NAME }, async ($, e) => ({ result: await cliText($, lookArgs(e as unknown as Record<string, unknown>)) }))
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
     if (subcommand === 'doctor') return { text: await cliText($, ['doctor']) }
@@ -290,7 +293,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register(COMMAND)
-    for (const tool of [LEDGER_TOOL, AFFECTED_TOOL]) await quietly(() => $.tool.register(tool))
+    for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL]) await quietly(() => $.tool.register(tool))
     // A cleared conversation is a new session: its warnings show again.
     found = []
     seenAt = {}

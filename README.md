@@ -217,9 +217,9 @@ ok    xcrew/up-to-date                 0.8.9, the latest release
 | --- | --- |
 | MCP servers | MobileBuildMCP (started in your project, telemetry off, with the project's pinned Xcode), the Xcode MCP (`xcrun mcpbridge`), Sosumi |
 | Session briefing | The routing rules in [`context/routing.md`](context/routing.md), plus what this project or Mac still lacks, the pinned Xcode, the simulators booted, and where builds go when MobileBuildMCP isn't usable; silent outside Apple-platform projects. `xcrew hook` writes it |
-| Mod | The live line above the prompt, the failures pane, the project card, the `XcodeWrite` and generated-file guards and a note in `XcodeWrite`'s description (in generated projects), the refusal of a build after a manifest edit, the `/xcrew` command, and the `affected` and ledger tools Claude asks. It hands each result to the CLI and passes on what the CLI makes of it |
+| Mod | The live line above the prompt, the failures pane, the project card, the `XcodeWrite` and generated-file guards and a note in `XcodeWrite`'s description (in generated projects), the refusal of a build after a manifest edit, the `/xcrew` command, and the `affected`, ledger and `look` tools Claude asks. It hands each result to the CLI and passes on what the CLI makes of it |
 | Skills | `/xcrew:setup`, and `xcrew:reference`, which Claude loads when something fails (it isn't in the `/` menu) |
-| CLI | `xcrew setup`, `doctor`, `xcode`, `affected`, `why`, `xcode-skills`, on the `PATH` of Claude's Bash tool and of your `!` commands while the plugin is enabled; `report`, `phase` and `project`, which read the servers' output and the project for the mod and the skills, and `card`, which keeps the mod's project card for the session-start hook |
+| CLI | `xcrew setup`, `doctor`, `xcode`, `affected`, `why`, `look`, `xcode-skills`, on the `PATH` of Claude's Bash tool and of your `!` commands while the plugin is enabled; `report`, `phase` and `project`, which read the servers' output and the project for the mod and the skills, and `card`, which keeps the mod's project card for the session-start hook |
 
 - **One implementation.** All logic lives in one dependency-free Swift package; the plugin, the mod and mcs call its CLI.
 - **No drift.** `Tests/ManifestTests` fails when an install path disagrees with the CLI.

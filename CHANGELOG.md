@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- When a UI test fails, Claude can look at the screen at the failure: the `look` tool gives, for each test-plan configuration and device it failed on, the last steps before it and a picture of the screen, the last frame of the run's recording. `xcrew look` prints the same.
 - When a snapshot test fails, Claude sees its images: the reference, the failing render and their difference, listed under the test and in the failures pane. Claude looks at them before changing the code or the reference, and re-records a reference only when you agree the new render is right.
 
 ## 0.9.3 — 2026-10-30
