@@ -12,7 +12,6 @@ minMCSVersion: "2026.10.30"
 ignore:
   # Nothing the plugin runs belongs here: mcs never announces an update for a change under an ignored path.
   - Tests/
-  - assets/
   - docs/
   - CONTRIBUTING.md
   - SECURITY.md

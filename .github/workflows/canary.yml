@@ -74,6 +74,8 @@ jobs:
           if grep -F "mobilebuildmcp-server" "$log"; then echo "the launcher wrote to the server's standard error" >&2; exit 1; fi
           record="${XCREW_CACHE:-$HOME/Library/Caches/xcrew}/launches$(cd "$project" && pwd -P).launch"
           if [ -e "$record" ]; then echo "a launch record for a project with no pin: $(cat "$record")" >&2; exit 1; fi
+      - name: The README's images still load
+        run: scripts/readme-images.sh 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       - name: Sosumi answers
         run: |
           curl --fail --silent --show-error --max-time 20 -o /dev/null https://sosumi.ai/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"0"}}}'

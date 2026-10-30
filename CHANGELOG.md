@@ -5,6 +5,7 @@
 - When Claude runs the whole test suite again and again in a short while, the run that makes it a habit tells Claude to run only the tests the change can break, and the whole suite again before the pull request. A fast suite never hears it.
 - A project that pins its Xcode in `.xcode-version` builds and tests with it through MobileBuildMCP, even when another is selected. `xcrew doctor` says when the pin can't apply, when CI uses another Xcode, and when the Xcode that's open isn't the one builds use, which would put two toolchains in one session. `/xcrew xcode` shows which is which, in the chat.
 - When a build fails because of the Mac rather than the code, such as a corrupt module cache or a simulator that's gone, Claude is told so, with the fix to run, instead of editing code that was never wrong. `xcrew why` says the same of an earlier failure. A failure the Mac doesn't explain gets no such note.
+- Installs are about 3 MB smaller: the README's images no longer come with the plugin.
 - With mcs, the plugin now loads straight from the pack's checkout instead of a second copy from the marketplace, so it always matches the pack. It shows as `xcrew@mcs-xcrew` and starts with empty plugin data. Requires mcs 2026.10.30. Add the pack with `mcs pack add breferrari/xcrew --ref stable`, or `ref: stable` in `mcs.yaml`, to get releases rather than unreleased code, and `xcrew doctor` now says `mcs update` for an mcs install.
 
 ## 0.8.9 — 2026-10-30

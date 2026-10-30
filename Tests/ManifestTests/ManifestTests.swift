@@ -381,11 +381,21 @@ import Testing
         return script.matches(of: /^  ([a-z]+)\)$/.anchorsMatchLineEndings()).map { String($0.1) }
     }
 
+    /// The footprint's ceiling is a measured size rounded up to the next 100 KB, with the measurement and its date beside
+    /// it, so raising it is a line someone writes on purpose.
+    @Test func footprintCeilingIsAMeasuredSizeRoundedUp() throws {
+        let script = try text("scripts/distribution.sh")
+        let measured = try #require(script.firstMatch(of: /measured (\d+) bytes on (\d{4}-\d{2}-\d{2})/)).output
+        let ceiling = try #require(script.firstMatch(of: /ceiling=(\d+)/).flatMap { Int($0.output.1) })
+        let size = try #require(Int(measured.1))
+        #expect(ceiling % 100_000 == 0 && ceiling >= size && ceiling - size < 100_000, "\(ceiling) isn't \(size) rounded up to the next 100 KB")
+    }
+
     /// Each Distribution step runs its channel's tests by their name's prefix, so each channel has some, and every test
     /// of a file only one channel ships carries that channel's prefix.
     @Test func eachDistributionStepRunsItsChannelsTests() throws {
         let channels = distributionChannels()
-        #expect(channels == ["marketplace", "listing", "techpack"])
+        #expect(channels == ["marketplace", "listing", "techpack", "footprint"])
         let source = try text("Tests/ManifestTests/ManifestTests.swift")
         let tests = source.matches(of: /func (\w+)\(/).map { String($0.1) }
         for channel in channels {
@@ -440,10 +450,11 @@ import Testing
         }
     }
 
-    /// The README's band picture is drawn by `assets/mockups.py`, which can't import the mod. It follows the mod's
+    /// The README's band picture is drawn by xcrew-assets' `mockups.py`, which can't import the mod. It follows the mod's
     /// colour rule (only the ` · ` separators are faint) through one `SEP` that names the same text and theme key.
-    @Test func theBandMockupDrawsTheModsColourRule() throws {
-        let script = try text("assets/mockups.py")
+    @Test(.enabled(if: Assets.isCheckedOut, "no xcrew-assets checkout"))
+    func theBandMockupDrawsTheModsColourRule() throws {
+        let script = try Assets.text("mockups.py")
         let mod = try text("hooks/mod/band.ts")
         #expect(script.contains(#"SEP = (" · ", "subtle")"#))
         #expect(mod.contains("const SEPARATOR = segment(' · ', 'subtle')"))
@@ -452,8 +463,9 @@ import Testing
     }
 
     /// The running line's time and time left add up to the usual time the passing line shows beside it.
-    @Test func theBandMockupsRunningLineAgreesWithItsHistory() throws {
-        let band = try #require(try text("assets/mockups.py").firstMatch(of: /(?s)def band\(\):.*?\n\n\n/)).output
+    @Test(.enabled(if: Assets.isCheckedOut, "no xcrew-assets checkout"))
+    func theBandMockupsRunningLineAgreesWithItsHistory() throws {
+        let band = try #require(try Assets.text("mockups.py").firstMatch(of: /(?s)def band\(\):.*?\n\n\n/)).output
         let seconds = { (clock: Substring) -> Int in
             let parts = clock.split(separator: ":").compactMap { Int($0) }
             return parts[0] * 60 + parts[1]
@@ -464,12 +476,47 @@ import Testing
         #expect(seconds(elapsed) + seconds(left) == seconds(usual), "\(elapsed) + \(left) isn't the usual \(usual)")
     }
 
+    /// The pictures the README may show, each a file of xcrew-assets; a new one is added here and there together.
+    static let pictures = ["architecture", "band", "banner", "failures-pane", "test-result"].flatMap { ["\($0).png", "\($0)-light.png"] }
+
+    /// The xcrew-assets commit the README's images are pinned to, and every place that names it: CI checks the same
+    /// commit out, so the files the README shows are the ones the tests read.
+    func assetsPin() throws -> String {
+        let pins = Set(try text("README.md").matches(of: /https:\/\/raw\.githubusercontent\.com\/breferrari\/xcrew-assets\/([0-9a-f]+)\//).map { String($0.1) })
+        #expect(pins.count == 1, "the README names \(pins.count) commits of xcrew-assets: \(pins.sorted())")
+        let pin = try #require(pins.first)
+        #expect(pin.count == 40, "\(pin) isn't a full commit")
+        return pin
+    }
+
+    @Test func listingPicturesArePinnedWhereCIChecksThemOut() throws {
+        let pin = try assetsPin()
+        let checkouts = try text(".github/workflows/ci.yml").matches(of: /repository: breferrari\/xcrew-assets\n\s+ref: ([0-9a-f]+) # (v[\d.]+)/)
+        #expect(checkouts.count == 3, "ci.yml checks xcrew-assets out in \(checkouts.count) jobs")
+        #expect(checkouts.allSatisfy { String($0.1) == pin }, "ci.yml checks out another commit than the README's \(pin)")
+        #expect(!FileManager.default.fileExists(atPath: Self.repository.appending(path: "assets").path), "assets/ is back in the repository")
+    }
+
+    /// Each pinned picture is a file of xcrew-assets.
+    @Test(.enabled(if: Assets.isCheckedOut, "no xcrew-assets checkout"))
+    func listingPicturesAreFilesOfTheAssets() {
+        for picture in Self.pictures {
+            #expect(FileManager.default.fileExists(atPath: Assets.root.appending(path: picture).path), "xcrew-assets has no \(picture)")
+        }
+    }
+
+    /// CI runs the assets' tests or fails: a missing checkout there is a broken workflow, not a Mac without the clone.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == "true"))
+    func listingCIHasTheAssets() {
+        #expect(Assets.isCheckedOut, "XCREW_ASSETS names no xcrew-assets checkout: \(Assets.root.path)")
+    }
+
     /// Each README picture shows in the reader's theme: a `<picture>` whose light and dark sources and dark fallback are
-    /// this repository's files, by absolute URL, since the plugin directory's listing shows the README away from the
-    /// repository. The light file is the dark one's `-light` twin from `assets/mockups.py --light`.
+    /// xcrew-assets files at the pinned commit, by absolute URL, since the plugin directory's listing shows the README
+    /// away from the repository. The light file is the dark one's `-light` twin from `mockups.py --light`.
     @Test func listingPicturesFollowTheReadersTheme() throws {
         let readme = try text("README.md")
-        let raw = "https://raw.githubusercontent.com/breferrari/xcrew/main/"
+        let raw = "https://raw.githubusercontent.com/breferrari/xcrew-assets/\(try assetsPin())/"
         let pictures = readme.matches(of: /(?s)<picture>(.*?)<\/picture>/).map { String($0.1) }
         #expect(pictures.count == 5)
         for picture in pictures {
@@ -479,8 +526,8 @@ import Testing
             #expect(fallback == dark, "\(fallback) isn't the dark source")
             #expect(light == dark.replacingOccurrences(of: ".png", with: "-light.png"), "\(light) isn't \(dark)'s light twin")
             for source in [light, dark] {
-                #expect(source.hasPrefix(raw + "assets/"), "\(source) isn't one of this repository's assets by absolute URL")
-                #expect(FileManager.default.fileExists(atPath: Self.repository.appending(path: String(source.dropFirst(raw.count))).path), "\(source) doesn't exist")
+                #expect(source.hasPrefix(raw), "\(source) isn't an xcrew-assets file at the pinned commit")
+                #expect(Self.pictures.contains(String(source.dropFirst(raw.count))), "\(source) isn't one of the pictures")
             }
         }
         // Outside the pictures, only the badges are images.
