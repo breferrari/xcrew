@@ -1,15 +1,15 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import type { BandProblems, BandRun, CliBuild, FailureList, FullRuns, ResultRow, StaleProject } from '../../types'
+import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_BLOCK, CARD_WAIT_MS, cardText } from './card'
-import { describe, historyOf, isRepeatedRun, observe, runsWholeScope } from './context'
-import { afterTestRun, isWholeScope, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
+import { describe, historyOf, isFullSuiteRun, isRepeatedRun, observe, runsWholeScope } from './context'
+import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
-import { afterFullRun, loopNote } from './loop'
+import { afterFullRun, type Crossing, loopNote } from './loop'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
@@ -20,7 +20,6 @@ import { buildsProject, FILE_EDITOR, generatedPart, kindOf, mayBeGenerated, mayB
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
-// Each scope's recent full-suite runs this session, for the loop budget.
 const loopState = atom({ plugin: 'xcrew', key: 'loop' } as const, {} as FullRuns)
 const failuresState = atom({ plugin: 'xcrew', key: 'failures' } as const, null as FailureList | null)
 const problemsState = atom({ plugin: 'xcrew', key: 'problems' } as const, null as BandProblems | null)
@@ -193,7 +192,7 @@ export const register: Register = on => {
     if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(summaryLine))
     const resulting = resultFor(result, outcome)
     // A whole suite run again and again: past the budget, the tests the change can break would do.
-    const isFullRun = kind === 'test' && isWholeScope(scope) && runsWholeScope(parsed, e as unknown as Record<string, unknown>) && !repeated
+    const isFullRun = kind === 'test' && isFullSuiteRun(parsed, e as unknown as Record<string, unknown>)
     const loop = isFullRun ? await quietly(() => countFullRun($, scope, { at: ended, ms: elapsed })) : undefined
     return loop ? withContext(resulting, loopNote(scope, loop, parsed.server === 'MobileBuildMCP')) : resulting
   }).catch(async ($, e, next) => next(e))
@@ -374,8 +373,8 @@ async function storedHistory($: EngineInterface): Promise<{ scope: string; runs:
 }
 
 /** Counts a full-suite run toward the loop budget: the runs that crossed it, when this one did. */
-async function countFullRun($: EngineInterface, scope: string, run: { at: number; ms: number }) {
-  let crossed: { at: number; ms: number }[] | undefined
+async function countFullRun($: EngineInterface, scope: string, run: FullRun) {
+  let crossed: Crossing | undefined
   await update($, loopState, runs => {
     const after = afterFullRun(runs[scope] ?? [], run)
     crossed = after.crossed

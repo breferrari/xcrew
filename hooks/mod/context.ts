@@ -81,3 +81,13 @@ export function runsWholeScope(tool: XcodeTool, input: Record<string, unknown>):
 export function isRepeatedRun(input: Record<string, unknown>): boolean {
   return Array.isArray(input.extraArgs) && input.extraArgs.includes('-test-iterations')
 }
+
+/**
+ * Whether a test run is the whole suite: it ran every test its tool and scheme name, with no `-only-testing:` selection,
+ * once each. What the loop budget counts.
+ */
+export function isFullSuiteRun(tool: XcodeTool, input: Record<string, unknown>): boolean {
+  const extraArgs = Array.isArray(input.extraArgs) ? (input.extraArgs as unknown[]) : []
+  const selects = extraArgs.some(arg => typeof arg === 'string' && arg.startsWith('-only-testing:'))
+  return !selects && !isRepeatedRun(input) && runsWholeScope(tool, input)
+}

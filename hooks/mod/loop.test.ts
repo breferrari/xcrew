@@ -19,15 +19,14 @@ function project(on: On, durationMs: number) {
 }
 
 const MINUTE = 60_000
-const full = ($: Engine, args: Record<string, unknown> = {}) => callTool($, 'mcp__MobileBuildMCP__test_sim', args)
 const loopNote = (result: ToolCallResult) => (result.context ?? []).find(line => line.includes('full run'))
 
 /** Runs `count` full suites, `every` apart, and gives each run's loop note. */
-async function fullRuns($: Engine, clock: { advance: (ms: number) => Promise<void> }, count: number, every: number, run = full) {
+async function fullRuns($: Engine, clock: ReturnType<typeof mock.clock>, count: number, every: number, tool = 'mcp__MobileBuildMCP__test_sim', args: Record<string, unknown> = {}) {
   const notes: (string | undefined)[] = []
   for (let index = 0; index < count; index += 1) {
     if (index > 0) await clock.advance(every)
-    notes.push(loopNote(await run($)))
+    notes.push(loopNote(await callTool($, tool, args)))
   }
   return notes
 }
@@ -43,7 +42,7 @@ test('the third full run in the window sends Claude to the affected tests, once'
   const notes = await fullRuns($, clock, 3, 10 * MINUTE)
   expect(notes.slice(0, 2)).toEqual([undefined, undefined])
   expect(notes[2]).toBe(
-    "xcrew: that's the 3rd full run of `test_sim` in 21 min, with 3:30 of testing. Before the next one, ask the `affected` tool which test targets this branch's changes can break, and run those with `-only-testing:`. When it says to run the whole suite, run it; and run the whole suite again before the pull request.",
+    "xcrew: that's 3 full runs of `test_sim` in 21 min, with 3:30 of testing. Before the next one, ask the `affected` tool which test targets this branch's changes can break, and run those with `-only-testing:`. When it says to run the whole suite, run it; and run the whole suite again before the pull request.",
   )
 })
 
@@ -55,25 +54,25 @@ test('after the note the count starts again: the loop hears it every third run, 
 
 test('a 20 s suite never trips it, however often it runs', async ($, on) => {
   const clock = project(on, 20_000)
-  expect((await fullRuns($, clock, 8, 2 * MINUTE)).filter(note => note !== undefined)).toEqual([])
+  expect(await fullRuns($, clock, 12, 2 * MINUTE)).toEqual(Array(12).fill(undefined))
 })
 
 test('a run older than the window no longer counts', async ($, on) => {
   const clock = project(on, 70_000)
-  expect((await fullRuns($, clock, 3, 20 * MINUTE)).filter(note => note !== undefined)).toEqual([])
+  expect(await fullRuns($, clock, 3, 20 * MINUTE)).toEqual([undefined, undefined, undefined])
 })
 
 test('a selection, a repeat or a run that skips tests is not a full run', async ($, on) => {
   const clock = project(on, 70_000)
-  const kinds = [{ extraArgs: ['-only-testing:AppTests'] }, { extraArgs: ['-only-testing:AppTests/GreetingTests/testHello', '-test-iterations', '5'] }, { extraArgs: ['-skip-testing:AppTests/SlowTests'] }]
+  const kinds = [{ extraArgs: ['-only-testing:AppTests'] }, { extraArgs: ['-only-testing:AppTests/GreetingTests/testHello', '-test-iterations', '5', '-test-repetition-relaunch-enabled', 'YES'] }, { extraArgs: ['-skip-testing:AppTests/SlowTests'] }]
   for (const args of kinds) {
-    expect((await fullRuns($, clock, 3, 5 * MINUTE, tool => full(tool, args))).filter(note => note !== undefined)).toEqual([])
+    expect(await fullRuns($, clock, 3, 5 * MINUTE, 'mcp__MobileBuildMCP__test_sim', args)).toEqual([undefined, undefined, undefined])
   }
 })
 
 test('the Xcode MCP\'s full run counts too, and its note names the affected tool alone', async ($, on) => {
   const clock = project(on, 70_000)
-  const notes = await fullRuns($, clock, 3, 10 * MINUTE, tool => callTool(tool, 'mcp__xcode__RunAllTests'))
+  const notes = await fullRuns($, clock, 3, 10 * MINUTE, 'mcp__xcode__RunAllTests')
   expect(notes[2]).toContain('ask the `affected` tool which test targets')
   expect(notes[2]).not.toContain('-only-testing:')
 })
