@@ -5,15 +5,16 @@ import UniformTypeIdentifiers
 
 /// The screen at a UI test's failure, kept where Claude can Read it: the last frame of the run's screen recording, which
 /// XCTest stops at the failure, and how long before the failure that frame is.
-public struct FailureScreen: Sendable, Equatable {
-    public let path: String
-    public let secondsBefore: Double
+struct FailureScreen: Sendable, Equatable {
+    let path: String
+    let secondsBefore: Double
 
-    /// The screen at `run`'s failure, from its recording among `test`'s exported attachments, kept in
-    /// `<folder>/<suite>/<test>/`. Nil when the run kept no recording, or it couldn't be read.
-    static func keep(of test: TestID, run: FailedRun, from export: URL, in folder: URL) async -> FailureScreen? {
-        let manifest = (try? JSONSerialization.jsonObject(with: Data(contentsOf: export.appending(path: "manifest.json")))) as? [[String: Any]] ?? []
-        let attachments = manifest.filter { ($0["testIdentifier"] as? String).map(TestID.init(xcresultID:)) == test }.flatMap { $0["attachments"] as? [[String: Any]] ?? [] }
+    /// What `look` asks an export for: the recordings, which XCTest names `….mp4` (docs/findings.md).
+    static let recordings = "*.mp4"
+
+    /// The screen at `run`'s failure, from its recording among `attachments`, the test's in `export`'s manifest, kept in
+    /// `<run folder>/<suite>/<test>/`. Nil when the run kept no recording, or it couldn't be read.
+    static func keep(of test: TestID, run: FailedRun, attachments: [[String: Any]], from export: URL, in runFolder: URL) async -> FailureScreen? {
         // The run's own: the same configuration and device, started before the failure; the latest, when a test kept more.
         let recordings = attachments.compactMap { attachment -> (file: URL, started: Double)? in
             guard attachment["configurationName"] as? String == run.configuration, attachment["deviceId"] as? String == run.deviceID,
@@ -23,7 +24,7 @@ public struct FailureScreen: Sendable, Equatable {
             return isMovie(file) ? (file, started) : nil
         }
         guard let recording = recordings.max(by: { $0.started < $1.started }) else { return nil }
-        let kept = [test.suite, test.name].reduce(folder) { $0.appending(path: $1.replacingOccurrences(of: "/", with: "-")) }
+        let kept = FailureImages.folder(of: test, in: runFolder)
         try? FileManager.default.createDirectory(at: kept, withIntermediateDirectories: true)
         let name = "screen at failure, \(run.device), \(run.configuration)".replacingOccurrences(of: "/", with: "-")
         let destination = kept.appending(path: "\(name).png")
@@ -35,11 +36,7 @@ public struct FailureScreen: Sendable, Equatable {
     /// Whether a file's first bytes say it's an MPEG-4 or QuickTime movie: an `ftyp` box first. The exported file's own
     /// extension says nothing, as with images.
     static func isMovie(_ file: URL) -> Bool {
-        let head = (try? FileHandle(forReadingFrom: file)).flatMap { handle in
-            defer { try? handle.close() }
-            return try? handle.read(upToCount: 8)
-        }
-        return head.map { $0.count == 8 && Data($0.dropFirst(4)) == Data("ftyp".utf8) } ?? false
+        FailureImages.head(of: file, bytes: 8).map { $0.count == 8 && Data($0.dropFirst(4)) == Data("ftyp".utf8) } ?? false
     }
 
     /// Writes a movie's last frame to `destination` as a PNG, and answers when in the movie that frame shows and the

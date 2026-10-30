@@ -25,9 +25,7 @@ public struct FailureImages: Sendable, Equatable {
     /// reference, failing render and difference together, a repeated run's one comparison after another, the rest in the
     /// order they were attached. Nil when it attached none.
     static func keep(of test: TestID, from export: URL, in run: URL) -> FailureImages? {
-        let manifest = (try? JSONSerialization.jsonObject(with: Data(contentsOf: export.appending(path: "manifest.json")))) as? [[String: Any]] ?? []
-        let attachments = manifest.filter { ($0["testIdentifier"] as? String).map(TestID.init(xcresultID:)) == test }.flatMap { $0["attachments"] as? [[String: Any]] ?? [] }
-        let found = attachments.compactMap { attachment -> (name: String, file: URL)? in
+        let found = attachments(of: test, in: export).compactMap { attachment -> (name: String, file: URL)? in
             guard let exported = attachment["exportedFileName"] as? String, let suggested = attachment["suggestedHumanReadableName"] as? String else { return nil }
             let file = export.appending(path: exported)
             return keptName(suggested: suggested, content: file).map { ($0, file) }
@@ -40,7 +38,7 @@ public struct FailureImages: Sendable, Equatable {
             return (name: image.name, file: image.file, order: [seen[rank, default: 0], rank, index])
         }.sorted { $0.order.lexicographicallyPrecedes($1.order) }
         guard !images.isEmpty else { return nil }
-        let folder = [test.suite, test.name].reduce(run) { $0.appending(path: $1.replacingOccurrences(of: "/", with: "-")) }
+        let folder = folder(of: test, in: run)
         try? FileManager.default.removeItem(at: folder)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let kept = images.compactMap { image -> String? in
@@ -48,6 +46,25 @@ public struct FailureImages: Sendable, Equatable {
             return (try? FileManager.default.moveItem(at: image.file, to: destination)) != nil ? destination.path : nil
         }
         return kept.isEmpty ? nil : FailureImages(paths: kept, folder: folder.path)
+    }
+
+    /// A test's attachments as an export's `manifest.json` lists them.
+    static func attachments(of test: TestID, in export: URL) -> [[String: Any]] {
+        let manifest = (try? JSONSerialization.jsonObject(with: Data(contentsOf: export.appending(path: "manifest.json")))) as? [[String: Any]] ?? []
+        return manifest.filter { ($0["testIdentifier"] as? String).map(TestID.init(xcresultID:)) == test }.flatMap { $0["attachments"] as? [[String: Any]] ?? [] }
+    }
+
+    /// Where a test's kept files go in a run's folder: `<run>/<suite>/<test>/`.
+    static func folder(of test: TestID, in run: URL) -> URL {
+        [test.suite, test.name].reduce(run) { $0.appending(path: $1.replacingOccurrences(of: "/", with: "-")) }
+    }
+
+    /// The first bytes of a file, or nil when it can't be read.
+    static func head(of file: URL, bytes: Int) -> Data? {
+        (try? FileHandle(forReadingFrom: file)).flatMap { handle in
+            defer { try? handle.close() }
+            return try? handle.read(upToCount: bytes)
+        }
     }
 
     /// Removes each run's images kept longer than `keptDays`.
@@ -81,11 +98,7 @@ public struct FailureImages: Sendable, Equatable {
     static func keptName(suggested: String, content: URL) -> String? {
         let name = suggested.replacingOccurrences(of: "/", with: "-")
         if extensions.contains(URL(fileURLWithPath: name).pathExtension.lowercased()) { return name }
-        let head = (try? FileHandle(forReadingFrom: content)).flatMap { handle in
-            defer { try? handle.close() }
-            return try? handle.read(upToCount: 12)
-        }
-        return head.flatMap(format(of:)).map { "\(name).\($0)" }
+        return head(of: content, bytes: 12).flatMap(format(of:)).map { "\(name).\($0)" }
     }
 
     /// Where an image sorts: a snapshot's reference, then its failing render, then their difference, by the words both

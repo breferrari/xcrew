@@ -39,6 +39,13 @@ import XcrewTestSupport
         #expect(run.text == "xcrew: nothing failed in test_sim_new.xcresult")
     }
 
+    /// One test at a time: a second would be dropped without a word.
+    @Test func twoTestsAreAUsageError() async {
+        let run = await Run("look", "AppUITests/testLaunch", "AppUITests/testLogin", "--bundle", "/runs/Run.xcresult", context: context(listing: ["/runs/Run.xcresult"]))
+        #expect(run.status == 64)
+        #expect(run.errors == ["look takes one test at most (xcrew look --help)"])
+    }
+
     @Test func withoutABundleItSaysWhereToLook() async {
         let run = await Run("look", context: context())
         #expect(run.status == 1)

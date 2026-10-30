@@ -182,13 +182,19 @@ public struct ResultBundle: Sendable {
     }
 
     /// A test's attachments, exported to a fresh folder that `read` reads before it's removed: every one, or with
-    /// `onlyFailures` only those associated with its failure.
-    func attachments<T>(of test: TestID, onlyFailures: Bool, _ read: (URL) -> T) async -> T {
+    /// `onlyFailures` only those associated with its failure, and with `filter` only those whose file name the glob
+    /// matches.
+    func attachments<T>(of test: TestID, onlyFailures: Bool, filter: String? = nil, _ read: (URL) async -> T) async -> T {
         let folder = exportFolder()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        _ = await xcresulttool(["export", "attachments", "--path", path, "--output-path", folder.path, "--test-id", test.xcresultID] + (onlyFailures ? ["--only-failures"] : []))
-        return read(folder)
+        _ = await xcresulttool(["export", "attachments", "--path", path, "--output-path", folder.path, "--test-id", test.xcresultID] + (onlyFailures ? ["--only-failures"] : []) + (filter.map { ["--filter", $0] } ?? []))
+        return await read(folder)
+    }
+
+    /// The folder a run's kept files go in, under a cache: the bundle's name without `.xcresult`.
+    func runFolder(in cache: URL) -> URL {
+        cache.appending(path: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)
     }
 
     /// A crash's summary, from the crash log the result bundle attached to the test.
@@ -210,7 +216,7 @@ public struct ResultBundle: Sendable {
     /// associated with the failure, so `--only-failures` would leave them out.
     public func images(of test: TestID, keptIn folder: URL) async -> FailureImages? {
         await attachments(of: test, onlyFailures: false) { export in
-            FailureImages.keep(of: test, from: export, in: folder.appending(path: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent))
+            FailureImages.keep(of: test, from: export, in: runFolder(in: folder))
         }
     }
 }

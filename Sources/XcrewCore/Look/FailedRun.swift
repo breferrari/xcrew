@@ -2,14 +2,14 @@ import Foundation
 
 /// One failed run of a UI test, from `xcresulttool get test-results activities`: the device and test-plan configuration
 /// it ran on, the last steps before it failed, the failing step, and when that step started.
-public struct FailedRun: Sendable, Equatable {
+struct FailedRun: Sendable, Equatable {
     /// The model and OS: `iPhone 18 Pro Max, iOS 27.2`.
-    public let device: String
-    public let configuration: String
-    public let steps: [String]
-    public let failure: String
+    let device: String
+    let configuration: String
+    let steps: [String]
+    let failure: String
     /// When the failing step started, as a UNIX timestamp, as attachments are stamped.
-    public let failedAt: Double
+    let failedAt: Double
     /// The device's id, which ties the run to its attachments in the export's manifest.
     let deviceID: String
 

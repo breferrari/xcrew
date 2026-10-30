@@ -100,15 +100,16 @@ public enum RunLog {
         find(since: since, project: project, home: home, servers: servers) { $0.hasPrefix("\(tool)_") }
     }
 
-    /// The newest log `matches` names, as `find(tool:…)` picks it.
-    static func find(since: Date, project: URL, home: URL, servers: Set<Int32>? = nil, named matches: (String) -> Bool) -> URL? {
+    /// The newest log `matches` names, as `find(tool:…)` picks it; or, with `folder`, the newest item of another of the
+    /// workspace's folders, such as `result-bundles`.
+    static func find(in folder: String = "logs", since: Date, project: URL, home: URL, servers: Set<Int32>? = nil, named matches: (String) -> Bool) -> URL? {
         let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
         let servers = servers.flatMap { $0.isEmpty ? nil : $0 }
         let roots = [project.path, ProjectLayout.canonical(project)]
         let manager = FileManager.default
         var newest: (url: URL, modified: Date)?
         for key in Set(roots.map(workspaceKey(root:))) {
-            let logs = workspaces.appending(path: key).appending(path: "logs")
+            let logs = workspaces.appending(path: key).appending(path: folder)
             for name in (try? manager.contentsOfDirectory(atPath: logs.path)) ?? [] where !name.contains("parser-debug") && matches(name) {
                 if let servers, !servers.contains(where: { name.contains("_pid\($0)_") }) { continue }
                 let url = logs.appending(path: name)
