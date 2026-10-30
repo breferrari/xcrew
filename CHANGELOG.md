@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 — 2026-10-30
 
 - When a UI test fails because an element wasn't found, `look` also lists the elements that were on screen, by type, label and identifier, so Claude can tell a renamed element from a missing one.
 - When a UI test fails, Claude can look at the screen at the failure: the `look` tool gives, for each test-plan configuration and device it failed on, the last steps before it and a picture of the screen, the last frame of the run's recording. `xcrew look` prints the same.
