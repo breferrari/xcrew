@@ -57,7 +57,7 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// A result Claude Code saved to a file is read back from it.
-    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false, project: Project? = nil) async -> Report {
+    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
         let saved = savedPath(output.text)
         let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, server: output.server, isError: output.isError) } ?? output
         let isTest = kind == .test
@@ -88,6 +88,10 @@ public struct Report: Sendable, Equatable, Codable {
         async let why: String? = {
             guard let project, !read.summary.ok else { return nil }
             return await Why.note(for: read, home: home, project: project, runner: runner)
+        }()
+        async let pinNote: String? = {
+            guard kind != .run, let project, let machine, !read.summary.ok else { return nil }
+            return XcodePinCheck.failureNote(await XcodeSnapshot.take(of: project, on: machine))
         }()
         var final = read
         var edited = false
@@ -132,6 +136,7 @@ public struct Report: Sendable, Equatable, Codable {
 
         // A run that failed because of the Mac says so first: its errors would read as the code's.
         if let why = await why { notes.insert(why, at: 0) }
+        if let pinNote = await pinNote { notes.append(pinNote) }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(

@@ -69,6 +69,21 @@ import XcrewTestSupport
         #expect(result == .warn("builds use Xcode 27.2 while the project pins Xcode 25.0 (.xcode-version), and a build may fail with another major version's SDK: xcodes install 25.0"))
     }
 
+    /// A failed build or test in a project whose pin isn't the Xcode building says it may be the cause; a pass says
+    /// nothing, nor a failure built with the pinned Xcode.
+    @Test func aFailureWithAnotherXcodeThanThePinSaysItMayBeTheCause() async throws {
+        let fixtures = { (name: String) in try String(contentsOf: Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures/Reports")!, encoding: .utf8) }
+        let line = "xcrew: builds use Xcode 27.2 and the project pins 25.0 (.xcode-version): a different SDK may be the cause."
+        let mismatched = context(pin: "25.0\n")
+        let failed = await Report.make(kind: .build, output: ToolOutput(text: try fixtures("mobileBuildFailed"), server: .mobileBuildMCP, isError: true), home: "/home", runner: mismatched.runner, project: mismatched.project, machine: mismatched.machine)
+        #expect(failed.notes.contains(line))
+        let passed = await Report.make(kind: .build, output: ToolOutput(text: try fixtures("mobileBuildPassed"), server: .mobileBuildMCP), home: "/home", runner: mismatched.runner, project: mismatched.project, machine: mismatched.machine)
+        #expect(!passed.notes.contains { $0.contains("(.xcode-version)") })
+        let matched = context(pin: "27.2\n", server: nil)
+        let alike = await Report.make(kind: .build, output: ToolOutput(text: try fixtures("mobileBuildFailed"), server: .mobileBuildMCP, isError: true), home: "/home", runner: matched.runner, project: matched.project, machine: matched.machine)
+        #expect(!alike.notes.contains { $0.contains("(.xcode-version)") })
+    }
+
     /// A minor or patch apart rarely changes a build; it matters for matching CI's diagnostics.
     @Test func aPinOfTheSameMajorNoInstalledXcodeMatchesWarns() async {
         let result = await XcodePinCheck().run(context(pin: "27.1\n", xcodesTool: true))

@@ -370,6 +370,17 @@ import XcrewTestSupport
         #expect(full.output.contains { $0.hasPrefix("warn  xcrew/up-to-date") })
     }
 
+    /// A pinned Xcode that isn't the one building is the Mac's own choice, never the prompt line's: the full doctor lists
+    /// it, and a failure says it may be the cause.
+    @Test func problemsLeavesOutTheXcodePin() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write("25.0\n", to: ".xcode-version")
+        let problems = await Run("doctor", "--problems", context: .fake(project: project))
+        #expect(!problems.output.contains { $0.contains("xcode/pin") })
+        let full = await Run("doctor", context: .fake(project: project))
+        #expect(full.output.contains { $0.hasPrefix("warn  xcode/pin") })
+    }
+
     @Test func problemsIsSilentOutsideApplePlatformProjects() async {
         let run = await Run("doctor", "--problems")
         #expect(run.status == 0)

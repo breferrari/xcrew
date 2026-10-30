@@ -5,6 +5,15 @@ import Foundation
 struct XcodePinCheck: Check {
     let id = "xcode/pin"
     let title = "The project's Xcode pin applies"
+    /// Which Xcode builds is the person's own choice: the full doctor lists a mismatch, and a failure says it may be the
+    /// cause, but the line above the prompt never does.
+    let showsAtThePrompt = false
+
+    /// For a failed build or test: the Xcode building isn't the one the project pins, so a different SDK may be why.
+    static func failureNote(_ xcodes: XcodeSnapshot) -> String? {
+        guard let pin = xcodes.pin, let builds = xcodes.forBuilds, Version(builds.version) != Version(pin.version) else { return nil }
+        return "xcrew: builds use \(builds.label) and the project pins \(pin.version) (\(pin.file)): a different SDK may be the cause."
+    }
 
     func run(_ context: CheckContext) async -> CheckResult {
         let xcodes = await context.xcodes.value()

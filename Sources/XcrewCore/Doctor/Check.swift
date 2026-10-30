@@ -69,9 +69,13 @@ public protocol Check: Sendable {
     var title: String { get }
     /// Whether it calls out to the network, which the session-start `doctor --problems` leaves out.
     var reachesNetwork: Bool { get }
+    /// Whether the line above the prompt shows it, through `doctor --problems`. A check of a choice the person may have
+    /// made on purpose shows only in the full doctor.
+    var showsAtThePrompt: Bool { get }
     func run(_ context: CheckContext) async -> CheckResult
 }
 
 extension Check {
     public var reachesNetwork: Bool { false }
+    public var showsAtThePrompt: Bool { true }
 }

@@ -21,7 +21,7 @@ struct ReportCommand: Command {
         }
         let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
         let machine = invocation.context.machine
-        let report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: invocation.arguments.has("repeated"), project: invocation.context.project)
+        let report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: invocation.arguments.has("repeated"), project: invocation.context.project, machine: machine)
         let encoded = try JSONEncoder.sorted.encode(report)
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0
