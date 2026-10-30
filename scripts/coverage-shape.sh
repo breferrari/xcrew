@@ -32,5 +32,5 @@ scheme=$(cd "$work" && xcodebuild -list -json 2> /dev/null | plutil -extract wor
   || { tail -20 "$work/log" >&2; echo "coverage-shape.sh: the package's tests didn't run with coverage" >&2; exit 1; }
 XCREW_COVERAGE_BUNDLE="$work/Shape.xcresult" swift test --filter LiveCoverageShapeTests > "$work/test" 2>&1 \
   || { tail -20 "$work/test" >&2; echo "coverage-shape.sh: xccov's coverage answers no longer read as xcrew expects" >&2; exit 1; }
-grep -q "LiveCoverageShapeTests.*passed\|1 test in 1 suite passed" "$work/test" \
+grep -q "xccovStillAnswersInTheShapeXcrewReads() passed" "$work/test" \
   || { echo "coverage-shape.sh: the shape test didn't run" >&2; exit 1; }

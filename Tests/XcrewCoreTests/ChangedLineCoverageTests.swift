@@ -13,6 +13,16 @@ import XcrewTestSupport
         #expect(ChangedLineCoverage.lines(json) == [2: false, 3: true])
     }
 
+    /// Past its budget the reading is dropped, so a slow archive can't cost the rest of the report.
+    @Test func aReadingPastItsBudgetIsDropped() async {
+        let slow = await ChangedLineCoverage.within(.milliseconds(50)) {
+            try? await Task.sleep(for: .seconds(30))
+            return ChangedLineCoverage(ran: 1)
+        }
+        #expect(slow == nil)
+        #expect(await ChangedLineCoverage.within(.seconds(30)) { ChangedLineCoverage(ran: 1) } == ChangedLineCoverage(ran: 1))
+    }
+
     @Test func linesNotRunAreNamedAsRanges() {
         #expect(ChangedLineCoverage.ranges([10, 6, 7, 8]) == ["6-8", "10"])
     }
@@ -56,6 +66,46 @@ import XcrewTestSupport
         #expect(await note(project, run(project, counts: [1, nil, 5, 2])) == "xcrew: all 3 changed lines that can run ran in this test run. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
+    /// A file whose counts xccov can't give is unknown, not a file with no line that can run: no note claims a count.
+    @Test func aFileXccovCannotReadLeavesNoNote() async {
+        let project = project()
+        var runner = run(project)
+        runner.responses["xcrun xccov view --archive --file \(project.root.path)/Sources/Cart/Cart.swift --json \(Self.bundle)"] = .init(status: 1)
+        #expect(await note(project, runner) == nil)
+    }
+
+    /// The archive can name one file in two spellings, as the build was started and as the file system spells it.
+    @Test func aFileListedInTwoSpellingsCountsOnce() async {
+        let project = project()
+        var runner = run(project)
+        let cart = "\(project.root.path)/Sources/Cart/Cart.swift", real = "\(ProjectLayout.canonical(project.root))/Sources/Cart/Cart.swift"
+        let escaped = { (path: String) in path.replacingOccurrences(of: "/", with: "\\/") }
+        runner.responses["xcrun xccov view --archive --file-list --json \(Self.bundle)"] = .init(status: 0, stdout: #"["\#(escaped(cart))","\#(escaped(real))"]"#)
+        runner.responses["xcrun xccov view --archive --file \(real) --json \(Self.bundle)"] = runner.responses["xcrun xccov view --archive --file \(cart) --json \(Self.bundle)"]
+        #expect(await note(project, runner) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
+    }
+
+    /// A package or Tuist manifest is never in a run's coverage, and neither is a file outside the project, such as a
+    /// server's code in the same repository: none is named.
+    @Test func aManifestOrAFileOutsideTheProjectIsNeverNamed() async {
+        let project = project()
+        project.write("// swift-tools-version:6.0\n", to: "Package.swift")
+        project.write("let tuist = 1\n", to: "Tuist.swift")
+        let server = project.root.deletingLastPathComponent().appending(path: "Server-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: server, withIntermediateDirectories: true)
+        try? "struct Api {}\n".write(to: server.appending(path: "Api.swift"), atomically: true, encoding: .utf8)
+        // The repository's top is the folder above the project, which holds the server beside it.
+        var runner = run(project)
+        let app = project.root.lastPathComponent, git = { (arguments: String) in "git -C \(project.root.path) \(arguments)" }
+        runner.responses[git("rev-parse --show-toplevel")] = .init(status: 0, stdout: "\(project.root.deletingLastPathComponent().path)\n")
+        let files = ["Sources/Cart/Cart.swift", "Sources/Cart/CartView.swift", "README.md", "Package.swift", "Tuist.swift"].map { "\(app)/\($0)" } + ["\(server.lastPathComponent)/Api.swift"]
+        runner.responses[git("diff --name-only --no-renames --no-relative -z \(FakeRunner.base)")] = .init(status: 0, stdout: files.map { "\($0)\u{0}" }.joined())
+        let diff = git("-c core.quotePath=false diff -U0 --no-color --no-renames --no-relative --no-prefix \(FakeRunner.base) -- \(ProjectLayout.canonical(project.root))/Sources/Cart/Cart.swift")
+        runner.responses[diff] = .init(status: 0, stdout: "+++ \(app)/Sources/Cart/Cart.swift\n@@ -3,0 +4,4 @@\n")
+        let found = await note(project, runner)
+        #expect(found == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
+    }
+
     @Test func withoutCoverageThereIsNoNote() async {
         let project = project()
         #expect(await note(project, run(project, coverage: false)) == nil)
@@ -77,6 +127,6 @@ struct LiveCoverageShapeTests {
         let files = await bundle.coveredFiles()
         let file = try #require(files.first, "no file in the coverage archive")
         let lines = ChangedLineCoverage.lines(await bundle.coverage(of: file))
-        #expect(lines.values.contains(true), "no line of \(file) read as run: \(lines)")
+        #expect(lines?.values.contains(true) == true, "no line of \(file) read as run: \(String(describing: lines))")
     }
 }

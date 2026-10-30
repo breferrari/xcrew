@@ -79,9 +79,11 @@ public struct Report: Sendable, Equatable, Codable {
         }()
         async let coverage: ChangedLineCoverage? = {
             guard let project, let bundle else { return nil }
-            let covered = await bundle.coveredFiles()
-            guard !covered.isEmpty, let listed = await change.value() else { return nil }
-            return await ChangedLineCoverage.of(covered, in: listed, bundle: bundle, project: project, using: runner)
+            return await ChangedLineCoverage.within(ChangedLineCoverage.budget) {
+                let covered = await bundle.coveredFiles()
+                guard !covered.isEmpty, let listed = await change.value() else { return nil }
+                return await ChangedLineCoverage.of(covered, in: listed, bundle: bundle, project: project, using: runner)
+            }
         }()
         var final = read
         var edited = false
