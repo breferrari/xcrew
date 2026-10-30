@@ -43,6 +43,47 @@ import XcrewTestSupport
         let lines = ChangedLines.hunks(diff, top: "/repo")
         #expect(lines == ["/repo/Sources/A.swift": [1...1, 6...6]])
     }
+
+    /// Diff lines end at `\n` alone: a carriage return inside a changed line is part of it.
+    @Test func aCarriageReturnDoesNotEndALine() {
+        let diff = "+++ Sources/A.swift\n@@ -0,0 +1,2 @@\n+a\r+b\n+++ c\n@@ -8,0 +10 @@\n+d\n"
+        #expect(ChangedLines.hunks(diff, top: "/repo") == ["/repo/Sources/A.swift": [1...2, 10...10]])
+    }
+
+    /// A file written with CRLF endings still ends each diff line at its `\n`.
+    @Test func aCRLFLineEndsAtItsNewline() {
+        let diff = "+++ Sources/A.swift\n@@ -0,0 +1,2 @@\n+x\r\n+y\n--- Sources/B.swift\n+++ Sources/B.swift\n@@ -3 +3 @@\n-q\n+r\n"
+        #expect(ChangedLines.hunks(diff, top: "/repo") == ["/repo/Sources/A.swift": [1...2], "/repo/Sources/B.swift": [3...3]])
+    }
+
+    /// Against git itself, on a repository opened by its `/var` path: the compiler's `/private/var` spelling selects each
+    /// file, a name with a space or a quote is read back as written, and an untracked file counts whole.
+    @Test func gitGivesTheChangedLinesOfEveryKindOfName() async {
+        let project = Project.temporary()
+        let runner = SystemCommandRunner()
+        func git(_ arguments: String...) async {
+            _ = await runner.run(["git", "-C", project.root.path, "-c", "user.name=xcrew", "-c", "user.email=xcrew@example.com", "-c", "commit.gpgsign=false"] + arguments, stdin: nil, timeout: .seconds(30))
+        }
+        await git("init", "-q")
+        project.write("a\nb\n", to: "My App/A b.swift")
+        project.write("a\n", to: "Q\"t.swift")
+        project.write("a\nb\nc\n", to: "Plain.swift")
+        await git("add", ".")
+        await git("commit", "-q", "--no-verify", "-m", "start")
+        project.write("a\nB\n", to: "My App/A b.swift")
+        project.write("A\n", to: "Q\"t.swift")
+        project.write("a\nb\nc\nd\n", to: "Plain.swift")
+        project.write("x\n", to: "New.swift")
+        let real = ProjectLayout.canonical(project.root)
+        #expect(real.hasPrefix("/private/"), "the temporary folder is expected under /private")
+        let lines = await ChangedLines.of(["My App/A b.swift", "Q\"t.swift", "Plain.swift", "New.swift"].map { "\(real)/\($0)" }, in: project, using: runner)
+        #expect(lines == [
+            "\(real)/My App/A b.swift": [2...2],
+            "\(real)/Q\"t.swift": [1...1],
+            "\(real)/Plain.swift": [4...4],
+            "\(real)/New.swift": [1...Int.max],
+        ])
+    }
 }
 
 /// The note on a build's warnings: those in lines the branch changed, named; never a claim about the rest.
@@ -104,6 +145,16 @@ import XcrewTestSupport
         let note = report.notes.first { $0.contains("lines this branch changed") }
         #expect(note?.contains("1 of 3 warnings") == true, "\(report.notes)")
         #expect(note?.contains("Warn.swift:5") == true)
+    }
+
+    /// A warning the build lists twice at one place is one warning; one without a place still counts in the total.
+    @Test func aWarningListedTwiceCountsOnce() async {
+        let project = Project.temporary(containing: ["Sources/Warn"])
+        let file = "\(ProjectLayout.canonical(project.root))/Sources/Warn/Warn.swift"
+        let json = #"{"buildResult":"succeeded","errors":[{"classification":"warning","filePath":"\#(file)","lineNumber":5,"message":"unused x"},{"classification":"warning","filePath":"\#(file)","lineNumber":5,"message":"unused x"},{"classification":"warning","filePath":"\#(file)","lineNumber":9,"message":"unused y"},{"classification":"warning","message":"no place"},{"classification":"warning","message":"nowhere either"}]}"#
+        let report = await Report.make(kind: .build, output: ToolOutput(text: json, server: .xcode), home: Captured.home, runner: changed(project), project: project)
+        let note = report.notes.first { $0.contains("lines this branch changed") }
+        #expect(note == "xcrew: 1 of 4 warnings are in lines this branch changed: Warn.swift:5 unused x.", "\(report.notes)")
     }
 
     /// The Xcode MCP's build result carries its warnings too, with file and line.

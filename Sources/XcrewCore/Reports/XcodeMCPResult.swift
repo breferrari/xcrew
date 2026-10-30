@@ -31,12 +31,9 @@ struct XcodeMCPResult: Decodable, Sendable {
     /// The build's errors, without its warnings.
     var realErrors: [BuildError] { (errors ?? []).filter { !$0.isWarning } }
 
-    /// The build's warnings that name a file and line.
+    /// The build's warnings, each with its file and line where it has them.
     var warnings: [ToolOutput.Warning] {
-        (errors ?? []).filter(\.isWarning).compactMap { warning in
-            guard let path = warning.filePath, let line = warning.lineNumber.flatMap({ Int($0.text) }) else { return nil }
-            return ToolOutput.Warning(message: warning.message ?? "", path: path, line: line)
-        }
+        (errors ?? []).filter(\.isWarning).map { ToolOutput.Warning(message: $0.message ?? "", path: $0.filePath, line: $0.lineNumber.flatMap { Int($0.text) }) }
     }
 
     var summary: ToolOutput.Summary? {

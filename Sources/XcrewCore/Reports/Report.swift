@@ -24,7 +24,7 @@ public struct Report: Sendable, Equatable, Codable {
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
         guard !inChanged.isEmpty else { return nil }
         // Messages carry commas, so a semicolon parts them.
-        let named = inChanged.map { "\(ToolOutput.basename($0.path)):\($0.line) \($0.message)" }
+        let named = inChanged.map { "\(ToolOutput.basename($0.path ?? "")):\($0.line ?? 0) \($0.message)" }
         return "xcrew: \(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
     }
 
@@ -65,6 +65,10 @@ public struct Report: Sendable, Equatable, Codable {
         let bundle = isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
         // The summary is needed whatever the run came to, so it's asked for while the failures are looked up.
         async let bundleSummary: String? = { await bundle?.summary() }()
+        // Which lines the branch changed is asked of git meanwhile, for the warnings that name a place.
+        let warnings = read.warnings
+        let warned = warnings.compactMap(\.path)
+        async let changed: [String: [ClosedRange<Int>]]? = { if let project, !warned.isEmpty { await ChangedLines.of(warned, in: project, using: runner) } else { nil } }()
         var final = read
         var edited = false
         // A saved result stays saved unless it's compacted below: Claude Code saved it for its size, which the collapse alone may not cut enough.
@@ -96,9 +100,11 @@ public struct Report: Sendable, Equatable, Codable {
 
         // The warnings in lines this branch changed, named: those are Claude's to fix. Nothing is said about the rest, or
         // about warnings the change causes in lines it left alone.
-        let warnings = read.warnings
-        if let project, !warnings.isEmpty, let changed = await ChangedLines.of(warnings.map(\.path), in: project, using: runner) {
-            let inChanged = warnings.filter { warning in changed[warning.path]?.contains { $0.contains(warning.line) } == true }
+        if let changed = await changed {
+            let inChanged = warnings.filter { warning in
+                guard let path = warning.path, let line = warning.line else { return false }
+                return changed[path]?.contains { $0.contains(line) } == true
+            }
             if let note = warningsNote(inChanged, of: warnings.count) { notes.append(note) }
         }
 

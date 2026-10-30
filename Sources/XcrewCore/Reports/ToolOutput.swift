@@ -120,21 +120,23 @@ public struct ToolOutput: Sendable {
         }
     }
 
-    /// A compiler warning and the place it fires.
-    struct Warning: Sendable, Equatable {
+    /// A compiler warning and, when the server names them, the file and line it fires at.
+    struct Warning: Sendable, Hashable {
         let message: String
-        let path: String
-        let line: Int
+        let path: String?
+        let line: Int?
     }
 
-    /// Each warning that names a file and line, from either server's build or test result.
+    /// Each distinct warning in either server's build or test result: one listed again at the same place is one.
     var warnings: [Warning] {
-        switch shape {
+        let listed = switch shape {
         case let .xcodeMCPJSON(result): result.warnings
-        case let .mobileBuildMCPText(text): Self.located(text.warnings)
-        case let .mobileBuildMCPJSON(result): Self.located(Self.listed(result.data?.diagnostics?.warnings ?? []))
-        case .unrecognized: []
+        case let .mobileBuildMCPText(text): Self.placed(text.warnings)
+        case let .mobileBuildMCPJSON(result): Self.placed(Self.listed(result.data?.diagnostics?.warnings ?? []))
+        case .unrecognized: [Warning]()
         }
+        var seen = Set<Warning>()
+        return listed.filter { seen.insert($0).inserted }
     }
 
     /// MobileBuildMCP's JSON warnings, each place read from its `/path:line`.
@@ -142,12 +144,9 @@ public struct ToolOutput: Sendable {
         warnings.map { RepeatedWarnings.Warning(message: $0.message, location: $0.location.map(RepeatedWarnings.Location.init)) }
     }
 
-    /// The warnings that name a file and line.
-    static func located(_ warnings: [RepeatedWarnings.Warning]) -> [Warning] {
-        warnings.compactMap { warning in
-            guard let place = warning.location, let line = place.line.flatMap({ Int($0) }) else { return nil }
-            return Warning(message: warning.message, path: place.path, line: line)
-        }
+    /// Each warning with its file and line, where it has them.
+    static func placed(_ warnings: [RepeatedWarnings.Warning]) -> [Warning] {
+        warnings.map { Warning(message: $0.message, path: $0.location?.path, line: $0.location?.line.flatMap { Int($0) }) }
     }
 
     /// MobileBuildMCP's text, when the output is in that shape.

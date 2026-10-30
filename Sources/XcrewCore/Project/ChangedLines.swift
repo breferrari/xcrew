@@ -32,13 +32,14 @@ enum ChangedLines {
         var found: [String: [ClosedRange<Int>]] = [:]
         var file: String?
         var (removed, added) = (0, 0)
-        for line in diff.split(whereSeparator: \.isNewline) {
+        // By byte: a CRLF ending is one Character, which a split on "\n" would pass over.
+        for line in diff.utf8.split(separator: UInt8(ascii: "\n")).map({ String(decoding: $0, as: UTF8.self) }) {
             if removed > 0, line.hasPrefix("-") {
                 removed -= 1
             } else if added > 0, line.hasPrefix("+") {
                 added -= 1
             } else if line.hasPrefix("+++ ") {
-                let path = line.dropFirst(4)
+                let path = name(line.dropFirst(4))
                 file = path == "/dev/null" ? nil : "\(top)/\(path)"
             } else if line.hasPrefix("@@ "), let match = line.firstMatch(of: /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/), let start = Int(match.2) {
                 let count = match.3.flatMap { Int($0) } ?? 1
@@ -48,4 +49,33 @@ enum ChangedLines {
         }
         return found
     }
+
+    /// A name as a header writes it: ended with a tab when it holds a space, and C-quoted when it holds a quote, a
+    /// backslash or a control character (`core.quotePath=false` leaves other bytes as they are).
+    static func name(_ written: Substring) -> String {
+        let written = written.hasSuffix("\t") ? written.dropLast() : written
+        guard written.count > 1, written.hasPrefix("\""), written.hasSuffix("\"") else { return String(written) }
+        var bytes: [UInt8] = []
+        var rest = Array(written.utf8.dropFirst().dropLast())[...]
+        while let byte = rest.popFirst() {
+            guard byte == UInt8(ascii: "\\"), let escaped = rest.popFirst() else {
+                bytes.append(byte)
+                continue
+            }
+            guard (UInt8(ascii: "0")...UInt8(ascii: "7")).contains(escaped) else {
+                bytes.append(escapes[escaped] ?? escaped)
+                continue
+            }
+            var value = Int(escaped - UInt8(ascii: "0"))
+            while value < 32, let digit = rest.first, (UInt8(ascii: "0")...UInt8(ascii: "7")).contains(digit) {
+                value = value * 8 + Int(digit - UInt8(ascii: "0"))
+                rest.removeFirst()
+            }
+            bytes.append(UInt8(truncatingIfNeeded: value))
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    /// The letters git writes after a backslash for a control character.
+    static let escapes: [UInt8: UInt8] = [UInt8(ascii: "a"): 7, UInt8(ascii: "b"): 8, UInt8(ascii: "t"): 9, UInt8(ascii: "n"): 10, UInt8(ascii: "v"): 11, UInt8(ascii: "f"): 12, UInt8(ascii: "r"): 13]
 }
