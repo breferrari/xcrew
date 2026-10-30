@@ -36,7 +36,7 @@ Sources/
   XcrewCore/            the behaviour, no I/O beyond what Machine allows
     System/             CommandRunning (the seam every process call goes through), Machine, Version, Once
     Project/            the project root, the files xcrew reads or writes there, git exclusion, Tuist's old macro copy phase
-    MobileBuildMCP/     profile answers, config rendering and writing, the simulator catalog
+    MobileBuildMCP/     profile answers, config rendering and writing, the simulator catalog, and what the setup form offers
     Doctor/             the Check protocol, the registry, and one file per check in Checks/
     Hooks/              hook input and replies, the session briefing
     Reports/            reading the servers' output for the mod: each result decoded once into its server's shape (MobileBuildMCP's text as typed lines, every line shape read in MobileBuildMCPLine), failures, the warnings in lines the branch changed, the changed lines a test run ran, logs, result bundles

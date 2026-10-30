@@ -18,11 +18,12 @@ struct SetupCommand: Command {
 
     let name = "setup"
     var valuedOptions: Set<String> { Set(Self.mcsKeys.keys).union(["debugger-backend"]) }
-    let flags: Set<String> = ["force", "worktree", "no-simulator", "fresh-simulator"]
+    let flags: Set<String> = ["force", "worktree", "no-simulator", "fresh-simulator", "choices"]
     let usage = [
         "setup [--container NAME] [--test-simulator NAME] [--app-simulator NAME]",
         "      [--app-scheme NAME] [--bundle-id ID] [--ui-scheme NAME] [--test-scheme NAME]",
         "      [--debugger-backend dap|lldb-cli] [--force]",
+        "setup --choices [--container NAME]   what the setup form offers, as JSON: containers, shared schemes with what each builds and tests, installed simulators, setup's own picks, and the config there is; writes nothing",
         "      write .mobilebuildmcp/config.yaml; simulators default to the newest iPhone installed,",
         "      and the test scheme to the shared scheme that runs unit tests",
         "setup --worktree [--force] [--no-simulator | --fresh-simulator]   in a linked git worktree, write its config from the main checkout's, with simulators of its own, cloned from the main checkout's while they're shut down unless --fresh-simulator; --no-simulator shares the main checkout's",
@@ -56,6 +57,7 @@ struct SetupCommand: Command {
 
     func run(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
+        if invocation.arguments.has("choices") { return try await choices(invocation) }
         if invocation.arguments.has("worktree") { return try await worktree(invocation) }
         for flag in ["no-simulator", "fresh-simulator"] where invocation.arguments.has(flag) {
             throw UsageError(description: "setup --\(flag) goes with --worktree: plain setup makes no simulator")
@@ -121,6 +123,24 @@ struct SetupCommand: Command {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
         }
         await Self.keepOutOfGit(in: invocation)
+        return 0
+    }
+
+    /// What the setup form offers, for the container named or the one setup would build; when setup can't tell which,
+    /// the containers there are, with why.
+    func choices(_ invocation: Invocation) async throws -> Int32 {
+        let context = invocation.context
+        guard Set(invocation.arguments.values.keys).isSubset(of: ["container"]), invocation.arguments.flags == ["choices"] else {
+            throw UsageError(description: "setup --choices takes no option but --container: it writes nothing")
+        }
+        var container = invocation.arguments["container"], problem: String?
+        if container == nil {
+            do { container = try Self.container(in: context) } catch let error as UsageError { problem = error.description }
+        }
+        let catalog = await SimulatorCatalog.load(using: context.runner, choosingADefault: true)
+        var choices = SetupChoices.read(container: container, containers: context.project.layout(.anywhereButHome).containers, containerProblem: problem, in: context.project, catalog: catalog)
+        if await Worktree.checkout(of: context.project, using: context.runner) != nil { choices.worktree = true }
+        invocation.print(String(decoding: try JSONEncoder.sorted.encode(choices), as: UTF8.self))
         return 0
     }
 
