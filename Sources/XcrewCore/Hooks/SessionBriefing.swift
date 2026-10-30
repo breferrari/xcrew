@@ -27,7 +27,7 @@ public struct SessionBriefing: Sendable {
     /// The Xcode the project pins, read from its file alone: whether the server started with it is the doctor's to say,
     /// so this claims no more than that it starts with it when it can.
     func pinnedXcode() -> String? {
-        project.xcodePin.map { "This project pins Xcode \($0.version) (`\($0.file)`). MobileBuildMCP starts with it when it's installed and xcrew's CLI is ready, and `xcrew doctor` says when it didn't. The Xcode MCP works through whichever Xcode is open, so open that one." }
+        project.xcodePin.map { "This project pins Xcode \($0.version) (`\($0.file)`). MobileBuildMCP starts with it when it's installed and xcrew's CLI is ready, and `xcrew doctor` says when it didn't. The Xcode MCP works through whichever Xcode is open." }
     }
 
     /// Said at the start, and by the mod with the session's first MobileBuildMCP build or test, while MobileBuildMCP has

@@ -68,11 +68,29 @@ public struct SimulatorCatalog: Sendable {
 
     struct Runtimes: Decodable {
         struct Runtime: Decodable {
+            struct DeviceType: Decodable {
+                let name: String?
+                let identifier: String?
+            }
             let identifier: String?
             let version: String?
             let platform: String?
+            let isAvailable: Bool?
+            let supportedDeviceTypes: [DeviceType]?
         }
         let runtimes: [Runtime]
+    }
+
+    /// The command that creates a simulator named `name`, from `simctl list runtimes --json`: the device type of that
+    /// name on the newest available runtime that supports it. Nil when no installed runtime does.
+    public static func createCommand(for name: String, runtimes: Data) -> String? {
+        let listed = (try? JSONDecoder().decode(Runtimes.self, from: runtimes))?.runtimes ?? []
+        let candidates = listed.compactMap { runtime -> (version: Version, runtime: String, type: String)? in
+            guard runtime.isAvailable != false, let id = runtime.identifier,
+                  let type = runtime.supportedDeviceTypes?.first(where: { $0.name == name })?.identifier else { return nil }
+            return (Version(runtime.version ?? ""), id, type)
+        }
+        return candidates.max { $0.version < $1.version }.map { "xcrun simctl create \"\(name)\" \($0.type) \($0.runtime)" }
     }
 
     /// Parses `simctl list devices --json`, with each runtime's version and platform from `simctl list runtimes
@@ -105,8 +123,8 @@ public struct SimulatorCatalog: Sendable {
 
     public var names: Set<String> { Set(devices.map(\.name)) }
 
-    /// The installed iPhones' names, each once, sorted.
-    public var iPhoneNames: [String] { Array(Set(devices.filter(\.isIPhone).map(\.name))).sorted() }
+    /// The installed iPhones' names, each once, in numeric order.
+    public var iPhoneNames: [String] { Array(Set(devices.filter(\.isIPhone).map(\.name))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
 
     /// The UDID of the simulator called `name`, on the newest runtime that has one, as `defaultIPhone` picks runtimes.
     public func udid(of name: String) -> String? {

@@ -1,7 +1,7 @@
 // swift-tools-version:6.2
 import PackageDescription
 
-// macOS 26 because Xcode 27, which the Xcode MCP needs, requires it.
+// macOS 26 because Xcode 27, which runs the Xcode MCP with Xcode closed, requires it.
 // No dependencies on purpose: bin/xcrew builds this on first use, and a dependency-free
 // package builds in seconds with nothing to resolve or download.
 /// Language features each Swift target opts into: upcoming defaults adopted early, and memory

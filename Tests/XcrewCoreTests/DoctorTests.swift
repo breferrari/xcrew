@@ -222,6 +222,31 @@ import XcrewTestSupport
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("no profile has a scheme yet, so a build or test needs one each time: /xcrew:setup adds them from your schemes"))
     }
 
+    /// `simctl list runtimes` names each runtime's supported device types, so the fix is the exact create command.
+    static let runtimes = #"{"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-4","version":"26.4","platform":"iOS","isAvailable":true,"supportedDeviceTypes":[{"name":"iPhone 16","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-16"}]},{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-27-1","version":"27.1","platform":"iOS","isAvailable":true,"supportedDeviceTypes":[{"name":"iPhone 16","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-16"},{"name":"iPhone 18","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-18"}]}]}"#
+
+    static func missingSimulator(_ name: String, in profile: String) -> (Project, FakeRunner) {
+        let project = Project.temporary()
+        let answers: ProfileAnswers = profile == "unit"
+            ? .init(container: "A.xcworkspace", testSimulator: name, testScheme: "ATests")
+            : .init(container: "A.xcworkspace", testSimulator: "iPhone 18", appSimulator: name, appScheme: "A", testScheme: "ATests")
+        project.write(ConfigRenderer.render(answers, root: project.root), to: ".mobilebuildmcp/config.yaml")
+        let devices = #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-1":[{"name":"iPhone 18","udid":"U18","isAvailable":true}]}}"#
+        return (project, FakeRunner(responses: ["xcrun simctl list devices available --json": .init(status: 0, stdout: devices), "xcrun simctl list runtimes --json": .init(status: 0, stdout: runtimes)]))
+    }
+
+    /// The fix for a missing simulator is to create it, with the newest runtime that supports it, or to pick an installed
+    /// one with the option for the profile that names it; never a bare rerun, which drops the name the person chose.
+    @Test func aMissingSimulatorNamesItsCreateCommandAndTheInstalledOnes() async {
+        let (project, runner) = Self.missingSimulator("iPhone 16", in: "app")
+        #expect(await SimulatorsCheck().run(.fake(runner, project: project)) == .warn("missing: iPhone 16: create it with xcrun simctl create \"iPhone 16\" com.apple.CoreSimulator.SimDeviceType.iPhone-16 com.apple.CoreSimulator.SimRuntime.iOS-27-1, or use an installed one with xcrew setup --app-simulator <name> (installed iPhones: iPhone 18)"))
+    }
+
+    @Test func aMissingSimulatorNoRuntimeSupportsIsOnlyReplaced() async {
+        let (project, runner) = Self.missingSimulator("iPhone 9", in: "unit")
+        #expect(await SimulatorsCheck().run(.fake(runner, project: project)) == .warn("missing: iPhone 9: no installed runtime supports it, so use an installed one with xcrew setup --test-simulator <name> (installed iPhones: iPhone 18)"))
+    }
+
     @Test func aSimulatorIDThatIsGoneWarns() async {
         let project = Project.temporary()
         project.write(ConfigRenderer.render(.init(container: "A.xcworkspace", testSimulator: "iPhone 17", testScheme: "A"), root: project.root, simulatorIDs: ["iPhone 17": "GONE"]), to: ".mobilebuildmcp/config.yaml")

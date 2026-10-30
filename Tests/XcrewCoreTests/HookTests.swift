@@ -51,12 +51,13 @@ import XcrewTestSupport
         #expect(text?.contains("/xcrew:setup") == false)
     }
 
-    /// A project that pins its Xcode says so, and that the Xcode MCP works through the open one, which no pin changes.
+    /// A project that pins its Xcode says so, and that the Xcode MCP works through the open one, which no pin changes; it
+    /// states the fact and never steers the person to another Xcode.
     @Test func briefingNamesThePinnedXcode() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         project.write("26.4\n", to: ".xcode-version")
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n")
-        #expect(text?.contains("- **xcrew:** This project pins Xcode 26.4 (`.xcode-version`). MobileBuildMCP starts with it when it's installed and xcrew's CLI is ready, and `xcrew doctor` says when it didn't. The Xcode MCP works through whichever Xcode is open, so open that one.") == true)
+        #expect(text?.contains("- **xcrew:** This project pins Xcode 26.4 (`.xcode-version`). MobileBuildMCP starts with it when it's installed and xcrew's CLI is ready, and `xcrew doctor` says when it didn't. The Xcode MCP works through whichever Xcode is open.") == true)
     }
 
     /// `simctl list devices booted` filters on each device's description, so a shut-down device whose name holds the word

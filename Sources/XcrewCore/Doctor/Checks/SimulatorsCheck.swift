@@ -14,7 +14,14 @@ struct SimulatorsCheck: Check {
         let catalog = await SimulatorCatalog.load(using: context.runner, displaysOf: Set(wanted))
         let missing = wanted.filter { !catalog.names.contains($0) }
         guard missing.isEmpty else {
-            return .warn("missing: \(missing.joined(separator: ", ")) (xcrun simctl create \"<name>\" <device-type> <runtime>, or xcrew setup to pick installed ones)")
+            let runtimes = Data(await context.runner.run("xcrun", "simctl", "list", "runtimes", "--json").stdout.utf8)
+            let installed = catalog.iPhoneNames.isEmpty ? "none" : catalog.iPhoneNames.joined(separator: ", ")
+            let unitSimulator = CarriedDefaults(yaml).simulatorName(of: "unit")
+            return .warn(missing.map { name in
+                let replace = "use an installed one with xcrew setup --\(name == unitSimulator ? "test-simulator" : "app-simulator") <name> (installed iPhones: \(installed))"
+                return SimulatorCatalog.createCommand(for: name, runtimes: runtimes).map { "missing: \(name): create it with \($0), or \(replace)" }
+                    ?? "missing: \(name): no installed runtime supports it, so \(replace)"
+            }.joined(separator: "; "))
         }
         let twoDisplays = wanted.filter { name in catalog.devices.contains { $0.name == name && $0.deviceType.map(catalog.multiDisplayTypes.contains) == true } }
         if let name = twoDisplays.first {

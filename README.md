@@ -48,7 +48,7 @@ Works in any Apple-platform project: plain Xcode, Tuist or XcodeGen. [Install it
 
 ## Quick start
 
-You need macOS 26 or later, Xcode 27 or later, [Homebrew](https://brew.sh) and [Claude Code](https://claude.com/claude-code).
+You need macOS 26 or later, Xcode 26.3 or later, [Homebrew](https://brew.sh) and [Claude Code](https://claude.com/claude-code). With Xcode 26, the Xcode MCP works while your project is open in Xcode; Xcode 27 also runs it with Xcode closed.
 
 1. **Install the plugin** in your project. Use project or local scope, since its servers are only useful in Apple-platform projects:
 

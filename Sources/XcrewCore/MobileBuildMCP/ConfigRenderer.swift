@@ -27,11 +27,13 @@ public enum ConfigRenderer {
         lines += ["sentryDisabled: true", "showTestTiming: true"]
         // In the order the active one is chosen: the first written is active.
         let bundle = answers.bundleID.map { ["    bundleId: \(quoted($0))"] } ?? []
-        let written = [
-            ("unit", answers.testScheme, answers.testSimulator, [String]()),
-            ("app", answers.appScheme, answers.appSimulator, bundle),
-            ("ui", answers.uiTestScheme, answers.appSimulator, []),
-        ].compactMap { name, scheme, simulator, extra in scheme.map { (name, profile(name, scheme: $0, simulator: simulator, extra: extra)) } }
+        let written = answers.profileNames.map { name in
+            switch name {
+            case "unit": (name, profile(name, scheme: answers.testScheme ?? "", simulator: answers.testSimulator))
+            case "app": (name, profile(name, scheme: answers.appScheme ?? "", simulator: answers.appSimulator, extra: bundle))
+            default: (name, profile(name, scheme: answers.uiTestScheme ?? "", simulator: answers.appSimulator))
+            }
+        }
         if let active = written.first?.0 {
             lines += ["sessionDefaultsProfiles:"] + written.flatMap(\.1) + ["activeSessionDefaultsProfile: \(active)"]
         } else {

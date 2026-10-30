@@ -2,19 +2,23 @@ import Foundation
 
 /// The session defaults an existing config holds that setup doesn't set itself, such as `derivedDataPath` or `env`, kept
 /// when setup writes over it. A named profile stands alone in MobileBuildMCP (docs/findings.md, *MobileBuildMCP's
-/// profiles*), so the global ones go into each profile, under the profile's own of the same name.
+/// profiles*), so each profile setup writes gets them all: its own of the same name first, then the global ones, then
+/// any other profile's, by the first that names a key.
 public struct CarriedDefaults: Sendable, Equatable {
-    /// A key and its value as the file wrote it: the key's line, then any lines nested under it, from the key's indent.
+    /// A key and its value as the file wrote it: the key's line, then the lines under it, from the key's indent.
     struct Entry: Sendable, Equatable {
         let key: String
-        let lines: [String]
+        var lines: [String]
     }
 
-    /// The keys setup writes from its answers.
-    static let setByXcrew: Set<String> = ["workspacePath", "projectPath", "scheme", "simulatorName", "simulatorId", "bundleId"]
+    /// The keys `ConfigRenderer.render` writes into a profile, and into the global defaults when it writes no profile.
+    static let setInProfiles: Set<String> = ["workspacePath", "projectPath", "scheme", "simulatorName", "simulatorId", "bundleId"]
+    static let setGlobally: Set<String> = ["workspacePath", "projectPath", "simulatorName", "simulatorId"]
 
     var global: [Entry] = []
     var profiles: [String: [Entry]] = [:]
+    /// The profiles in the order the file names them.
+    var profileOrder: [String] = []
 
     public init() {}
 
@@ -23,38 +27,39 @@ public struct CarriedDefaults: Sendable, Equatable {
         var profile: String?
         var profileIndent: Int?
         var keyIndent: Int?
-        var current: (key: String, indent: Int, lines: [String], profile: String?)?
+        var current: (entry: Entry, indent: Int, profile: String?)?
         func flush() {
-            guard let entry = current else { return }
+            guard let (entry, _, name) = current else { return }
             current = nil
-            guard !Self.setByXcrew.contains(entry.key) else { return }
-            if let name = entry.profile { profiles[name, default: []].append(Entry(key: entry.key, lines: entry.lines)) } else { global.append(Entry(key: entry.key, lines: entry.lines)) }
+            let kept = Entry(key: entry.key, lines: Array(entry.lines.reversed().drop { $0.isEmpty }.reversed()))
+            if let name { profiles[name, default: []].append(kept) } else { global.append(kept) }
         }
-        for raw in yaml.split(whereSeparator: \.isNewline) {
+        for raw in yaml.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = String(raw)
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
             let indent = line.prefix { $0 == " " }.count
-            if let entry = current, indent > entry.indent {
-                current?.lines.append(String(repeating: " ", count: indent - entry.indent) + trimmed)
+            // A value runs on through deeper lines, blank ones, and list items at its key's own indent.
+            if let (_, keyAt, _) = current, trimmed.isEmpty || indent > keyAt || (indent == keyAt && trimmed.hasPrefix("-")) {
+                current?.entry.lines.append(trimmed.isEmpty ? "" : String(repeating: " ", count: indent - keyAt) + trimmed)
                 continue
             }
+            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
             flush()
+            let key = ConfigRenderer.unquoted(String(trimmed.prefix { $0 != ":" }))
             if indent == 0 {
-                section = String(trimmed.prefix { $0 != ":" })
-                (profile, profileIndent, keyIndent) = (nil, nil, nil)
+                (section, profile, profileIndent, keyIndent) = (key, nil, nil, nil)
                 continue
             }
-            let key = String(trimmed.prefix { $0 != ":" })
             switch section {
             case "sessionDefaults":
-                current = (key, indent, [trimmed], nil)
+                current = (Entry(key: key, lines: [trimmed]), indent, nil)
             case "sessionDefaultsProfiles":
                 if profileIndent == nil || indent == profileIndent {
-                    (profile, profileIndent, keyIndent) = (ConfigRenderer.unquoted(key), indent, nil)
-                } else if let name = profile {
+                    (profile, profileIndent, keyIndent) = (key, indent, nil)
+                    profileOrder.append(key)
+                } else if let profile {
                     if keyIndent == nil { keyIndent = indent }
-                    if indent == keyIndent { current = (key, indent, [trimmed], name) }
+                    if indent == keyIndent { current = (Entry(key: key, lines: [trimmed]), indent, profile) }
                 }
             default:
                 break
@@ -63,22 +68,31 @@ public struct CarriedDefaults: Sendable, Equatable {
         flush()
     }
 
-    /// What a profile gets, or with `profile` nil the global defaults: the global entries, each replaced by the profile's
-    /// own of the same key, then the profile's others.
+    /// What a profile setup writes gets, or with `profile` nil the global defaults, leaving out what setup sets there.
     func entries(for profile: String?) -> [Entry] {
-        let own = profile.flatMap { profiles[$0] } ?? []
-        let ownKeys = Set(own.map(\.key))
-        return global.filter { !ownKeys.contains($0.key) } + own
+        let skipped = profile == nil ? Self.setGlobally : Self.setInProfiles
+        let others = profileOrder.filter { $0 != profile }.map { profiles[$0] ?? [] }
+        var seen: Set<String> = []
+        return ([profile.flatMap { profiles[$0] } ?? [], global] + others).joined().filter { !skipped.contains($0.key) && seen.insert($0.key).inserted }
     }
 
     /// The lines for a profile's or the global defaults' block, at `indent`.
     func lines(for profile: String?, indent: Int) -> [String] {
         let pad = String(repeating: " ", count: indent)
-        return entries(for: profile).flatMap(\.lines).map { pad + $0 }
+        return entries(for: profile).flatMap(\.lines).map { $0.isEmpty ? "" : pad + $0 }
     }
 
-    /// The keys carried into the profiles setup writes, each once, in order.
+    /// The simulator a profile names, or with `profile` nil the global defaults' one.
+    public func simulatorName(of profile: String?) -> String? {
+        let entries = profile.map { profiles[$0] ?? [] } ?? global
+        return entries.first { $0.key == "simulatorName" }.flatMap(\.lines.first).map { line in
+            ConfigRenderer.unquoted(line.dropFirst("simulatorName:".count).trimmingCharacters(in: .whitespaces))
+        }
+    }
+
+    /// The keys carried into the profiles setup writes, or into the global defaults when it writes none, sorted.
     public func keys(for written: [String]) -> [String] {
-        Array(Set((written.isEmpty ? [nil] : written.map(Optional.some)).flatMap { entries(for: $0).map(\.key) })).sorted()
+        let blocks: [String?] = written.isEmpty ? [nil] : written
+        return Set(blocks.flatMap { entries(for: $0).map(\.key) }).sorted()
     }
 }

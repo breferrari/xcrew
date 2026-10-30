@@ -90,18 +90,22 @@ struct SetupCommand: Command {
         let simulatorIDs = [answers.testSimulator, answers.appSimulator].reduce(into: [String: String]()) { ids, name in
             ids[name] = catalog.udid(of: name)
         }
-        // A name that isn't installed gets no ID, and MobileBuildMCP looks one up only for the active profile; it's still
-        // written, since the person may add that simulator next.
         let installed = catalog.iPhoneNames.joined(separator: ", ")
-        var named: Set<String> = []
-        for (name, option) in [(answers.testSimulator, "test-simulator"), (answers.appSimulator, "app-simulator")] where simulatorIDs[name] == nil && named.insert(name).inserted {
-            notes.append("xcrew: no simulator named \(name) is installed (installed iPhones: \(installed.isEmpty ? "none" : installed)): add it in Xcode, or rerun with --\(option) and one of those")
+        let missing = [(answers.testSimulator, "test-simulator"), (answers.appSimulator, "app-simulator")].filter { simulatorIDs[$0.0] == nil }
+        if !catalog.devices.isEmpty, !missing.isEmpty {
+            let runtimes = Data(await context.runner.run("xcrun", "simctl", "list", "runtimes", "--json").stdout.utf8)
+            var named: Set<String> = []
+            for (name, option) in missing where named.insert(name).inserted {
+                let add = SimulatorCatalog.createCommand(for: name, runtimes: runtimes).map { "create it with \($0)" } ?? "add it in Xcode"
+                notes.append(installed.isEmpty
+                    ? "xcrew: no simulator named \(name) is installed, and no iPhone simulator is: \(add)"
+                    : "xcrew: no simulator named \(name) is installed (installed iPhones: \(installed)): \(add), or rerun with --\(option) and one of those")
+            }
         }
-        // The old config's session defaults that setup doesn't set go into each profile, rather than being dropped.
         let carried = (try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)).map(CarriedDefaults.init) ?? CarriedDefaults()
         let carriedKeys = carried.keys(for: answers.profileNames)
-        if !carriedKeys.isEmpty {
-            notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into each profile")
+        if !carriedKeys.isEmpty, ConfigWriter.keeping(context.project) != nil {
+            notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into " + (answers.profileNames.isEmpty ? "the session defaults" : "each profile"))
         }
         switch try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force")) {
         case .keptEdited:

@@ -105,6 +105,69 @@ import XcrewTestSupport
         #expect(first.contains("    derivedDataPath: ./.mobilebuildmcp/DerivedData\n"))
     }
 
+    /// A profile setup adds on a later run gets what an earlier one carried, though no global defaults remain.
+    @Test func aProfileAddedLaterGetsWhatWasCarried() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write(Self.ownConfig, to: ".mobilebuildmcp/config.yaml")
+        _ = await Run("setup", "--force", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        let again = await Run("setup", "--test-scheme", "AppTests", "--app-scheme", "App", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        #expect(config(project).contains("  app:\n    workspacePath: '\(project.root.path)/App.xcworkspace'\n    scheme: 'App'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n    derivedDataPath: ./.mobilebuildmcp/DerivedData\n"))
+        #expect(!again.text.contains("xcrew: carried"))
+    }
+
+    /// Without a scheme setup writes global defaults, which keep what the old profiles held, a scheme included.
+    @Test func theGlobalDefaultsKeepWhatTheOldProfilesHeld() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write("schemaVersion: 1\nsessionDefaultsProfiles:\n  mine:\n    scheme: App\n    derivedDataPath: ./DD\n    workspacePath: ./App.xcworkspace\nactiveSessionDefaultsProfile: mine\n", to: ".mobilebuildmcp/config.yaml")
+        let run = await Run("setup", "--force", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        #expect(config(project).contains("sessionDefaults:\n  workspacePath: '\(project.root.path)/App.xcworkspace'\n  simulatorName: 'iPhone 18'\n  simulatorId: 'U18'\n  scheme: App\n  derivedDataPath: ./DD\n"))
+        #expect(run.text.contains("xcrew: carried derivedDataPath, scheme from the old config into the session defaults"))
+    }
+
+    /// A profile of any name carries into the ones setup writes.
+    @Test func aProfileOfAnotherNameCarries() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write("schemaVersion: 1\nsessionDefaultsProfiles:\n  default:\n    derivedDataPath: ./DD\n", to: ".mobilebuildmcp/config.yaml")
+        _ = await Run("setup", "--force", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        #expect(config(project).contains("    simulatorId: 'U18'\n    derivedDataPath: ./DD\n"))
+    }
+
+    /// YAML may write a list's items at their key's own indent, and a block scalar keeps its blank lines.
+    @Test func carriedValuesKeepTheirShape() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write("schemaVersion: 1\nsessionDefaults:\n  extraArgs:\n  - -foo\n  env:\n    SCRIPT: |\n      one\n\n      # two\n", to: ".mobilebuildmcp/config.yaml")
+        let run = await Run("setup", "--force", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        #expect(config(project).contains("    simulatorId: 'U18'\n    extraArgs:\n    - -foo\n    env:\n      SCRIPT: |\n        one\n\n        # two\n"))
+        #expect(run.text.contains("xcrew: carried env, extraArgs from the old config into each profile"))
+    }
+
+    /// When an installed runtime supports the missing simulator, setup gives the command that creates it.
+    @Test func aMissingSimulatorARuntimeSupportsGetsItsCreateCommand() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        var runner = simulators
+        runner.responses["xcrun simctl list runtimes --json"] = .init(status: 0, stdout: #"{"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-27-0","version":"27.0","platform":"iOS","isAvailable":true,"supportedDeviceTypes":[{"name":"iPhone 16","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-16"}]}]}"#)
+        let run = await Run("setup", "--test-scheme", "AppTests", "--app-scheme", "App", "--app-simulator", "iPhone 16", context: .fake(runner, project: project))
+        #expect(run.text.contains("xcrew: no simulator named iPhone 16 is installed (installed iPhones: iPhone 18): create it with xcrun simctl create \"iPhone 16\" com.apple.CoreSimulator.SimDeviceType.iPhone-16 com.apple.CoreSimulator.SimRuntime.iOS-27-0, or rerun with --app-simulator and one of those"))
+    }
+
+    /// MobileBuildMCP finds a simulator's ID only for the active profile at its start, so every profile setup writes with
+    /// an installed simulator carries its own.
+    @Test func everyProfileWithAnInstalledSimulatorHasItsID() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        _ = await Run("setup", "--test-scheme", "AppTests", "--app-scheme", "App", "--ui-scheme", "AppUITests", "--app-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        let profiles = config(project).matches(of: /(?m)^  (?:unit|app|ui):\n(?:    .*\n)*/).map { String($0.0) }
+        #expect(profiles.count == 3)
+        for profile in profiles { #expect(profile.contains("simulatorId: 'U18'"), "\(profile)") }
+    }
+
+    /// With no simulator list at all, `simctl` failed: that isn't a missing simulator to name.
+    @Test func withoutASimulatorListNoSimulatorIsSaidMissing() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let run = await Run("setup", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(FakeRunner(), project: project))
+        #expect(run.status == 0)
+        #expect(!run.text.contains("no simulator named"))
+    }
+
     /// A simulator that isn't installed gets no ID, and MobileBuildMCP finds one only for the active profile: setup says
     /// so, and which are installed, but writes it, since the person may add it next.
     @Test func aSimulatorThatIsntInstalledIsNamedWithTheInstalledOnes() async {

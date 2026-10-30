@@ -665,6 +665,14 @@ import Testing
         #expect(named.isSubset(of: Set(ConfigRenderer.simEnvTools)), "\(named.subtracting(ConfigRenderer.simEnvTools).sorted())")
     }
 
+    /// The setup skill checks every simulator it would pass before setup writes it, and offers the exact create command.
+    @Test func setupSkillChecksSimulatorsBeforePassingThem() throws {
+        let step = try #require(try text("skills/setup/SKILL.md").split(separator: "\n").first { $0.contains("**Simulators:**") })
+        #expect(step.contains("`list_sims`"))
+        #expect(step.contains("`xcrun simctl create"))
+        #expect(step.contains("Pass only simulators that exist to `xcrew setup`"))
+    }
+
     /// The reference skill names the tool groups setup enables, so Claude isn't sent to one that's off.
     @Test func referenceSkillNamesTheEnabledToolGroups() throws {
         let line = try #require(try text("skills/reference/SKILL.md").split(separator: "\n").first { $0.hasPrefix("- Enabled tool groups:") })
