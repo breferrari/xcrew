@@ -6,7 +6,7 @@ import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, kn
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_BLOCK, CARD_WAIT_MS, cardText } from './card'
-import { describe, forwardedText, historyOf, isFullSuiteRun, isRepeatedRun, observe, runsWholeScope } from './context'
+import { describe, historyOf, isFullSuiteRun, isRepeatedRun, lost, observe, runsWholeScope } from './context'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { afterFullRun, type Crossing, loopNote } from './loop'
@@ -60,7 +60,8 @@ export const register: Register = on => {
   // After a manifest edit, the first call that builds the project is refused with the generate command; the next goes through.
   on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const parsed = parseTool(e.tool)
-    const stale = parsed && buildsProject(parsed) ? await quietly(() => read($, staleState)) : undefined
+    const target = parsed && (forwardedTool(parsed, e as unknown as Record<string, unknown>) ?? parsed)
+    const stale = target && buildsProject(target) ? await quietly(() => read($, staleState)) : undefined
     const generates = marksOf(stale).map(mark => mark.generate)
     if (!stale || generates.length === 0) return next(e)
     if (!stale.refused) {
@@ -113,7 +114,8 @@ export const register: Register = on => {
       // Not timed, but its answer may say what the next build will use.
       const result = await next(e)
       const forwarded = forwardedTool(parsed, e as unknown as Record<string, unknown>)
-      observe(forwarded ?? parsed, forwarded ? forwardedText(parsed, result.text ?? '') : (result.text ?? ''))
+      if (forwarded) lost(forwarded)
+      else observe(parsed, result.text ?? '')
       return result
     }
     const target = describe(parsed, e as unknown as Record<string, unknown>)

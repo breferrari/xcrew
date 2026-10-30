@@ -4,9 +4,9 @@
  * from one the person registered themselves (`mcp__xcode__…`).
  */
 
-/** Matches a tool's full name under both registrations: this plugin's server, and the person's own. */
-function bothRegistrations(server: string, tools: readonly string[]): RegExp {
-  return new RegExp(`^mcp__(?:plugin_xcrew_)?${server}__(?:${tools.join('|')})$`)
+/** Matches `server__tool` names in full under both registrations: this plugin's server, and the person's own. */
+function anyRegistration(names: readonly string[]): RegExp {
+  return new RegExp(`^mcp__(?:plugin_xcrew_)?(?:${names.join('|')})$`)
 }
 
 /** A shell command that runs `xcrew setup`, by any path to the CLI, quoted or not, alone or among other commands. */
@@ -65,25 +65,27 @@ export function runsGenerate(command: string): boolean {
   return first !== undefined && !/[|;&\n]/.test(first.after.replace(/\d*>&\d+|&&/g, ' '))
 }
 
-/** The Xcode MCP's tool that rewrites the project file, under its own name or as MobileBuildMCP's bridge registers it. */
-export const PROJECT_REWRITER = /^mcp__(?:plugin_xcrew_)?(?:xcode__XcodeWrite|MobileBuildMCP__xcode_tools_XcodeWrite)$/
+/** The Xcode MCP's tool that rewrites the project file, under its own name or as MobileBuildMCP's bridge proxies it. */
+const XCODE_WRITE = ['xcode__XcodeWrite', 'MobileBuildMCP__xcode_tools_XcodeWrite']
+
+/** XcodeWrite's names, for its description. */
+export const PROJECT_REWRITER = anyRegistration(XCODE_WRITE)
 
 /**
  * The matcher for the guard: the engine calls a hook only for the tools its matcher matches. It takes in MobileBuildMCP's
  * call tool too, which can forward XcodeWrite; the hook lets every other forwarded tool through.
  */
-export const PROJECT_REWRITER_CALL = /^mcp__(?:plugin_xcrew_)?(?:xcode__XcodeWrite|MobileBuildMCP__(?:xcode_tools_XcodeWrite|xcode_ide_call_tool))$/
+export const PROJECT_REWRITER_CALL = anyRegistration([...XCODE_WRITE, 'MobileBuildMCP__xcode_ide_call_tool'])
 
 /**
- * The Xcode MCP tool a MobileBuildMCP call forwards through its `xcode-ide` bridge: `xcode_ide_call_tool` names it in
- * `remoteTool`, and the bridge registers each one again as `xcode_tools_<name>` (MobileBuildMCP 2.7.1's
- * `mcp/tools/xcode-ide/xcode_ide_call_tool.js:14` and `integrations/xcode-tools-bridge/registry.js:84`).
+ * The Xcode MCP tool MobileBuildMCP's `xcode_ide_call_tool` forwards, which it names in `remoteTool` (2.7.1's
+ * `mcp/tools/xcode-ide/xcode_ide_call_tool.js:14`). Its answer comes back only in an artifact file, never in the result
+ * (`integrations/xcode-tools-bridge/bridge-tool-result.js:46`), so only what the call asks for can be read.
  */
 export function forwardedTool(tool: XcodeTool, input: Record<string, unknown>): XcodeTool | undefined {
-  if (tool.server !== 'MobileBuildMCP') return undefined
-  if (tool.tool === 'xcode_ide_call_tool') return typeof input.remoteTool === 'string' ? { server: 'xcode', tool: input.remoteTool } : undefined
-  const proxied = /^xcode_tools_(\w+)$/.exec(tool.tool)?.[1]
-  return proxied ? { server: 'xcode', tool: proxied } : undefined
+  return tool.server === 'MobileBuildMCP' && tool.tool === 'xcode_ide_call_tool' && typeof input.remoteTool === 'string'
+    ? { server: 'xcode', tool: input.remoteTool }
+    : undefined
 }
 
 /**
@@ -102,10 +104,17 @@ export type ToolKind = 'build' | 'test' | 'run'
 
 export type XcodeTool = { server: 'xcode' | 'MobileBuildMCP'; tool: string }
 
+/**
+ * A tool call's server and tool. MobileBuildMCP's `xcode-ide` bridge registers each Xcode MCP tool again as
+ * `xcode_tools_<name>`, taking its arguments and returning its answer as they are (2.7.1's
+ * `integrations/xcode-tools-bridge/registry.js:84` and `manager.js:69`), so a proxied tool is the Xcode MCP's own.
+ */
 export function parseTool(name: string): XcodeTool | undefined {
   const match = MCP_TOOL.exec(name)
   const [, server, tool] = match ?? []
-  return server && tool ? { server: server as XcodeTool['server'], tool } : undefined
+  if (!server || !tool) return undefined
+  const proxied = server === 'MobileBuildMCP' ? /^xcode_tools_(\w+)$/.exec(tool)?.[1] : undefined
+  return proxied ? { server: 'xcode', tool: proxied } : { server: server as XcodeTool['server'], tool }
 }
 
 /**

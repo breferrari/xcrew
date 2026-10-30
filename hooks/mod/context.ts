@@ -28,14 +28,9 @@ export function observe(tool: XcodeTool, text: string): void {
   if (scheme || destination) xcode = { scheme: scheme ?? xcode.scheme, destination: destination ?? xcode.destination }
 }
 
-/**
- * The Xcode MCP's own answer in a forwarded call's result: `xcode_ide_call_tool` wraps it in MobileBuildMCP's envelope,
- * its text in `data.content` (2.7.1's `mcp/tools/xcode-ide/shared.js:81`); a proxied tool returns it as it is.
- */
-export function forwardedText(tool: XcodeTool, text: string): string {
-  if (tool.tool !== 'xcode_ide_call_tool') return text
-  const content = (parse(text)?.data as { content?: { text?: unknown }[] } | undefined)?.content ?? []
-  return content.map(part => part.text).find((part): part is string => typeof part === 'string') ?? ''
+/** Forgets what the Xcode MCP has active after a call that may have changed it but whose answer can't be read. */
+export function lost(tool: XcodeTool): void {
+  if (tool.server === 'xcode' && namesTarget(tool)) xcode = {}
 }
 
 /** `scheme on destination`, either part alone, or undefined when nothing is known. */

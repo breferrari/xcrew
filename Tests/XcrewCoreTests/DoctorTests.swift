@@ -168,7 +168,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["A.xcworkspace"])
         project.write(Self.config(groups: Self.groupsOf090, in: project), to: ".mobilebuildmcp/config.yaml")
         project.write("", to: ".mobilebuildmcp/.xcrew-managed")
-        let xcrews = "the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, which skips Xcrew's XcodeWrite guard: /xcrew:setup rewrites it"
+        let xcrews = "the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, whose answers Xcrew can't read: /xcrew:setup rewrites it"
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn(xcrews))
         try? FileManager.default.removeItem(at: project.managedMarker)
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn(xcrews + " (xcrew setup --force replaces a config xcrew didn't write)"))
@@ -180,7 +180,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["A.xcworkspace"])
         project.write(Self.config(groups: Self.groupsOf090, in: project), to: ".mobilebuildmcp/config.yaml")
         project.write("0000", to: ".mobilebuildmcp/.xcrew-managed")
-        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, which skips Xcrew's XcodeWrite guard: /xcrew:setup rewrites it (xcrew setup --force replaces it, as it changed after Xcrew wrote it)"))
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, whose answers Xcrew can't read: /xcrew:setup rewrites it (xcrew setup --force replaces it, as it changed after Xcrew wrote it)"))
     }
 
     /// YAML says a list several ways, and the guard is skipped whichever one names `xcode-ide`; it's said first, since the

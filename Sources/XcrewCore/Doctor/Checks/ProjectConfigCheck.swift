@@ -18,9 +18,9 @@ struct ProjectConfigCheck: Check {
         case .keptEdited: " (xcrew setup --force replaces it, as it changed after Xcrew wrote it)"
         case .written, nil: ""
         }
-        // Said first: the warnings below can stay for good, and this one is a way past the mod's guard.
+        // Said first: the warnings below can stay for good, and this one hides runs from the mod.
         if ConfigRenderer.reachesXcodeIDE(lists) {
-            return .warn("the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, which skips Xcrew's XcodeWrite guard: /xcrew:setup rewrites it" + force)
+            return .warn("the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, whose answers Xcrew can't read: /xcrew:setup rewrites it" + force)
         }
         if FileManager.default.fileExists(atPath: project.legacyConfigFolder.path) {
             return .warn(".xcodebuildmcp/ predates MobileBuildMCP 2.7.1 and is no longer read: delete it")

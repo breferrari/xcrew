@@ -30,6 +30,13 @@ test('after a manifest edit the first build is refused with the command that reg
   expect(refused.deny).toContain(`\`${GENERATE}\``)
 })
 
+test('a build MobileBuildMCP forwards to the Xcode MCP is refused after a manifest edit too', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  const refused = await callTool($, 'mcp__MobileBuildMCP__xcode_ide_call_tool', { remoteTool: 'BuildProject', arguments: '{}' })
+  expect(refused.deny).toContain(`\`${GENERATE}\``)
+})
+
 test('a second build without a generate goes through, says why, and the next one runs plainly', async ($, on) => {
   tuistProject(on)
   await editManifest($)

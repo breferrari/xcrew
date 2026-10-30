@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- In a generated project, Xcrew also asks you before `XcodeWrite` when MobileBuildMCP's `xcode-ide` group forwards it, in a config of your own that still enables the group. A scheme or workspace switched that way shows in the status line too.
+- In a config of your own that still enables MobileBuildMCP's `xcode-ide` group, Xcode MCP tools it forwards get Xcrew's checks too. In a generated project you're asked before `XcodeWrite`, and a build after a manifest edit is held back for the generate. Tools it proxies are timed and named in the status line as the Xcode MCP's own.
 
 ## 0.9.1 — 2026-10-30
 

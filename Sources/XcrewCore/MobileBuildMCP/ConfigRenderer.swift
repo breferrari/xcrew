@@ -128,7 +128,7 @@ public enum ConfigRenderer {
 
     /// Whether any list in a config names MobileBuildMCP's `xcode-ide` group or one of its tools.
     public static func reachesXcodeIDE(_ lists: [String: [String]]) -> Bool {
-        lists.values.joined().contains { $0 == "xcode-ide" || $0.hasPrefix("xcode_ide_") || $0.hasPrefix("xcode_tools_bridge_") }
+        lists.values.joined().contains { $0 == "xcode-ide" || $0.hasPrefix("xcode_ide_") || $0.hasPrefix("xcode_tools_") }
     }
 
     /// The simulator IDs a config's profiles name, each once.

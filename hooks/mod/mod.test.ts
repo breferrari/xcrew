@@ -559,22 +559,37 @@ test('switching the Xcode MCP\'s scheme changes what the status line names', asy
   expect(statuses).toContain('BuildProject · MacroProbe on iPhone 18 Pro · 0:03')
 })
 
-/** How MobileBuildMCP answers a forwarded call: its own envelope, the Xcode MCP's answer in `data.content` (2.7.1's
- * `toBridgeCallResultDomainResult` in `mcp/tools/xcode-ide/shared.js`; built from the source, not captured). */
-function bridged(remoteTool: string, answer: { text: string }) {
-  return { isError: false, text: JSON.stringify({ schema: 'mobilebuildmcp.output.xcode-bridge-call-result', schemaVersion: '1', didError: false, error: null, data: { remoteTool, succeeded: true, content: [{ type: 'text', text: answer.text }] } }) }
+/**
+ * How MobileBuildMCP answers `xcode_ide_call_tool`: its own envelope, with the Xcode MCP's answer only in an artifact
+ * file and `content` always empty (2.7.1's `integrations/xcode-tools-bridge/bridge-tool-result.js:21,46`).
+ */
+function bridged(remoteTool: string) {
+  return { isError: false, text: JSON.stringify({ schema: 'mobilebuildmcp.output.xcode-bridge-call-result', didError: false, error: null, data: { remoteTool, succeeded: true, content: [], artifacts: { rawResponseJsonPath: '/tmp/response.json' } } }) }
 }
 
-test('a scheme switched through MobileBuildMCP\'s bridge changes what the status line names', async ($, on) => {
+test('a scheme switched through a proxied Xcode tool changes what the status line names', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
-  const statuses = serve(on, { xcode_ide_call_tool: bridged('XcodeSwitchScheme', captured.xcodeSchemeSwitched), xcode_tools_XcodeOpenWorkspace: captured.xcodeWorkspaceOpened }, clock)
+  const statuses = serve(on, { xcode_tools_XcodeOpenWorkspace: captured.xcodeWorkspaceOpened, xcode_tools_XcodeSwitchScheme: captured.xcodeSchemeSwitched }, clock)
 
   await callTool($, 'mcp__MobileBuildMCP__xcode_tools_XcodeOpenWorkspace', { path: '/Users/dev/MacroProbe' })
-  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__xcode_ide_call_tool', { remoteTool: 'XcodeSwitchScheme', arguments: '{"schemeName":"MacroProbe"}' })
+  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__xcode_tools_XcodeSwitchScheme', { schemeName: 'MacroProbe' })
   await callTool($, 'mcp__xcode__BuildProject')
 
   expect(statuses).toContain('BuildProject · MacroProbe on iPhone 18 Pro · 0:03')
+})
+
+test('a switch through the bridge\'s call tool, whose answer it doesn\'t pass on, leaves the status line naming nothing stale', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  const statuses = serve(on, { XcodeOpenWorkspace: captured.xcodeWorkspaceOpened, xcode_ide_call_tool: bridged('XcodeSwitchScheme') }, clock)
+
+  await callTool($, 'mcp__xcode__XcodeOpenWorkspace', { path: '/Users/dev/MacroProbe' })
+  await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__xcode_ide_call_tool', { remoteTool: 'XcodeSwitchScheme', arguments: '{"schemeName":"MacroProbe"}' })
+  await callTool($, 'mcp__xcode__BuildProject')
+
+  expect(statuses).toContain('BuildProject running · 0:03')
+  expect(statuses.some(status => status?.includes('MacroProbe-Package'))).toBe(false)
 })
 
 test('only the answers that name a scheme are read for one: a file that happens to hold one changes nothing', async ($, on) => {

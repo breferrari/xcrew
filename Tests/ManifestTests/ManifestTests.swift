@@ -663,6 +663,15 @@ import Testing
         #expect(step.contains("Pass only simulators that exist to `xcrew setup`"))
     }
 
+    /// The doctor flags a config that reaches the `xcode-ide` bridge by every bridge tool name the mod reads.
+    @Test func theDoctorFlagsEveryBridgeToolTheModReads() throws {
+        let named = Set(try text("hooks/mod/tools.ts").matches(of: /xcode_(?:ide|tools)_\w*/).map { String($0.0) })
+        #expect(!named.isEmpty)
+        for name in named {
+            #expect(ConfigRenderer.reachesXcodeIDE(["customWorkflows.mine": [name.hasSuffix("_") ? name + "XcodeWrite" : name]]), "\(name)")
+        }
+    }
+
     /// The reference skill names the tool groups setup enables, so Claude isn't sent to one that's off.
     @Test func referenceSkillNamesTheEnabledToolGroups() throws {
         let line = try #require(try text("skills/reference/SKILL.md").split(separator: "\n").first { $0.hasPrefix("- Enabled tool groups:") })

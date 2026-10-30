@@ -43,3 +43,9 @@ test('builds started together say it once', async ($, on) => {
   const results = await Promise.all([callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__build_sim'), callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')])
   expect(results.filter(result => contextOf(result).includes(NUDGE))).toHaveLength(1)
 })
+
+test('an Xcode MCP build proxied through MobileBuildMCP isn\'t one of MobileBuildMCP\'s, so it asks nothing', async ($, on) => {
+  const calls = project(on, false)
+  expect(contextOf(await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__xcode_tools_BuildProject'))).not.toContain(NUDGE)
+  expect(calls.filter(call => call.args.includes('--profiles'))).toHaveLength(0)
+})
