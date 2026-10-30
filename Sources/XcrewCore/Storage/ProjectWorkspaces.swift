@@ -9,8 +9,8 @@ public enum ProjectWorkspaces {
         public let key: String
     }
 
-    /// Where a workspace's project is: one of this project's live checkouts, a root its log names that's gone or still
-    /// here, or unknown.
+    /// Where a workspace's project is: one of this project's live checkouts, a root its log names that's gone (its folder
+    /// missing and the folder above it there, so a volume not mounted isn't taken for gone) or still here, or unknown.
     public enum Origin: Sendable, Equatable {
         case live(Checkout)
         case gone(String)
@@ -47,7 +47,10 @@ public enum ProjectWorkspaces {
                     if let checkout = live.first(where: { $0.key == workspace.key }) { return (workspace.key, .live(checkout)) }
                     let folder = workspace.folder.hasPrefix("~/") ? home.appending(path: String(workspace.folder.dropFirst(2))) : URL(fileURLWithPath: workspace.folder)
                     guard let root = root(ofWorkspace: folder) else { return (workspace.key, .unknown) }
-                    return (workspace.key, FileManager.default.fileExists(atPath: root) ? .elsewhere(root) : .gone(root))
+                    let files = FileManager.default
+                    if files.fileExists(atPath: root) { return (workspace.key, .elsewhere(root)) }
+                    let above = URL(fileURLWithPath: root).deletingLastPathComponent().path
+                    return (workspace.key, files.fileExists(atPath: above) ? .gone(root) : .unknown)
                 }
             }
             for _ in 0..<readAtOnce { next() }
@@ -57,6 +60,26 @@ public enum ProjectWorkspaces {
                 next()
             }
             return origins
+        }
+    }
+
+    /// A report's workspaces by their origin, each kind largest first.
+    public struct Grouped: Sendable {
+        public var live: [(workspace: StorageReport.Workspace, checkout: Checkout)] = []
+        public var gone: [(workspace: StorageReport.Workspace, root: String)] = []
+        public var elsewhere: [StorageReport.Workspace] = []
+        public var unknown: [StorageReport.Workspace] = []
+    }
+
+    /// The report's workspaces grouped by `origins`.
+    public static func grouped(_ report: StorageReport, origins: [String: Origin]) -> Grouped {
+        report.workspaces.sorted { $0.bytes > $1.bytes }.reduce(into: Grouped()) { grouped, workspace in
+            switch origins[workspace.key] {
+            case let .live(checkout)?: grouped.live.append((workspace, checkout))
+            case let .gone(root)?: grouped.gone.append((workspace, root))
+            case .elsewhere?: grouped.elsewhere.append(workspace)
+            case .unknown?, nil: grouped.unknown.append(workspace)
+            }
         }
     }
 

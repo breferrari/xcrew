@@ -37,21 +37,17 @@ public enum Space {
     static func mobileBuildMCP(live: Task<[ProjectWorkspaces.Checkout], Never>, machine: Machine, now: Date) async -> SpaceReport.Part {
         let title = "MobileBuildMCP"
         guard let report = await StorageReport.read(.all, using: machine.runner) else { return SpaceReport.notRead(title, by: "mobilebuildmcp purge --report") }
-        let origins = await ProjectWorkspaces.origins(of: report, live: await live.value, home: machine.home)
-        let workspaces = report.workspaces.sorted { $0.bytes > $1.bytes }
-        var lines: [SpaceReport.Line] = workspaces.compactMap { workspace in
-            guard case let .live(checkout)? = origins[workspace.key] else { return nil }
+        let grouped = ProjectWorkspaces.grouped(report, origins: await ProjectWorkspaces.origins(of: report, live: await live.value, home: machine.home))
+        var lines: [SpaceReport.Line] = grouped.live.map { workspace, checkout in
             let name = URL(fileURLWithPath: checkout.root).lastPathComponent
             let derived = workspace.classes["derivedData"].flatMap { $0.exists && $0.bytes > 0 ? ", DerivedData \(SpaceReport.size($0.bytes))" : nil } ?? ""
             let newest = workspace.classes.values.compactMap(\.newest).max().map { ", newest \(SpaceReport.age(of: $0, now: now))" } ?? ""
             return .init(text: "\(name), \(checkout.root): \(SpaceReport.size(workspace.bytes))\(derived)\(newest)", bytes: workspace.bytes, command: purge(workspace))
         }
-        lines += workspaces.compactMap { workspace in
-            guard case let .gone(root)? = origins[workspace.key] else { return nil }
-            return .init(text: "\(workspace.key): \(SpaceReport.size(workspace.bytes)); its project, \(root), is gone", bytes: workspace.bytes, command: purge(workspace))
+        lines += grouped.gone.map { workspace, root in
+            .init(text: "\(workspace.key): \(SpaceReport.size(workspace.bytes)); its project, \(root), is gone", bytes: workspace.bytes, command: purge(workspace))
         }
-        let elsewhere = workspaces.filter { if case .elsewhere? = origins[$0.key] { true } else { false } }
-        let unknown = workspaces.filter { origins[$0.key] == .unknown }
+        let (elsewhere, unknown) = (grouped.elsewhere, grouped.unknown)
         lines += [
             rollup(elsewhere.map(\.bytes), "workspace", "of other projects still here"),
             rollup(unknown.map(\.bytes), "workspace", "whose project isn't known", then: "; `mobilebuildmcp purge --report --json` lists each"),

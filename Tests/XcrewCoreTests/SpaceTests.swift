@@ -10,6 +10,27 @@ import XcrewTestSupport
         try! String(contentsOf: Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Fixtures/Storage")!, encoding: .utf8)
     }
 
+    /// The capture with `key` for this project's workspace, and each of `renamed`'s fixture keys under its new key.
+    static func purgeReport(key: String, renamed: [String: String] = [:]) -> String {
+        renamed.reduce(fixture("purgeReportAll").replacingOccurrences(of: "kit-0a1b2c3d4e5f", with: key)) { $0.replacingOccurrences(of: $1.key, with: $1.value) }
+    }
+
+    /// Writes a workspace's build log naming `root`'s workspace, so its origin is read from it.
+    static func writeLog(home: URL, key: String, root: String) throws {
+        let log = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(key)/logs/build_sim_1.log")
+        try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "xcodebuild build -workspace \(root)/Gone.xcworkspace -scheme Gone\n".write(to: log, atomically: true, encoding: .utf8)
+    }
+
+    /// `git` in a main checkout at `root` with linked worktrees at `worktrees`.
+    static func git(root: String, worktrees: [String] = []) -> [String: CommandResult] {
+        let blocks = ["worktree \(root)\nHEAD 0123\nbranch refs/heads/main"] + worktrees.map { "worktree \($0)\nHEAD 0456\nbranch refs/heads/wt" }
+        return [
+            "git -C \(root) rev-parse --show-prefix": .init(status: 0, stdout: "\n"),
+            "git -C \(root) worktree list --porcelain": .init(status: 0, stdout: blocks.joined(separator: "\n\n") + "\n"),
+        ]
+    }
+
     /// 2026-11-02 00:00 UTC.
     static let now = Date(timeIntervalSince1970: 1_793_577_600)
 
@@ -19,6 +40,9 @@ import XcrewTestSupport
     let project: Project
     var root: String { project.root.path }
     var key: String { RunLog.workspaceKey(root: root) }
+    /// A project folder that's gone from a folder that's there: this test's home.
+    var goneRoot: String { home.appending(path: "Gone").path }
+    var goneKey: String { RunLog.workspaceKey(root: goneRoot) }
 
     init() {
         let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)/App")
@@ -41,8 +65,8 @@ import XcrewTestSupport
     /// project is gone, two whose project isn't known; three runtimes, five devices; three Xcodes; Xcode's DerivedData for
     /// this project and for one that's gone; an archive.
     func report(xcodes: Bool = true) async throws -> SpaceReport {
-        let purge = Self.fixture("purgeReportAll").replacingOccurrences(of: "kit-0a1b2c3d4e5f", with: key).replacingOccurrences(of: "field-09f4495eb86d", with: "Gone-86d710d9ba22")
-        try write("xcodebuild build -workspace /work/Gone/Gone.xcworkspace -scheme Gone\n", to: "Library/Developer/MobileBuildMCP/workspaces/Gone-86d710d9ba22/logs/build_sim_1.log")
+        let purge = Self.purgeReport(key: key, renamed: ["field-09f4495eb86d": goneKey])
+        try Self.writeLog(home: home, key: goneKey, root: goneRoot)
         try FileManager.default.createDirectory(at: project.root.appending(path: "App.xcworkspace"), withIntermediateDirectories: true)
         try derivedData("App-abc", workspace: "\(root)/App.xcworkspace")
         try derivedData("Old-def", workspace: "/work/Old/Old.xcodeproj")
@@ -51,14 +75,12 @@ import XcrewTestSupport
         FakeXcode.install(in: apps, "Xcode-27.2.app", version: "27.2", build: "27C5")
         FakeXcode.install(in: apps, "Xcode-26.4.app", version: "26.4", build: "17E192")
         FakeXcode.install(in: apps, "Xcode-26.0.app", version: "26.0", build: "17A100")
-        var responses: [String: CommandResult] = [
-            "git -C \(root) rev-parse --show-prefix": .init(status: 0, stdout: "\n"),
-            "git -C \(root) worktree list --porcelain": .init(status: 0, stdout: "worktree \(root)\nHEAD 0123\nbranch refs/heads/main\n"),
+        var responses: [String: CommandResult] = Self.git(root: root).merging([
             "mobilebuildmcp purge --report --scope all --json": .init(status: 0, stdout: purge),
             "xcrun simctl runtime list -j": .init(status: 0, stdout: Self.fixture("simctlRuntimeList")),
             "xcrun simctl list devices -j": .init(status: 0, stdout: Self.fixture("simctlDevices")),
             "xcode-select -p": .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.app/Contents/Developer\n"),
-        ]
+        ]) { $1 }
         for (app, bytes) in [("Xcode-27.2.app", "3628081152"), ("Xcode-26.4.app", "3400000000"), ("Xcode-26.0.app", "3100000000")] {
             responses["mdls -raw -name kMDItemPhysicalSize \(apps.path)/\(app)"] = .init(status: 0, stdout: bytes)
         }
@@ -80,12 +102,22 @@ import XcrewTestSupport
     /// Only a root its log names and its key confirms is said to be gone; the rest are counted, with what age would take.
     @Test func aGoneProjectsWorkspaceIsNamedAndTheUnknownAreCounted() async throws {
         let text = try await report().text
-        #expect(text.contains("  Gone-86d710d9ba22: 305.5 KB; its project, /work/Gone, is gone\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key Gone-86d710d9ba22 --classes logs,resultBundles,stateTransients,testProducts\n"), "\(text)")
+        #expect(text.contains("  \(goneKey): 305.5 KB; its project, \(goneRoot), is gone\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(goneKey) --classes logs,resultBundles,stateTransients,testProducts\n"), "\(text)")
         #expect(text.contains("  2 workspaces whose project isn't known: 3.3 MB; `mobilebuildmcp purge --report --json` lists each\n"), "\(text)")
         #expect(!text.contains("--scope all"), "a command over every workspace would reach this project's too")
     }
 
     /// Xcode's DerivedData records its workspace, so one whose workspace is gone is named; nothing offers to delete it.
+    /// A root whose folder above is missing too, as on a volume not mounted, may be there yet: it's not said to be gone.
+    @Test func aRootOnAMissingVolumeIsntGone() async throws {
+        let away = "/Volumes/xcrew-tests-\(UUID().uuidString)/App"
+        let awayKey = RunLog.workspaceKey(root: away)
+        let report = try #require(StorageReport(json: Data(Self.purgeReport(key: key, renamed: ["field-09f4495eb86d": awayKey]).utf8)))
+        try Self.writeLog(home: home, key: awayKey, root: away)
+        let origins = await ProjectWorkspaces.origins(of: report, live: [], home: home)
+        #expect(origins[awayKey] == .unknown)
+    }
+
     @Test func xcodesDerivedDataIsSplitByItsWorkspace() async throws {
         let text = try await report().text
         #expect(text.contains("  App-abc, for this project: 1.2 MB\n"), "\(text)")
