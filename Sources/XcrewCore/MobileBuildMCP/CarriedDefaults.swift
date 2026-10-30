@@ -89,8 +89,7 @@ public struct CarriedDefaults: Sendable, Equatable {
     func relative(to root: URL) -> CarriedDefaults {
         func rewrite(_ entry: Entry) -> Entry {
             guard Self.pathKeys.contains(entry.key), let first = entry.lines.first else { return entry }
-            let value = ConfigRenderer.unquoted(first.dropFirst(entry.key.count + 1).trimmingCharacters(in: .whitespaces))
-            guard value.hasPrefix("/") else { return entry }
+            guard let value = ConfigRenderer.value(of: entry.key, in: first), value.hasPrefix("/") else { return entry }
             let written = ConfigRenderer.relative(value, to: root)
             return written == value ? entry : Entry(key: entry.key, lines: ["\(entry.key): \(written)"] + entry.lines.dropFirst())
         }

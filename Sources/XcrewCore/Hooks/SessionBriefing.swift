@@ -18,12 +18,13 @@ public struct SessionBriefing: Sendable {
         guard layout.isApplePlatform else { return nil }
         let containers = layout.containers.map { project.root.appending(path: $0) }
         async let plans = Self.testPlans(in: containers)
+        async let offer = project.hasSchemeToBuild ? nil : Self.setupOffer(for: project, using: machine.runner)
         async let status = MobileBuildMCPStatus.assess(machine, timeout: Self.versionTimeout)
         async let bootedNow = booted()
         async let head = GitHead.of(project, using: machine.runner)
         let mobileBuildMCP = await status
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
-        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + (await gaps())
+        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + [await offer].compactMap { $0 }
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), now: Date(), on: machine)
         return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "")
@@ -90,15 +91,6 @@ public struct SessionBriefing: Sendable {
     /// one change to the person's own Xcode, its active scheme, that waits for their word.
     static func failoverNote(reason: String) -> String {
         "MobileBuildMCP isn't usable here (\(reason)), so its build and test tools aren't either. Until it is, the routing rules' MobileBuildMCP rows don't apply: build with the Xcode MCP's `BuildProject` and test with `RunAllTests`. They work through Xcode itself, on the open project, its active scheme and destination, in Xcode's own DerivedData. Lost meanwhile: coverage reports, simulator control, UI automation and LLDB. Tell the person once that MobileBuildMCP is unavailable and what that loses, then carry on. If a build or test needs a scheme other than Xcode's active one, ask before switching it: that changes their open Xcode. If the Xcode MCP's tools refuse too, run `xcrew doctor`."
-    }
-
-    /// Fast checks only: this runs before every session's first prompt.
-    func gaps() async -> [String] {
-        var gaps: [String] = []
-        if !project.hasSchemeToBuild {
-            gaps.append(await Self.setupOffer(for: project, using: machine.runner))
-        }
-        return gaps
     }
 
     /// The setup to offer a project with no scheme to build: in a worktree whose main checkout has a config, the one

@@ -27,8 +27,6 @@ struct SetupCommand: Command {
         "setup --worktree [--force]   in a linked git worktree, write its config from the main checkout's",
     ]
 
-    static let excluded = "xcrew: kept .mobilebuildmcp/ out of git (in .git/info/exclude, which isn't committed)"
-
     /// The container setup builds when no option names one: mcs's answer, else the default below.
     static func container(in context: CheckContext) throws -> String {
         try mcsKeys["container"].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } ?? defaultContainer(in: context.project)
@@ -111,30 +109,44 @@ struct SetupCommand: Command {
         if !carriedKeys.isEmpty, ConfigWriter.keeping(context.project) != nil {
             notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into " + (answers.profileNames.isEmpty ? "the session defaults" : "each profile"))
         }
-        switch try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force")) {
+        let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"))
+        Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container); restart Claude Code so MobileBuildMCP reads it"])
+        if answers.appScheme == nil {
+            invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
+        }
+        await Self.keepOutOfGit(in: invocation)
+        return 0
+    }
+
+    /// What became of the config: kept as it was, with what `--force` would do, or written, with `written`'s lines.
+    static func report(_ outcome: ConfigWriter.Outcome, in invocation: Invocation, written: [String]) {
+        switch outcome {
         case .keptEdited:
             invocation.print("xcrew: .mobilebuildmcp/config.yaml was edited after xcrew wrote it; left as is (--force replaces it, keeping a backup)")
         case .keptUnmanaged:
             invocation.print("xcrew: .mobilebuildmcp/config.yaml exists and xcrew didn't write it; left as is (--force replaces it, keeping a backup)")
         case .written(let backup):
             if let backup { invocation.print("xcrew: kept the old config as \(backup.lastPathComponent)") }
-            notes.forEach(invocation.print)
-            invocation.print("xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container); restart Claude Code so MobileBuildMCP reads it")
+            written.forEach(invocation.print)
         }
-        if answers.appScheme == nil {
-            invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
-        }
-        // It names this Mac's simulators by ID, and DerivedData may live beside it, so it never belongs in the repository.
+    }
+
+    /// The config names this Mac's simulators by ID, and DerivedData may live beside it, so it never belongs in the
+    /// repository: kept out through the exclude file every worktree of it shares.
+    static func keepOutOfGit(in invocation: Invocation) async {
+        let context = invocation.context
         if await GitExclusion.exclude(".mobilebuildmcp/", in: context.project, using: context.runner) == .added {
-            invocation.print(Self.excluded)
+            invocation.print("xcrew: kept .mobilebuildmcp/ out of git (in .git/info/exclude, which isn't committed)")
         }
-        return 0
     }
 
     /// A linked worktree's config, from its main checkout's: the same profiles and schemes, with an absolute path the
     /// main checkout uses left out, so the worktree's builds don't share its DerivedData.
     func worktree(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
+        guard invocation.arguments.values.isEmpty else {
+            throw UsageError(description: "setup --worktree takes no option but --force: the profiles are the main checkout's")
+        }
         guard let main = await Worktree.mainCheckout(of: context.project, using: context.runner) else {
             throw UsageError(description: "setup --worktree runs in a linked git worktree; this is a main checkout, or not in git")
         }
@@ -142,22 +154,11 @@ struct SetupCommand: Command {
             invocation.print("xcrew: the main checkout (\(main.path)) has no .mobilebuildmcp/config.yaml; xcrew setup there, or plain xcrew setup here, writes one")
             return 1
         }
-        let (config, leftOut) = Worktree.config(from: yaml)
-        switch try ConfigWriter.write(config, to: context.project, force: invocation.arguments.has("force")) {
-        case .keptEdited:
-            invocation.print("xcrew: .mobilebuildmcp/config.yaml was edited after xcrew wrote it; left as is (--force replaces it, keeping a backup)")
-        case .keptUnmanaged:
-            invocation.print("xcrew: .mobilebuildmcp/config.yaml exists and xcrew didn't write it; left as is (--force replaces it, keeping a backup)")
-        case .written(let backup):
-            if let backup { invocation.print("xcrew: kept the old config as \(backup.lastPathComponent)") }
-            invocation.print("xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path)); restart Claude Code so MobileBuildMCP reads it")
-            for (key, path) in leftOut {
-                invocation.print("xcrew: left out \(key) \(path), which the main checkout uses: this worktree's builds go in a DerivedData of its own")
-            }
-        }
-        if await GitExclusion.exclude(".mobilebuildmcp/", in: context.project, using: context.runner) == .added {
-            invocation.print(Self.excluded)
-        }
+        let (config, leftOut) = Worktree.config(from: yaml, main: main)
+        let outcome = try ConfigWriter.write(config, to: context.project, force: invocation.arguments.has("force"))
+        Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path)); restart Claude Code so MobileBuildMCP reads it"]
+            + leftOut.map { "xcrew: left out \($0.key) \($0.path), which the main checkout uses: this worktree's builds go in a DerivedData of its own" })
+        await Self.keepOutOfGit(in: invocation)
         return 0
     }
 }

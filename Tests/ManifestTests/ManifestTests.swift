@@ -175,8 +175,9 @@ import Testing
 
     /// What the briefing and the doctor offer a worktree is a form of setup that exists.
     @Test func aWorktreeIsOfferedTheSetupThatExists() {
+        #expect(Worktree.setupCommand == "xcrew \(SetupCommand().name) --worktree")
         #expect(SetupCommand().flags.contains("worktree"))
-        #expect(Worktree.setupOffer.contains("`xcrew setup --worktree`"))
+        #expect(Worktree.setupOffer.contains("`\(Worktree.setupCommand)`"))
     }
 
     /// The failure notes' pointer to `look` names the tool the mod registers and the CLI's command, and the result bundle's

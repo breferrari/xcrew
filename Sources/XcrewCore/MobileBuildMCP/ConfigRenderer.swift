@@ -98,7 +98,7 @@ public enum ConfigRenderer {
         var lists: [String: [String]] = [:]
         func item(_ text: Substring) -> String {
             let trimmed = text.trimmingCharacters(in: .whitespaces)
-            return trimmed.count >= 2 && trimmed.first == "\"" && trimmed.last == "\"" ? String(trimmed.dropFirst().dropLast()) : unquoted(trimmed)
+            return unquoted(trimmed)
         }
         for raw in yaml.split(whereSeparator: \.isNewline) {
             let line = raw.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
@@ -176,8 +176,40 @@ public enum ConfigRenderer {
         "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
     }
 
+    /// A YAML scalar's text: single-quoted as xcrew writes it, double-quoted as a person may, or plain.
     static func unquoted(_ value: String) -> String {
-        guard value.count >= 2, value.hasPrefix("'"), value.hasSuffix("'") else { return value }
-        return String(value.dropFirst().dropLast()).replacingOccurrences(of: "''", with: "'")
+        guard value.count >= 2, let quote = value.first, quote == "'" || quote == "\"", value.last == quote else { return value }
+        let text = String(value.dropFirst().dropLast())
+        return quote == "'" ? text.replacingOccurrences(of: "''", with: "'") : text
+    }
+
+    /// The keys MobileBuildMCP reads as paths (`utils/project-config.js`'s `pathKeys`), relative ones from its config's
+    /// folder.
+    static let pathKeys = ["projectPath", "workspacePath", "derivedDataPath"]
+
+    /// `key`'s value on a config line (`  key: value`), quotes and a trailing comment taken off; nil on another key's
+    /// line, and on a key with its value on the lines below.
+    static func value(of key: String, in line: some StringProtocol) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("\(key):") else { return nil }
+        let rest = trimmed.dropFirst(key.count + 1).trimmingCharacters(in: .whitespaces)
+        guard let quote = rest.first, quote == "'" || quote == "\"" else {
+            let plain = rest.range(of: " #").map { String(rest[..<$0.lowerBound]) } ?? rest
+            return plain.isEmpty ? nil : plain
+        }
+        // The closing quote: in single quotes, `''` is an escaped one.
+        var index = rest.index(after: rest.startIndex)
+        while index < rest.endIndex {
+            if rest[index] == quote {
+                let next = rest.index(after: index)
+                if quote == "'", next < rest.endIndex, rest[next] == "'" {
+                    index = rest.index(after: next)
+                    continue
+                }
+                return unquoted(String(rest[...index]))
+            }
+            index = rest.index(after: index)
+        }
+        return nil
     }
 }

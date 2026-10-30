@@ -22,8 +22,10 @@ import XcrewTestSupport
     /// A worktree whose git says its main checkout is `main`, or a main checkout when `main` is nil.
     static func worktree(main: Project?) -> (Project, CheckContext) {
         let worktree = Project.temporary(containing: ["App.xcodeproj"])
-        let git = main.map { "\($0.root.path)/.git/worktrees/wt\n\($0.root.path)/.git\n" } ?? "\(worktree.root.path)/.git\n\(worktree.root.path)/.git\n"
-        let runner = FakeRunner(responses: ["git -C \(worktree.root.path) rev-parse --path-format=absolute --git-dir --git-common-dir": CommandResult(status: 0, stdout: git)])
+        var runner = FakeRunner()
+        if let main { runner.linkWorktree(worktree, to: main) } else {
+            runner.responses["git -C \(worktree.root.path) rev-parse --path-format=absolute --git-dir --git-common-dir --show-prefix"] = CommandResult(status: 0, stdout: "\(worktree.root.path)/.git\n\(worktree.root.path)/.git\n\n")
+        }
         return (worktree, .fake(runner, project: worktree))
     }
 
@@ -76,6 +78,17 @@ import XcrewTestSupport
         let run = await Run("setup", "--worktree", context: context)
         #expect(run.status == 1)
         #expect(run.output == ["xcrew: the main checkout (\(main.root.path)) has no .mobilebuildmcp/config.yaml; xcrew setup there, or plain xcrew setup here, writes one"])
+    }
+
+    /// Its config is the main checkout's, so the options that answer setup's questions have no place beside it.
+    @Test func anotherOptionIsAUsageError() async {
+        let main = Project.temporary(containing: ["App.xcodeproj"])
+        main.write(Self.mainConfig, to: ".mobilebuildmcp/config.yaml")
+        let (worktree, context) = Self.worktree(main: main)
+        let run = await Run("setup", "--worktree", "--test-scheme", "AppTests", context: context)
+        #expect(run.status == 64)
+        #expect(run.errors == ["setup --worktree takes no option but --force: the profiles are the main checkout's"])
+        #expect(Self.config(worktree) == nil)
     }
 
     @Test func outsideAWorktreeItIsAUsageError() async {

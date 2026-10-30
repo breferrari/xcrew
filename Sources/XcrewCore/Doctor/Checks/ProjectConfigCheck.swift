@@ -10,7 +10,7 @@ struct ProjectConfigCheck: Check {
             // Its fix writes a MobileBuildMCP config, which only an Apple-platform project has a use for.
             guard project.layout(.anywhereButHome).isApplePlatform else { return .skip("not an Apple project") }
             if await Worktree.takesMainConfig(project, using: context.runner) {
-                return .fail("no .mobilebuildmcp/config.yaml in this worktree: xcrew setup --worktree writes it from the main checkout's")
+                return .fail("no .mobilebuildmcp/config.yaml in this worktree: \(Worktree.setupCommand) writes it from the main checkout's")
             }
             return .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup" + (project.isConfiguredByMCS ? " (or, with the mcs CLI, mcs sync)" : ""))
         }

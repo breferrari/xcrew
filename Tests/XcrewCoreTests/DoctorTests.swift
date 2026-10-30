@@ -132,7 +132,7 @@ import XcrewTestSupport
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup"))
         // In a worktree whose main checkout has one, the fix copies it.
         let main = Project.temporary(containing: ["App.xcodeproj"])
-        main.write("schemaVersion: 1\n", to: ".mobilebuildmcp/config.yaml")
+        main.write("schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n    projectPath: './App.xcodeproj'\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit\n", to: ".mobilebuildmcp/config.yaml")
         var linked = FakeRunner()
         linked.linkWorktree(project, to: main)
         #expect(await ProjectConfigCheck().run(.fake(linked, project: project)) == .fail("no .mobilebuildmcp/config.yaml in this worktree: xcrew setup --worktree writes it from the main checkout's"))

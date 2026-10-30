@@ -51,7 +51,7 @@ import XcrewTestSupport
     /// A worktree whose main checkout has a config is offered the worktree's setup, which copies it, not a fresh one.
     @Test func briefingOffersAWorktreeTheMainCheckoutsConfig() async {
         let main = Project.temporary(containing: ["App.xcodeproj"])
-        main.write("schemaVersion: 1\n", to: ".mobilebuildmcp/config.yaml")
+        main.write("schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n    projectPath: './App.xcodeproj'\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit\n", to: ".mobilebuildmcp/config.yaml")
         let worktree = Project.temporary(containing: ["App.xcodeproj"])
         var runner = FakeRunner(installed: ["mobilebuildmcp"], responses: ["mobilebuildmcp --version": CommandResult(status: 0, stdout: "2.7.1\n")])
         runner.linkWorktree(worktree, to: main)
