@@ -362,3 +362,60 @@ test('runs that gave no verdict clear nothing', async ($, on) => {
   await repeat($)
   expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky`)
 })
+
+// MARK: /xcrew flaky
+
+const OTHER = 'GreetingTests/testWave'
+const OTHER_FLAKY: Partial<Report> = {
+  ok: false,
+  failures: [{ title: OTHER, message: 'XCTAssertTrue failed', where: 'GreetingTests.swift:20', isTest: true }],
+  repeated: [{ test: OTHER, failed: 1, passed: 4, runs: 5, verdict: 'flaky' }],
+}
+const repeatOther = (tool: Engine) =>
+  callTool(tool, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:AppTests/GreetingTests/testWave', '-test-iterations', '5', '-test-repetition-relaunch-enabled', 'YES'] })
+
+test('/xcrew flaky lists the tests marked flaky on this branch, and no other red test', async ($, on) => {
+  project(on, [{ ...FAILED, failures: [{ ...FAILED.failures![0]!, title: OTHER }] }, FAILED, MIXED])
+  await run($, 'AppTests/GreetingTests/testWave')
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(`Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello`)
+})
+
+test('/xcrew flaky names the repeated run that found it flaky, not a later plain run that failed it', async ($, on) => {
+  project(on, [MIXED, FAILED])
+  await repeat($)
+  await run($)
+  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(`Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello`)
+})
+
+test('/xcrew flaky lists the test found flaky last first, whatever touched the others since', async ($, on) => {
+  const { clock } = project(on, [OTHER_FLAKY, MIXED, { ...FAILED, failures: [{ ...FAILED.failures![0]!, title: OTHER }] }])
+  await repeatOther($)
+  await clock.advance(60_000)
+  await repeat($)
+  await clock.advance(60_000)
+  await run($)
+  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(
+    `Flaky on feat/ledger (2 tests):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello\n- ${OTHER}: failed 1 of 5 runs, in test_sim › AppTests/GreetingTests/testWave`,
+  )
+})
+
+test('/xcrew flaky says when a flaky test has since passed every run', async ($, on) => {
+  project(on, [FAILED, MIXED, CLEAN])
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await repeat($)
+  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(
+    `Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed every run of a repeated run since, in test_sim › AppTests/GreetingTests/testHello`,
+  )
+})
+
+test('/xcrew flaky with none marked says so, and without a branch says why', async ($, on) => {
+  let branch: string | Error = 'feat/ledger'
+  project(on, [FAILED], { branch: () => branch })
+  await run($, 'AppTests/GreetingTests/testHello')
+  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe('No test is marked flaky on feat/ledger.')
+  branch = new Error('timed out')
+  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe("The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out. Run `/xcrew doctor`.")
+})

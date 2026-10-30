@@ -29,6 +29,22 @@ import Testing
         #expect(mod.contains("name: '\(plugin)'"))
     }
 
+    /// Every subcommand `/xcrew` lists in its usage is one it takes, answers, and has a row for in the README's commands.
+    @Test func everyXcrewSubcommandIsTakenAnsweredAndInTheReadme() throws {
+        let mod = try text("hooks/mod/command.ts")
+        let usage = mod.matches(of: #/'/xcrew (\w+) /#).map { String($0.1) }
+        let listed = try #require(mod.firstMatch(of: /const SUBCOMMANDS = \[([^\]]+)\]/)?.1)
+        let taken = listed.matches(of: /'(\w+)'/).map { String($0.1) }
+        let register = try text("hooks/mod/register.ts")
+        let readme = try text("README.md")
+        #expect(!usage.isEmpty)
+        #expect(taken == usage)
+        for subcommand in usage {
+            #expect(register.contains("subcommand === '\(subcommand)'"), "the mod doesn't answer /xcrew \(subcommand)")
+            #expect(readme.contains("| `/xcrew \(subcommand)` |"), "the README has no row for /xcrew \(subcommand)")
+        }
+    }
+
     // MARK: Plugin hooks
 
     /// The spinner text reads like the rest of Claude Code; the hook's name already says it's Xcrew's.
@@ -910,7 +926,8 @@ import Testing
         let entry = try #require(try JSONDecoder().decode(EvidenceInput.self, from: Data(json.utf8)).ledger.first)
         let labels = { (value: Any) in Mirror(reflecting: value).children.compactMap(\.label) }
         let declared = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export type LedgerRun = \{([^}]*)\}[\s\S]*?export type LedgerEntry = (.*)/))
-        let types = String(declared.1) + String(declared.2)
+        let flakiness = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export type Flakiness = (.*)/)?.1)
+        let types = String(declared.1) + String(declared.2) + String(flakiness)
         for field in labels(entry) + labels(entry.red) + labels(try #require(entry.flaky)) {
             #expect(types.contains("\(field):") || types.contains("\(field)?:"), "ledger.ts doesn't declare `\(field)`")
         }

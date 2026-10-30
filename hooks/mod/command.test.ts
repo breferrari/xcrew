@@ -129,7 +129,7 @@ test('/xcrew alone lists what it can do', async ($, on) => {
   const seen = engine(on)
   await start($)
   const ran = await runCommand($, 'xcrew')
-  expect(ran.text).toMatch(/doctor[\s\S]*history[\s\S]*failures/)
+  expect(ran.text).toMatch(/doctor[\s\S]*history[\s\S]*ledger[\s\S]*flaky[\s\S]*failures/)
   expect(ran.text).not.toContain('repair')
   expect(seen.runs).toEqual([])
 })

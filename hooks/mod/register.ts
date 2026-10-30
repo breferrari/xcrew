@@ -9,7 +9,7 @@ import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, runsWholeScope, xcodeSelected, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
-import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
+import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { drawsForm, type FormElements, formTree, NO_FORM, PICK_KEYS, SETUP_FACT, setupArgs, startingPicks, WROTE } from './form'
 import { afterFullRun, type Crossing, loopNote } from './loop'
@@ -300,6 +300,7 @@ export const register: Register = on => {
     if (subcommand === 'xcode') return { text: await cliText($, ['xcode']) }
     if (subcommand === 'history') return { text: await history($) }
     if (subcommand === 'ledger') return { text: await ledgerNow($) }
+    if (subcommand === 'flaky') return { text: await ledgerNow($, flakyText) }
     if (subcommand === 'evidence') return { text: await evidenceNow($) }
     if (subcommand === 'failures') {
       await dismissFailedRun($)
@@ -872,11 +873,11 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))
 }
 
-/** The ledger of the branch checked out now, as text. */
-async function ledgerNow($: EngineInterface): Promise<string> {
+/** The ledger of the branch checked out now, after the writes of a run that just ended, as `text` words it. */
+async function ledgerNow($: EngineInterface, text: (ledger: Ledger | undefined, head: Head) => string = ledgerText): Promise<string> {
   await ledgerWrites
   const { head, ledger } = await branchLedger($)
-  return head ? ledgerText(ledger, head) : LEDGER_UNAVAILABLE
+  return head ? text(ledger, head) : LEDGER_UNAVAILABLE
 }
 
 /** `/xcrew history`: this repository's scopes, those a run updated within the history's time; an undated one is dated now. */

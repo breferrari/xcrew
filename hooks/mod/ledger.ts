@@ -19,7 +19,10 @@ export type LedgerRun = { scope: string; at: number }
  * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, when a run last
  * wrote it, and its target, from the result bundle, when the report named one.
  */
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun; last: number; flaky?: { failed: number; runs: number }; target?: string }
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun; last: number; flaky?: Flakiness; target?: string }
+
+/** A flaky mark: the counts of the repeated run that found the test flaky, and that run's scope and time (absent in a mark kept before they were). */
+export type Flakiness = { failed: number; runs: number; scope?: string; at?: number }
 
 export type Ledger = { entries: LedgerEntry[]; updated: number }
 
@@ -108,7 +111,7 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
   const failing = new Set([...failed.keys(), ...[...repeated.values()].filter(test => test.verdict === 'flaky' || test.verdict === 'real').map(test => test.test)])
   const flakyAfter = (test: string, before?: LedgerEntry['flaky']) => {
     const verdict = repeated.get(test)
-    if (verdict?.verdict === 'flaky') return { failed: verdict.failed, runs: verdict.runs }
+    if (verdict?.verdict === 'flaky') return { failed: verdict.failed, runs: verdict.runs, scope: run.scope, at: run.at }
     return verdict?.verdict === 'real' ? undefined : before
   }
   const entries = (ledger?.entries ?? []).filter(entry => !isStale(entry.last, run.at)).map((entry): LedgerEntry => {
@@ -145,6 +148,7 @@ export function staleLedgers(stored: Readonly<Record<string, unknown>>, now: num
 }
 
 type GreenEntry = LedgerEntry & { green: LedgerRun }
+type FlakyEntry = LedgerEntry & { flaky: Flakiness }
 
 /** The ledger as Claude reads it for a test plan, and the person through `/xcrew ledger`. */
 export function ledgerText(ledger: Ledger | undefined, head: Head): string {
@@ -159,6 +163,20 @@ export function ledgerText(ledger: Ledger | undefined, head: Head): string {
     ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${named(entry)}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
     ...(red.length > 0 ? [`Still red (${red.length}):`, ...red.map(entry => `- ${named(entry)}: ${redPart(entry)}`)] : []),
   ].join('\n')
+}
+
+/**
+ * The tests the ledger marks flaky, as `/xcrew flaky` shows them: the one found flaky last first, each with its counts and
+ * the repeated run that found it, and the repeated run that has since passed it every time, when one has.
+ */
+export function flakyText(ledger: Ledger | undefined, head: Head): string {
+  const name = label(head, true)
+  const foundAt = (entry: FlakyEntry) => entry.flaky.at ?? entry.last
+  const flaky = (ledger?.entries ?? []).filter((entry): entry is FlakyEntry => entry.flaky !== undefined).sort((a, b) => foundAt(b) - foundAt(a))
+  if (flaky.length === 0) return `No test is marked flaky on ${name}.`
+  const line = (entry: FlakyEntry) =>
+    `- ${entry.test}: ${flakyCounts(entry.flaky)}, in ${entry.flaky.scope ?? entry.failing}${entry.green ? `; passed every run of a repeated run since, in ${entry.green.scope}` : ''}`
+  return [`Flaky on ${name} (${count(flaky.length)}):`, ...flaky.map(line)].join('\n')
 }
 
 function count(tests: number): string {
@@ -186,5 +204,10 @@ export const LEDGER_UNAVAILABLE = "The ledger couldn't be read: xcrew's CLI didn
 
 /** ` (flaky: failed 2 of 5 runs)` for a test marked flaky, and nothing otherwise: the ledger and the card say it alike. */
 export function flakyLabel(entry: LedgerEntry): string {
-  return entry.flaky ? ` (flaky: failed ${entry.flaky.failed} of ${entry.flaky.runs} runs)` : ''
+  return entry.flaky ? ` (flaky: ${flakyCounts(entry.flaky)})` : ''
+}
+
+/** `failed 2 of 5 runs`: how a flaky mark's counts read wherever it's shown. */
+function flakyCounts(flaky: Flakiness): string {
+  return `failed ${flaky.failed} of ${flaky.runs} runs`
 }
