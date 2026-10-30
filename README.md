@@ -115,31 +115,28 @@ After a failing run, the line above the prompt ends with `/xcrew failures`, or t
 
 ### Commands
 
-**Setting up**
+**In the chat**
 
 | Command | What it does |
 | --- | --- |
 | `/xcrew:setup` | Writes MobileBuildMCP's per-project profiles from your schemes and installed simulators |
-| `xcrew xcode-skills` | Copies the agent skills your Xcode ships into the project |
-
-**Around a run**
-
-| Command | What it does |
-| --- | --- |
-| `xcrew affected` | The tests your branch's changes can break |
 | `/xcrew failures` | Opens the failures pane, with every failing test and compile error of the last failing run. After a failing run the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw |
 | `/xcrew close` | Closes the failures pane |
 | `/xcrew ledger` | The tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan |
 | `/xcrew history` | Each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped |
+| `/xcrew doctor` | The doctor's report, with the fix for anything wrong |
+| `/xcrew xcode` | Which Xcode is which: those installed, the selected one, the project's pin, CI's, and the one open |
 
-**When something's off**
+The `/xcrew` commands answer without a turn for Claude.
+
+**The CLI**
+
+`xcrew` is the command-line tool the plugin ships. Claude, the mod and the skills run it, and in Claude Code you run it with `!`, as in `!xcrew affected`.
 
 | Command | What it does |
 | --- | --- |
-| `/xcrew doctor`, `xcrew doctor` | The doctor's report: in the chat, or in a terminal with the fix for anything wrong |
-| `xcrew xcode` | Which Xcode is which: those installed, the selected one, the project's pin, CI's, and the one open |
-
-Commands starting with `/` are typed in Claude Code, the rest in a terminal. The `/xcrew` commands answer at once, without a turn for Claude.
+| `xcrew affected` | The tests your branch's changes can break |
+| `xcrew xcode-skills` | Copies the agent skills your Xcode ships into the project |
 
 ### The right server for each job
 
@@ -168,10 +165,10 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 ### Setup and doctor
 
 - **`/xcrew:setup`** writes MobileBuildMCP's per-project profiles from your schemes and installed simulators.
-- **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
+- **`/xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
 - **Anything wrong** shows in the line above the prompt: a failing check until it's fixed, however you fix it, and a warning for a short while. When setup or `mcs sync` changed the config after MobileBuildMCP started, the line asks you to restart Claude Code.
-- **`xcrew xcode`** says which Xcode is which: those installed, the selected one, the project's `.xcode-version` pin, CI's, and the one open. A pinned Xcode is the one MobileBuildMCP builds and tests with.
-- **`xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
+- **`/xcrew xcode`** says which Xcode is which: those installed, the selected one, the project's `.xcode-version` pin, CI's, and the one open. A pinned Xcode is the one MobileBuildMCP builds and tests with.
+- **`!xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
 - **`xcrew affected`** lists the tests your branch's changes can break: the test targets of every target that owns a changed file or depends on one, at any depth, as the project declares them. When a change touches what it can't read (the project file, a scheme, an `.xcconfig`, a package or a manifest), it says to run everything, and why. Claude asks it before running the whole suite, through a tool of the mod's.
 
 ```
@@ -204,7 +201,7 @@ ok    xcrew/up-to-date                 0.8.9, the latest release
 | Session briefing | The routing rules in [`context/routing.md`](context/routing.md), plus what this project or Mac still lacks, the pinned Xcode, the simulators booted, and where builds go when MobileBuildMCP isn't usable; silent outside Apple-platform projects. `xcrew hook` writes it |
 | Mod | The live line above the prompt, the failures pane, the project card, the `XcodeWrite` and generated-file guards and a note in `XcodeWrite`'s description (in generated projects), the refusal of a build after a manifest edit, the `/xcrew` command, and the `affected` and ledger tools Claude asks. It hands each result to the CLI and passes on what the CLI makes of it |
 | Skills | `/xcrew:setup`, and `xcrew:reference`, which Claude loads when something fails (it isn't in the `/` menu) |
-| CLI | `xcrew setup`, `doctor`, `xcode`, `affected`, `xcode-skills`, on Claude's `PATH` while the plugin is enabled; `report`, `phase` and `project`, which read the servers' output and the project for the mod and the skills |
+| CLI | `xcrew setup`, `doctor`, `xcode`, `affected`, `xcode-skills`, on the `PATH` of Claude's Bash tool and of your `!` commands while the plugin is enabled; `report`, `phase` and `project`, which read the servers' output and the project for the mod and the skills |
 
 - **One implementation.** All logic lives in one dependency-free Swift package; the plugin, the mod and mcs call its CLI.
 - **No drift.** `Tests/ManifestTests` fails when an install path disagrees with the CLI.
@@ -215,21 +212,21 @@ ok    xcrew/up-to-date                 0.8.9, the latest release
 ### Configuration
 
 - **Profiles:** `.mobilebuildmcp/config.yaml` holds `unit` for the scheme that runs your unit tests, which setup finds itself, plus `app` and `ui` for your app and UI-test schemes: `/xcrew:setup` picks those from your schemes and asks you to confirm, and `xcrew setup` takes them as `--app-scheme` and `--ui-scheme`. Each has its scheme and simulator, so it can build as soon as it's active.
-  - Rerun `/xcrew:setup` or `xcrew setup` to change them.
+  - Rerun `/xcrew:setup` or `!xcrew setup` to change them.
   - A config Xcrew didn't write is left alone, unless you pass `--force`, which keeps a backup.
   - It holds this Mac's absolute paths, so setup keeps it out of git through `.git/info/exclude`.
 - **Your own server entries:** Claude Code prefers your `xcode` and `MobileBuildMCP` entries over the plugin's. Remove yours with `claude mcp remove <name>`, or keep them: the mod works with either.
 
 ### Troubleshooting
 
-Run `xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
+Run `/xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that:
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Every Xcode MCP call fails with "not approved" | Xcode asks once per agent | Have Claude call `XcodeOpenWorkspace`; allow it in Xcode's dialog |
 | MobileBuildMCP has only simulator tools | No `.mobilebuildmcp/config.yaml` in the project | `/xcrew:setup`, then restart Claude Code |
 | `No such module 'UIKit'` from SourceKit | Claude Code's language server can't read Xcode projects | Ignore it; the Xcode MCP's diagnostics are the real ones |
-| A build fails with "produced malformed response" | Usually a macro plugin macOS killed. Tuist before 4.203 generated a phase that overwrites plugins in place; `xcrew doctor` names the projects | Upgrade Tuist to 4.203 or later and regenerate. Until then, clean the build folder and rebuild |
+| A build fails with "produced malformed response" | Usually a macro plugin macOS killed. Tuist before 4.203 generated a phase that overwrites plugins in place; `/xcrew doctor` names the projects | Upgrade Tuist to 4.203 or later and regenerate. Until then, clean the build folder and rebuild |
 | A session starts with an `xcrew: building the CLI` error | The Swift toolchain is older than 6.2, or Xcode's command-line tools aren't selected | `xcode-select -p` should point into Xcode 27; `sudo xcode-select -s /Applications/Xcode.app` |
 | A hand edit to `.mobilebuildmcp/config.yaml` seems ignored | MobileBuildMCP reads it only when it starts, and xcrew can't tell your edit from MobileBuildMCP saving its own defaults | Restart Claude Code |
 | `project-config` warns the config points at a missing workspace | The project moved or the workspace was renamed | `/xcrew:setup` |
@@ -243,7 +240,7 @@ Installs follow the `stable` branch, which moves only when a version is released
 - **Automatically:** `/plugin` → **Marketplaces** → `breferrari` → **Enable auto-update**. Claude Code leaves it off for marketplaces like this one.
 - **By hand:** `claude plugin marketplace update breferrari && claude plugin update xcrew@breferrari`.
 - **With the mcs CLI:** `mcs check-updates` says when a new version is out, and `mcs update` installs it.
-- `xcrew doctor` says when a newer release is out. The CLI rebuilds once for the new version.
+- `/xcrew doctor` says when a newer release is out. The CLI rebuilds once for the new version.
 
 **Removing**
 
@@ -274,7 +271,7 @@ Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads
 | **Starts** | `xcrun`, to list simulators (`simctl`), check the Xcode MCP (`mcp-server status`), read a test run's result bundle (`xcresulttool`) and its coverage (`xccov`), and find the skills Xcode ships (`mcpbridge`). `defaults`, to read whether Xcode accepts unsigned agents. `git`, to find `.git/info/exclude`, to name the branch or commit checked out, for the ledger, to list what the branch changed since it left the main branch (`merge-base`, `diff`), for affected tests and for warnings and coverage in changed lines, and in a git checkout of Xcrew to show its commit beside the version. `mdfind` (Spotlight) and `xcode-select -p`, to find the installed Xcodes and the selected one. `ps` and `lsof`, to find the MobileBuildMCP serving this project, when it started, and the open Xcode. `pgrep`, to see whether any simulator runs before listing the booted ones. `plutil`, to read how many displays a simulator has. `mobilebuildmcp --version` and `tuist version`, for the doctor's checks. `curl`, for the one request below |
 | **Reads** | MobileBuildMCP's run logs, a failing or skipped test run's result bundle and a test run's coverage, `.mobilebuildmcp/config.yaml`, your project's manifests and Xcode project files, to tell what kind of project it is, its `.xcode-version` and CI workflows, and each installed Xcode's version from its bundle |
 | **Writes** | In `xcrew setup`: `.mobilebuildmcp/config.yaml`, a `.xcrew-managed` marker beside it with the config's fingerprint, a dated backup of a config you edited when you ask it to replace one, and a line in `.git/info/exclude`. In `xcrew xcode-skills`: the skills Xcode ships, into `.claude/skills`. In `~/Library/Caches/xcrew`: its own build, and the installed MobileBuildMCP's version, kept until MobileBuildMCP changes. While reading a crashed test, a temporary folder of the crash's attachments, removed once read. Nothing else |
-| **Sends** | One request, and only when you run `xcrew doctor` or `/xcrew doctor` yourself: `curl` asks GitHub's releases API for the latest version. Never at session start, whose look for problems leaves that check out. No telemetry |
+| **Sends** | One request, and only when you run `/xcrew doctor` or `!xcrew doctor` yourself: `curl` asks GitHub's releases API for the latest version. Never at session start, whose look for problems leaves that check out. No telemetry |
 
 **The MCP servers**, which the plugin's manifest (`plugin.json`) starts: Apple's `xcrun mcpbridge`, through `libexec/xcode-mcp-server`; Homebrew's `mobilebuildmcp`, through `libexec/mobilebuildmcp-server`, which starts it in your project with Homebrew's folders on `PATH`, and with its telemetry turned off; and Sosumi over HTTPS. When the project pins an Xcode in `.xcode-version`, the launcher asks the CLI for that Xcode (`xcrew xcode --developer-dir`) and starts MobileBuildMCP with `DEVELOPER_DIR` set to it; it writes what came of that to `~/Library/Caches/xcrew/launches`, which the doctor reads. Sosumi is a third-party documentation service that receives your documentation searches; see [sosumi.ai](https://sosumi.ai).
 

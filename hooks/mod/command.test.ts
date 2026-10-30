@@ -114,6 +114,15 @@ test('/xcrew history with nothing timed yet says so', async ($, on) => {
   expect(ran.text).toBe('No builds or test runs timed yet.')
 })
 
+test('/xcrew xcode shows which Xcode is which, from the CLI', async ($, on) => {
+  mock.store(on)
+  const seen = engine(on, { xcode: 'selected  Xcode 27.2, at /Applications/Xcode.app\n' })
+  await start($)
+  const ran = await runCommand($, 'xcrew', 'xcode')
+  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['xcode']])
+  expect(ran.text).toBe('selected  Xcode 27.2, at /Applications/Xcode.app')
+})
+
 test('/xcrew alone lists what it can do', async ($, on) => {
   mock.store(on)
   const seen = engine(on)

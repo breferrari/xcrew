@@ -3,6 +3,7 @@ import { HISTORY, isStale } from './timing'
 
 export const USAGE = [
   '/xcrew doctor   check this Mac and project, with the fix for anything wrong',
+  '/xcrew xcode    which Xcode is which: those installed, the selected one, the project\'s pin, CI\'s, and the one open',
   '/xcrew history  how long each build, test and app run usually takes',
   '/xcrew ledger   the tests seen failing and then passing on this branch, for a pull request',
   '/xcrew failures every failing test and compile error from the last failing run, in a pane',
@@ -10,7 +11,7 @@ export const USAGE = [
 ].join('\n')
 
 /** `/xcrew`, answered by the mod itself: nothing reaches Claude, and nothing costs a turn. */
-export const COMMAND = { name: 'xcrew', description: 'Xcrew: doctor, history, ledger, failures or close', argumentHint: '[doctor|history|ledger|failures|close]' }
+export const COMMAND = { name: 'xcrew', description: 'Xcrew: doctor, xcode, history, ledger, failures or close', argumentHint: '[doctor|xcode|history|ledger|failures|close]' }
 
 /** Which history lines a look keeps: those a run updated within `HISTORY_KEPT_MS`; an undated one is dated now. */
 export function keptHistory(tools: string[], updated: Readonly<Record<string, unknown>>, now: number): { kept: string[]; stamp: string[]; gone: string[] } {
