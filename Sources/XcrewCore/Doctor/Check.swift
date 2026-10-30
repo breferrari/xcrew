@@ -87,9 +87,12 @@ public protocol Check: Sendable {
     var title: String { get }
     /// Whether it calls out to the network, which the session-start `doctor --problems` leaves out.
     var reachesNetwork: Bool { get }
+    /// Whether it starts a server of its own, which the session-start `doctor --problems` leaves out as well.
+    var startsAServer: Bool { get }
     func run(_ context: CheckContext) async -> CheckResult
 }
 
 extension Check {
     public var reachesNetwork: Bool { false }
+    public var startsAServer: Bool { false }
 }

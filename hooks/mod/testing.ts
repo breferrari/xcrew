@@ -63,6 +63,8 @@ export function stubCli(
     reportFails?: () => boolean
     /** A function may answer later, as a CLI that takes its time does. */
     project?: ProjectAnswer | ((args: readonly string[]) => ProjectAnswer | Promise<ProjectAnswer>)
+    /** What `xcrew note` answers, for its arguments and what the mod pipes in. */
+    notes?: (args: readonly string[], stdin: string | undefined) => string[]
     /** What `xcrew affected` answers, for its arguments. */
     affected?: (args: readonly string[]) => unknown
     /** The text `xcrew look` prints, for its arguments, or the Error it fails with. */
@@ -98,6 +100,7 @@ export function stubCli(
       : args[0] === 'doctor' ? (answers.problems ?? [])
       : args[0] === 'project' ? ((typeof answers.project === 'function' ? answers.project(args) : answers.project) ?? { isGenerated: false })
       : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
+      : args[0] === 'note' ? { notes: answers.notes?.(args, e.init?.stdin) ?? [] }
       : null
     )
     const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : (printed ?? JSON.stringify(answer))

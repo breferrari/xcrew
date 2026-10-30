@@ -581,6 +581,26 @@ import XcrewTestSupport
     }
 }
 
+/// The handshake starts an Xcode MCP bridge of its own: the full doctor runs it, and the one the line above the prompt
+/// runs at session start and after prompts doesn't.
+/// `xcrew note`: the notes for an Xcode MCP tool's result that no build or test report reads.
+@Suite struct NoteCommandTests {
+    @Test func aClosedConnectionHasItsNote() async {
+        let run = await Run("note", "--server", "xcode", "--error", stdin: "MCP error -32000: Connection closed")
+        #expect(run.text == #"{"notes":["xcrew: the Xcode MCP's connection closed, as it does when the selected Xcode changes during a session; /mcp → Reconnect restarts it."]}"#)
+        #expect(await Run("note", "--server", "xcode", stdin: "MCP error -32000: Connection closed").text == #"{"notes":[]}"#)
+    }
+}
+
+@Suite struct DoctorHandshakeTests {
+    @Test func onlyTheFullDoctorRunsTheHandshake() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let context = CheckContext.fake(FakeRunner(responses: FakeSession.responses(serving: nil)), project: project, processID: FakeSession.doctor)
+        #expect(await Run("doctor", "--json", context: context).text.contains("xcode-mcp/handshake"))
+        #expect(!(await Run("doctor", "--problems", "--json", context: context).text.contains("xcode-mcp/handshake")))
+    }
+}
+
 @Suite struct ProjectCommandTests {
     /// A file's content hash, for the manifest guard to tell an edit reverted since the last generate: SHA-256, in hex,
     /// and empty for a file that isn't there.

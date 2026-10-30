@@ -121,6 +121,10 @@ export function setupOfferOf(answer: unknown): string | undefined {
 export function hashOf(answer: unknown): string | undefined {
   const { hash } = (answer ?? {}) as { hash?: unknown }
   return typeof hash === 'string' ? hash : undefined
+/** The notes `xcrew note` has for a tool's result; none when it couldn't answer. */
+export function notesOf(answer: unknown): string[] {
+  const { notes } = (answer ?? {}) as { notes?: unknown }
+  return Array.isArray(notes) ? notes.filter((note): note is string => typeof note === 'string') : []
 }
 
 /** The app an edit changed and the command that regenerates it, when the file `xcrew project --manifest` was asked about is a manifest. */
