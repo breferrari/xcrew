@@ -9,12 +9,15 @@ struct FailureScreen: Sendable, Equatable {
     let path: String
     let secondsBefore: Double
 
-    /// What `look` asks an export for: the recordings, which XCTest names `….mp4` (docs/findings.md).
-    static let recordings = "*.mp4"
+    /// How XCTest names a recording, as exported and as suggested (docs/findings.md).
+    static let recordingSuffix = ".mp4"
+    /// What `look` asks an export for: the recordings.
+    static let recordings = "*" + recordingSuffix
 
     /// The screen at `run`'s failure, from its recording among `attachments`, the test's in `export`'s manifest, kept in
-    /// `<run folder>/<suite>/<test>/`. Nil when the run kept no recording, or it couldn't be read.
-    static func keep(of test: TestID, run: FailedRun, attachments: [[String: Any]], from export: URL, in runFolder: URL) async -> FailureScreen? {
+    /// `<run folder>/<suite>/<test>/`, numbered when the test failed more than once on one device and configuration.
+    /// Nil when the run kept no recording, or it couldn't be read.
+    static func keep(of test: TestID, run: FailedRun, number: Int? = nil, attachments: [[String: Any]], from export: URL, in runFolder: URL) async -> FailureScreen? {
         // The run's own: the same configuration and device, started before the failure; the latest, when a test kept more.
         let recordings = attachments.compactMap { attachment -> (file: URL, started: Double)? in
             guard attachment["configurationName"] as? String == run.configuration, attachment["deviceId"] as? String == run.deviceID,
@@ -26,7 +29,7 @@ struct FailureScreen: Sendable, Equatable {
         guard let recording = recordings.max(by: { $0.started < $1.started }) else { return nil }
         let kept = FailureImages.folder(of: test, in: runFolder)
         try? FileManager.default.createDirectory(at: kept, withIntermediateDirectories: true)
-        let name = "screen at failure, \(run.device), \(run.configuration)".replacingOccurrences(of: "/", with: "-")
+        let name = (["screen at failure", run.device, run.configuration] + (number.map { ["run \($0)"] } ?? [])).joined(separator: ", ").replacingOccurrences(of: "/", with: "-")
         let destination = kept.appending(path: "\(name).png")
         // A frame stays on screen until the next, and the recording until it stops: the gap is from the recording's end.
         guard let frame = await lastFrame(of: recording.file, to: destination) else { return nil }

@@ -85,10 +85,10 @@ public enum RunLog {
         find(since: .distantPast, project: project, home: home) { ($0.hasPrefix("build") || $0.hasPrefix("test")) && $0.hasSuffix(".log") }
     }
 
-    static func find(since: Date, project: URL, machine: Machine, named matches: (String) -> Bool) async -> URL? {
-        guard find(since: since, project: project, home: machine.home, named: matches) != nil else { return nil }
+    static func find(in folder: String = "logs", since: Date, project: URL, machine: Machine, named matches: (String) -> Bool) async -> URL? {
+        guard find(in: folder, since: since, project: project, home: machine.home, named: matches) != nil else { return nil }
         let (session, servers) = await ProcessList.load(using: machine.runner).mobileBuildMCPServers(forSessionOf: machine.processID)
-        return find(since: since, project: project, home: machine.home, servers: session == nil ? nil : Set(servers.map(\.id)), named: matches)
+        return find(in: folder, since: since, project: project, home: machine.home, servers: session == nil ? nil : Set(servers.map(\.id)), named: matches)
     }
 
     /// The log of the MobileBuildMCP run that started at `since`: the newest `<tool>_…log` written since then, in this

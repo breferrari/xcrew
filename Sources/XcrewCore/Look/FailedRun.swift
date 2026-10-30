@@ -12,29 +12,45 @@ struct FailedRun: Sendable, Equatable {
     let failedAt: Double
     /// The device's id, which ties the run to its attachments in the export's manifest.
     let deviceID: String
+    /// Whether the run kept a screen recording, as a UI test's failed run does.
+    var hasRecording = false
 
     /// The steps shown before the failing one.
     static let mostSteps = 4
 
-    /// Each run that failed, in the order the activities list them.
-    static func runs(activities: String) -> [FailedRun] {
-        let runs = (ResultBundle.parse(activities) as? [String: Any])?["testRuns"] as? [[String: Any]] ?? []
+    /// Each run that failed, in the order the activities list them; nil when they can't be read, as when
+    /// `xcresulttool` gave no answer.
+    static func runs(activities: String) -> [FailedRun]? {
+        guard let runs = (ResultBundle.parse(activities) as? [String: Any])?["testRuns"] as? [[String: Any]] else { return nil }
         return runs.compactMap { run in
             let steps = run["activities"] as? [[String: Any]] ?? []
-            guard let failing = steps.firstIndex(where: { $0["isAssociatedWithFailure"] as? Bool == true }),
-                  let failure = steps[failing]["title"] as? String
-            else { return nil }
+            // The top-level step the failure is in: the failing step itself, or one of the test's own holding it, which
+            // then leads up to it too.
+            guard let failing = steps.firstIndex(where: { failure(in: $0) != nil }) else { return nil }
+            let inside = (steps[failing]["childActivities"] as? [[String: Any]] ?? []).lazy.compactMap(failure(in:)).first
+            let failed = inside ?? steps[failing]
+            guard let title = failed["title"] as? String else { return nil }
+            let leading = steps[..<failing] + (inside == nil ? [] : [steps[failing]])
             let device = run["device"] as? [String: Any] ?? [:]
             let model = device["modelName"] as? String ?? device["deviceName"] as? String ?? "a device"
             let os = [(device["platform"] as? String).map { $0.replacing(" Simulator", with: "") }, device["osVersion"] as? String].compactMap(\.self).joined(separator: " ")
             return FailedRun(
                 device: os.isEmpty ? model : "\(model), \(os)",
                 configuration: (run["testPlanConfiguration"] as? [String: Any])?["configurationName"] as? String ?? "",
-                steps: steps[..<failing].suffix(mostSteps).compactMap { $0["title"] as? String },
-                failure: failure,
-                failedAt: steps[failing]["startTime"] as? Double ?? 0,
-                deviceID: device["deviceId"] as? String ?? ""
+                steps: leading.suffix(mostSteps).compactMap { $0["title"] as? String },
+                failure: title,
+                failedAt: failed["startTime"] as? Double ?? 0,
+                deviceID: device["deviceId"] as? String ?? "",
+                hasRecording: ResultBundle.nodes(steps).contains { ($0["name"] as? String)?.hasSuffix(FailureScreen.recordingSuffix) == true }
             )
         }
+    }
+
+    /// The step a failure is marked on, in `step` or below it: the deepest marked one, where XCTest records it.
+    static func failure(in step: [String: Any]) -> [String: Any]? {
+        for child in step["childActivities"] as? [[String: Any]] ?? [] {
+            if let found = failure(in: child) { return found }
+        }
+        return step["isAssociatedWithFailure"] as? Bool == true ? step : nil
     }
 }

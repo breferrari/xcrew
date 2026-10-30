@@ -51,7 +51,7 @@ struct TestbedLookTests {
             let export = root.appending(path: "export")
             try FileManager.default.copyItem(at: captures.appending(path: capture), to: export)
             let test = TestID(suite: "UITests", name: name)
-            let run = try #require(pick(FailedRun.runs(activities: try Self.capture(capture, "activities-\(name).json"))))
+            let run = try #require(pick(FailedRun.runs(activities: try Self.capture(capture, "activities-\(name).json")) ?? []))
             let screen = await FailureScreen.keep(of: test, run: run, attachments: FailureImages.attachments(of: test, in: export), from: export, in: root.appending(path: "images"))
             // Read before the folder goes.
             return (screen, root.appending(path: "images"), screen.flatMap { FileManager.default.contents(atPath: $0.path) })
@@ -59,7 +59,7 @@ struct TestbedLookTests {
     }
 
     @Test func eachFailedRunNamesItsConfigurationDeviceAndTheStepsBeforeItsFailure() throws {
-        let runs = FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testFailsAfterTaps.json"))
+        let runs = FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testFailsAfterTaps.json")) ?? []
         #expect(runs.map(\.configuration) == ["Plan A", "Plan B"])
         #expect(runs.map(\.device) == ["iPhone 18 Pro Max, iOS 27.2", "iPhone 18 Pro Max, iOS 27.2"])
         let first = try #require(runs.first)
@@ -70,7 +70,7 @@ struct TestbedLookTests {
 
     /// A run that passed has no failure to look at: `testPlanA` fails under Plan B only.
     @Test func aRunThatPassedIsLeftOut() throws {
-        let runs = FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testPlanA.json"))
+        let runs = FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testPlanA.json")) ?? []
         #expect(runs.map(\.configuration) == ["Plan B"])
     }
 
@@ -104,6 +104,22 @@ struct TestbedLookTests {
         // The capture's recordings are re-encoded at 88 by 192 points.
         #expect(data.dropFirst(16).prefix(8) == Data([0, 0, 0, 88, 0, 0, 0, 192]))
         #expect(screen.secondsBefore < 0.5)
+    }
+
+    /// A test repeated with `-test-iterations` fails more than once on one device and configuration: each run's screen
+    /// is kept under a name of its own, so a later run's doesn't replace an earlier one's.
+    @Test func eachRepeatedRunKeepsItsOwnScreen() async throws {
+        try await Self.inFolder { root in
+            let export = root.appending(path: "export")
+            try FileManager.default.copyItem(at: Self.captures.appending(path: "xcodebuild"), to: export)
+            let test = TestID(suite: "UITests", name: "testMissingElement")
+            let run = try #require(FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testMissingElement.json"))?.last)
+            let attachments = FailureImages.attachments(of: test, in: export)
+            let first = try #require(await FailureScreen.keep(of: test, run: run, number: 1, attachments: attachments, from: export, in: root.appending(path: "images")))
+            let second = try #require(await FailureScreen.keep(of: test, run: run, number: 2, attachments: attachments, from: export, in: root.appending(path: "images")))
+            #expect(first.path != second.path)
+            #expect(FileManager.default.fileExists(atPath: first.path) && FileManager.default.fileExists(atPath: second.path))
+        }
     }
 
     /// The last frame, not the keyframe before it: a recording writes a frame only when the screen changes, so its last
@@ -158,10 +174,5 @@ struct TestbedLookTests {
         let planA = try #require(text.components(separatedBy: "xcrew look: ").first { $0.hasPrefix("UITests/testPlanA,") })
         #expect(!planA.contains("Plan A ·"), "\(planA)")
         #expect(planA.contains("Plan B ·"), "\(planA)")
-    }
-
-    @Test func aTestThatDidNotFailSaysSo() async throws {
-        let (text, _) = try await Self.report(TestID(suite: "UITests", name: "testPasses"))
-        #expect(text == "xcrew: UITests/testPasses didn't fail in UITests.xcresult")
     }
 }

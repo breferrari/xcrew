@@ -239,7 +239,7 @@ import Testing
     }
 
     /// Each tool the mod defines is registered at session start and answered by a hook matching its full name.
-    @Test(arguments: [("hooks/mod/ledger.ts", "LEDGER_TOOL"), ("hooks/mod/affected.ts", "AFFECTED_TOOL")])
+    @Test(arguments: [("hooks/mod/ledger.ts", "LEDGER_TOOL"), ("hooks/mod/affected.ts", "AFFECTED_TOOL"), ("hooks/mod/look.ts", "LOOK_TOOL")])
     func eachToolOfTheModsIsRegisteredAndAnswered(file: String, tool: String) throws {
         let register = try text("hooks/mod/register.ts")
         #expect(try text(file).contains("export const \(tool)_NAME = "))

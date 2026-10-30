@@ -16,11 +16,17 @@ struct LookCommand: Command {
     func run(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         guard invocation.arguments.positional.count <= 1 else { throw UsageError(description: "look takes one test at most (xcrew look --help)") }
-        guard let path = invocation.arguments["bundle"] ?? ResultBundle.newest(project: context.project.root, home: context.machine.home) else {
+        let named = invocation.arguments["bundle"]
+        let newest = if named == nil { await ResultBundle.newest(project: context.project.root, machine: context.machine) } else { String?.none }
+        guard let path = named ?? newest else {
             invocation.print(Self.noBundle)
             return 1
         }
-        let test = invocation.arguments.positional.first.map(TestID.init(xcresultID:))
+        // `Target/Suite/test`, as `-only-testing:` names it, is `Suite/test` in the result bundle.
+        let test = invocation.arguments.positional.first.map { named in
+            let parts = named.split(separator: "/")
+            return parts.count > 2 ? TestID(suite: parts[parts.count - 2], name: parts[parts.count - 1]) : TestID(xcresultID: named)
+        }
         let bundle = ResultBundle(path: path, runner: context.runner)
         invocation.print(await Look.report(bundle: bundle, test: test, keptIn: context.machine.cacheFolder.appending(path: "images")))
         return 0
