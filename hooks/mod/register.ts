@@ -573,12 +573,13 @@ const unreadCalls = new Map<string, string>()
 /** How many such calls are kept waiting for their notification. */
 const UNREAD_KEPT = 20
 
-/** The pin notes Claude has read this session: each is named with the first failure it may explain, and not again. */
+/** The pins Claude has read of this session: each is named with the first failure it may explain, and not again. */
 const pinsNamed = new Set<string>()
 
 function withPinNamedOnce(outcome: Report): Report {
-  if (!outcome.pinNote || pinsNamed.has(outcome.pinNote)) return outcome
-  pinsNamed.add(outcome.pinNote)
+  const pin = outcome.pin ?? outcome.pinNote
+  if (!outcome.pinNote || !pin || pinsNamed.has(pin)) return outcome
+  pinsNamed.add(pin)
   return { ...outcome, notes: [...outcome.notes, outcome.pinNote] }
 }
 /** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */

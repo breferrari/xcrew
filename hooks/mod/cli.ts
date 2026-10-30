@@ -30,6 +30,8 @@ export type Report = {
   bundle?: string
   /** That another Xcode than the pin's built, for a failure whose errors another SDK or toolchain gives. */
   pinNote?: string
+  /** The pin it names, which the mod names once a session. */
+  pin?: string
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */

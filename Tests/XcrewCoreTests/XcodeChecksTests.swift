@@ -109,12 +109,13 @@ import XcrewTestSupport
         #expect(try await pinNote(context(pin: "25.0\n"), text: text, kind: kind) == nil)
     }
 
-    /// The errors another SDK or toolchain gives: a module another Swift compiled, an API newer than the SDK, a
-    /// deployment target it doesn't support.
+    /// The errors another SDK or toolchain gives: a module another Swift compiled, a deployment target or SDK the
+    /// toolchain doesn't support, a platform it doesn't know.
     @Test(arguments: [
         "module compiled with Swift 6.1 cannot be imported by the Swift 6.3 compiler: /Users/dev/Core.swiftmodule",
-        "'navigationTransition' is only available in iOS 26.0 or newer",
         "The iOS Simulator deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set to 11.0, but the range of supported deployment target versions is 12.0 to 27.2.99.",
+        "SDK \"iphonesimulator26.5\" cannot be located.",
+        "unrecognized platform name 'visionOS'",
     ])
     func anSDKOrToolchainErrorNamesThePin(_ error: String) async throws {
         #expect(try await pinNote(context(pin: "25.0\n"), text: Self.buildFailure(error)) != nil)
@@ -130,6 +131,33 @@ import XcrewTestSupport
         #expect(try await pinNote(mismatched, text: Self.fixture("mobileTestsBuildFailed"), kind: .test) != nil)
         try "/Users/dev/App/Sources/App.swift:2:8: error: cannot convert value of type 'String' to specified type 'Int'\n".write(to: log, atomically: true, encoding: .utf8)
         #expect(try await pinNote(mismatched, text: Self.fixture("mobileTestsBuildFailed"), kind: .test) == nil)
+    }
+
+    /// The code's own errors that mention an SDK, a deployment target or availability: the pin isn't their cause.
+    @Test(arguments: [
+        "'navigationTransition' is only available in iOS 26.0 or newer",
+        "Crashlytics SDK: missing GoogleService-Info.plist",
+        "cannot find 'SDK' in scope",
+        "compiling for iOS 15.0, but module 'Charts' has a minimum deployment target of iOS 16.0: /Users/dev/Charts.swiftmodule",
+    ])
+    func theCodesOwnErrorSaysNothingOfThePin(_ error: String) async throws {
+        #expect(try await pinNote(context(pin: "25.0\n"), text: Self.buildFailure(error)) == nil)
+    }
+
+    /// Only a test run whose build failed reads the build log: a failed test's log holds the app's own output.
+    @Test func aFailedTestsBuildLogIsntRead() async throws {
+        let mismatched = context(pin: "25.0\n")
+        let log = mismatched.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/sample-0000/logs/test_sim.log")
+        try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "network error: SDK \"iphonesimulator26.5\" cannot be located.\n".write(to: log, atomically: true, encoding: .utf8)
+        #expect(try await pinNote(mismatched, text: Self.fixture("mobileTestsFailed"), kind: .test) == nil)
+    }
+
+    /// The report names the pin its note is about, for the mod to name each pin once a session.
+    @Test func theReportNamesThePinItsNoteIsAbout() async throws {
+        let context = context(pin: "25.0\n")
+        let report = await Report.make(kind: .build, output: ToolOutput(text: Self.toolchainFailure, server: .mobileBuildMCP, isError: true), home: context.machine.home.path, runner: context.runner, project: context.project, machine: context.machine)
+        #expect(report.pin == "25.0 (.xcode-version)")
     }
 
     /// A run builds first unless it only launches, and fails the same way.

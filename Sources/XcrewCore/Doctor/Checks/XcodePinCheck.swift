@@ -19,11 +19,11 @@ struct XcodePinCheck: Check {
         }
     }
 
-    /// Whether an error is one another SDK or toolchain gives, where the pin may be the cause: a module another Swift
-    /// compiled, an API newer than the SDK, a deployment target or SDK the toolchain doesn't support, a platform it
-    /// doesn't know.
+    /// Whether an error is one another SDK or toolchain gives, in its own words, where the pin may be the cause: a module
+    /// another Swift compiled, a deployment target outside the range it supports, an SDK it can't find, a platform it
+    /// doesn't know. An API newer than the deployment target, or a package's own minimum, is the code's.
     static func mayBeTheToolchain(_ error: String) -> Bool {
-        error.contains(/compiled with Swift [\d.]+ cannot be imported|is only available in \S+ [\d.]+ or newer|deployment target|\bSDK\b|[Uu]nrecognized platform name/)
+        error.contains(/compiled with Swift [\d.]+ cannot be imported|range of supported deployment target versions|SDK "[^"]+" cannot be located|[Uu]nable to find (?:a )?sdk|[Uu]nrecognized platform name/)
     }
 
     /// The command that installs a pinned Xcode: xcodes when it's on PATH, else Apple's download page.
