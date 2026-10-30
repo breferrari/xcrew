@@ -143,6 +143,25 @@ import XcrewTestSupport
         #expect(Self.config(worktree)?.contains("simulatorName") == false)
     }
 
+    /// What setup makes is recorded in the repository's common git folder, by id and worktree, for the doctor.
+    @Test func whatSetupMakesIsRecorded() async {
+        let (main, worktree, context, _) = Self.withSimulator()
+        _ = await Run("setup", "--worktree", context: context)
+        let record = WorktreeSimulatorRecord.read(main.root.appending(path: ".git/xcrew/worktree-simulators"))
+        #expect(record.entries == [.init(udid: "NEW-UDID", worktree: ProjectLayout.canonical(worktree.root))])
+    }
+
+    /// A recorded simulator is the worktree's, whatever its name now says, so none is made beside it.
+    @Test func aRecordedSimulatorIsUsedAgainWhateverItsName() async throws {
+        let (main, worktree, context, _) = Self.withSimulator()
+        var runner = context.runner as? FakeRunner ?? FakeRunner()
+        runner.responses["xcrun simctl list devices available --json"] = CommandResult(status: 0, stdout: Self.listed([("iPhone 18 Pro", "MAIN-UDID"), ("renamed", "REC-UDID")]))
+        try WorktreeSimulatorRecord().adding("REC-UDID", for: worktree.root).write(to: main.root.appending(path: ".git/xcrew/worktree-simulators"))
+        let run = await Run("setup", "--worktree", context: .fake(runner, project: worktree))
+        #expect(run.output.contains("xcrew: this worktree uses simulator `renamed` (iPhone 18 Pro, iOS 27.2), made for it earlier"), "\(run.output)")
+        #expect(Self.config(worktree)?.contains("    simulatorId: 'REC-UDID'\n") == true)
+    }
+
     /// One made for this worktree before is used again, never doubled.
     @Test func aSimulatorMadeForTheWorktreeBeforeIsUsedAgain() async {
         let (_, worktree, context, name) = Self.withSimulator()

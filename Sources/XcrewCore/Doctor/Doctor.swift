@@ -8,6 +8,8 @@ public enum Doctor {
         ConfigLoadedCheck(),
         XcodebuildLeftRunningCheck(),
         SimulatorsCheck(),
+        WorktreeLeftoversCheck(),
+        SimulatorMemoryCheck(),
         HeadlessXcodeMCPCheck(),
         XcodeMCPHandshakeCheck(),
         XcodePinCheck(),

@@ -82,13 +82,10 @@ public struct SessionBriefing: Sendable {
 
     /// How long the briefing waits for `simctl`, after which the runner takes up to its grace to stop it (docs/findings.md).
     static let simctlTimeout = Duration.seconds(1)
-    static let coreSimulatorService = "com.apple.CoreSimulator.CoreSimulatorService"
 
-    /// The simulators booted now. Only a running CoreSimulator service has any, and `xcrun` without one starts it, or on
-    /// a Mac without the developer tools offers to install them, so `simctl` is asked only while the service runs.
+    /// The simulators booted now, or none when `simctl` can't say in time (`SimulatorCatalog.bootedIfServiceRuns`).
     func booted() async -> [SimulatorCatalog.Device] {
-        guard await machine.runner.run("pgrep", "-x", Self.coreSimulatorService, timeout: Self.simctlTimeout).status == 0 else { return [] }
-        return await SimulatorCatalog.booted(using: machine.runner, timeout: Self.simctlTimeout)
+        await SimulatorCatalog.bootedIfServiceRuns(using: machine.runner, timeout: Self.simctlTimeout) ?? []
     }
 
     /// Each with its UDID, since a name can be installed on several runtimes and only one of them is booted.

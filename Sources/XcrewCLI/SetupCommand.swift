@@ -198,7 +198,10 @@ struct SetupCommand: Command {
         var simulators: [String] = []
         if !invocation.arguments.has("no-simulator"), force || ConfigWriter.keeping(context.project) == nil {
             let worktreeTop = checkout.prefix.split(separator: "/").reduce(context.project.root) { folder, _ in folder.deletingLastPathComponent() }
-            (config, simulators) = await WorktreeSimulator.make(for: worktreeTop, main: checkout.main, config: config, fresh: invocation.arguments.has("fresh-simulator"), using: context.runner)
+            let record = await WorktreeSimulatorRecord.file(for: worktreeTop, using: context.runner)
+            (config, simulators) = await WorktreeSimulator.make(
+                for: worktreeTop, main: checkout.main, config: config, fresh: invocation.arguments.has("fresh-simulator"), record: record, using: context.runner
+            )
         }
         let outcome = try ConfigWriter.write(config, to: context.project, force: force)
         Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path)); restart Claude Code so MobileBuildMCP reads it"]

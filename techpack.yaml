@@ -74,6 +74,14 @@ supplementaryDoctorChecks:
     section: xcrew
     command: mcs/checks/mobilebuildmcp--simulators.sh
   - type: shellScript
+    name: No simulators left by removed worktrees
+    section: xcrew
+    command: mcs/checks/simulators--worktree-leftovers.sh
+  - type: shellScript
+    name: Booted simulators fit this Mac's memory
+    section: xcrew
+    command: mcs/checks/simulators--memory.sh
+  - type: shellScript
     name: The project's Xcode pin applies
     section: xcrew
     command: mcs/checks/xcode--pin.sh

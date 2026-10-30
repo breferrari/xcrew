@@ -1004,6 +1004,15 @@ import Testing
         #expect(calls >= 4, "found no CLI calls in the mod; the pattern no longer matches how it builds them")
     }
 
+    /// The memory check's two figures for a settled simulator are the ones findings records, so neither changes alone.
+    @Test func simulatorMemoryFiguresAreTheMeasuredOnes() throws {
+        let findings = try text("docs/findings.md")
+        #expect(SimulatorMemoryCheck.settledMB.footprint == 11_247)
+        #expect(findings.contains("`footprint` summed it to 11,247 MB"))
+        #expect(SimulatorMemoryCheck.settledMB.vmStat == 6_644)
+        #expect(findings.contains("showed 6,644 MB more in use than before boot"))
+    }
+
     // MARK: mcs techpack
 
     /// Checks the techpack leaves out because mcs does the same itself: `mcs check-updates` says when a

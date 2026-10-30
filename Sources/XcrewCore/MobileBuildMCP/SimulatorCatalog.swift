@@ -15,6 +15,8 @@ public struct SimulatorCatalog: Sendable {
         public var state: String? = nil
         /// Its runtime's identifier, as in `com.apple.CoreSimulator.SimRuntime.iOS-27-2`, which `simctl create` takes.
         public var runtime: String? = nil
+        /// Whether `simctl` can run it: false once its runtime is gone.
+        public var isAvailable = true
 
         var isIPhone: Bool { platform == "iOS" && name.hasPrefix("iPhone") }
     }
@@ -96,8 +98,9 @@ public struct SimulatorCatalog: Sendable {
     }
 
     /// Parses `simctl list devices --json`, with each runtime's version and platform from `simctl list runtimes
-    /// --json` when given, else from the identifier's leading numbers.
-    public init(json: Data, runtimes: Data? = nil) {
+    /// --json` when given, else from the identifier's leading numbers. A device `simctl` can't run is left out unless
+    /// `includingUnavailable`.
+    public init(json: Data, runtimes: Data? = nil, includingUnavailable: Bool = false) {
         let root = (try? JSONSerialization.jsonObject(with: json)) as? [String: Any]
         let byRuntime = root?["devices"] as? [String: [[String: Any]]] ?? [:]
         let listed = runtimes.flatMap { try? JSONDecoder().decode(Runtimes.self, from: $0) }?.runtimes ?? []
@@ -110,8 +113,12 @@ public struct SimulatorCatalog: Sendable {
             guard let platform = known[runtime]?.platform ?? pieces.first else { return [] }
             let version = known[runtime]?.version ?? pieces.dropFirst().prefix { Int($0) != nil }.joined(separator: ".")
             return entries.compactMap { entry in
-                guard entry["isAvailable"] as? Bool ?? true, let name = entry["name"] as? String else { return nil }
-                return Device(name: name, runtimeVersion: version, platform: platform, udid: entry["udid"] as? String, deviceType: entry["deviceTypeIdentifier"] as? String, state: entry["state"] as? String, runtime: runtime)
+                let isAvailable = entry["isAvailable"] as? Bool ?? true
+                guard isAvailable || includingUnavailable, let name = entry["name"] as? String else { return nil }
+                return Device(
+                    name: name, runtimeVersion: version, platform: platform, udid: entry["udid"] as? String, deviceType: entry["deviceTypeIdentifier"] as? String,
+                    state: entry["state"] as? String, runtime: runtime, isAvailable: isAvailable
+                )
             }
         }
     }
@@ -120,6 +127,19 @@ public struct SimulatorCatalog: Sendable {
     /// device's description, so a device's own `state` decides.
     public static func booted(using runner: any CommandRunning, timeout: Duration) async -> [Device] {
         let listed = await runner.run("xcrun", "simctl", "list", "devices", "booted", "--json", timeout: timeout)
+        return SimulatorCatalog(json: Data(listed.stdout.utf8)).devices.filter { ["Booted", "Booting"].contains($0.state) }
+    }
+
+    /// CoreSimulator's service: only while it runs is any simulator booted.
+    public static let coreSimulatorService = "com.apple.CoreSimulator.CoreSimulatorService"
+
+    /// The simulators booted now: none while CoreSimulator's service isn't running, since `xcrun` without one starts it,
+    /// or on a Mac without the developer tools offers to install them, so `simctl` is asked only while it runs. Nil when
+    /// `simctl` doesn't answer within `timeout`.
+    public static func bootedIfServiceRuns(using runner: any CommandRunning, timeout: Duration) async -> [Device]? {
+        guard await runner.run("pgrep", "-x", coreSimulatorService, timeout: timeout).status == 0 else { return [] }
+        let listed = await runner.run("xcrun", "simctl", "list", "devices", "booted", "--json", timeout: timeout)
+        guard listed.succeeded else { return nil }
         return SimulatorCatalog(json: Data(listed.stdout.utf8)).devices.filter { ["Booted", "Booting"].contains($0.state) }
     }
 

@@ -27,9 +27,9 @@ public enum WorktreeSimulator {
     /// `main` and `worktree` are the two repositories' top folders, which the names come from. Each simulator the
     /// profiles use gets one, named by its device type when they use more than one: a clone of it while it's shut down,
     /// with its apps and data, else one made fresh on its device type and runtime, as always with `fresh`; one made
-    /// earlier is used again; none is made for one this Mac doesn't have. A mapping that named its simulator twice,
-    /// by name and by id, names its own once, by id.
-    public static func make(for worktree: URL, main: URL, config yaml: String, fresh: Bool, using runner: any CommandRunning) async -> (yaml: String, lines: [String]) {
+    /// earlier is used again, found by `record` before its name; none is made for one this Mac doesn't have. A mapping
+    /// that named its simulator twice, by name and by id, names its own once, by id. Each it uses is added to `record`.
+    public static func make(for worktree: URL, main: URL, config yaml: String, fresh: Bool, record file: URL? = nil, using runner: any CommandRunning) async -> (yaml: String, lines: [String]) {
         var lines = yaml.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let mappings = mappings(in: lines)
         guard !mappings.isEmpty else { return (yaml, []) }
@@ -47,15 +47,24 @@ public enum WorktreeSimulator {
         var distinct: [SimulatorCatalog.Device] = []
         for case let source? in sources where !distinct.contains(where: { $0.udid == source.udid }) { distinct.append(source) }
         let base = name(main: main, worktree: worktree)
+        var record = file.map(WorktreeSimulatorRecord.read) ?? WorktreeSimulatorRecord()
+        let recorded = Set(record.entries.filter { $0.worktree == ProjectLayout.canonical(worktree) }.map(\.udid))
         var made: [String: String] = [:]
+        defer {
+            if let file, !made.isEmpty {
+                for udid in Set(made.values) { record = record.adding(udid, for: worktree) }
+                try? record.write(to: file)
+            }
+        }
         for source in distinct {
             guard let deviceType = source.deviceType, let runtime = source.runtime, let from = source.udid else { continue }
             let name = distinct.count > 1 ? "\(base) · \(typeName(deviceType))" : base
             let label = "\(typeName(deviceType)), \(source.platform) \(source.runtimeVersion)"
-            if let earlier = catalog.devices.first(where: { $0.name == name })?.udid {
-                made[from] = earlier
-                let clean = fresh ? "; `xcrun simctl delete \(earlier)` and setup again make a fresh one" : ""
-                said.append("xcrew: this worktree uses simulator `\(name)` (\(label)), made for it earlier\(clean)")
+            let mine = catalog.devices.first { $0.udid.map(recorded.contains) == true && $0.deviceType == deviceType }
+            if let earlier = mine ?? catalog.devices.first(where: { $0.name == name }), let udid = earlier.udid {
+                made[from] = udid
+                let clean = fresh ? "; `xcrun simctl delete \(udid)` and setup again make a fresh one" : ""
+                said.append("xcrew: this worktree uses simulator `\(earlier.name)` (\(label)), made for it earlier\(clean)")
                 continue
             }
             var notCloned: String?

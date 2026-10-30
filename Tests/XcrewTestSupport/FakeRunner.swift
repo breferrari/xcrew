@@ -21,6 +21,12 @@ public struct FakeRunner: CommandRunning {
         paths[name] ?? (installed.contains(name) ? "/nonexistent/bin/\(name)" : nil)
     }
 
+    /// `simctl list devices --json` on one iOS runtime, each device by name, udid, state and whether `simctl` can run it.
+    public static func simctlDevices(_ devices: [(name: String, udid: String, state: String, isAvailable: Bool)]) -> CommandResult {
+        let entries = devices.map { #"{"name":"\#($0.name)","udid":"\#($0.udid)","state":"\#($0.state)","isAvailable":\#($0.isAvailable),"deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-17"}"# }
+        return CommandResult(status: 0, stdout: #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-2":[\#(entries.joined(separator: ","))]}}"#)
+    }
+
     /// A Mac whose available simulators are these, on one iOS runtime, as `simctl list devices available` lists them.
     public static func simulators(_ names: [String]) -> FakeRunner {
         let devices = names.enumerated().map { #"{"name":"\#($1)","udid":"\#($0)","isAvailable":true}"# }.joined(separator: ",")
