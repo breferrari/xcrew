@@ -165,6 +165,11 @@ func failingRunText(passing: Int) -> String {
         ].joined(separator: "\n"))
     }
 
+    /// MobileBuildMCP's MCP results open with a blank line; the run is shortened all the same.
+    @Test func aRunOpeningWithABlankLineIsShortenedToo() {
+        #expect(ToolOutput(text: "\n" + failingRunText(passing: 40), server: .mobileBuildMCP).compactTestText?.contains("  (40 passing tests left out; failing tests are listed in full above)") == true)
+    }
+
     @Test func aShortListIsLeftAsTheServerWroteIt() {
         #expect(ToolOutput(text: failingRunText(passing: 5), server: .mobileBuildMCP).compactTestText == nil)
         #expect(Captured.output("mobileBuildFailed").compactTestText == nil)

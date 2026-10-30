@@ -102,8 +102,11 @@ struct MobileText: Sendable {
 
     var text: String { lines.map(\.text).joined(separator: "\n") }
 
+    /// The text's first line that isn't blank: MobileBuildMCP's MCP results open with a blank line (docs/findings.md).
+    var header: Line? { lines.first { !$0.isBlank } }
+
     /// A test run's text, as opposed to a build's.
-    var isTestRun: Bool { lines.first.map { MobileBuildMCPLine.isTestRunHeader($0.text) } == true }
+    var isTestRun: Bool { header.map { MobileBuildMCPLine.isTestRunHeader($0.text) } == true }
 
     /// The location on the line after `index`, if that line is one.
     func location(after index: Int) -> (path: String, line: String)? {
@@ -225,7 +228,7 @@ struct MobileText: Sendable {
     /// This keeps the failures, the failing and skipped tests' lines and the summary, and counts the
     /// passing ones. Nil when the list is short or the text is another shape.
     func compacted() -> MobileText? {
-        guard lines.first.map({ MobileBuildMCPLine.isTestHeader($0.text) }) == true, let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
+        guard header.map({ MobileBuildMCPLine.isTestHeader($0.text) }) == true, let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
         // The list runs to the summary line; a blank line inside it is where Claude Code cut a long one.
         let summary = lines.indices.first { $0 > start && lines[$0].isSummary }
         var end = summary ?? start + 1

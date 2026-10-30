@@ -504,3 +504,68 @@ struct TestbedEvidenceTests {
         #expect(run.text.contains("- From the build of 2026-10-30 14:24 UTC, older than the branch's last commit (2026-10-30 15:00 UTC): 1 of 2 warnings"), "\(run.text)")
     }
 }
+
+/// The test bed's field captures: a module's probe tests run five times with relaunch, and a crashing test, through
+/// MobileBuildMCP's `test_sim` over MCP, with what xcresulttool answered about each result bundle. Each text opens with a
+/// blank line, as MobileBuildMCP's MCP results do.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedFieldTests {
+    static let field = Testbed.root.appending(path: "captures/field")
+    static let home = "/testbed/home"
+
+    static func captured(_ file: String) throws -> String {
+        try String(contentsOf: field.appending(path: file), encoding: .utf8)
+    }
+
+    /// The bundle a capture's text names, as the report expands it.
+    static func bundle(in text: String) throws -> String {
+        let named = try #require(text.firstMatch(of: /result-bundles\/(\S+\.xcresult)/)?.1)
+        let workspace = try #require(text.firstMatch(of: /workspaces\/([^\/\s]+)\//)?.1)
+        return "\(home)/Library/Developer/MobileBuildMCP/workspaces/\(workspace)/result-bundles/\(named)"
+    }
+
+    /// What xcresulttool answered about a capture's bundle, as a runner answering the report's calls.
+    static func runner(_ capture: String, bundle: String) throws -> FakeRunner {
+        let x = "xcrun xcresulttool get test-results"
+        var responses: [String: CommandResult] = [
+            "\(x) tests --path \(bundle) --compact": .init(status: 0, stdout: try captured("\(capture).tests.json")),
+            "\(x) summary --path \(bundle) --compact": .init(status: 0, stdout: try captured("\(capture).summary.json")),
+        ]
+        for file in try FileManager.default.contentsOfDirectory(atPath: field.path) where file.hasPrefix("\(capture).details.") {
+            let test = file.dropFirst("\(capture).details.".count).dropLast(".json".count).replacingOccurrences(of: ".", with: "/")
+            responses["\(x) test-details --test-id \(test)() --path \(bundle) --compact"] = .init(status: 0, stdout: try captured(file))
+        }
+        return FakeRunner(responses: responses)
+    }
+
+    @Test func aRepeatedRunListsEachTestOnceWithItsRunsAndTheSkipReason() async throws {
+        let text = try Self.captured("probes.txt")
+        let bundle = try Self.bundle(in: text)
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Self.home, runner: try Self.runner("probes", bundle: bundle), repeated: true)
+        let result = try #require(report.result, "the report left the server's text as it was")
+        #expect(result.components(separatedBy: "✗ ProbeTests / testFlaky").count == 2, "\(result)")
+        #expect(result.contains("    /testbed/field/Modules/Feature/Tests/ProbeTests.swift:19\n      failed 3 of 5 runs"), "\(result)")
+        #expect(result.contains("    /testbed/field/Modules/Feature/Tests/ProbeTests.swift:11\n      failed 5 of 5 runs"), "\(result)")
+        #expect(result.contains("  ⏭️ ProbeTests/testSkipped() (0.018s)\n      skipped: waits for the farewell screen"), "\(result)")
+    }
+
+    /// A crash's error text is the one the run printed under Errors; the crash log names the test's own frame, its file
+    /// and line, below the runtime's frames.
+    @Test func aCrashGetsItsErrorTextTheTestsLineAndItsFrames() async throws {
+        let text = try Self.captured("crash.txt")
+        let bundle = try Self.bundle(in: text)
+        let export = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: export, withIntermediateDirectories: true)
+        try Self.captured("crash.ips").write(to: export.appending(path: "crash.ips"), atomically: true, encoding: .utf8)
+        let runner = try Self.runner("crash", bundle: bundle)
+        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: ResultBundle(path: bundle, runner: runner, exportFolder: { export })))
+        let lines = added.text.text.components(separatedBy: "\n")
+        let crash = try #require(lines.firstIndex { $0.contains("✗ CrashTests / testOutOfRange(): Crash:") })
+        #expect(Array(lines[(crash + 1)...].prefix(3)) == [
+            "    ProbeTests.swift:35",
+            "      crashed: EXC_BREAKPOINT (SIGTRAP)",
+            "      Fatal error: Index out of range",
+        ], "\(added.text.text)")
+        #expect(lines.contains("      FeatureTests  CrashTests.testOutOfRange()"), "\(added.text.text)")
+    }
+}
