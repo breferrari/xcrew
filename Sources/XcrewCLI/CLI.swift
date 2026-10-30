@@ -7,6 +7,7 @@ public enum CLI {
         DoctorCommand(),
         AffectedCommand(),
         GraphCommand(),
+        ConcurrencyCommand(),
         ReportCommand(),
         NoteCommand(),
         CardCommand(),

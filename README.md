@@ -157,6 +157,7 @@ The `/xcrew` commands answer without a turn for Claude.
 | Command | What it does |
 | --- | --- |
 | `xcrew affected` | The tests your branch's changes can break |
+| `xcrew concurrency` | A build's Swift concurrency diagnostics by compiler group and module, from its log |
 | `xcrew graph` | The project's modules, what each depends on, and where each import of one lands; `--owner` names the targets that build a file |
 | `xcrew why` | Why the last build failed, when the cause is this Mac rather than the code, and the fix |
 | `xcrew xcode-skills` | Copies the agent skills your Xcode ships into the project |
@@ -194,6 +195,7 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 - **`!xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
 - **`xcrew space`** shows what MobileBuildMCP and Xcode keep on this Mac: this project's MobileBuildMCP storage and any left by a project that's gone, Xcode's DerivedData by the workspace it served, simulator runtimes and devices, and the installed Xcodes, each with the command that would reclaim it. It deletes nothing, never offers the selected or pinned Xcode or your archives, and runs only when you ask.
 - **`xcrew affected`** lists the tests your branch's changes can break: the test targets of every target that owns a changed file or depends on one, at any depth, as the project declares them. When a change touches what it can't read (the project file, a scheme, an `.xcconfig`, a package or a manifest), it says to run everything, and why. It also names the shared schemes that test only those targets, such as a module's own scheme, since `-only-testing:` on a scheme that tests every module still builds them all. Claude can ask it too, through a tool of the mod's.
+- **`xcrew concurrency`** counts a build's Swift concurrency diagnostics by the compiler's own group (`SendableClosureCaptures`, `MutableGlobalVariable`…), with each group's title from your Xcode's docs, and by module. It says how many are in lines your branch changed (`--changed` keeps only those), and how many carry no group. It reads MobileBuildMCP's newest build log for the project, or `--log <file>`, each diagnostic once however often the log repeats it.
 - **`xcrew graph`** shows the project's modules as its projects declare them, what each depends on, and where each import of one of them lands: on a direct dependency, on one reached only through others, on a module it doesn't depend on at all, or on one that depends on it. It states each as a fact. `--owner <file>` names the targets that build a file, and `--json` gives the whole graph.
 
 ```
@@ -231,7 +233,7 @@ ok    xcrew/up-to-date                   0.8.9, the latest release
 | Session briefing | The routing rules in [`context/routing.md`](context/routing.md), plus what this project or Mac still lacks, the pinned Xcode, the simulators booted, the test plans that run each test under several configurations, and where builds go when MobileBuildMCP isn't usable; silent outside Apple-platform projects. `xcrew hook` writes it |
 | Mod | The live line above the prompt, the failures pane, the project card, the `XcodeWrite` and generated-file guards and a note in `XcodeWrite`'s description (in generated projects), the refusal of a build after a manifest edit, the `/xcrew` command, and the `affected`, ledger, `look` and `evidence` tools Claude asks. It hands each result to the CLI and passes on what the CLI makes of it |
 | Skills | `/xcrew:setup`, and `xcrew:reference`, which Claude loads when something fails (it isn't in the `/` menu) |
-| CLI | `xcrew setup`, `doctor`, `xcode`, `affected`, `graph`, `why`, `look`, `space`, `xcode-skills`, on the `PATH` of Claude's Bash tool and of your `!` commands while the plugin is enabled; `report`, `note`, `phase`, `runs` and `project`, which read the servers' output and the project for the mod and the skills, `card`, which keeps the mod's project card for the session-start hook, and `evidence`, which writes a pull request's evidence from the mod's ledger |
+| CLI | `xcrew setup`, `doctor`, `xcode`, `affected`, `graph`, `concurrency`, `why`, `look`, `space`, `xcode-skills`, on the `PATH` of Claude's Bash tool and of your `!` commands while the plugin is enabled; `report`, `note`, `phase`, `runs` and `project`, which read the servers' output and the project for the mod and the skills, `card`, which keeps the mod's project card for the session-start hook, and `evidence`, which writes a pull request's evidence from the mod's ledger |
 
 - **One implementation.** All logic lives in one dependency-free Swift package; the plugin, the mod and mcs call its CLI.
 - **No drift.** `Tests/ManifestTests` fails when an install path disagrees with the CLI.
