@@ -431,3 +431,22 @@ struct TestbedSnapshotTests {
         ], "\(added)")
     }
 }
+
+/// Why every failed test's attachments are exported, rather than only those of a test whose details say it has media:
+/// `hasMediaAttachments` is false for tests that attached screen recordings and screenshots.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedMediaFlagTests {
+    @Test(arguments: ["xcodebuild", "mobilebuildmcp"])
+    func theDetailsSayNoMediaForUITestsThatAttachedImages(_ capture: String) throws {
+        let folder = Testbed.root.appending(path: "captures/uitests/\(capture)")
+        let manifest = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: folder.appending(path: "manifest.json"))) as? [[String: Any]])
+        for test in manifest {
+            let identifier = try #require(test["testIdentifier"] as? String)
+            let name = TestID(xcresultID: identifier).name
+            let names = (test["attachments"] as? [[String: Any]] ?? []).compactMap { $0["suggestedHumanReadableName"] as? String }
+            #expect(names.contains { $0.hasPrefix("Screen Recording") || $0.hasPrefix("UI Snapshot") }, "\(identifier)")
+            let details = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: folder.appending(path: "details-\(name).json"))) as? [String: Any])
+            #expect(details["hasMediaAttachments"] as? Bool == false, "\(identifier)")
+        }
+    }
+}
