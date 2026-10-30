@@ -3,14 +3,17 @@ import Foundation
 /// Renders and reads `.mobilebuildmcp/config.yaml`. The format is MobileBuildMCP's; see its
 /// configuration docs when a key changes.
 public enum ConfigRenderer {
-    /// Tool groups xcrew enables. `sim-env` is defined by `customWorkflows` below.
-    public static let workflows = ["simulator", "sim-env", "xcode-ide", "ui-automation", "debugging"]
-    /// Simulator-environment tools from MobileBuildMCP's `simulator-management` group, without
-    /// the ones `simulator` already has.
+    /// Tool groups xcrew enables. `sim-env` is defined by `customWorkflows` below. Why the others are off is in
+    /// docs/findings.md, *MobileBuildMCP's tool groups*.
+    public static let workflows = ["simulator", "sim-env", "ui-automation", "debugging"]
+    /// The tools of MobileBuildMCP's `simulator-management` group that `simulator` doesn't have.
     public static let simEnvTools = [
-        "erase_sims", "set_sim_appearance", "set_sim_location", "reset_sim_location",
+        "erase_sims", "set_sim_appearance", "set_sim_location", "reset_sim_location", "sim_statusbar",
         "toggle_software_keyboard", "toggle_connect_hardware_keyboard",
     ]
+    /// The tool groups as setup writes them, which the doctor looks for in a config xcrew wrote.
+    public static let toolGroups = (["enabledWorkflows:"] + workflows.map { "  - \($0)" } + ["customWorkflows:", "  sim-env:"] + simEnvTools.map { "    - \($0)" })
+        .joined(separator: "\n") + "\n"
 
     public static func render(_ answers: ProfileAnswers, root: URL, simulatorIDs: [String: String] = [:]) -> String {
         let pathKey = answers.container.hasSuffix(".xcodeproj") ? "projectPath" : "workspacePath"
@@ -22,8 +25,7 @@ public enum ConfigRenderer {
                 + extra
         }
 
-        var lines = ["schemaVersion: 1", "enabledWorkflows:"] + workflows.map { "  - \($0)" }
-        lines += ["customWorkflows:", "  sim-env:"] + simEnvTools.map { "    - \($0)" }
+        var lines = ["schemaVersion: 1", toolGroups.trimmingCharacters(in: .newlines)]
         lines += ["sentryDisabled: true", "showTestTiming: true"]
         // In the order the active one is chosen: the first written is active.
         let bundle = answers.bundleID.map { ["    bundleId: \(quoted($0))"] } ?? []

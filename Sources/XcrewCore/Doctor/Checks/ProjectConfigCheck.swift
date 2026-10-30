@@ -26,8 +26,13 @@ struct ProjectConfigCheck: Check {
         if profiles.withScheme.isEmpty {
             return .warn("no profile has a scheme yet, so a build or test needs one each time: /xcrew:setup adds them from your schemes")
         }
-        if !yaml.contains("- xcode-ide") {
-            return .warn("the xcode-ide tool group is off; another tool may have rewritten the config (xcrew setup --force restores it)")
+        let isXcrews = FileManager.default.fileExists(atPath: project.managedMarker.path)
+        if yaml.split(whereSeparator: \.isNewline).contains(where: { $0.trimmingCharacters(in: .whitespaces) == "- xcode-ide" }) {
+            return .warn("the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, which skips Xcrew's XcodeWrite guard: /xcrew:setup rewrites it"
+                + (isXcrews ? "" : " (xcrew setup --force replaces a config xcrew didn't write)"))
+        }
+        if isXcrews, !yaml.contains(ConfigRenderer.toolGroups) {
+            return .warn("an earlier Xcrew wrote this config, with other tool groups: /xcrew:setup rewrites it")
         }
         if yaml.contains("incrementalBuildsEnabled: true") {
             return .warn("incremental builds are on; they were slower in testing and write a Makefile into the project")

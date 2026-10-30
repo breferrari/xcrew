@@ -3,6 +3,7 @@
 ## Unreleased
 
 - When Claude builds or tests a project MobileBuildMCP has no scheme for yet, it's told to offer `/xcrew:setup`, once per conversation. The conversation's opening note says so too, now also when MobileBuildMCP saved a config of its own without one. The README now says that with mcs you run `/xcrew:setup` once after `mcs sync`.
+- MobileBuildMCP no longer offers its own route to the Xcode MCP (`xcode-ide`), which let Claude call `XcodeWrite` without Xcrew asking you first in a generated project. Claude can now set the simulator's status bar through MobileBuildMCP. `xcrew doctor` says when a config still has the old tool groups, and `/xcrew:setup` rewrites it.
 
 ## 0.9.0 — 2026-10-30
 

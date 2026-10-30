@@ -6,6 +6,15 @@ import XcrewTestSupport
 @Suite struct ConfigRendererTests {
     let root = URL(fileURLWithPath: "/work/App")
 
+    /// MobileBuildMCP's `xcode-ide` calls any Xcode MCP tool through its own bridge, past the mod's guards, and the
+    /// status bar is the one `simulator-management` tool neither `simulator` nor `sim-env` had (docs/findings.md,
+    /// *MobileBuildMCP's tool groups*).
+    @Test func theToolGroupsLeaveOutXcodeIDEAndCarryTheStatusBar() {
+        let yaml = ConfigRenderer.render(.init(container: "App.xcodeproj", testSimulator: "iPhone 17", testScheme: "AppTests"), root: URL(fileURLWithPath: "/work"))
+        #expect(yaml.contains("enabledWorkflows:\n  - simulator\n  - sim-env\n  - ui-automation\n  - debugging\n"))
+        #expect(yaml.contains("customWorkflows:\n  sim-env:\n    - erase_sims\n    - set_sim_appearance\n    - set_sim_location\n    - reset_sim_location\n    - sim_statusbar\n    - toggle_software_keyboard\n    - toggle_connect_hardware_keyboard\n"))
+    }
+
     @Test func onlyProfilesWithASchemeAreWritten() async {
         let yaml = ConfigRenderer.render(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 17", appScheme: "App"), root: root)
         #expect(!yaml.contains("  unit:"))

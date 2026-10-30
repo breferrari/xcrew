@@ -148,10 +148,43 @@ import XcrewTestSupport
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .warn)
     }
 
+    /// The tool groups as Xcrew 0.9.0 wrote them, with `xcode-ide` and without the status bar.
+    static let groupsOf090 = "enabledWorkflows:\n  - simulator\n  - sim-env\n  - xcode-ide\n  - ui-automation\n  - debugging\ncustomWorkflows:\n  sim-env:\n    - erase_sims\n    - set_sim_appearance\n    - set_sim_location\n    - reset_sim_location\n    - toggle_software_keyboard\n    - toggle_connect_hardware_keyboard\n"
+
+    static func config(groups: String, in project: Project) -> String {
+        "schemaVersion: 1\n" + groups + "sessionDefaultsProfiles:\n  unit:\n    workspacePath: '\(project.root.path)/A.xcworkspace'\n    scheme: 'A'\n    simulatorName: 'iPhone 17'\nactiveSessionDefaultsProfile: unit\n"
+    }
+
+    /// A config an earlier Xcrew wrote has the tool groups it had then: setup brings them up to date.
+    @Test func aConfigXcrewWroteWithEarlierToolGroupsIsOutdated() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        project.write(Self.config(groups: Self.groupsOf090.replacingOccurrences(of: "  - xcode-ide\n", with: ""), in: project), to: ".mobilebuildmcp/config.yaml")
+        project.write("", to: ".mobilebuildmcp/.xcrew-managed")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("an earlier Xcrew wrote this config, with other tool groups: /xcrew:setup rewrites it"))
+    }
+
+    /// `xcode-ide` is a second route to the Xcode MCP that skips the mod's XcodeWrite guard, in any config.
+    @Test func aConfigWithXcodeIDEWarnsWhoeverWroteIt() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        project.write(Self.config(groups: Self.groupsOf090, in: project), to: ".mobilebuildmcp/config.yaml")
+        project.write("", to: ".mobilebuildmcp/.xcrew-managed")
+        let xcrews = "the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, which skips Xcrew's XcodeWrite guard: /xcrew:setup rewrites it"
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn(xcrews))
+        try? FileManager.default.removeItem(at: project.managedMarker)
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn(xcrews + " (xcrew setup --force replaces a config xcrew didn't write)"))
+    }
+
+    /// A config of the person's own with other groups is theirs to choose, short of `xcode-ide`.
+    @Test func aConfigOfThePersonsOwnWithOtherToolGroupsPasses() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        project.write(Self.config(groups: "enabledWorkflows:\n  - simulator\n  - session-management\n", in: project), to: ".mobilebuildmcp/config.yaml")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .pass)
+    }
+
     /// Configs from 0.8.1 and earlier have a schemeless `unit` profile active.
     @Test func anActiveProfileWithoutASchemeWarns() async {
         let project = Project.temporary(containing: ["A.xcworkspace"])
-        project.write("schemaVersion: 1\nenabledWorkflows:\n  - xcode-ide\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: '\(project.root.path)/A.xcworkspace'\n    simulatorName: 'iPhone 17'\nactiveSessionDefaultsProfile: unit\n", to: ".mobilebuildmcp/config.yaml")
+        project.write("schemaVersion: 1\nenabledWorkflows:\n  - simulator\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: '\(project.root.path)/A.xcworkspace'\n    simulatorName: 'iPhone 17'\nactiveSessionDefaultsProfile: unit\n", to: ".mobilebuildmcp/config.yaml")
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("the active profile, unit, has no scheme, so a build or test has nothing to run: rerun /xcrew:setup (xcrew setup --force replaces a config xcrew didn't write)"))
     }
 

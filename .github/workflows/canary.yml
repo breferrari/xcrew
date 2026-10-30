@@ -70,7 +70,7 @@ jobs:
           # Through the plugin's launcher, as Claude Code starts the server. The project pins no Xcode, so the server
           # starts unchanged: nothing of the launcher's on its standard error, and no launch record.
           ("$PWD/libexec/mobilebuildmcp-server" "$project" < /dev/null > /dev/null 2> "$log" &) ; sleep 5
-          grep -E "Loaded project config|Registered [0-9]+ tools from workflows: .*xcode-ide" "$log" || { cat "$log"; exit 1; }
+          grep -E "Loaded project config|Registered [0-9]+ tools from workflows: .*sim-env" "$log" || { cat "$log"; exit 1; }
           if grep -F "mobilebuildmcp-server" "$log"; then echo "the launcher wrote to the server's standard error" >&2; exit 1; fi
           record="${XCREW_CACHE:-$HOME/Library/Caches/xcrew}/launches$(cd "$project" && pwd -P).launch"
           if [ -e "$record" ]; then echo "a launch record for a project with no pin: $(cat "$record")" >&2; exit 1; fi
