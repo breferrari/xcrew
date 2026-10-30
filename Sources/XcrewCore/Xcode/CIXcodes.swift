@@ -10,17 +10,19 @@ public enum CIXcodes {
         public let version: String
     }
 
-    /// Each version the workflows name: setup-xcode's `xcode-version`, an `xcode-select -s` or `--switch` to an app, and a
-    /// `DEVELOPER_DIR` inside one. One that picks the newest, or a range, names no version to compare and isn't listed. A
-    /// line that reads the project's pin to choose its Xcode uses the pin, and names its version.
+    /// Each version the workflows name: setup-xcode's `xcode-version`, an `xcode-select -s` or `--switch` to an app, a
+    /// `DEVELOPER_DIR` inside one, and a pin file a line reads to choose its Xcode. One that picks the newest, or a range,
+    /// names no version to compare and isn't listed.
     public static func named(in project: Project) -> [Named] {
-        let pin = project.xcodePin?.version
+        let pinned = { (path: String) in
+            (try? String(contentsOf: project.root.appending(path: path), encoding: .utf8)).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        }
         let folder = project.root.appending(path: ".github/workflows")
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.sorted()
         return files.flatMap { name in
             let text = (try? String(contentsOf: folder.appending(path: name), encoding: .utf8)) ?? ""
             return text.split(separator: "\n", omittingEmptySubsequences: false).enumerated().compactMap { index, line in
-                (version(in: String(line)) ?? (readsThePin(String(line)) ? pin : nil)).map { Named(file: ".github/workflows/\(name)", line: index + 1, version: $0) }
+                version(in: String(line), pinned: pinned).map { Named(file: ".github/workflows/\(name)", line: index + 1, version: $0) }
             }
         }
     }
@@ -33,19 +35,23 @@ public enum CIXcodes {
         return Array(have.prefix(wanted.count)) == wanted
     }
 
-    /// The version a workflow line names, past any YAML comment, which is an old setup's.
-    static func version(in written: String) -> String? {
+    /// The version a workflow line names, past any YAML comment, which is an old setup's: written out, or in the pin file
+    /// it reads, as `pinned` reads a path from the project's root.
+    static func version(in written: String, pinned: (String) -> String? = { _ in nil }) -> String? {
         let line = code(of: written)
         if let input = line.firstMatch(of: /xcode-version:\s*['"]?(\d+(?:\.\d+)*)(?=['"\s#]|$)/) { return String(input.1) }
+        if let path = pinRead(by: line) { return pinned(path) }
         guard line.contains("xcode-select") || line.contains("DEVELOPER_DIR") else { return nil }
         return line.firstMatch(of: /Xcode[_-]?(\d+(?:\.\d+)*)[^\/\s]*\.app/).map { String($0.1) }
     }
 
-    /// Whether a workflow line reads the pin file to choose an Xcode: `cat` or `<` of it, an action's `xcode-version-file`,
-    /// or `xcodes select` or `install`, which read it when given no version. Hashing it for a cache key, or a path filter,
-    /// chooses nothing.
-    static func readsThePin(_ written: String) -> Bool {
-        code(of: written).contains(/(?:\bcat\s+|<\s*)["']?[\w.\/-]*\.xcode-version|xcode-version-file:|\bxcodes\s+(?:select|install)\s*(?:$|["']?[\w.\/-]*\.xcode-version)/)
+    /// The pin file a workflow line reads to choose an Xcode, from the project's root: `cat` or `<` of it, an action's
+    /// `xcode-version-file`, or `xcodes select` or `install`, which read the root's when given no version. Hashing it for a
+    /// cache key, or a path filter, chooses nothing.
+    static func pinRead(by line: String) -> String? {
+        if let read = line.firstMatch(of: /(?:\bcat\s+|<\s*)["']?(?:\.\/)?([\w.\/-]*\.xcode-version)/) { return String(read.1) }
+        if let input = line.firstMatch(of: /xcode-version-file:\s*["']?(?:\.\/)?([^\s"'#]+)/) { return String(input.1) }
+        return line.contains(/\bxcodes\s+(?:select|install)\s*$/) ? Project.xcodePinFile : nil
     }
 
     /// A line without its comment: from a `#` that starts it or follows a space.

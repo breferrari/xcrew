@@ -99,8 +99,16 @@ import XcrewTestSupport
                   - run: xcodes select
             """, to: ".github/workflows/ci.yml")
         let named = CIXcodes.named(in: project)
-        #expect(named.map(\.line) == [10, 11, 14, 15])
-        #expect(named.allSatisfy { $0.version == "26.5" })
+        #expect(named.map { "\($0.line) \($0.version)" } == ["10 26.5", "11 26.5", "14 26.5", "15 26.5"])
+    }
+
+    /// The version is the one in the file the workflow reads: a second pin in a subfolder is that file's, not the root's.
+    @Test func aWorkflowReadingAnotherPinFileNamesThatFilesVersion() {
+        let project = Project.temporary()
+        project.write("26.5\n", to: ".xcode-version")
+        project.write("26.4\n", to: "tools/.xcode-version")
+        project.write("steps:\n  - run: sudo xcode-select -s \"/Applications/Xcode_$(cat tools/.xcode-version).app\"\n  - uses: some/setup-xcode@v1\n    with:\n      xcode-version-file: tools/.xcode-version\n", to: ".github/workflows/ci.yml")
+        #expect(CIXcodes.named(in: project).map { "\($0.line) \($0.version)" } == ["2 26.4", "5 26.4"])
     }
 
     /// Without a pin, a workflow reading the file names nothing: there's no version to use.

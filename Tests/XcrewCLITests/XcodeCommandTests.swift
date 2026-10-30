@@ -46,7 +46,7 @@ import XcrewTestSupport
         #expect(run.output.contains("builds: Xcode 27.2, since MobileBuildMCP started without the pin"), "\(run.output)")
     }
 
-    /// A workflow choosing its Xcode from the pin file uses the pin, so CI's Xcode is the pinned one, where it reads it.
+    /// The CI line names the version a workflow reads from the pin file, at the line that reads it.
     @Test func aWorkflowReadingThePinIsCIsXcode() async {
         let (context, _) = context(pin: "26.4\n")
         context.project.write("jobs:\n  test:\n    steps:\n      - run: sudo xcode-select -s \"/Applications/Xcode_$(cat .xcode-version).app\"\n", to: ".github/workflows/ci.yml")
