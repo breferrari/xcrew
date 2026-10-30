@@ -9,6 +9,9 @@ public enum EvidencePack {
         public let attach: String?
     }
 
+    /// The block's heading, which the routing rules name.
+    public static let heading = "## Evidence"
+
     /// Tests listed in each part; the rest are counted.
     static let mostTests = 10
 
@@ -46,7 +49,7 @@ public enum EvidencePack {
         if !input.times.isEmpty { parts.append(["Usual run times:"] + input.times.map { "- \($0)" }) }
 
         guard !parts.isEmpty else { return nil }
-        let block = scrubbed((["## Evidence"] + parts.map { $0.joined(separator: "\n") }).joined(separator: "\n\n"), roots: [project.root.path, project.canonicalRoot])
+        let block = scrubbed(([heading] + parts.map { $0.joined(separator: "\n") }).joined(separator: "\n\n"), roots: [project.root.path, project.canonicalRoot])
         return Text(block: block, attach: attach.isEmpty ? nil : (["Images to attach (for you, not the PR):"] + attach).joined(separator: "\n"))
     }
 

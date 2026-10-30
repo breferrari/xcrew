@@ -7,6 +7,7 @@ import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { describe, historyOf, isFullSuiteRun, isRepeatedRun, lost, observe, runsWholeScope } from './context'
+import { EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
@@ -272,12 +273,15 @@ export const register: Register = on => {
   on('tool.call', { tool: LEDGER_TOOL_NAME }, async $ => ({ result: await ledgerNow($) }))
   // Claude's look at a failed UI test: the steps before the failure and the screen at it.
   on('tool.call', { tool: LOOK_TOOL_NAME }, async ($, e) => ({ result: await cliText($, lookArgs(e as unknown as Record<string, unknown>)) }))
+  // Claude's evidence for a pull request's body.
+  on('tool.call', { tool: EVIDENCE_TOOL_NAME }, async $ => ({ result: await evidenceNow($) }))
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
     if (subcommand === 'doctor') return { text: await cliText($, ['doctor']) }
     if (subcommand === 'xcode') return { text: await cliText($, ['xcode']) }
     if (subcommand === 'history') return { text: await history($) }
     if (subcommand === 'ledger') return { text: await ledgerNow($) }
+    if (subcommand === 'evidence') return { text: await evidenceNow($) }
     if (subcommand === 'failures') {
       await dismissFailedRun($)
       return { text: await openFailures($) }
@@ -293,7 +297,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register(COMMAND)
-    for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL]) await quietly(() => $.tool.register(tool))
+    for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
     // A cleared conversation is a new session: its warnings show again.
     found = []
     seenAt = {}
@@ -402,8 +406,8 @@ async function isGeneratedProject($: EngineInterface): Promise<boolean> {
 }
 
 /** A CLI command's own text, for `/xcrew doctor`, or why it couldn't run. */
-function cliText($: EngineInterface, args: string[]): Promise<string> {
-  return xcrew($, args, 120_000).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
+function cliText($: EngineInterface, args: string[], stdin?: string): Promise<string> {
+  return xcrew($, args, 120_000, stdin).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
 }
 
 /** A run has the band while it shows; the problems wait beneath it. */
@@ -446,6 +450,15 @@ async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
   const times = [...scopes.map(entry => entry.updated), ...red.map(entry => entry.last)].filter((time): time is number => typeof time === 'number')
   const [updated, oldest] = times.length > 0 ? [Math.max(...times), Math.min(...times)] : [now, now]
   return { version: CARD_VERSION, folder, branch: label(head, false), updated, oldest, ...(text ? { text } : {}) }
+}
+
+/** The evidence for this branch, as the CLI words it from the ledger and the run times of the scopes last run in this folder. */
+async function evidenceNow($: EngineInterface): Promise<string> {
+  const [folder, now] = await Promise.all([$.session.cwd(), $.clock.now()])
+  const scopes = (await storedHistory($)).filter(entry => entry.where === folder && !isStale(entry.updated, now))
+  const { ledger } = await branchLedger($)
+  const entries = ledger && !isStale(ledger.updated, now) ? ledger.entries.filter(entry => !isStale(entry.last, now)) : []
+  return cliText($, ['evidence'], evidenceInput(entries, scopes))
 }
 
 /** Every run scope the store holds, with its durations, when a run last updated it, its test total and its folder. */

@@ -141,6 +141,19 @@ import Testing
         #expect(routing.contains("run the whole suite"))
     }
 
+    /// The routing rules send Claude to the evidence tool before a pull request's body, by the name it's registered under,
+    /// to paste the block the CLI heads as it does, and to attach images only with the person's agreement.
+    @Test func theRoutingRulesAskForEvidenceBeforeAPullRequest() throws {
+        let routing = try text("context/routing.md")
+        let evidence = try text("hooks/mod/evidence.ts")
+        let plugin = try #require(try json(".claude-plugin/plugin.json")["name"] as? String)
+        let name = try #require(evidence.firstMatch(of: /export const EVIDENCE_TOOL = \{\n  name: '(\w+)'/)?.1)
+        #expect(evidence.contains("export const EVIDENCE_TOOL_NAME = 'mcp__\(plugin)__\(name)'"))
+        let line = try #require(routing.split(separator: "\n").first { $0.contains("`\(name)` tool") })
+        #expect(line.contains("`\(EvidencePack.heading)`"))
+        #expect(line.contains("only if the person agrees"))
+    }
+
     /// The routing rules send Claude to the look tool when a UI test fails, by the name it's registered under, before it
     /// changes the test or the view; the hook answering it matches that name.
     @Test func theRoutingRulesLookAtAFailedUITestFirst() throws {

@@ -77,8 +77,8 @@ test('the CLI gets the time a first build needs', async ($, on) => {
   expect(seen.calls.find(call => call.args[0] === 'affected')?.timeoutMs).toBe(120_000)
 })
 
-test('session start registers exactly the ledger, affected and look tools, once each', async ($, on) => {
+test('session start registers exactly the ledger, affected, look and evidence tools, once each', async ($, on) => {
   const seen = session(on, {})
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
-  expect(seen.registered).toEqual([{ name: 'ledger', isDeferred: undefined }, { name: 'affected', isDeferred: undefined }, { name: 'look', isDeferred: undefined }])
+  expect(seen.registered).toEqual([{ name: 'ledger', isDeferred: undefined }, { name: 'affected', isDeferred: undefined }, { name: 'look', isDeferred: undefined }, { name: 'evidence', isDeferred: undefined }])
 })
