@@ -25,10 +25,11 @@ public enum WorktreeSimulator {
 
     /// The worktree's config with simulators of its own in place of the main checkout's, and what setup says of them.
     /// `main` and `worktree` are the two repositories' top folders, which the names come from. Each simulator the
-    /// profiles use gets one, on its device type and runtime, named by its device type when they use more than one; one
-    /// made earlier is used again; none is made for one this Mac doesn't have. A mapping that named its simulator twice,
+    /// profiles use gets one, named by its device type when they use more than one: a clone of it while it's shut down,
+    /// with its apps and data, else one made fresh on its device type and runtime, as always with `fresh`; one made
+    /// earlier is used again; none is made for one this Mac doesn't have. A mapping that named its simulator twice,
     /// by name and by id, names its own once, by id.
-    public static func make(for worktree: URL, main: URL, config yaml: String, using runner: any CommandRunning) async -> (yaml: String, lines: [String]) {
+    public static func make(for worktree: URL, main: URL, config yaml: String, fresh: Bool = false, using runner: any CommandRunning) async -> (yaml: String, lines: [String]) {
         var lines = yaml.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let mappings = mappings(in: lines)
         guard !mappings.isEmpty else { return (yaml, []) }
@@ -56,6 +57,19 @@ public enum WorktreeSimulator {
                 said.append("xcrew: this worktree uses simulator `\(name)` (\(label)), made for it earlier")
                 continue
             }
+            // A shut-down simulator is cloned: settled already, its first boot skips a fresh device's daemon crashes.
+            var cloneFailed: String?
+            if !fresh, source.state == "Shutdown" {
+                let cloned = await runner.run("xcrun", "simctl", "clone", from, name)
+                let udid = cloned.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+                if cloned.succeeded, !udid.isEmpty {
+                    made[from] = udid
+                    said.append("xcrew: cloned simulator `\(name)` (\(label)) from \(source.name), with its apps and data, for this worktree")
+                    continue
+                }
+                let why = cloned.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                cloneFailed = why.isEmpty ? "no answer" : why
+            }
             let created = await runner.run("xcrun", "simctl", "create", name, deviceType, runtime)
             let udid = created.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
             guard created.succeeded, !udid.isEmpty else {
@@ -64,7 +78,8 @@ public enum WorktreeSimulator {
                 continue
             }
             made[from] = udid
-            said.append("xcrew: created simulator `\(name)` (\(label)) for this worktree")
+            let why = fresh ? "" : cloneFailed.map { ": cloning \(source.name) failed (\($0))" } ?? ": \(source.name) is \(source.state?.lowercased() ?? "running"), and only a shut-down simulator can be cloned"
+            said.append("xcrew: created simulator `\(name)` (\(label)) \(fresh ? "" : "fresh ")for this worktree\(why)")
         }
         var dropped = Set<Int>()
         for (mapping, source) in zip(mappings, sources) {
