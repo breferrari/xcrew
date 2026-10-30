@@ -87,7 +87,7 @@ import XcrewTestSupport
         let (worktree, context) = Self.worktree(main: main)
         let run = await Run("setup", "--worktree", "--test-scheme", "AppTests", context: context)
         #expect(run.status == 64)
-        #expect(run.errors == ["setup --worktree takes no option but --force: the profiles are the main checkout's"])
+        #expect(run.errors == ["setup --worktree takes no option but --force and --no-simulator: the profiles are the main checkout's"])
         #expect(Self.config(worktree) == nil)
     }
 
@@ -96,5 +96,72 @@ import XcrewTestSupport
         let run = await Run("setup", "--worktree", context: context)
         #expect(run.status == 64)
         #expect(run.errors == ["setup --worktree runs in a linked git worktree; this is a main checkout, or not in git"])
+    }
+
+    // MARK: A simulator of the worktree's own
+
+    /// The main checkout's config, its profile naming the simulator its runs use.
+    static let mainWithSimulator = mainConfig.replacingOccurrences(of: "    scheme: 'App'\n", with: "    scheme: 'App'\n    simulatorName: 'iPhone 18 Pro'\n")
+    static let iPhone18Pro = "com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro"
+    static let iOS272 = "com.apple.CoreSimulator.SimRuntime.iOS-27-2"
+
+    /// `simctl list devices available --json` on a Mac with `devices`, by name and udid, all iPhone 18 Pros on iOS 27.2.
+    static func listed(_ devices: [(name: String, udid: String)]) -> String {
+        let entries = devices.map { #"{"name":"\#($0.name)","udid":"\#($0.udid)","isAvailable":true,"state":"Shutdown","deviceTypeIdentifier":"\#(iPhone18Pro)"}"# }
+        return #"{"devices":{"\#(iOS272)":[\#(entries.joined(separator: ","))]}}"#
+    }
+
+    /// A worktree of a main checkout whose config names its simulator, on a Mac with `devices`, where `simctl create`
+    /// answers `created`.
+    static func withSimulator(devices: [(name: String, udid: String)] = [("iPhone 18 Pro", "MAIN-UDID")], created: String = "NEW-UDID") -> (main: Project, worktree: Project, context: CheckContext, name: String) {
+        let main = Project.temporary(containing: ["App.xcodeproj"])
+        main.write(mainWithSimulator, to: ".mobilebuildmcp/config.yaml")
+        let worktree = Project.temporary(containing: ["App.xcodeproj"])
+        let name = "xcrew · \(main.root.lastPathComponent) · \(worktree.root.lastPathComponent)"
+        var runner = FakeRunner(responses: [
+            "xcrun simctl list devices available --json": CommandResult(status: 0, stdout: listed(devices)),
+            "xcrun simctl create \(name) \(iPhone18Pro) \(iOS272)": CommandResult(status: 0, stdout: "\(created)\n"),
+        ])
+        runner.linkWorktree(worktree, to: main)
+        return (main, worktree, .fake(runner, project: worktree), name)
+    }
+
+    /// The worktree gets a simulator of its own, on the main checkout's device type and runtime, said plainly, and its
+    /// profile names it by id.
+    @Test func aWorktreeGetsASimulatorOfItsOwn() async {
+        let (_, worktree, context, name) = Self.withSimulator()
+        let run = await Run("setup", "--worktree", context: context)
+        #expect(run.status == 0)
+        #expect(run.output.contains("xcrew: created simulator `\(name)` (iPhone 18 Pro, iOS 27.2) for this worktree"), "\(run.output)")
+        #expect(Self.config(worktree)?.contains("    simulatorId: 'NEW-UDID'\n") == true)
+        #expect(Self.config(worktree)?.contains("simulatorName") == false)
+    }
+
+    /// One made for this worktree before is used again, never doubled.
+    @Test func aSimulatorMadeForTheWorktreeBeforeIsUsedAgain() async {
+        let (_, worktree, context, name) = Self.withSimulator()
+        var runner = context.runner as? FakeRunner ?? FakeRunner()
+        runner.responses["xcrun simctl list devices available --json"] = CommandResult(status: 0, stdout: Self.listed([("iPhone 18 Pro", "MAIN-UDID"), (name, "EARLIER-UDID")]))
+        runner.responses["xcrun simctl create \(name) \(Self.iPhone18Pro) \(Self.iOS272)"] = nil
+        let run = await Run("setup", "--worktree", context: .fake(runner, project: worktree))
+        #expect(run.output.contains("xcrew: this worktree uses simulator `\(name)` (iPhone 18 Pro, iOS 27.2), made for it earlier"), "\(run.output)")
+        #expect(Self.config(worktree)?.contains("    simulatorId: 'EARLIER-UDID'\n") == true)
+    }
+
+    /// `--no-simulator` shares the main checkout's simulator: nothing is made, and the profile names it as before.
+    @Test func noSimulatorSharesTheMainCheckouts() async {
+        let (_, worktree, context, _) = Self.withSimulator()
+        let run = await Run("setup", "--worktree", "--no-simulator", context: context)
+        #expect(run.status == 0)
+        #expect(!run.output.contains { $0.contains("simulator `") })
+        #expect(Self.config(worktree)?.contains("    simulatorName: 'iPhone 18 Pro'\n") == true)
+    }
+
+    /// A simulator the main checkout names that this Mac doesn't have: nothing is made, and setup says why.
+    @Test func aMainSimulatorThisMacLacksMakesNone() async {
+        let (_, worktree, context, _) = Self.withSimulator(devices: [])
+        let run = await Run("setup", "--worktree", context: context)
+        #expect(run.output.contains("xcrew: the main checkout's simulator, iPhone 18 Pro, isn't on this Mac, so none was made for this worktree; its profile names that one"), "\(run.output)")
+        #expect(Self.config(worktree)?.contains("    simulatorName: 'iPhone 18 Pro'\n") == true)
     }
 }

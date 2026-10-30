@@ -13,6 +13,8 @@ public struct SimulatorCatalog: Sendable {
         public var deviceType: String? = nil
         /// `Booted`, `Shutdown`, or another of `simctl`'s states.
         public var state: String? = nil
+        /// Its runtime's identifier, as in `com.apple.CoreSimulator.SimRuntime.iOS-27-2`, which `simctl create` takes.
+        public var runtime: String? = nil
 
         var isIPhone: Bool { platform == "iOS" && name.hasPrefix("iPhone") }
     }
@@ -109,7 +111,7 @@ public struct SimulatorCatalog: Sendable {
             let version = known[runtime]?.version ?? pieces.dropFirst().prefix { Int($0) != nil }.joined(separator: ".")
             return entries.compactMap { entry in
                 guard entry["isAvailable"] as? Bool ?? true, let name = entry["name"] as? String else { return nil }
-                return Device(name: name, runtimeVersion: version, platform: platform, udid: entry["udid"] as? String, deviceType: entry["deviceTypeIdentifier"] as? String, state: entry["state"] as? String)
+                return Device(name: name, runtimeVersion: version, platform: platform, udid: entry["udid"] as? String, deviceType: entry["deviceTypeIdentifier"] as? String, state: entry["state"] as? String, runtime: runtime)
             }
         }
     }
