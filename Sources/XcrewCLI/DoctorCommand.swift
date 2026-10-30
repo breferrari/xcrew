@@ -49,7 +49,8 @@ struct DoctorCommand: Command {
             let id = entry.check.id.padding(toLength: width, withPad: " ", startingAt: 0)
             return "\(tag)  \(id)  \(entry.result.message)"
         }
-        (onlyProblems ? Doctor.problemsText(lines: lines) : lines).forEach(invocation.print)
+        let kept = Doctor.problems(ran).filter(\.result.isOffThePrompt).map(\.check.id)
+        (onlyProblems ? Doctor.problemsText(lines: lines, kept: kept) : lines).forEach(invocation.print)
         return onlyProblems ? 0 : Doctor.worst(entries).rawValue
     }
 }

@@ -22,9 +22,10 @@ public struct SessionBriefing: Sendable {
         async let status = MobileBuildMCPStatus.assess(machine, timeout: Self.versionTimeout)
         async let bootedNow = booted()
         async let head = GitHead.of(project, using: machine.runner)
+        async let simulatorApp = simulatorApp()
         let mobileBuildMCP = await status
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
-        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + [await offer].compactMap { $0 }
+        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), await simulatorApp, bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + [await offer].compactMap { $0 }
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), now: Date(), on: machine)
         return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "")
@@ -34,6 +35,19 @@ public struct SessionBriefing: Sendable {
     /// so this claims no more than that it starts with it when it can.
     func pinnedXcode() -> String? {
         project.xcodePin.map { "This project pins Xcode \($0.version) (`\($0.file)`). MobileBuildMCP starts with it when it's installed and xcrew's CLI is ready, and `xcrew doctor` says when it didn't. The Xcode MCP works through whichever Xcode is open." }
+    }
+
+    /// The selected Xcode's simulator app when it's DeviceHub, as from Xcode 27, which has no Simulator.app to open.
+    func simulatorApp() async -> String? {
+        guard let xcode = await Xcodes.selected(on: machine) else { return nil }
+        let app = URL(fileURLWithPath: xcode.path)
+        let has = { (path: String) in FileManager.default.fileExists(atPath: app.appending(path: path).path) }
+        guard has("Contents/Applications/DeviceHub.app"), !has("Contents/Developer/Applications/Simulator.app") else { return nil }
+        return Self.deviceHubNote(xcode.label)
+    }
+
+    static func deviceHubNote(_ xcode: String) -> String {
+        "\(xcode) shows simulators in DeviceHub (`open -a DeviceHub`); it has no Simulator.app."
     }
 
     /// Each test plan the schemes run by default that tests under several configurations, so Claude knows a test can fail

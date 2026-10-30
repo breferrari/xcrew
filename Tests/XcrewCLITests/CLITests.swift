@@ -376,7 +376,8 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["App.xcworkspace"])
         project.write("25.0\n", to: ".xcode-version")
         let problems = await Run("doctor", "--problems", context: .fake(project: project))
-        #expect(!problems.output.contains { $0.contains("xcode/pin") })
+        #expect(!problems.output.contains { $0.hasPrefix("warn  xcode/pin") })
+        #expect(problems.output.contains { $0.hasPrefix("Kept off the prompt") && $0.contains("xcode/pin") })
         let full = await Run("doctor", context: .fake(project: project))
         #expect(full.output.contains { $0.hasPrefix("warn  xcode/pin") })
     }

@@ -48,9 +48,13 @@ public enum Doctor {
         entries.filter { $0.result.status == .fail || $0.result.status == .warn }.sorted { $0.result.status > $1.result.status }
     }
 
-    /// What `doctor --problems` prints: its lines, or a line saying there are none.
-    public static func problemsText(lines: [String]) -> [String] {
-        lines.isEmpty ? ["No problems."] : lines
+    /// What `doctor --problems` prints: its lines, or a line saying there are none, then the checks whose warning it keeps
+    /// off the prompt, so it doesn't contradict the full doctor.
+    public static func problemsText(lines: [String], kept: [String] = []) -> [String] {
+        let shown = lines.isEmpty ? ["No problems."] : lines
+        guard !kept.isEmpty else { return shown }
+        let one = kept.count == 1
+        return shown + ["Kept off the prompt, as \(one ? "a choice" : "choices") you may have made: \(ResultBundle.listed(kept).dropFirst(2)). `xcrew doctor` shows \(one ? "it" : "them")."]
     }
 
     public static func worst(_ entries: [Entry]) -> CheckStatus {

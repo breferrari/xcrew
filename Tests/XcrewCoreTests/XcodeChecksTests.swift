@@ -7,7 +7,7 @@ import XcrewTestSupport
 @Suite struct XcodeChecksTests {
     /// A project on a Mac with Xcode 26.4 and Xcode 27.2 beta 3, 27.2 selected; this session's MobileBuildMCP serving it,
     /// started `server` ago (`ps`'s `etime`) unless nil; and what the launcher recorded, `launch`, `recorded` seconds ago.
-    func context(pin: String? = nil, workflow: String? = nil, running: String? = nil, launch: String? = nil, recorded: TimeInterval = 5, server: String? = "00:30", onlyOne: Bool = false, xcodesTool: Bool = false) -> CheckContext {
+    func context(pin: String? = nil, workflow: String? = nil, running: String? = nil, launch: String? = nil, recorded: TimeInterval = 5, server: String? = "00:30", onlyOne: Bool = false, xcodesTool: Bool = false, mcpStatus: String? = nil) -> CheckContext {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let apps = project.root.appending(path: "Applications")
         if onlyOne { FakeXcode.install(in: apps, "Xcode-27.2.0-Beta.3.app", version: "27.2", build: "27B5038j") } else { FakeXcode.installBoth(in: apps) }
@@ -15,6 +15,7 @@ import XcrewTestSupport
         if let workflow { project.write(workflow, to: ".github/workflows/ci.yml") }
         var responses = FakeSession.responses(serving: server == nil ? nil : project, age: server ?? "", programs: running.map { [202: "\(apps.path)/\($0)/Contents/MacOS/Xcode"] } ?? [:])
         responses["xcode-select -p"] = .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n")
+        if let mcpStatus { responses["xcrun mcp-server status"] = .init(status: 0, stdout: mcpStatus) }
         let context = CheckContext.fake(FakeRunner(installed: xcodesTool ? ["xcodes"] : [], responses: responses), project: project, processID: FakeSession.doctor, applications: apps)
         if let launch {
             let record = Xcodes.launchRecord(of: project, on: context.machine)
@@ -263,5 +264,11 @@ import XcrewTestSupport
         let result = await XcodeOpenCheck().run(context(pin: "26.4\n", launch: "applied APPS/Xcode-26.4.app/Contents/Developer\n"))
         #expect(result.status == .pass)
         #expect(result.message == "Xcode isn't open")
+    }
+
+    /// The headless Xcode MCP serves with no Xcode window open, and runs no Xcode app the process list shows.
+    @Test func noOpenXcodeWithTheHeadlessMCPSaysItServes() async {
+        let result = await XcodeOpenCheck().run(context(mcpStatus: "Permission: enabled\nApproved agents:\n  com.anthropic.claude-code\n"))
+        #expect(result == .pass("no Xcode window is open; the Xcode MCP runs headless"))
     }
 }

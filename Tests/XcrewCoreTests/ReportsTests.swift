@@ -111,7 +111,7 @@ enum Captured {
 
     @Test func aTestRunWhoseBuildFailedListsWhyItNeverRan() {
         let failures = Captured.output("mobileTestsBuildFailed").failures
-        #expect(failures.map(\.title) == ["LLVM Profile Error", "Failed to build workspace MacroProbe with scheme MacroProbe-Package."])
+        #expect(failures.map(\.title) == ["Failed to build workspace MacroProbe with scheme MacroProbe-Package."], "the coverage runtime failing to write its profile is not why the run failed")
         #expect(failures.last?.message.hasPrefix("Cannot test target “MacroProbeTests” on “iPhone 16”: Missing test product") == true)
     }
 
@@ -495,6 +495,14 @@ func failingRunText(passing: Int) -> String {
     @Test func doctorProblemsSaysWhenThereAreNone() {
         #expect(Doctor.problemsText(lines: []) == ["No problems."])
         #expect(Doctor.problemsText(lines: ["warn  a/b  c"]) == ["warn  a/b  c"])
+    }
+
+    /// A warning kept off the prompt, such as the pin's, is named, so "No problems." doesn't contradict the full doctor.
+    @Test func doctorProblemsNamesWhatItKeepsOffThePrompt() {
+        let kept = "Kept off the prompt, as a choice you may have made: xcode/pin. `xcrew doctor` shows it."
+        #expect(Doctor.problemsText(lines: [], kept: ["xcode/pin"]) == ["No problems.", kept])
+        #expect(Doctor.problemsText(lines: ["warn  a/b  c"], kept: ["xcode/pin"]) == ["warn  a/b  c", kept])
+        #expect(Doctor.problemsText(lines: [], kept: ["xcode/pin", "xcode/ci"]) == ["No problems.", "Kept off the prompt, as choices you may have made: xcode/pin and xcode/ci. `xcrew doctor` shows them."])
     }
 }
 

@@ -154,6 +154,7 @@ import Testing
         let texts = [
             try text("context/routing.md"),
             SessionBriefing.setupOffer,
+            SessionBriefing.deviceHubNote("Xcode 27.2"),
             SessionBriefing.failoverNote(reason: "it isn't installed"),
             String(loop),
             Report.noTestsNote,
