@@ -58,7 +58,7 @@ import XcrewTestSupport
 
     /// Against git itself, on a repository opened by its `/var` path: the compiler's `/private/var` spelling selects each
     /// file, a name with a space or a quote is read back as written, and an untracked file counts whole.
-    @Test func gitGivesTheChangedLinesOfEveryKindOfName() async {
+    @Test func gitGivesTheChangedLinesOfEveryKindOfName() async throws {
         let project = Project.temporary()
         let runner = SystemCommandRunner()
         func git(_ arguments: String...) async {
@@ -76,7 +76,8 @@ import XcrewTestSupport
         project.write("x\n", to: "New.swift")
         let real = ProjectLayout.canonical(project.root)
         #expect(real.hasPrefix("/private/"), "the temporary folder is expected under /private")
-        let lines = await ChangedLines.of(["My App/A b.swift", "Q\"t.swift", "Plain.swift", "New.swift"].map { "\(real)/\($0)" }, in: project, using: runner)
+        let change = try await GitChanges.since(nil, in: project, using: runner).get()
+        let lines = await ChangedLines.of(["My App/A b.swift", "Q\"t.swift", "Plain.swift", "New.swift"].map { "\(real)/\($0)" }, in: change, project: project, using: runner)
         #expect(lines == [
             "\(real)/My App/A b.swift": [2...2],
             "\(real)/Q\"t.swift": [1...1],
@@ -88,26 +89,9 @@ import XcrewTestSupport
 
 /// The note on a build's warnings: those in lines the branch changed, named; never a claim about the rest.
 @Suite struct WarningsInChangedLinesTests {
-    static let base = "0123456789abcdef0123456789abcdef01234567"
-
     /// A project whose branch changed `Sources/Warn/Warn.swift`'s line 5, and a git that says so.
     func changed(_ project: Project, diff: String = "+++ Sources/Warn/Warn.swift\n@@ -4,0 +5 @@\n", remote: Bool = true) -> FakeRunner {
-        let git = { (arguments: String) in "git -C \(project.root.path) \(arguments)" }
-        let warned = "\(ProjectLayout.canonical(project.root))/Sources/Warn/Warn.swift"
-        var responses: [String: CommandResult] = [
-            git("rev-parse --show-toplevel"): .init(status: 0, stdout: "\(project.root.path)\n"),
-            git("diff --name-only --no-renames --no-relative -z \(Self.base)"): .init(status: 0, stdout: "Sources/Warn/Warn.swift\u{0}"),
-            git("ls-files -z --others --exclude-standard --full-name"): .init(status: 0),
-            git("-c core.quotePath=false diff -U0 --no-color --no-renames --no-relative --no-prefix \(Self.base) -- \(warned)"): .init(status: 0, stdout: diff),
-        ]
-        if remote {
-            responses[git("rev-parse --abbrev-ref origin/HEAD")] = .init(status: 0, stdout: "origin/main\n")
-            responses[git("merge-base HEAD origin/main")] = .init(status: 0, stdout: "\(Self.base)\n")
-        } else {
-            responses[git("rev-parse --abbrev-ref origin/HEAD")] = .init(status: 128)
-            responses[git("remote")] = .init(status: 0, stdout: "upstream\n")
-        }
-        return FakeRunner(responses: responses)
+        FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Sources/Warn/Warn.swift"], diffed: ["\(ProjectLayout.canonical(project.root))/Sources/Warn/Warn.swift"], diff: diff, remote: remote))
     }
 
     /// The compiler names files by their real path, `/private/var/...` for a temporary folder at `/var/...`.
@@ -155,6 +139,16 @@ import XcrewTestSupport
         let report = await Report.make(kind: .build, output: ToolOutput(text: json, server: .xcode), home: Captured.home, runner: changed(project), project: project)
         let note = report.notes.first { $0.contains("lines this branch changed") }
         #expect(note == "xcrew: 1 of 4 warnings are in lines this branch changed: Warn.swift:5 unused x.", "\(report.notes)")
+    }
+
+    /// On a case-insensitive volume a warning can spell the file's name in another case: the file is the same.
+    @Test func aWarningSpellingTheFileInAnotherCaseIsNamed() async {
+        let project = Project.temporary(containing: ["Sources/Warn"])
+        project.write("let x = 1\n", to: "Sources/Warn/Warn.swift")
+        let file = "\(ProjectLayout.canonical(project.root))/Sources/Warn/warn.swift"
+        let json = #"{"buildResult":"succeeded","errors":[{"classification":"warning","filePath":"\#(file)","lineNumber":5,"message":"unused"}]}"#
+        let report = await Report.make(kind: .build, output: ToolOutput(text: json, server: .xcode), home: Captured.home, runner: changed(project), project: project)
+        #expect(report.notes.contains("xcrew: 1 of 1 warnings are in lines this branch changed: warn.swift:5 unused."), "\(report.notes)")
     }
 
     /// The Xcode MCP's build result carries its warnings too, with file and line.

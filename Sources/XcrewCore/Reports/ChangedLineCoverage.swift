@@ -4,37 +4,59 @@ import Foundation
 /// archive (docs/findings.md, *Changed lines a test run ran*). It speaks for this run alone: a line it didn't run may
 /// be run by a test it left out.
 struct ChangedLineCoverage: Sendable, Equatable {
-    /// How many changed lines that can run ran.
-    var ran = 0
     /// A file's changed lines that can run but didn't.
     struct Missed: Sendable, Equatable {
         let path: String
         let lines: [Int]
     }
 
+    /// How many changed lines that can run ran.
+    var ran = 0
     /// The changed lines that can run but didn't, by file.
     var notRun: [Missed] = []
     /// Changed files of a kind the coverage holds that it doesn't hold.
     var outside: [String] = []
 
-    /// The changed-line coverage of a run that gathered coverage; nothing when git can't diff the change.
-    static func of(_ bundle: ResultBundle, in change: GitChanges.Change, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
-        let covered = await bundle.coveredFiles()
-        guard !covered.isEmpty, let changed = await ChangedLines.of(covered, in: change, project: project, using: runner) else { return nil }
+    /// How many files' line counts are asked of `xccov` at once.
+    static let atOnce = 4
+
+    /// The changed-line coverage of a run whose archive holds `covered`; nothing when the change is empty or git can't
+    /// diff it.
+    static func of(_ covered: [String], in change: GitChanges.Change, bundle: ResultBundle, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
+        guard !change.files.isEmpty else { return nil }
+        // Only the archive's files named like a changed file can be one: the rest, often thousands, are never resolved.
+        let names = Set(change.files.map { name(of: $0).lowercased() })
+        let candidates = covered.filter { names.contains(name(of: $0).lowercased()) }
+        guard let changed = await ChangedLines.of(candidates, in: change, project: project, using: runner) else { return nil }
+        var counts: [String: [Int: Bool]] = [:]
+        await withTaskGroup(of: (String, [Int: Bool]).self) { group in
+            for (index, path) in changed.keys.enumerated() {
+                if index >= atOnce, let finished = await group.next() { counts[finished.0] = finished.1 }
+                group.addTask { (path, lines(await bundle.coverage(of: path))) }
+            }
+            for await (path, read) in group { counts[path] = read }
+        }
         var found = ChangedLineCoverage()
-        for path in covered.filter({ changed[$0] != nil }).sorted() {
-            let ranges = changed[path] ?? []
-            let counted = lines(await bundle.coverage(of: path)).filter { line, _ in ranges.contains { $0.contains(line) } }
-            found.ran += counted.values.count { $0 }
-            let missed = counted.filter { !$0.value }.keys.sorted()
+        for (path, ranges) in changed.sorted(by: { $0.key < $1.key }) {
+            let changedLines = (counts[path] ?? [:]).filter { line, _ in ranges.contains { $0.contains(line) } }
+            found.ran += changedLines.values.count { $0 }
+            let missed = changedLines.filter { !$0.value }.keys.sorted()
             if !missed.isEmpty { found.notRun.append(Missed(path: path, lines: missed)) }
         }
-        let held = Set(ChangedLines.canonical(covered).keys)
-        let kinds = Set(covered.map { URL(fileURLWithPath: $0).pathExtension })
+        let held = Set(candidates.map(ProjectLayout.canonicalPath))
+        let kinds = Set(covered.map(kind))
         found.outside = change.files.filter { file in
-            !held.contains(file) && kinds.contains(URL(fileURLWithPath: file).pathExtension) && FileManager.default.fileExists(atPath: file)
+            !held.contains(file) && kinds.contains(kind(of: file)) && FileManager.default.fileExists(atPath: file)
         }
         return found
+    }
+
+    static func name(of path: String) -> String {
+        URL(filePath: path, directoryHint: .notDirectory).lastPathComponent
+    }
+
+    static func kind(of path: String) -> String {
+        URL(filePath: path, directoryHint: .notDirectory).pathExtension
     }
 
     /// Each line that can run, and whether it ran, from `xccov view --archive --file <path> --json`:
@@ -66,19 +88,14 @@ struct ChangedLineCoverage: Sendable, Equatable {
         let total = ran + notRun.reduce(0) { $0 + $1.lines.count }
         var sentences: [String] = []
         if total > 0 {
-            let lines = total == 1 ? "changed line that can run" : "changed lines that can run"
-            if notRun.isEmpty {
-                sentences.append("\(total == 1 ? "the 1" : "all \(total)") \(lines) ran in this test run.")
-            } else {
-                let named = notRun.flatMap { file in Self.ranges(file.lines).map { "\(ToolOutput.basename(file.path)):\($0)" } }
-                sentences.append("\(ran) of \(total) \(lines) ran in this test run. Not run\(ResultBundle.listed(named)).")
-            }
+            let counted = ran == total ? (total == 1 ? "the 1 changed line that can run" : "all \(total) changed lines that can run") : "\(ran) of \(total) changed lines that can run"
+            let named = notRun.flatMap { file in Self.ranges(file.lines).map { "\(ToolOutput.basename(file.path)):\($0)" } }
+            sentences.append("\(counted) ran in this test run." + (named.isEmpty ? "" : " Not run\(ResultBundle.listed(named))."))
         }
         if !outside.isEmpty {
             let files = outside.count == 1 ? "1 changed file isn't" : "\(outside.count) changed files aren't"
             sentences.append("\(files) in this run's coverage\(ResultBundle.listed(outside.map(ToolOutput.basename))).")
         }
-        guard !sentences.isEmpty else { return nil }
-        return "xcrew: " + sentences.joined(separator: " ")
+        return sentences.isEmpty ? nil : "xcrew: " + sentences.joined(separator: " ")
     }
 }

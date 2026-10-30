@@ -323,19 +323,12 @@ struct TestbedCoverageTests {
         let root = try TestbedTests.copy("captures/coverage")
         defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
         let project = Project(root: root)
-        let base = "0123456789abcdef0123456789abcdef01234567"
-        let git = { (arguments: String) in "git -C \(root.path) \(arguments)" }
-        let runner = FakeRunner(responses: [
-            git("rev-parse --show-toplevel"): .init(status: 0, stdout: "\(root.path)\n"),
-            git("rev-parse --abbrev-ref origin/HEAD"): .init(status: 0, stdout: "origin/main\n"),
-            git("merge-base HEAD origin/main"): .init(status: 0, stdout: "\(base)\n"),
-            git("diff --name-only --no-renames --no-relative -z \(base)"): .init(status: 0, stdout: "App/Pricing.swift\u{0}"),
-            git("ls-files -z --others --exclude-standard --full-name"): .init(status: 0),
-            git("-c core.quotePath=false diff -U0 --no-color --no-renames --no-relative --no-prefix \(base) -- \(ProjectLayout.canonical(root))/App/Pricing.swift"): .init(status: 0, stdout: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n"),
-            "xcrun xcresulttool get content-availability --path \(Self.bundle)": .init(status: 0, stdout: try captured("content-availability.json", in: root)),
+        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
+        responses.merge([
             "xcrun xccov view --archive --file-list --json \(Self.bundle)": .init(status: 0, stdout: try captured("file-list.json", in: root)),
             "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(Self.bundle)": .init(status: 0, stdout: try captured("Pricing.json", in: root)),
-        ])
+        ]) { _, new in new }
+        let runner = FakeRunner(responses: responses)
         let output = #"{"schema":"mobilebuildmcp.output.test-result","didError":false,"data":{"summary":{"status":"SUCCEEDED"},"artifacts":{"xcresultPath":"\#(Self.bundle)"}}}"#
         let report = await Report.make(kind: .test, output: ToolOutput(text: output, server: .mobileBuildMCP), home: "/home", runner: runner, project: project)
         #expect(report.notes.contains("xcrew: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5."), "\(report.notes)")
