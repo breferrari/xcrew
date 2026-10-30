@@ -20,7 +20,7 @@ public struct SessionBriefing: Sendable {
         async let head = GitHead.of(project, using: machine.runner)
         let mobileBuildMCP = await status
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
-        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + gaps()
+        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + testPlans() + gaps()
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), now: Date(), on: machine)
         return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "")
@@ -30,6 +30,14 @@ public struct SessionBriefing: Sendable {
     /// so this claims no more than that it starts with it when it can.
     func pinnedXcode() -> String? {
         project.xcodePin.map { "This project pins Xcode \($0.version) (`\($0.file)`). MobileBuildMCP starts with it when it's installed and xcrew's CLI is ready, and `xcrew doctor` says when it didn't. The Xcode MCP works through whichever Xcode is open." }
+    }
+
+    /// Each scheme whose test plan runs its tests under several configurations, so Claude knows a test can fail under one
+    /// and pass under another, and that `look` says which.
+    func testPlans() -> [String] {
+        TestPlans.configured(in: project).map { found in
+            "Scheme `\(found.scheme)` tests under each configuration of its test plan `\(found.plan)`\(ResultBundle.listed(found.configurations)). A test can fail under one and pass under another; `look` names which."
+        }
     }
 
     /// Said at the start, and by the mod with the session's first MobileBuildMCP build or test, while MobileBuildMCP has

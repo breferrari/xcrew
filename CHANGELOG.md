@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A test that fails under some test-plan configurations or devices and passes under others now says where it passed, and the session briefing names each scheme whose test plan runs under several configurations, so Claude treats such a failure as that configuration's.
+
 ## 0.10.0 — 2026-10-30
 
 - When a UI test fails because an element wasn't found, `look` also lists the elements that were on screen, by type, label and identifier, so Claude can tell a renamed element from a missing one.

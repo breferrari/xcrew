@@ -55,6 +55,14 @@ import Testing
         ])
     }
 
+    /// The runs that passed, by configuration and device, each once however often it repeated.
+    @Test func theRunsThatPassedAreNamed() {
+        let runs = #"{"testIdentifier":"T","testName":"T","testRuns":["# + [("Light", false), ("Dark", true), ("Light", false)].map { name, failed in
+            #"{"device":{"deviceId":"D","deviceName":"Sim","architecture":"arm64","modelName":"iPhone 17","platform":"iOS Simulator","osVersion":"27.2"},"testPlanConfiguration":{"configurationId":"1","configurationName":"\#(name)"},"activities":[{"title":"Check","isAssociatedWithFailure":\#(failed),"startTime":1}]}"#
+        }.joined(separator: ",") + "]}"
+        #expect(FailedRun.passed(activities: runs) == ["Light · iPhone 17, iOS 27.2"])
+    }
+
     /// No answer, as `xcresulttool` gives when it fails, is not a run that passed.
     @Test func noAnswerIsNotNoFailure() {
         #expect(FailedRun.runs(activities: "") == nil)

@@ -18,10 +18,11 @@ public enum Look {
         let run = bundle.runFolder(in: folder)
         FailureImages.prune(in: folder)
         if let test {
-            guard let runs = FailedRun.runs(activities: await bundle.activities(of: test)) else {
+            let activities = await bundle.activities(of: test)
+            guard let runs = FailedRun.runs(activities: activities) else {
                 return "xcrew: couldn't read \(test.shown)'s steps in \(name); xcrun xcresulttool get test-results activities --test-id \(test.xcresultID) --path \(bundle.path) says why"
             }
-            return await look(at: test, runs: runs, in: bundle, named: name, keptIn: run) ?? "xcrew: \(test.shown) didn't fail in \(name)"
+            return await look(at: test, runs: runs, passed: FailedRun.passed(activities: activities), in: bundle, named: name, keptIn: run) ?? "xcrew: \(test.shown) didn't fail in \(name)"
         }
         guard let failed = await bundle.failedTests() else {
             return "xcrew: couldn't read the tests in \(name); xcrun xcresulttool get test-results tests --path \(bundle.path) says why"
@@ -38,9 +39,10 @@ public enum Look {
             let looked = await withTaskGroup(of: (Int, String?).self) { group in
                 for (index, test) in batch.enumerated() {
                     group.addTask {
-                        let runs = FailedRun.runs(activities: await bundle.activities(of: test)) ?? []
+                        let activities = await bundle.activities(of: test)
+                        let runs = FailedRun.runs(activities: activities) ?? []
                         guard runs.contains(where: \.hasRecording) else { return (index, nil) }
-                        return (index, await look(at: test, runs: runs, in: bundle, named: name, keptIn: run))
+                        return (index, await look(at: test, runs: runs, passed: FailedRun.passed(activities: activities), in: bundle, named: name, keptIn: run))
                     }
                 }
                 var found = [String?](repeating: nil, count: batch.count)
@@ -61,9 +63,10 @@ public enum Look {
         return (shown + more).joined(separator: "\n")
     }
 
-    /// One test's failed runs, each with its steps, failure and screen; nil when none failed. A run's screen is numbered
-    /// when the test failed more than once on its device and configuration, as a repeated run does.
-    static func look(at test: TestID, runs: [FailedRun], in bundle: ResultBundle, named name: String, keptIn run: URL) async -> String? {
+    /// One test's failed runs, each with its steps, failure and screen, then where it passed; nil when none failed. A
+    /// run's screen is numbered when the test failed more than once on its device and configuration, as a repeated run
+    /// does.
+    static func look(at test: TestID, runs: [FailedRun], passed: [String], in bundle: ResultBundle, named name: String, keptIn run: URL) async -> String? {
         guard !runs.isEmpty else { return nil }
         let key = { (failed: FailedRun) in [failed.deviceID, failed.configuration] }
         let numbers = runs.indices.map { index in
@@ -92,6 +95,8 @@ public enum Look {
             lines.append("    " + screenLine(found.screen, recorded: failed.hasRecording))
             lines += hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps)).map { "    \($0)" }
         }
+        // Where it passed: a failure under some configurations or devices only is theirs.
+        if !passed.isEmpty { lines.append("  passed under: " + passed.joined(separator: "; ")) }
         return lines.joined(separator: "\n")
     }
 

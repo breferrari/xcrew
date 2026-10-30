@@ -2,7 +2,7 @@
 export const LOOK_TOOL = {
   name: 'look',
   description:
-    "Xcrew: what a test run kept about a failed UI test's failure, on each test-plan configuration and device it failed on: the last steps before it, the failing step, the path of a PNG of the screen at the failure, to Read, and the elements on screen when a query failed, with the queried one marked or named missing. " +
+    "Xcrew: what a test run kept about a failed UI test's failure, on each test-plan configuration and device it failed on: the last steps before it, the failing step, the path of a PNG of the screen at the failure, to Read, the elements on screen when a query failed, with the queried one marked or named missing, and the configurations and devices it passed under. " +
     'Call it when a UI test failed, before changing its queries or the view, or rerunning the suite. With no test named, the failed UI tests of the newest MobileBuildMCP test run.',
   inputSchema: {
     type: 'object',

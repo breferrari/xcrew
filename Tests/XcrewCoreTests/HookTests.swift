@@ -35,6 +35,19 @@ import XcrewTestSupport
         #expect(text?.contains("- **xcrew:** MobileBuildMCP profiles here: `unit` (active), `app`. Switch with `session_use_defaults_profile`.") == true)
     }
 
+    /// A scheme whose test plan runs its tests under several configurations is named with them, so Claude knows a test
+    /// can fail under one and pass under another; a plan with one configuration isn't.
+    @Test func briefingNamesATestPlansConfigurations() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.writeScheme("App", plan: "App.xctestplan")
+        project.write(#"{"configurations":[{"id":"1","name":"Light","options":{}},{"id":"2","name":"Dark","options":{}}],"defaultOptions":{},"testTargets":[],"version":1}"#, to: "App.xctestplan")
+        project.writeScheme("Other", plan: "One.xctestplan")
+        project.write(#"{"configurations":[{"id":"1","name":"Only","options":{}}],"defaultOptions":{},"testTargets":[],"version":1}"#, to: "One.xctestplan")
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n")
+        #expect(text?.contains("- **xcrew:** Scheme `App` tests under each configuration of its test plan `App`: Light and Dark. A test can fail under one and pass under another; `look` names which.") == true, "\(text ?? "")")
+        #expect(text?.contains("`Other`") == false)
+    }
+
     /// MobileBuildMCP writes a config of its own when Claude saves session defaults: one without a profile naming a
     /// scheme still asks for setup.
     @Test func briefingOffersSetupWhileNoProfileNamesAScheme() async {

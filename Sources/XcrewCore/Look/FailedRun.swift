@@ -41,19 +41,39 @@ struct FailedRun: Sendable, Equatable {
             let failed = inside ?? steps[failing]
             guard let title = failed["title"] as? String else { return nil }
             let leading = steps[..<failing] + (inside == nil ? [] : [steps[failing]])
-            let device = run["device"] as? [String: Any] ?? [:]
-            let model = device["modelName"] as? String ?? device["deviceName"] as? String ?? "a device"
-            let os = [(device["platform"] as? String).map { $0.replacing(" Simulator", with: "") }, device["osVersion"] as? String].compactMap(\.self).joined(separator: " ")
             return FailedRun(
-                device: os.isEmpty ? model : "\(model), \(os)",
-                configuration: (run["testPlanConfiguration"] as? [String: Any])?["configurationName"] as? String ?? "",
+                device: device(of: run),
+                configuration: configuration(of: run),
                 steps: leading.suffix(mostSteps).compactMap { $0["title"] as? String },
                 failure: title,
                 failedAt: failed["startTime"] as? Double ?? 0,
-                deviceID: device["deviceId"] as? String ?? "",
+                deviceID: (run["device"] as? [String: Any])?["deviceId"] as? String ?? "",
                 attachments: attachments(of: steps)
             )
         }
+    }
+
+    /// The runs that passed, as `configuration · device`, each once; none when the activities can't be read.
+    static func passed(activities: String) -> [String] {
+        let runs = (ResultBundle.parse(activities) as? [String: Any])?["testRuns"] as? [[String: Any]] ?? []
+        var seen: Set<String> = []
+        return runs.compactMap { run in
+            guard !(run["activities"] as? [[String: Any]] ?? []).contains(where: { failure(in: $0) != nil }) else { return nil }
+            let label = [configuration(of: run), device(of: run)].filter { !$0.isEmpty }.joined(separator: " · ")
+            return seen.insert(label).inserted ? label : nil
+        }
+    }
+
+    /// A run's device as shown: its model and OS, `iPhone 18 Pro Max, iOS 27.2`.
+    static func device(of run: [String: Any]) -> String {
+        let device = run["device"] as? [String: Any] ?? [:]
+        let model = device["modelName"] as? String ?? device["deviceName"] as? String ?? "a device"
+        let os = [(device["platform"] as? String).map { $0.replacing(" Simulator", with: "") }, device["osVersion"] as? String].compactMap(\.self).joined(separator: " ")
+        return os.isEmpty ? model : "\(model), \(os)"
+    }
+
+    static func configuration(of run: [String: Any]) -> String {
+        (run["testPlanConfiguration"] as? [String: Any])?["configurationName"] as? String ?? ""
     }
 
     /// The step a failure is marked on, in `step` or below it: the deepest marked one, where XCTest records it.
