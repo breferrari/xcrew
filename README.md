@@ -135,7 +135,7 @@ You need only `/xcrew:setup`, once. Everything else runs on its own, or is here 
 | `/xcrew failures` | Opens the failures pane, with every failing test and compile error of the last failing run. After a failing run the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw |
 | `/xcrew close` | Closes the failures pane |
 | `/xcrew ledger` | The tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan |
-| `/xcrew evidence` | The branch's evidence for a pull request: the tests it took from red to green, with their failing run's images, those still red, the coverage and warnings of the lines it changed, and the usual run times, as a block to paste into the pull request. The images come after it, for you to attach or leave out; their paths never go in the block. Claude asks the same before writing a pull request's body |
+| `/xcrew evidence` | The branch's evidence for a pull request: the tests it took from red to green, with their failing run's images, those still red, the coverage and warnings of the lines it changed, and the usual run times, as a block to paste into the pull request. The images come after it, for you to attach or leave out; their paths never go in the block. Claude can offer you the same when it writes a pull request's body |
 | `/xcrew history` | Each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped |
 
 **When something's off**

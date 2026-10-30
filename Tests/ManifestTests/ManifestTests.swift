@@ -148,15 +148,19 @@ import Testing
         #expect(routing.contains("run the whole suite"))
     }
 
-    /// The routing rules send Claude to the evidence tool before a pull request's body, by the name it's registered under,
-    /// to paste the block the CLI heads as it does, and to attach images only with the person's agreement.
+    /// The routing rules tell Claude the evidence tool exists when it writes a pull request's body, by the name it's
+    /// registered under, and that its block, headed as the CLI heads it, is offered, never put in unasked; images only
+    /// with the person's agreement.
     @Test func theRoutingRulesAskForEvidenceBeforeAPullRequest() throws {
         let routing = try text("context/routing.md")
         let name = try registeredTool("EVIDENCE_TOOL", in: "hooks/mod/evidence.ts")
         let line = try #require(routing.split(separator: "\n").first { $0.contains("`\(name)` tool") })
         #expect(line.contains("`\(EvidencePack.heading)`"))
         #expect(try text("hooks/mod/evidence.ts").contains("`\(EvidencePack.heading)`"))
-        #expect(line.contains("only if the person agrees"))
+        // An offer, never an insertion: the block goes in only when the person wants it, and a team's own template rules.
+        #expect(line.contains("Offer it to the person, and add it only if they want it"))
+        #expect(line.contains("attached only if the person agrees"))
+        for imperative in ["put its", "in the body as it is", "Before writing"] { #expect(!line.contains(imperative), "\(imperative)") }
     }
 
     /// The routing rules send Claude to the look tool when a UI test fails, by the name it's registered under, before it

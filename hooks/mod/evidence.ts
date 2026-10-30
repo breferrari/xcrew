@@ -9,7 +9,7 @@ export const EVIDENCE_TOOL = {
   name: 'evidence',
   description:
     "Xcrew: the evidence this branch's runs give for a pull request: the tests it took from red to green, with their failing run's images, the tests still red, the coverage and warnings of the lines it changed, and the usual run times. " +
-    "Ask it before writing a pull request's body. It answers with a `## Evidence` block to put in the body as it is, then the local images, which go to the person to attach only if they agree; their paths never go in the pull request.",
+    "It answers with a `## Evidence` block, for the person to add to a pull request's body if they want it, as it is, then the local images, attached only if the person agrees; their paths never go in the pull request.",
   inputSchema: { type: 'object', properties: {} },
 }
 
