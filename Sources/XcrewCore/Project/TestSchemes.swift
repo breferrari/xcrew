@@ -14,6 +14,26 @@ public enum TestSchemes {
         case unknown([String])
     }
 
+    /// A shared scheme and how many targets it tests.
+    public struct Scheme: Sendable, Equatable, Codable {
+        public let name: String
+        public let targets: Int
+    }
+
+    /// The shared schemes of `containers` and the projects their workspaces list that test something, and only targets
+    /// in `targets`, the fewest first. Where a project keeps a scheme per module beside one that tests every module, a
+    /// module's scheme builds that module and what it uses, while `-only-testing:` on the wide one still builds every
+    /// module it tests (a field report: a whole app built for one module's tests).
+    static func testingOnly(_ targets: Set<String>, in containers: [URL]) -> [Scheme] {
+        guard !targets.isEmpty else { return [] }
+        let schemes = Self.containers(from: containers).reduce(into: [String: Set<String>]()) { all, project in
+            for (name, testables) in schemes(of: project) { all[name, default: []].formUnion(testables.map(\.name)) }
+        }
+        return schemes.filter { !$0.value.isEmpty && $0.value.isSubset(of: targets) }
+            .map { Scheme(name: $0.key, targets: $0.value.count) }
+            .sorted { ($0.targets, $0.name) < ($1.targets, $1.name) }
+    }
+
     /// A target a scheme tests, and the project that holds it when the scheme says.
     struct Testable: Hashable {
         let name: String

@@ -8,6 +8,8 @@ public struct AffectedTests: Sendable, Equatable, Codable {
     public var selections: [String]?
     /// Why everything must run, naming the file or project behind it.
     public var runAll: String?
+    /// The shared schemes that test only targets in `selections`; absent when there are none.
+    public var schemes: [TestSchemes.Scheme]?
 
     /// Files whose effect on the build the reading doesn't model: build settings, packages, test plans.
     static let everythingNames = Set(ProjectLayout.packageMarkers + ["Package.resolved"])
@@ -79,7 +81,9 @@ public struct AffectedTests: Sendable, Equatable, Codable {
                 grew = true
             }
         }
-        return AffectedTests(selections: affected.filter { targets[$0]?.isTest == true }.sorted())
+        let selections = affected.filter { targets[$0]?.isTest == true }.sorted()
+        let schemes = TestSchemes.testingOnly(Set(selections), in: layout.containers.map { project.root.appending(path: $0) })
+        return AffectedTests(selections: selections, schemes: schemes.isEmpty ? nil : schemes)
     }
 
     static func everything(_ reason: String) -> AffectedTests {

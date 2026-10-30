@@ -1,5 +1,6 @@
 import type { StaleProject } from '../../types'
 import { generatedApps } from './tools'
+import { joined } from './format'
 
 /**
  * Builds after a manifest edit. The generated project changes only when the generator runs again, so a build before
@@ -29,8 +30,7 @@ export function letThroughNote(generates: readonly string[]): string {
 
 /** The commands in code, one after another: `a`, `b` and `c`. */
 function listed(generates: readonly string[]): string {
-  const quoted = generates.map(generate => `\`${generate}\``)
-  return quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted.at(-1)}` : (quoted[0] ?? '')
+  return joined(generates.map(generate => `\`${generate}\``))
 }
 
 type Mark = StaleProject['marks'][number]

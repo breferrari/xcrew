@@ -1,3 +1,5 @@
+import { joined } from './format'
+
 /**
  * The tests a change can break, for Claude before a full test run: `xcrew affected`'s answer, said so it can be acted
  * on. The selection covers the targets that own or depend on the changed files, as the project declares them, nothing
@@ -29,9 +31,7 @@ export function affectedArgs(input: Record<string, unknown>): string[] {
 /** The shared schemes that test only the selected targets: one builds only what they test, `-only-testing:` on a wider scheme builds all it tests. */
 function schemesText(schemes: Affected['schemes']): string {
   if (!Array.isArray(schemes) || schemes.length === 0) return ''
-  const named = schemes.map(scheme => `\`${scheme.name}\` (${scheme.targets} ${scheme.targets === 1 ? 'target' : 'targets'})`)
-  const listed = named.length === 1 ? named[0] : `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}`
-  return ` Schemes that test only these targets: ${listed}.`
+  return ` Schemes that test only these targets: ${joined(schemes.map(scheme => `\`${scheme.name}\` (${scheme.targets} ${scheme.targets === 1 ? 'target' : 'targets'})`))}.`
 }
 
 /** The answer as Claude reads it; without one from the CLI, the whole suite. */

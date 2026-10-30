@@ -56,3 +56,8 @@ export function dayAndTime(at: number): string {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${MONTHS[date.getMonth()]} ${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
+
+/** Items one after another: `a`, `a and b`, `a, b and c`. */
+export function joined(items: readonly string[]): string {
+  return items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : (items[0] ?? '')
+}
