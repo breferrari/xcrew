@@ -22,7 +22,7 @@ export function summary(list: FailureList | null): string {
   return `${count} ${count === 1 ? 'failure' : 'failures'} from ${list.tool}, in the pane.`
 }
 
-/** Each failure: its test or file in the error colour, where it failed, and its message. */
+/** Each failure: its test or file in the error colour, where it failed, and its message, then the paths of its images. */
 export function paneTree({ Box, Text }: Elements, list: FailureList | null): RenderElement {
   if (!list) return Box({ children: [Text({ color: 'subtle', children: [NONE] })] })
   return Box({
@@ -32,6 +32,7 @@ export function paneTree({ Box, Text }: Elements, list: FailureList | null): Ren
       Text({ color: 'error', weight: 'semibold', children: [item.title] }),
       ...(item.where ? [Text({ color: 'subtle', children: [item.where] })] : []),
       Text({ children: [item.message] }),
+      ...[...(item.images ?? []), ...(item.moreImages ? [item.moreImages] : [])].map(line => Text({ color: 'subtle', children: [line] })),
     ]),
   })
 }

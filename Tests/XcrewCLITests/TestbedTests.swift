@@ -382,3 +382,52 @@ struct TestbedWhyTests {
         #expect(run.text.contains(cause), "\(run.text)")
     }
 }
+
+/// The test bed's captures of three failing snapshot tests (swift-snapshot-testing under XCTest and Swift Testing,
+/// iOSSnapshotTestCase), replayed: the attachments xcresulttool exported from a run through `xcodebuild test` and one
+/// through MobileBuildMCP's `test_sim`, and the text `test_sim` gave.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedSnapshotTests {
+    static let captures = Testbed.root.appending(path: "captures/snapshots")
+
+    /// A bundle whose every export is a fresh copy of one capture's, kept under a cache of its own.
+    static func bundle(_ capture: String) -> (bundle: ResultBundle, cache: URL) {
+        let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
+        let export: @Sendable () -> URL = {
+            let folder = root.appending(path: "export-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try? FileManager.default.copyItem(at: captures.appending(path: capture), to: folder)
+            return folder
+        }
+        return (ResultBundle(path: "/snapshots/Snapshots.xcresult", runner: FakeRunner(), exportFolder: export, imagesFolder: root.appending(path: "images")), root)
+    }
+
+    @Test(arguments: [
+        ("PointFreeXCTests", "testSquare", ["reference_0_00000000-0000-0000-0000-000000000016.png", "failure_1_00000000-0000-0000-0000-000000000016.png", "difference_2_00000000-0000-0000-0000-000000000016.png"]),
+        ("PointFreeSwiftTests", "square", ["reference_0_00000000-0000-0000-0000-000000000006.png", "failure_0_00000000-0000-0000-0000-000000000008.png", "difference_0_00000000-0000-0000-0000-000000000018.png"]),
+        ("UberTests", "testSquare", ["Reference Image_0_00000000-0000-0000-0000-000000000007.png", "Failed Image_1_00000000-0000-0000-0000-000000000007.png", "Diffed Image_2_00000000-0000-0000-0000-000000000007.png"]),
+    ])
+    func eachLibrarysImagesComeReferenceFailureDifference(suite: String, name: String, expected: [String]) async throws {
+        let (bundle, root) = Self.bundle("xcodebuild")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let images = try #require(await bundle.images(of: TestID(suite: suite, name: name)))
+        #expect(images.paths.map { URL(fileURLWithPath: $0).lastPathComponent } == expected)
+        // Each is a PNG, though pointfree's XCTest images export with no extension.
+        for path in images.paths { #expect(FileManager.default.contents(atPath: path)?.prefix(4) == Data([0x89, 0x50, 0x4E, 0x47])) }
+    }
+
+    /// What Claude reads after a `test_sim` run: each failed test's three images under it, once, though the text lists a
+    /// test twice.
+    @Test func aRealTestSimResultListsEachTestsImagesUnderIt() async throws {
+        let (bundle, root) = Self.bundle("mobilebuildmcp")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let text = try String(contentsOf: Self.captures.appending(path: "test_sim.txt"), encoding: .utf8)
+        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle)).text.text
+        let listed = added.components(separatedBy: "\n").filter { $0.hasPrefix("      image: ") }.map { URL(fileURLWithPath: String($0.dropFirst("      image: ".count))).lastPathComponent }
+        #expect(listed == [
+            "reference_0_00000000-0000-0000-0000-000000000016.png", "failure_0_00000000-0000-0000-0000-000000000008.png", "difference_0_00000000-0000-0000-0000-000000000014.png",
+            "reference_0_00000000-0000-0000-0000-000000000003.png", "failure_1_00000000-0000-0000-0000-000000000003.png", "difference_2_00000000-0000-0000-0000-000000000003.png",
+            "Reference Image_0_00000000-0000-0000-0000-000000000015.png", "Failed Image_1_00000000-0000-0000-0000-000000000015.png", "Diffed Image_2_00000000-0000-0000-0000-000000000015.png",
+        ], "\(added)")
+    }
+}

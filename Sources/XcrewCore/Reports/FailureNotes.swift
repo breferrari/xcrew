@@ -1,8 +1,8 @@
 import Foundation
 
 /// Adds what a result bundle knows to a failing MobileBuildMCP test run's text: each failure's
-/// location, a crash's exception and frames, and each skipped test's reason, including skipped
-/// tests the text leaves out.
+/// location, a crash's exception and frames, the images a failed test attached, and each skipped
+/// test's reason, including skipped tests the text leaves out.
 public enum FailureNotes {
     /// At most this many tests are looked up: past it, the first ones are enough to start from.
     static let mostLookups = 10
@@ -35,11 +35,12 @@ public enum FailureNotes {
         var isEmpty: Bool { failures.isEmpty && skipped.values.allSatisfy(\.isEmpty) && unlisted.isEmpty }
     }
 
-    /// Writes the notes: a failure's go after it and its location line, a skipped test's after its
-    /// line. Nil when none of them has a place in the text.
+    /// Writes the notes: a failure's go after it and its location line, once though the text lists a test twice, a
+    /// skipped test's after its line. Nil when none of them has a place in the text.
     static func annotate(_ text: MobileText, with notes: Notes) -> MobileText? {
         let lines = text.lines
         var out: [MobileText.Line] = []
+        var noted: Set<TestID> = []
         var added = false
         // A note can span lines, a skip reason the test wrote over several; each is read as its own.
         func add(_ notes: [String]) {
@@ -61,7 +62,7 @@ public enum FailureNotes {
                     index += 1
                     out.append(lines[index])
                 }
-                add(notes.failures[failing.test] ?? [])
+                if noted.insert(failing.test).inserted { add(notes.failures[failing.test] ?? []) }
             } else if case let .skipped(test?) = line.kind {
                 add(notes.skipped[test] ?? [])
             }
@@ -70,8 +71,17 @@ public enum FailureNotes {
         return added ? MobileText(lines: out) : nil
     }
 
+    /// What a failed test's image lines begin with, which the routing rules name.
+    static let imageLabel = "image:"
+
+    /// The text with its notes, and each failed test's images, for the failures pane.
+    struct Added {
+        let text: MobileText
+        let images: [TestID: FailureImages]
+    }
+
     /// The failing run's text with what the result bundle adds; nil when it adds nothing.
-    static func adding(to text: MobileText, from bundle: ResultBundle) async -> MobileText? {
+    static func adding(to text: MobileText, from bundle: ResultBundle) async -> Added? {
         var order: [TestID] = []
         var located: Set<TestID> = []
         var crashed: Set<TestID> = []
@@ -81,7 +91,8 @@ public enum FailureNotes {
             if text.location(after: index) != nil { located.insert(failing.test) }
             if isCrash(failing.message) { crashed.insert(failing.test) }
         }
-        let lookups = order.filter { !located.contains($0) || crashed.contains($0) }.prefix(mostLookups)
+        // Every failed test may have attached images; otherwise only one the text doesn't place, or that crashed.
+        let lookups = order.filter { bundle.imagesFolder != nil || !located.contains($0) || crashed.contains($0) }.prefix(mostLookups)
         let listedSkips = text.lines.compactMap { line -> TestID? in
             if case let .skipped(test) = line.kind { return test }
             return nil
@@ -90,8 +101,9 @@ public enum FailureNotes {
         guard !lookups.isEmpty || isSkipping else { return nil }
 
         var notes = Notes()
+        var images: [TestID: FailureImages] = [:]
         // Each test's lookups are their own xcresulttool calls, so a few run side by side.
-        notes.failures = await withTaskGroup(of: (TestID, [String]).self) { group in
+        notes.failures = await withTaskGroup(of: (TestID, [String], FailureImages?).self) { group in
             var pending = lookups.makeIterator()
             var found: [TestID: [String]] = [:]
             func lookUpNext() {
@@ -103,13 +115,16 @@ public enum FailureNotes {
                         added.append("    \(location)")
                     }
                     if isCrashed { added += (await bundle.crash(of: test) ?? [noCrashLog]).map { "      \($0)" } }
-                    return (test, added)
+                    let attached = await bundle.images(of: test)
+                    if let attached { added += attached.shown.map { "      \(imageLabel) \($0)" } + (attached.more.map { ["      \($0)"] } ?? []) }
+                    return (test, added, attached)
                 }
             }
             for _ in 0..<mostAtOnce { lookUpNext() }
             // As each lookup finishes, the next one starts.
-            while let (test, added) = await group.next() {
+            while let (test, added, attached) = await group.next() {
                 if !added.isEmpty { found[test] = added }
+                if let attached { images[test] = attached }
                 lookUpNext()
             }
             return found
@@ -127,6 +142,7 @@ public enum FailureNotes {
                 }
             }
         }
-        return notes.isEmpty ? nil : annotate(text, with: notes)
+        guard !notes.isEmpty, let annotated = annotate(text, with: notes) else { return nil }
+        return Added(text: annotated, images: images)
     }
 }

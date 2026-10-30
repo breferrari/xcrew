@@ -265,8 +265,8 @@ func failingRunText(passing: Int) -> String {
         #expect(added.contains("failed - deliberate failure\n    /Users/dev/App/Tests/FormatterTests.swift:7"))
         // The location lands as the failure's own location line, as if the server had written it.
         let model = await FailureNotes.adding(to: MobileText(Captured.text("mobileTestsFailedUnlocated")), from: ResultBundle(path: bundle, runner: runner))
-        let failure = try #require(model?.lines.firstIndex { $0.failing?.test == TestID(suite: "FormatterTests", name: "test_symbol") })
-        #expect(model?.location(after: failure)?.line == "7")
+        let failure = try #require(model?.text.lines.firstIndex { $0.failing?.test == TestID(suite: "FormatterTests", name: "test_symbol") })
+        #expect(model?.text.location(after: failure)?.line == "7")
     }
 
     @Test func aCrashGetsItsExceptionAndFramesAndASkipItsReason() async {
@@ -563,7 +563,7 @@ func failingRunText(passing: Int) -> String {
 extension FailureNotes {
     /// The notes on a text as text, as the assertions above read them.
     static func addingText(to text: String, from bundle: ResultBundle) async -> String {
-        await adding(to: MobileText(text), from: bundle)?.text ?? text
+        await adding(to: MobileText(text), from: bundle)?.text.text ?? text
     }
 }
 
@@ -586,7 +586,7 @@ extension FailureNotes {
     @Test func aNoteOfSeveralLinesIsReadAsSeveralLines() async throws {
         let listing = Captured.text("xcresultTestsWithSkip").replacingOccurrences(of: "waiting on the new API", with: #"waiting\nsee the ticket"#)
         let text = MobileText(Captured.text("mobileTestsCrashedAndSkipped"))
-        let added = try #require(await FailureNotes.adding(to: text, from: Self.bundle(listing: listing)))
+        let added = try #require(await FailureNotes.adding(to: text, from: Self.bundle(listing: listing))).text
         #expect(added.lines.map(\.text) == MobileText(added.text).lines.map(\.text))
     }
 

@@ -29,8 +29,11 @@ export type ResultRow = {
 export type FailureList = {
   /** The run that failed: its tool, with the scheme and test selection when known. */
   tool: string
-  /** `isTest`: a failing test, which a later run can pass, rather than a compile error. */
-  items: { title: string; message: string; where?: string; isTest?: boolean }[]
+  /**
+   * `isTest`: a failing test, which a later run can pass, rather than a compile error. `images`: the paths of the images it
+   * attached, and `moreImages` how many more there are and where, as the CLI words it.
+   */
+  items: { title: string; message: string; where?: string; isTest?: boolean; images?: string[]; moreImages?: string }[]
 }
 
 /** The most serious problem the band shows from `xcrew doctor`, and how many more there are. */

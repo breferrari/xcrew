@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- When a snapshot test fails, Claude sees its images: the reference, the failing render and their difference, listed under the test and in the failures pane. Claude looks at them before changing the code or the reference, and re-records a reference only when you agree the new render is right.
+
 ## 0.9.3 — 2026-10-30
 
 - The project card reaches Claude on every plan. Claude Code passes over a plugin's prompt hooks on Team organisations, so the card that used to ride on the first message now comes with the session's start, and after a `/clear` or a compaction, and says how old its notes are.

@@ -111,7 +111,7 @@ import Testing
     /// Every field of a failure the CLI reports is one the mod's type for it names: a field it doesn't name is one the
     /// ledger and the pane never read.
     @Test func theModsFailureTypeNamesEachFieldTheCLIReports() throws {
-        let failure = ToolOutput.Failure(title: "T", message: "M", where: "W", isTest: true)
+        let failure = ToolOutput.Failure(title: "T", message: "M", where: "W", isTest: true, images: ["/i.png"], moreImages: "and 1 more image in /f")
         let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(failure)) as? [String: Any]).keys
         let items = try #require(try text("types/index.d.ts").firstMatch(of: /items: \{([^}]*)\}\[\]/)?.1)
         for key in keys {
@@ -724,6 +724,21 @@ import Testing
         let kept = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1)
         let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
         #expect(kept == shim)
+    }
+
+    /// A failed test's images are kept as long as the shim keeps a build no checkout has run.
+    @Test func failureImagesAreKeptAsLongAsAnUnusedBuild() throws {
+        let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
+        #expect(Int(shim) == ResultBundle.imagesKeptDays)
+    }
+
+    /// The routing rules send Claude to a failed test's images by the word its notes list them with, to Read them before
+    /// changing anything, and never to re-record a reference without the person's agreement.
+    @Test func theRoutingRulesReadAFailedTestsImagesFirst() throws {
+        let routing = try text("context/routing.md")
+        let rule = try #require(routing.components(separatedBy: "\n").first { $0.contains("`\(FailureNotes.imageLabel)`") })
+        #expect(rule.contains("Read them before changing the code or the reference"))
+        #expect(rule.contains("Re-record a reference only when the person agrees"))
     }
 
     /// The card the session-start hook prints is dropped by the same age as the mod's history: one number of days.

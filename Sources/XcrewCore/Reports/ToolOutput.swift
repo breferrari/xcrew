@@ -63,12 +63,16 @@ public struct ToolOutput: Sendable {
         public let `where`: String?
         /// Whether it is a failing test, which a later run can pass, rather than a compile error.
         public let isTest: Bool
+        public var images: [String]?
+        public var moreImages: String?
 
-        public init(title: String, message: String, where location: String? = nil, isTest: Bool = false) {
+        public init(title: String, message: String, where location: String? = nil, isTest: Bool = false, images: [String]? = nil, moreImages: String? = nil) {
             self.title = title
             self.message = message
             self.where = location
             self.isTest = isTest
+            self.images = images
+            self.moreImages = moreImages
         }
     }
 

@@ -62,6 +62,19 @@ test('/xcrew failures opens a pane listing every failure of the last failing run
   await ui.unmount()
 })
 
+test('a failed test lists its images under it, and how many more there are and where', async ($, on) => {
+  const images = ['/cache/images/run/CardTests/testCard/reference.png', '/cache/images/run/CardTests/testCard/failure.png', '/cache/images/run/CardTests/testCard/difference.png']
+  const more = 'and 2 more images in /cache/images/run/CardTests/testCard'
+  engine(on, [{ ok: false, failures: [{ title: 'CardTests/testCard', message: 'Snapshot does not match reference.', where: 'CardTests.swift:12', isTest: true, images, moreImages: more }] }])
+  await callTool($, 'mcp__xcode__RunAllTests')
+  await runCommand($, 'xcrew', 'failures')
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  for (const path of images) expect((await ui.find({ type: 'Text', text: path }))?.props.color).toBe('subtle')
+  expect((await ui.find({ type: 'Text', text: more }))?.props.color).toBe('subtle')
+  await ui.unmount()
+})
+
 test('a passing run of the same tool clears the list', async ($, on) => {
   engine(on, [XCODE_TESTS_FAILED, PASSED])
   await callTool($, 'mcp__xcode__RunAllTests')
