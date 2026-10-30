@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.3 — 2026-10-30
 
 - The project card reaches Claude on every plan. Claude Code passes over a plugin's prompt hooks on Team organisations, so the card that used to ride on the first message now comes with the session's start, and after a `/clear` or a compaction, and says how old its notes are.
 - A build or test that Claude moves to the background no longer shows as passed the moment it moves: the line above the prompt says it has no result yet, nothing is timed or recorded, and when the task ends the line says so and that its result is in the conversation.
