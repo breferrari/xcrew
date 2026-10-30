@@ -66,10 +66,14 @@ jobs:
           project=$(mktemp -d)
           mkdir "$project/App.xcworkspace"
           MCS_PROJECT_PATH="$project" bin/xcrew setup --test-simulator "iPhone 17"
-          cd "$project"
           log=$(mktemp)
-          (mobilebuildmcp mcp < /dev/null > /dev/null 2> "$log" &) ; sleep 5
+          # Through the plugin's launcher, as Claude Code starts the server. The project pins no Xcode, so the server
+          # starts unchanged: nothing of the launcher's on its standard error, and no launch record.
+          ("$PWD/libexec/mobilebuildmcp-server" "$project" < /dev/null > /dev/null 2> "$log" &) ; sleep 5
           grep -E "Loaded project config|Registered [0-9]+ tools from workflows: .*xcode-ide" "$log" || { cat "$log"; exit 1; }
+          if grep -F "mobilebuildmcp-server" "$log"; then echo "the launcher wrote to the server's standard error" >&2; exit 1; fi
+          record="${XCREW_CACHE:-$HOME/Library/Caches/xcrew}/launches$(cd "$project" && pwd -P).launch"
+          if [ -e "$record" ]; then echo "a launch record for a project with no pin: $(cat "$record")" >&2; exit 1; fi
       - name: Sosumi answers
         run: |
           curl --fail --silent --show-error --max-time 20 -o /dev/null https://sosumi.ai/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"0"}}}'
