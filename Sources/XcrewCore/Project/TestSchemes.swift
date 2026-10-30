@@ -43,19 +43,15 @@ public enum TestSchemes {
     }
 
     static let unitTest = "com.apple.product-type.bundle.unit-test"
+    static let uiTest = "com.apple.product-type.bundle.ui-testing"
+    static let application = "com.apple.product-type.application"
     /// Repository files are read without fetching anything they point to.
     static let xmlOptions: XMLNode.Options = [.nodeLoadExternalEntitiesNever]
 
     public static func choose(in container: URL, preferring appScheme: String?) -> Choice {
         let containers = containers(from: [container])
-        let types = containers.reduce(into: [String: [String: String]]()) { types, project in
-            types[key(project)] = productTypes(of: project)
-        }
-        func type(of testable: Testable) -> String? {
-            if let project = testable.project, let type = types[project]?[testable.name] { return type }
-            let anywhere = Set(types.values.compactMap { $0[testable.name] })
-            return anywhere.count == 1 ? anywhere.first : nil
-        }
+        let lookUp = productTypeLookup(for: containers)
+        func type(of testable: Testable) -> String? { lookUp(testable.name, testable.project) }
         var runs: Set<String> = [], unsure: Set<String> = []
         for project in containers {
             for (name, testables) in schemes(of: project) {
@@ -67,6 +63,19 @@ public enum TestSchemes {
         let found = runs.sorted()
         if found.isEmpty { return unsure.isEmpty ? .none : .unknown(unsure.sorted()) }
         return found.count == 1 ? .scheme(found[0]) : .several(found)
+    }
+
+    /// A target's product type, by its name and the project a scheme says holds it; with no project, or one that doesn't
+    /// have it, the type when only one of `containers` has a target of that name.
+    static func productTypeLookup(for containers: [URL]) -> (_ target: String, _ project: String?) -> String? {
+        let types = containers.reduce(into: [String: [String: String]]()) { types, project in
+            types[key(project)] = productTypes(of: project)
+        }
+        return { target, project in
+            if let project, let type = types[project]?[target] { return type }
+            let anywhere = Set(types.values.compactMap { $0[target] })
+            return anywhere.count == 1 ? anywhere.first : nil
+        }
     }
 
     /// The containers whose schemes count: these, then the projects their workspaces list, each once.
@@ -135,9 +144,15 @@ public enum TestSchemes {
 
     /// `schemes(of:)`, with whether every test plan each scheme names could be read.
     static func tested(by container: URL) -> [String: (testables: [Testable], isWhole: Bool)] {
+        sharedSchemes(of: container).reduce(into: [:]) { schemes, scheme in
+            schemes[scheme.name] = tested(by: scheme.document, in: container)
+        }
+    }
+
+    /// What one parsed scheme of `container` tests, with whether every test plan it names could be read.
+    static func tested(by document: XMLDocument, in container: URL) -> (testables: [Testable], isWhole: Bool) {
         let base = container.deletingLastPathComponent()
-        return sharedSchemes(of: container).reduce(into: [:]) { schemes, scheme in
-            let document = scheme.document
+        do {
             let references = (try? document.nodes(forXPath: "//TestAction/Testables/TestableReference[not(@skipped='YES')]/BuildableReference")) ?? []
             let testables = references.compactMap { $0 as? XMLElement }.compactMap { reference -> Testable? in
                 guard let name = reference.attribute(forName: "BlueprintName")?.stringValue else { return nil }
@@ -146,7 +161,7 @@ public enum TestSchemes {
             let plans = (try? document.nodes(forXPath: "//TestAction/TestPlans/TestPlanReference/@reference")) ?? []
             let planFiles = plans.compactMap(\.stringValue).map { resolve($0, from: base) }
             let planTargets = planFiles.flatMap { targets(ofPlan: $0, from: base) }
-            schemes[scheme.name] = (testables + planTargets, planFiles.allSatisfy { plan(at: $0) != nil })
+            return (testables + planTargets, planFiles.allSatisfy { plan(at: $0) != nil })
         }
     }
 

@@ -81,7 +81,7 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
         for (bundle, read) in workspace.projects {
             for name in read.targets.keys where projectOf[name] == nil { projectOf[name] = fromRoot(bundle) }
             productFiles.merge(read.productFiles) { first, _ in first }
-            settings.merge(read.settings["PRODUCT_MODULE_NAME"] ?? [:]) { $0.merged(with: $1) }
+            settings.merge(read.settings[ProjectGraph.moduleName] ?? [:]) { $0.merged(with: $1) }
         }
         // Embedding alone carries a framework's binary, not its module: the layers are what's linked or named.
         let targets = workspace.targets.mapValues { target in

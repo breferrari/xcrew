@@ -84,4 +84,25 @@ import XcrewTestSupport
         _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 18", appScheme: "App"), to: project, force: true)
         #expect(choices(project).config?.owner == .xcrew)
     }
+
+    /// A workspace whose own `App` scheme and its project's both build the app: one scheme by name, not two.
+    @Test func anAppSchemeTheWorkspaceAndItsProjectBothShareIsStillPicked() {
+        let project = project()
+        project.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version = \"1.0\"><FileRef location = \"group:App.xcodeproj\"></FileRef></Workspace>\n", to: "App.xcworkspace/contents.xcworkspacedata")
+        project.writeScheme("App", building: ["App"], testing: ["AppTests", "AppUITests"], folder: "App.xcworkspace/xcshareddata")
+        let choices = SetupChoices.read(container: "App.xcworkspace", containers: ["App.xcworkspace"], containerProblem: nil, in: project, catalog: Self.catalog)
+        #expect(choices.picks.appScheme == "App")
+        #expect(choices.picks.bundleID == "dev.example.App")
+    }
+
+    /// Two projects with a target called `App`: the bundle ID is the one of the project the scheme builds from.
+    @Test func theBundleIDComesFromTheProjectTheSchemeBuilds() {
+        let project = Project.temporary(containing: ["Demo.xcodeproj", "App.xcodeproj"])
+        project.write(Self.spec.replacing("dev.example.App", with: "dev.example.Demo"), to: "Demo.xcodeproj/project.xcproj")
+        project.write(Self.spec, to: "App.xcodeproj/project.xcproj")
+        project.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version = \"1.0\"><FileRef location = \"group:Demo.xcodeproj\"></FileRef><FileRef location = \"group:App.xcodeproj\"></FileRef></Workspace>\n", to: "App.xcworkspace/contents.xcworkspacedata")
+        project.writeScheme("App", building: ["App"], container: "App.xcodeproj", folder: "App.xcworkspace/xcshareddata")
+        let choices = SetupChoices.read(container: "App.xcworkspace", containers: ["App.xcworkspace"], containerProblem: nil, in: project, catalog: Self.catalog)
+        #expect(choices.picks.bundleID == "dev.example.App")
+    }
 }

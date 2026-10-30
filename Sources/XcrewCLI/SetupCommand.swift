@@ -23,9 +23,9 @@ struct SetupCommand: Command {
         "setup [--container NAME] [--test-simulator NAME] [--app-simulator NAME]",
         "      [--app-scheme NAME] [--bundle-id ID] [--ui-scheme NAME] [--test-scheme NAME]",
         "      [--debugger-backend dap|lldb-cli] [--force]",
-        "setup --choices [--container NAME]   what the setup form offers, as JSON: containers, shared schemes with what each builds and tests, installed simulators, setup's own picks, and the config there is; writes nothing",
         "      write .mobilebuildmcp/config.yaml; simulators default to the newest iPhone installed,",
         "      and the test scheme to the shared scheme that runs unit tests",
+        "setup --choices [--container NAME]   what the setup form offers, as JSON: containers, shared schemes with what each builds and tests, installed simulators, the starting picks, and the config there is; writes nothing",
         "setup --worktree [--force] [--no-simulator | --fresh-simulator]   in a linked git worktree, write its config from the main checkout's, with simulators of its own, cloned from the main checkout's while they're shut down unless --fresh-simulator; --no-simulator shares the main checkout's",
     ]
 
@@ -137,9 +137,17 @@ struct SetupCommand: Command {
         if container == nil {
             do { container = try Self.container(in: context) } catch let error as UsageError { problem = error.description }
         }
-        let catalog = await SimulatorCatalog.load(using: context.runner, choosingADefault: true)
-        var choices = SetupChoices.read(container: container, containers: context.project.layout(.anywhereButHome).containers, containerProblem: problem, in: context.project, catalog: catalog)
-        if await Worktree.checkout(of: context.project, using: context.runner) != nil { choices.worktree = true }
+        async let catalog = SimulatorCatalog.load(using: context.runner, choosingADefault: true)
+        async let checkout = Worktree.checkout(of: context.project, using: context.runner)
+        var choices = SetupChoices.read(container: container, containers: context.project.layout(.anywhereButHome).containers, containerProblem: problem, in: context.project, catalog: await catalog)
+        if await checkout != nil { choices.worktree = true }
+        // mcs's answers are what setup writes with no option.
+        func mcs(_ option: String) -> String? { Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } }
+        choices.picks.appScheme = mcs("app-scheme") ?? choices.picks.appScheme
+        choices.picks.uiScheme = mcs("ui-scheme") ?? choices.picks.uiScheme
+        choices.picks.testScheme = mcs("test-scheme") ?? choices.picks.testScheme
+        choices.picks.bundleID = mcs("bundle-id") ?? choices.picks.bundleID
+        choices.picks.testSimulator = mcs("test-simulator") ?? choices.picks.testSimulator
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(choices), as: UTF8.self))
         return 0
     }

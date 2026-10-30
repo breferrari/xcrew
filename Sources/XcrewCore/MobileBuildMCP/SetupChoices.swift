@@ -19,6 +19,10 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         public let roles: [Role]
         /// The app it builds for running; absent when it builds none.
         public var app: String?
+        /// The project that holds `app`, as the scheme names it, by its standardized path.
+        var appProject: String?
+
+        enum CodingKeys: String, CodingKey { case name, container, roles, app }
     }
 
     /// An installed simulator, once per name, on the newest runtime that has it.
@@ -30,7 +34,8 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         public var twoDisplays: Bool?
     }
 
-    /// What `xcrew setup` would write with no option: the form's starting picks.
+    /// The form's starting picks, each passed to `xcrew setup` as an option: mcs's answers where there are some, else
+    /// setup's own rules applied to these schemes and simulators.
     public struct Picks: Sendable, Equatable, Codable {
         public var appScheme: String?
         public var uiScheme: String?
@@ -71,18 +76,21 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         var choices = SetupChoices(container: container, containers: containers, containerProblem: containerProblem)
         choices.simulators = simulators(in: catalog)
         choices.picks.testSimulator = catalog.defaultIPhone
-        if let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) {
+        if project.hasMobileBuildMCPConfig {
             let owner: Config.Owner = switch ConfigWriter.keeping(project) {
             case .keptEdited: .edited
             case .keptUnmanaged: .other
             default: .xcrew
             }
-            choices.config = Config(owner: owner, scheme: ConfigRenderer.schemeToBuild(in: yaml), debuggerBackend: ConfigRenderer.debuggerBackend(in: yaml))
+            let backend = (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)).flatMap(ConfigRenderer.debuggerBackend(in:))
+            choices.config = Config(owner: owner, scheme: project.schemeToBuild, debuggerBackend: backend)
         }
         guard let container else { return choices }
         let url = project.root.appending(path: container)
         choices.schemes = schemes(of: url, from: ProjectLayout.canonical(project.root))
-        let apps = choices.schemes.filter { $0.roles.contains(.app) }
+        // A workspace's scheme and its project's of one name are one choice, as `xcodebuild -scheme` takes them.
+        var named = Set<String>()
+        let apps = choices.schemes.filter { $0.roles.contains(.app) && named.insert($0.name).inserted }
         // Several schemes building apps: the one named for its app, when one is.
         let app = apps.count == 1 ? apps.first : apps.filter { $0.name == $0.app }.onlyOne
         choices.picks.appScheme = app?.name
@@ -90,9 +98,11 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         choices.picks.uiScheme = (app.flatMap { $0.roles.contains(.uiTests) ? $0 : nil } ?? ui.onlyOne)?.name
         if case let .scheme(scheme) = TestSchemes.choose(in: url, preferring: app?.name) { choices.picks.testScheme = scheme }
         if let target = app?.app {
-            let projects = TestSchemes.containers(from: [url]).filter { Project.isXcodeProject($0.lastPathComponent) }
+            // The project the scheme builds the app from first, then any that has a target of that name.
+            let all = TestSchemes.containers(from: [url]).filter { Project.isXcodeProject($0.lastPathComponent) }
+            let projects = all.filter { TestSchemes.key($0) == app?.appProject } + all.filter { TestSchemes.key($0) != app?.appProject }
             choices.picks.bundleID = projects.lazy.compactMap { try? ProjectGraph.read($0) }
-                .compactMap { $0.settings["PRODUCT_BUNDLE_IDENTIFIER"]?[target]?.literal }.first
+                .compactMap { $0.settings[ProjectGraph.bundleIdentifier]?[target]?.literal }.first
         }
         return choices
     }
@@ -100,40 +110,31 @@ public struct SetupChoices: Sendable, Equatable, Codable {
     /// The shared schemes of a container and the projects its workspace lists, each with its roles.
     static func schemes(of container: URL, from root: String) -> [Scheme] {
         let containers = TestSchemes.containers(from: [container])
-        let types = containers.reduce(into: [String: [String: String]]()) { $0[TestSchemes.key($1)] = TestSchemes.productTypes(of: $1) }
-        func type(of name: String, in project: String?) -> String? {
-            if let project, let type = types[project]?[name] { return type }
-            let anywhere = Set(types.values.compactMap { $0[name] })
-            return anywhere.count == 1 ? anywhere.first : nil
-        }
+        let type = TestSchemes.productTypeLookup(for: containers)
         return containers.flatMap { holder -> [Scheme] in
             let base = holder.deletingLastPathComponent()
-            let tested = TestSchemes.tested(by: holder)
             return TestSchemes.sharedSchemes(of: holder).map { name, document in
                 let references = (try? document.nodes(forXPath: "//BuildAction/BuildActionEntries/BuildActionEntry[@buildForRunning='YES']/BuildableReference")) ?? []
-                let built = references.compactMap { $0 as? XMLElement }.compactMap { reference -> String? in
+                let built = references.compactMap { $0 as? XMLElement }.compactMap { reference -> (target: String, project: String?)? in
                     guard let target = reference.attribute(forName: "BlueprintName")?.stringValue else { return nil }
                     let project = reference.attribute(forName: "ReferencedContainer")?.stringValue.map { TestSchemes.key(TestSchemes.resolve($0, from: base)) }
-                    return type(of: target, in: project) == application ? target : nil
+                    return type(target, project) == TestSchemes.application ? (target, project) : nil
                 }
-                let kinds = (tested[name]?.testables ?? []).map { type(of: $0.name, in: $0.project) }
+                let kinds = TestSchemes.tested(by: document, in: holder).testables.map { type($0.name, $0.project) }
                 var roles: [Role] = built.isEmpty ? [] : [.app]
                 if kinds.contains(TestSchemes.unitTest) { roles.append(.unitTests) }
-                if kinds.contains(uiTest) { roles.append(.uiTests) }
-                return Scheme(name: name, container: ProjectLayout.path(ProjectLayout.canonical(holder), from: root), roles: roles, app: built.first)
+                if kinds.contains(TestSchemes.uiTest) { roles.append(.uiTests) }
+                return Scheme(name: name, container: ProjectLayout.path(ProjectLayout.canonical(holder), from: root), roles: roles, app: built.first?.target, appProject: built.first?.project ?? nil)
             }
         }
     }
-
-    static let application = "com.apple.product-type.application"
-    static let uiTest = "com.apple.product-type.bundle.ui-testing"
 
     /// The installed iOS simulators, each name once with its newest runtime: iPhones first, in numeric order.
     static func simulators(in catalog: SimulatorCatalog) -> [Simulator] {
         let iOS = Dictionary(grouping: catalog.devices.filter { $0.platform == "iOS" }, by: \.name)
         return iOS.map { name, devices in
             let newest = devices.map(\.runtimeVersion).max { Version($0) < Version($1) } ?? ""
-            let twoDisplays = devices.contains { $0.deviceType.map(catalog.multiDisplayTypes.contains) ?? false }
+            let twoDisplays = devices.contains(where: catalog.hasTwoDisplays)
             return Simulator(name: name, runtime: newest, twoDisplays: twoDisplays ? true : nil)
         }.sorted { first, second in
             let (a, b) = (first.name.hasPrefix("iPhone"), second.name.hasPrefix("iPhone"))

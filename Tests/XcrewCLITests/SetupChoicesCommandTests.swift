@@ -45,4 +45,22 @@ import XcrewTestSupport
         #expect(run.status == 64)
         #expect(run.errors == ["setup --choices takes no option but --container: it writes nothing"])
     }
+
+    /// mcs's answers are what setup writes, so they're the picks too.
+    @Test func mcsAnswersAreThePicks() async throws {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let environment = ["MCS_RESOLVED_TEST_SIMULATOR": "iPhone 17", "MCS_RESOLVED_APP_SCHEME": "Mine", "MCS_RESOLVED_UI_TEST_SCHEME": "MineUI", "MCS_RESOLVED_TEST_SCHEME": "MineTests", "MCS_RESOLVED_APP_BUNDLE_ID": "dev.mine"]
+        let run = await Run("setup", "--choices", context: .fake(.simulators(["iPhone 17", "iPhone 18"]), project: project, environment: environment))
+        let choices = try JSONDecoder().decode(SetupChoices.self, from: Data(run.text.utf8))
+        let picks = choices.picks
+        #expect([picks.appScheme, picks.uiScheme, picks.testScheme, picks.bundleID, picks.testSimulator] == ["Mine", "MineUI", "MineTests", "dev.mine", "iPhone 17"])
+    }
+
+    /// Plain setup's options keep their description, and `--choices` its own.
+    @Test func theUsageKeepsEachFormsDescription() async {
+        let lines = await Run("setup", "--help").output
+        let choices = lines.firstIndex { $0.contains("setup --choices") } ?? 0
+        let description = lines.firstIndex { $0.contains("write .mobilebuildmcp/config.yaml; simulators default") } ?? 0
+        #expect(description < choices, "\(lines)")
+    }
 }

@@ -66,7 +66,8 @@ struct ProjectGraph: Sendable {
     }
 
     /// The settings read from each target, the module graph's and setup's: by setting, then by target.
-    static let readSettings = ["PRODUCT_MODULE_NAME", "PRODUCT_BUNDLE_IDENTIFIER"]
+    static let moduleName = "PRODUCT_MODULE_NAME", bundleIdentifier = "PRODUCT_BUNDLE_IDENTIFIER"
+    static let readSettings = [moduleName, bundleIdentifier]
     var settings: [String: [String: Setting]] = [:]
     /// Each target's product, by its file name: `Core.framework`.
     var productFiles: [String: String] = [:]
