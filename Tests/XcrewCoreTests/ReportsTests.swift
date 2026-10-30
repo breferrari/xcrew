@@ -746,3 +746,58 @@ extension FailureNotes {
         #expect(Report.savedPath("Output has been saved to \(folder.path).") == nil)
     }
 }
+
+/// A test run with `-test-iterations` records each run of each test as a `Repetition`: a test that failed some runs and
+/// passed others is flaky, one that failed every run is a real failure (docs/findings.md, *Flaky or real*).
+@Suite struct RepetitionTests {
+    static let listing = """
+        {"testNodes":[{"nodeType":"Unit test bundle","name":"AppTests","children":[{"nodeType":"Test Suite","name":"RepetitionTests","children":[
+          {"nodeType":"Test Case","nodeIdentifier":"RepetitionTests/testMixed()","name":"testMixed()","result":"Failed","children":[
+            {"nodeType":"Repetition","name":"Repetition 1","result":"Passed"},{"nodeType":"Repetition","name":"Repetition 2","result":"Failed"},{"nodeType":"Repetition","name":"Repetition 3","result":"Passed"}]},
+          {"nodeType":"Test Case","nodeIdentifier":"RepetitionTests/testAlways()","name":"testAlways()","result":"Failed","children":[
+            {"nodeType":"Repetition","name":"Repetition 1","result":"Failed"},{"nodeType":"Repetition","name":"Repetition 2","result":"Failed"},{"nodeType":"Repetition","name":"Repetition 3","result":"Failed"}]},
+          {"nodeType":"Test Case","nodeIdentifier":"RepetitionTests/testNever()","name":"testNever()","result":"Passed","children":[
+            {"nodeType":"Repetition","name":"Repetition 1","result":"Passed"},{"nodeType":"Repetition","name":"Repetition 2","result":"Passed"},{"nodeType":"Repetition","name":"Repetition 3","result":"Passed"}]},
+          {"nodeType":"Test Case","nodeIdentifier":"RepetitionTests/testOnce()","name":"testOnce()","result":"Passed"}]}]}]}
+        """
+
+    @Test func eachRepeatedTestCountsItsFailedRuns() {
+        let found = ResultBundle.repetitions(listing: Self.listing)
+        #expect(found.map { "\($0.test.shown) \($0.failed)/\($0.runs)" } == ["RepetitionTests/testMixed 1/3", "RepetitionTests/testAlways 3/3", "RepetitionTests/testNever 0/3"])
+    }
+
+    @Test func theNoteGivesEachTestItsVerdict() {
+        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: Self.listing))
+        #expect(note == "xcrew: across 3 runs each: RepetitionTests/testMixed is flaky, failing 1 of 3; RepetitionTests/testAlways failed every run, a real failure; RepetitionTests/testNever passed every run.")
+    }
+
+    @Test func aRunWithoutRepetitionsHasNoNote() {
+        #expect(ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: #"{"testNodes":[]}"#)) == nil)
+    }
+}
+
+/// A run the mod knows was repeated reads each test's runs from the bundle: the verdicts reach Claude, and the counts
+/// the mod keeps.
+@Suite struct RepeatedRunReportTests {
+    static let bundle = "\(Captured.workspace)/result-bundles/test_sim.xcresult"
+
+    func runner() -> FakeRunner {
+        FakeRunner(responses: [
+            "xcrun xcresulttool get test-results tests --path \(Self.bundle) --compact": .init(status: 0, stdout: RepetitionTests.listing),
+            "xcrun xcresulttool get test-results summary --path \(Self.bundle) --compact": .init(status: 0, stdout: #"{"totalTestCount":4,"passedTests":2,"failedTests":2,"expectedFailures":0}"#),
+        ])
+    }
+
+    @Test func aRepeatedRunGivesEachTestItsVerdict() async {
+        let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: runner(), repeated: true)
+        #expect(report.notes.contains { $0.contains("RepetitionTests/testMixed is flaky, failing 1 of 3") })
+        #expect(report.repeated == [.init(test: "RepetitionTests/testMixed", failed: 1, runs: 3), .init(test: "RepetitionTests/testAlways", failed: 3, runs: 3), .init(test: "RepetitionTests/testNever", failed: 0, runs: 3)])
+    }
+
+    /// The list is asked for only when the run was repeated: every other test run keeps its one fewer call.
+    @Test func aRunNotRepeatedReadsNoRepetitions() async {
+        let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: runner())
+        #expect(report.repeated == nil)
+        #expect(!report.notes.contains { $0.contains("flaky") })
+    }
+}

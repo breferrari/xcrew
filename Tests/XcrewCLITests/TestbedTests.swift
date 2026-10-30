@@ -280,3 +280,13 @@ struct TestbedPrivacyTests {
         #expect(leaks == [])
     }
 }
+
+/// The test bed's capture of a real run with `-test-iterations 5`, replayed: the run itself never happens here.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedRepetitionTests {
+    @Test func aRealRunsRepetitionsGiveEachTestItsVerdict() throws {
+        let listing = try String(contentsOf: Testbed.root.appending(path: "captures/repetitions/tests.json"), encoding: .utf8)
+        let found = ResultBundle.repetitions(listing: listing)
+        #expect(found.map { "\($0.test.shown) \($0.failed)/\($0.runs)" } == ["RepetitionTests/testFailsEveryOtherRun 2/5", "RepetitionTests/testFailsEveryRun 5/5", "RepetitionTests/testPassesEveryRun 0/5"])
+    }
+}

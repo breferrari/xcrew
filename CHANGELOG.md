@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- When a test fails for no reason the change explains, Claude runs it alone five times, and Xcrew says whether it's flaky (failed some runs) or a real failure (failed every run). A flaky test stays red, marked flaky, in the red-to-green record and on the project card, until a repeated run passes it every time.
+
 ## 0.8.8 — 2026-10-30
 
 - Before Claude edits a file your Tuist or XcodeGen project generates (inside the `.xcodeproj` or `.xcworkspace`, or Tuist's `Derived` folder), Xcrew asks you, since the next generate overwrites the edit. Say no, and Claude is pointed at the manifest to edit instead and the generate command. `XcodeWrite` in a generated project now asks the same way instead of being refused outright.

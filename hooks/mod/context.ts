@@ -76,3 +76,8 @@ export function runsWholeScope(tool: XcodeTool, input: Record<string, unknown>):
   if (extraArgs.some(arg => typeof arg === 'string' && arg.startsWith('-skip-testing:'))) return false
   return runsEveryTestItNames(tool)
 }
+
+/** Whether a test run repeats each test (`-test-iterations`), so its result bundle holds each test's runs to read. */
+export function isRepeatedRun(input: Record<string, unknown>): boolean {
+  return Array.isArray(input.extraArgs) && input.extraArgs.includes('-test-iterations')
+}

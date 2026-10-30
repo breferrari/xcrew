@@ -6,7 +6,7 @@ import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, kn
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_BLOCK, CARD_WAIT_MS, cardText } from './card'
-import { describe, historyOf, observe, runsWholeScope } from './context'
+import { describe, historyOf, isRepeatedRun, observe, runsWholeScope } from './context'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
@@ -162,7 +162,8 @@ export const register: Register = on => {
 
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
     // It never throws: without the CLI it falls back to whether the server reported an error.
-    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true), 120_000, result.text ?? '')
+    const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
+    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated), 120_000, result.text ?? '')
     const outcome = reportOf(reported, result.isError === true)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
@@ -171,7 +172,7 @@ export const register: Register = on => {
     await quietly(async () => $.store.set(whereKey(scope), await $.session.cwd()))
     await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
     // Only what the CLI read goes in the ledger: without it, the outcome is a guess no test plan should cite.
-    if (kind === 'test' && reported !== undefined) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: runsWholeScope(parsed, e as unknown as Record<string, unknown>) })
+    if (kind === 'test' && reported !== undefined) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: runsWholeScope(parsed, e as unknown as Record<string, unknown>), repeated: outcome.repeated ?? [] })
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
     const ending = endingOf(outcome, ended, elapsed, earlier)
     const summaryLine = outcomeLine(name, ending)

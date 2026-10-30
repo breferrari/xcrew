@@ -18,12 +18,12 @@ export type LedgerRun = { scope: string; at: number }
  * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, and when a run
  * last wrote it.
  */
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string }; failing: string; green?: LedgerRun; last: number }
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string }; failing: string; green?: LedgerRun; last: number; flaky?: { failed: number; runs: number } }
 
 export type Ledger = { entries: LedgerEntry[]; updated: number }
 
 /** A finished test run, as the ledger reads it. `ranAll`: it ran every test its scope names, so its passes count. */
-export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; ranAll: boolean }
+export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; ranAll: boolean; repeated?: readonly { test: string; failed: number; runs: number }[] }
 
 /** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
 export function label(head: Head, isShort: boolean): string {
@@ -66,13 +66,26 @@ export function isWholeScope(scope: string): boolean {
 export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
   const failed = new Map(run.failures.filter(failure => failure.isTest).map(failure => [failure.title, failure]))
   const testsRan = run.ok || failed.size > 0
+  const repeated = new Map((run.repeated ?? []).map(test => [test.test, test]))
+  // A test that failed some of its repeated runs and passed others is flaky: it stays red, marked so, until a repeated
+  // run passes it every time; one run passing it is no evidence.
+  const flakyNow = (test: string) => {
+    const runs = repeated.get(test)
+    return runs && runs.failed > 0 && runs.failed < runs.runs ? { failed: runs.failed, runs: runs.runs } : undefined
+  }
   const entries = (ledger?.entries ?? []).filter(entry => !isStale(entry.last, run.at)).map((entry): LedgerEntry => {
-    if (failed.has(entry.test)) return { test: entry.test, red: entry.red, failing: run.scope, last: run.at }
-    const passes = !entry.green && run.ranAll && testsRan && covers(run.scope, entry.failing)
+    if (failed.has(entry.test)) {
+      const flaky = flakyNow(entry.test) ?? entry.flaky
+      return { test: entry.test, red: entry.red, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}) }
+    }
+    const cleared = !entry.flaky || (repeated.get(entry.test)?.failed === 0 && (repeated.get(entry.test)?.runs ?? 0) > 1)
+    const passes = !entry.green && cleared && run.ranAll && testsRan && covers(run.scope, entry.failing)
     return passes ? { ...entry, green: { scope: run.scope, at: run.at }, last: run.at } : entry
   })
   for (const [test, failure] of failed) {
-    if (!entries.some(entry => entry.test === test)) entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(failure.message) }, failing: run.scope, last: run.at })
+    if (entries.some(entry => entry.test === test)) continue
+    const flaky = flakyNow(test)
+    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(failure.message) }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}) })
   }
   return { entries, updated: run.at }
 }
@@ -92,9 +105,10 @@ export function ledgerText(ledger: Ledger | undefined, head: Head): string {
   const green = entries.filter((entry): entry is GreenEntry => entry.green !== undefined)
   const red = entries.filter(entry => !entry.green)
   const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}`
+  const named = (entry: LedgerEntry) => `${entry.test}${entry.flaky ? ` (flaky: failed ${entry.flaky.failed} of ${entry.flaky.runs} runs)` : ''}`
   return [
-    ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${entry.test}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
-    ...(red.length > 0 ? [`Still red (${red.length}):`, ...red.map(entry => `- ${entry.test}: ${redPart(entry)}`)] : []),
+    ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${named(entry)}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
+    ...(red.length > 0 ? [`Still red (${red.length}):`, ...red.map(entry => `- ${named(entry)}: ${redPart(entry)}`)] : []),
   ].join('\n')
 }
 

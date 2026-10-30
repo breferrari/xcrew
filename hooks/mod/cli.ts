@@ -19,6 +19,8 @@ export type Report = {
   /** What Claude reads in place of the server's result; absent keeps the server's. */
   result?: string
   notes: string[]
+  /** For a run repeated with `-test-iterations`: each repeated test, and how many of its runs failed. */
+  repeated?: { test: string; failed: number; runs: number }[]
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */
@@ -55,8 +57,8 @@ export function ranOutOfTime(startedAt: number, now: number, timeoutMs: number):
   return now - startedAt >= timeoutMs
 }
 
-export function reportArgs(server: string, kind: string, isError: boolean): string[] {
-  return ['report', '--server', server, '--kind', kind, ...(isError ? ['--error'] : [])]
+export function reportArgs(server: string, kind: string, isError: boolean, repeated = false): string[] {
+  return ['report', '--server', server, '--kind', kind, ...(isError ? ['--error'] : []), ...(repeated ? ['--repeated'] : [])]
 }
 
 export function phaseArgs(tool: string, since: number, expectedTests: number | undefined, log: string | undefined): string[] {

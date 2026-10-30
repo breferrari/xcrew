@@ -7,9 +7,9 @@ import XcrewCore
 struct ReportCommand: Command {
     let name = "report"
     let valuedOptions: Set<String> = ["server", "kind"]
-    let flags: Set<String> = ["error"]
+    let flags: Set<String> = ["error", "repeated"]
     let usage = [
-        "report --server S --kind K [--error]   (mod) read a build, test or run result on stdin; print its report as JSON",
+        "report --server S --kind K [--error] [--repeated]   (mod) read a build, test or run result on stdin; print its report as JSON; --repeated reads each repeated test's runs",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -21,7 +21,7 @@ struct ReportCommand: Command {
         }
         let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
         let machine = invocation.context.machine
-        let report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner)
+        let report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: invocation.arguments.has("repeated"))
         let encoded = try JSONEncoder.sorted.encode(report)
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0

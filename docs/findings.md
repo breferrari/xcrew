@@ -288,6 +288,19 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
 - **The change:** git lists it with `--no-renames`, so a moved file's old owner counts too, and with `-z` and `--no-relative`, so every name comes back as written. With no `origin/HEAD` (a clone sets it, a push doesn't), `origin/main` and then `origin/master` are tried. With a remote but none of them, everything runs. Only with no remote at all is the working tree the change.
 - Paths are compared as the file system spells the project's folder, `.` and `..` resolved by their words. `standardizedFileURL` would drop `/private` from `/private/var` and miss.
 
+## Flaky or real
+
+Running a failing test again settles whether it's flaky. Read October 30, 2026:
+- **`man xcodebuild`** (Xcode 27.2): `-test-iterations number` means "tests will run number times". `-retry-tests-on-failure` and `-run-tests-until-failure` cap that number, so a run stops at the first pass or the first failure. `-test-repetition-relaunch-enabled YES` gives each repetition "a new process".
+- **Apple's *Diagnose unreliable code with test repetitions*** (WWDC21): fixed iterations repeat "regardless of the status" and are "great for understanding the reliability of your test suite", while retrying "can hide problems in the actual product". So the routing rules ask for `-test-iterations 5` with a relaunch, never the modes that stop early.
+- **`xcresulttool get test-results tests --schema`** (schema 0.5.0): a test's runs are its `Repetition` children, each with its own `result`.
+
+**MobileBuildMCP passes both flags through.** MobileBuildMCP 2.7.1's `utils/test-common.js` and `simulator-test-execution.js` send `extraArgs` that aren't selectors to both its build-for-testing and test-without-building phases. `utils/test-source.js` filters out only `-project`, `-scheme`, `-destination`, `-derivedDataPath`, `-configuration`, `-testProductsPath`, `-workspace`, `-xctestrun` and the action names. The man page doesn't say whether build-for-testing takes test options. Run on this Mac on the test bed's classic form, it took both and built, printing only "Running tests repeatedly 5 times."
+
+**The verdict:** a test that failed some of its runs and passed others is flaky, whatever the count, since a minimum would hide the rarest flakes. Failing every run makes it a real failure. The ledger keeps a flaky test red, marked flaky, until a repeated run passes it every time; one run passing it is no evidence.
+
+The mod knows a repeated run by `-test-iterations` in its `extraArgs`, and only then has the report read the bundle's test list. The test bed's `captures/repetitions` pins the reading: a real run's `xcresulttool` answer for three tests run five times each, passing every run, failing every run, and failing every other run, made on the Mac and replayed, so nothing nondeterministic runs in CI.
+
 ## Toolchains
 
 On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The `macos-26` runner image (version 20261013.0424.1) carries Xcode 26.0.1 to 26.6, and Apple's [Xcode system requirements](https://developer.apple.com/xcode/system-requirements/) put Swift 6.2 in Xcode 26.0 and 26.0.1, 6.2.1 to 6.2.3 in 26.1 to 26.3, and 6.3 in 26.4.1 to 26.6. So CI's newest toolchain was Swift 6.3, older than the contributor's 6.4.2. Each Swift job now prints its toolchain, and a floor job builds and tests on the oldest Xcode whose Swift is the version `Package.swift`'s `swift-tools-version` names.

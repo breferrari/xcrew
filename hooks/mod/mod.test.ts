@@ -673,3 +673,13 @@ test('callers at once share one question to the shim, and a build it can\'t name
   expect(seen.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
   expect(seen.filter(call => call.args[0] === 'project')).toHaveLength(4)
 })
+
+test('a test run repeated with -test-iterations asks the CLI to read each test\'s runs', async ($, on) => {
+  mock.clock(on)
+  const seen = watch(on)
+  on('tool.call', () => ({ result: {}, text: 'ran' }))
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:AppTests', '-test-iterations', '5'] })
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:AppTests'] })
+  const reports = seen.cli.filter(call => call.args[0] === 'report').map(call => call.args.includes('--repeated'))
+  expect(reports).toEqual([true, false])
+})

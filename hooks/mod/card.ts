@@ -47,7 +47,7 @@ function redLine(red: readonly LedgerEntry[], branch: string): string {
   const opening = `- Still red on ${branch}: `
   const names: string[] = []
   for (const entry of red) {
-    const name = `${entry.test} (${entry.failing})`
+    const name = `${entry.test}${entry.flaky ? ` (flaky, ${entry.flaky.failed} of ${entry.flaky.runs} runs failed)` : ''} (${entry.failing})`
     if (names.length > 0 && opening.length + [...names, name].join(', ').length + more(red.length, names.length + 1).length > RED_LINE_MAX) break
     names.push(name)
   }

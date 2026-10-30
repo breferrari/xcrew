@@ -213,3 +213,28 @@ test('a test no run has written for two weeks leaves the ledger, while the branc
   expect(text).not.toContain(TEST)
   expect(text).toContain('Other/testOther')
 })
+
+// MARK: Flaky or real
+
+const REPEATED = ['-only-testing:AppTests/GreetingTests/testHello', '-test-iterations', '5', '-test-repetition-relaunch-enabled', 'YES']
+const repeat = (tool: Engine) => callTool(tool, 'mcp__MobileBuildMCP__test_sim', { extraArgs: REPEATED })
+const MIXED: Partial<Report> = { ...FAILED, repeated: [{ test: TEST, failed: 2, runs: 5 }] }
+const CLEAN: Partial<Report> = { ok: true, repeated: [{ test: TEST, failed: 0, runs: 5 }] }
+
+test('a flaky test stays red, marked flaky, and a later pass of one run doesn\'t green it', async ($, on) => {
+  project(on, [FAILED, MIXED, PASSED])
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await run($, 'AppTests/GreetingTests/testHello')
+  const text = await ledgerText($)
+  expect(text).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs)`)
+  expect(text).not.toContain('Red, then green')
+})
+
+test('a flaky test is green once a repeated run passes it every time', async ($, on) => {
+  project(on, [FAILED, MIXED, CLEAN])
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await repeat($)
+  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST} (flaky: failed 2 of 5 runs)`)
+})

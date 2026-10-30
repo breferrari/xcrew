@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: breferrari/xcrew-testbed
-          ref: afa3cfd0bbe0fb073f19542f415744f5bcd37f1f # v0.2.0
+          ref: 7d1e62f26d491186bf7625a6de677017eaa2e220 # v0.3.0
           path: xcrew-testbed
       - name: Swift tests
         run: swift test

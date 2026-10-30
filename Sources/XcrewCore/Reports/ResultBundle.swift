@@ -176,3 +176,37 @@ public struct ResultBundle: Sendable {
         return Self.crashSummary(log: text)
     }
 }
+
+extension ResultBundle {
+    public struct Repeated: Sendable, Equatable {
+        public let test: TestID
+        public let failed: Int
+        public let runs: Int
+    }
+
+    /// Each test that ran more than once, with how many of its runs failed: a `Test Case` whose children include
+    /// `Repetition`s, in the listing's order.
+    public static func repetitions(listing: String) -> [Repeated] {
+        nodes(parse(listing)).compactMap { node in
+            guard node["nodeType"] as? String == "Test Case", let id = node["nodeIdentifier"] as? String else { return nil }
+            let runs = (node["children"] as? [[String: Any]] ?? []).filter { $0["nodeType"] as? String == "Repetition" }
+            guard runs.count > 1 else { return nil }
+            return Repeated(test: TestID(xcresultID: id), failed: runs.filter { $0["result"] as? String == "Failed" }.count, runs: runs.count)
+        }
+    }
+
+    /// Each repeated test's verdict, for Claude: flaky when some runs failed and some passed, a real failure when every
+    /// run failed. Nil when nothing ran more than once.
+    public static func repetitionsNote(_ repeated: [Repeated]) -> String? {
+        guard let runs = repeated.first?.runs else { return nil }
+        let verdicts = repeated.map { test in
+            switch test.failed {
+            case 0: "\(test.test.shown) passed every run"
+            case test.runs: "\(test.test.shown) failed every run, a real failure"
+            default: "\(test.test.shown) is flaky, failing \(test.failed) of \(test.runs)"
+            }
+        }
+        let each = repeated.allSatisfy { $0.runs == runs } ? "across \(runs) runs each" : "across repeated runs"
+        return "xcrew: \(each): \(verdicts.joined(separator: "; "))."
+    }
+}
