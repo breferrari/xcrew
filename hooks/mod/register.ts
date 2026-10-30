@@ -5,7 +5,7 @@ import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree
 import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
-import { CARD_BLOCK, CARD_WAIT_MS, cardText } from './card'
+import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { describe, historyOf, isFullSuiteRun, isRepeatedRun, lost, observe, runsWholeScope } from './context'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
@@ -196,6 +196,7 @@ export const register: Register = on => {
     // Only what the CLI read goes in the ledger: without it, the outcome is a guess no test plan should cite.
     if (kind === 'test' && reported !== undefined) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: runsWholeScope(parsed, e as unknown as Record<string, unknown>), repeated: outcome.repeated ?? [] })
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
+    saveCard($)
     const ending = endingOf(outcome, ended, elapsed, earlier)
     const summaryLine = outcomeLine(name, ending)
     const row = drawsRow(kind) && e.tool_use_id ? rowOf(ending, outcome.failures) : undefined
@@ -269,14 +270,8 @@ export const register: Register = on => {
     found = []
     seenAt = {}
     void loadProblems($).catch(() => undefined)
+    saveCard($)
     return started
-  })
-  // The one unmatched prompt.context hook: the project card, in the context of the conversation's first message. The
-  // engine keeps the answer until a compaction or /clear reads it again; a card not built in time stays out.
-  on('prompt.context', async ($, e, next) => {
-    const context = await next(e)
-    const text = await quietly(() => Promise.race([cardNow($), $.clock.sleep(CARD_WAIT_MS).then(() => undefined)]))
-    return text ? { ...context, blocks: [...context.blocks, { name: CARD_BLOCK, text }] } : context
   })
   // The one unmatched prompt hook: a problem fixed any way at all leaves the band by the next prompt. Never awaited.
   on('prompt.submit', async ($, e, next) => {
@@ -378,12 +373,31 @@ function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
 }
 
 /** The project card from what earlier runs in this folder stored: their durations, and the branch's red tests. */
-async function cardNow($: EngineInterface): Promise<string | undefined> {
+/**
+ * Saves the project card for this folder and branch, for the session-start hook to print: Claude Code passes over a
+ * plugin's prompt hooks on some plans, so the card can't ride on a prompt. After the ledger's own writes; best-effort,
+ * never awaited, and saved one at a time.
+ */
+function saveCard($: EngineInterface): void {
+  cardWrites = cardWrites
+    .then(async () => {
+      await ledgerWrites
+      const card = await cardNow($)
+      if (card) await answer($, ['card', '--save'], 10_000, JSON.stringify(card))
+    })
+    .catch(() => undefined)
+}
+
+/** The card as the CLI keeps it: its folder and branch, the time of its newest data, and its text, if it has any. */
+async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
   const [folder, now] = await Promise.all([$.session.cwd(), $.clock.now()])
   const scopes = (await storedHistory($)).filter(entry => entry.where === folder && !isStale(entry.updated, now))
   const { head, ledger } = await branchLedger($)
+  if (!head) return undefined
   const red = ledger && !isStale(ledger.updated, now) ? ledger.entries.filter(entry => !entry.green && !isStale(entry.last, now)) : []
-  return cardText(scopes, red, head ? label(head, true) : '')
+  const text = cardText(scopes, red, label(head, true))
+  const times = [...scopes.map(entry => entry.updated), ...red.map(entry => entry.last)].filter((time): time is number => typeof time === 'number')
+  return { version: CARD_VERSION, folder, branch: label(head, false), updated: times.length > 0 ? Math.max(...times) : now, ...(text ? { text } : {}) }
 }
 
 /** Every run scope the store holds, with its durations, when a run last updated it, its test total and its folder. */
@@ -477,6 +491,8 @@ async function closeFailures($: EngineInterface): Promise<string> {
 }
 
 /** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */
+/** The card's saves, one after another, so a later one never lands before an earlier. */
+let cardWrites: Promise<void> = Promise.resolve()
 let ledgerWrites: Promise<unknown> = Promise.resolve()
 
 /** Writes a finished test run into its branch's ledger, after the writes before it, without holding up the run's result. */

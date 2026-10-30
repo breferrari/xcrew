@@ -1,10 +1,12 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { callTool, stubCli } from './testing'
+import { callTool, stubCli, type CliCall } from './testing'
 
 const NOW = Date.UTC(2026, 9, 30, 12, 0)
-const CARD = 'xcrewProjectCard'
+
+/** What the mod gave the CLI to save, in this session. */
+let calls: CliCall[] = []
 
 /** What earlier sessions stored: durations, when each was last updated, test totals, and the folder each last ran in, by run scope. */
 function runs(scopes: Record<string, { runs: number[]; tests?: number }>, folder = '/work/App'): Record<string, unknown> {
@@ -36,8 +38,7 @@ function session(on: On, stored: Record<string, unknown> | 'unavailable', option
   on('ui.status', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
   on('session.cwd', () => ({ value: '/work/App' }))
-  on('prompt.context', (_, e) => ({ blocks: e.blocks }))
-  stubCli(on, {
+  calls = stubCli(on, {
     project: async args => ({ isGenerated: false, ...(args.includes('--branch') ? { root: '/work/App', branch: await (options.branch?.() ?? Promise.resolve('feat/card')) } : {}) }),
     reports: [{ ok: true }],
   })
@@ -50,11 +51,14 @@ async function start(tool: Engine, clock: { settle: () => Promise<void> }): Prom
   await clock.settle()
 }
 
-/** The card, as the context of the conversation's first message carries it, after the engine's own blocks. */
-async function card(tool: Engine): Promise<string | undefined> {
-  const blocks = (await tool.prompt.context({ blocks: [{ name: 'currentDate', text: '2026-10-30' }] })).blocks
-  expect(blocks[0]?.name).toBe('currentDate')
-  return blocks.find(block => block.name === CARD)?.text
+/** The card the mod last gave `xcrew card --save`, which the session-start hook prints. */
+function saved(): { folder?: string; branch?: string; updated?: number; text?: string } | undefined {
+  const save = calls.filter(call => call.args.join(' ') === 'card --save').at(-1)
+  return save?.stdin === undefined ? undefined : JSON.parse(save.stdin)
+}
+
+async function card(_tool: Engine): Promise<string | undefined> {
+  return saved()?.text
 }
 
 test('the card gives the usual durations, slowest first, the red tests, and the selections when a full run is slow', async ($, on) => {
@@ -135,12 +139,29 @@ test('a long list says how many it left out, durations and red tests alike', asy
   expect(text).toContain('+3 more')
 })
 
-test('a card the CLI is too slow to finish stays out of that conversation', async ($, on) => {
+test('a branch the CLI can\'t name leaves the card unsaved, and the session goes on', async ($, on) => {
   const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }), { branch: () => new Promise(() => {}) })
   await start($, clock)
-  const read = card($)
-  await clock.advance(1_500)
-  expect(await read).toBeUndefined()
+  expect(saved()).toBeUndefined()
+})
+
+/**
+ * Keyed as the store is, by the folder and the branch, and dated by its newest data, not by when it was saved: the hook
+ * drops a card by the same age the mod drops its history.
+ */
+test('the saved card carries its folder, its branch and the time of its data', async ($, on) => {
+  const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }))
+  await start($, clock)
+  expect(saved()).toMatchObject({ folder: '/work/App', branch: 'feat/card', updated: NOW - 60_000 })
+})
+
+test('a run saves the card again, as of that run', async ($, on) => {
+  const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }))
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'App' })
+  await clock.settle()
+  expect(saved()?.text).toContain('test_sim · App: usually')
+  expect(saved()?.updated).toBeGreaterThanOrEqual(NOW)
 })
 
 test('a flaky red test is marked so on the card', async ($, on) => {

@@ -51,6 +51,16 @@ import XcrewTestSupport
         #expect(text?.contains("/xcrew:setup") == false)
     }
 
+    /// The project card the mod saved for this folder and the branch checked out comes last, so it reaches Claude after a
+    /// /clear or a compaction as well, which start the hook again.
+    @Test func briefingEndsWithTheProjectCardForThisBranch() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        let machine = Self.machine(project, version: "2.7.1", branch: "feat/card")
+        ProjectCard.save(.init(folder: project.canonicalRoot, branch: "feat/card", updated: Date().timeIntervalSince1970 * 1000 - 5 * 60_000, text: "Notes:\n- a"), on: machine)
+        let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n")
+        #expect(text?.hasSuffix("\n\nNotes, as of the run 5 min ago:\n- a") == true)
+    }
+
     /// A project that pins its Xcode says so, and that the Xcode MCP works through the open one, which no pin changes; it
     /// states the fact and never steers the person to another Xcode.
     @Test func briefingNamesThePinnedXcode() async {
@@ -109,9 +119,10 @@ import XcrewTestSupport
 
     /// A Mac whose `mobilebuildmcp` is a real file, answering `--version` with `version` (nil: no answer). The file is
     /// written once, since the version's cache is keyed by its modification time.
-    static func machine(_ project: Project, version: String?) -> Machine {
+    static func machine(_ project: Project, version: String?, branch: String? = nil) -> Machine {
         if !FileManager.default.fileExists(atPath: project.root.appending(path: "bin/mobilebuildmcp").path) { project.write("#!/bin/sh\n", to: "bin/mobilebuildmcp") }
         var runner = FakeRunner(installed: ["mobilebuildmcp"], responses: version.map { ["mobilebuildmcp --version": CommandResult(status: 0, stdout: $0 + "\n")] } ?? [:])
+        if let branch { runner.responses["git -C \(project.root.path) symbolic-ref --short -q HEAD"] = CommandResult(status: 0, stdout: branch + "\n") }
         runner.paths["mobilebuildmcp"] = project.root.appending(path: "bin/mobilebuildmcp").path
         return CheckContext.fake(runner, project: project).machine
     }

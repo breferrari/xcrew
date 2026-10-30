@@ -726,6 +726,28 @@ import Testing
         #expect(kept == shim)
     }
 
+    /// The card the session-start hook prints is dropped by the same age as the mod's history: one number of days.
+    @Test func theCardIsKeptAsLongAsTheHistory() throws {
+        let kept = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1)
+        #expect(Int(kept) == ProjectCard.keptDays)
+    }
+
+    /// The mod writes the card in the format the CLI reads.
+    @Test func theCardsFormatIsTheCLIs() throws {
+        let version = try #require(try text("hooks/mod/card.ts").firstMatch(of: /CARD_VERSION = (\d+)/)?.1)
+        #expect(Int(version) == ProjectCard.version)
+    }
+
+    /// On a Team plan Claude Code's own security plugin seats itself outermost and passes over a user plugin's prompt
+    /// hooks (prompt.context, prompt.section, prompt.attachment) and its classic.* ones, so the mod registers none: the
+    /// card reaches Claude through the session-start hook (docs/findings.md, *Prompt hooks a plugin can't count on*).
+    @Test func theModRegistersNoPromptOrClassicHook() throws {
+        let register = try text("hooks/mod/register.ts")
+        let events = register.matches(of: /on\('([\w.]+)'/).map { String($0.1) }
+        #expect(!events.isEmpty)
+        #expect(events.filter { ["prompt.context", "prompt.section", "prompt.attachment"].contains($0) || $0.hasPrefix("classic.") } == [])
+    }
+
     /// The band puts the doctor's restart warning first and keeps it until done, by that check's id.
     @Test func theModKnowsTheRestartCheck() throws {
         #expect(try text("hooks/mod/problems.ts").contains("export const RESTART_CHECK = '\(ConfigLoadedCheck().id)'"))

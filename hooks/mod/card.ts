@@ -2,15 +2,14 @@ import { average, stopwatch } from './format'
 import { covers, flakyLabel, isWholeScope, type LedgerEntry } from './ledger'
 
 /**
- * The project card: what earlier runs in this folder say about the project, in the context of a conversation's first
- * message. The engine computes that context once per conversation and keeps the answer until a compaction or `/clear`
- * reads it again, so the card is built then, and sent once. It's kept small: every conversation carries it.
+ * The project card: what earlier runs in this folder say about the project, saved after each run and at session start
+ * for `xcrew hook session-start` to print at the start of a conversation, and again after a /clear or a compaction. It's
+ * kept small: every conversation carries it.
  */
 
-/** The context block's name, which the engine renders as its heading. */
-export const CARD_BLOCK = 'xcrewProjectCard'
-/** How long the conversation's first request waits for the card; a card not built by then stays out. */
-export const CARD_WAIT_MS = 1_500
+/** The saved card's format, which the CLI reads (`ProjectCard` in the Swift package). */
+export const CARD_VERSION = 1
+export type SavedCard = { version: number; folder: string; branch: string; updated: number; text?: string }
 export const CARD_MAX_LINES = 10
 export const CARD_MAX_CHARACTERS = 800
 /** A full run at least this long is worth a selection instead. */

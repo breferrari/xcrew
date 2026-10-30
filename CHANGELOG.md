@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The project card reaches Claude on every plan. Claude Code passes over a plugin's prompt hooks on Team organisations, so the card that used to ride on the first message now comes with the session's start, and after a `/clear` or a compaction, and says how old its notes are.
+
 ## 0.9.2 — 2026-10-30
 
 - In a config of your own that still enables MobileBuildMCP's `xcode-ide` group, Xcode MCP tools it forwards get Xcrew's checks too. In a generated project you're asked before `XcodeWrite`, and a build after a manifest edit is held back for the generate. Tools it proxies are timed and named in the status line as the Xcode MCP's own.

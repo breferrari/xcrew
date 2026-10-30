@@ -282,16 +282,15 @@ XcodeGen's `info` and `entitlements` paths aren't counted yet, because reading t
 
 ## The project card
 
-The card reaches Claude in the context of a conversation's first message, which a mod adds with a `prompt.context` hook. The engine's types (Claude Code 2.1.312, read October 30, 2026) say the event:
-- "Fires once per conversation, when the engine computes the context blocks its first user message carries";
-- has an answer that "stands until `$.ui.invalidate("prompt.context")` or a re-read (compaction, `/clear`)";
-- treats a block whose name the engine doesn't route as one that "reaches the model in one copy … While it stands, a later answer adds, changes and takes back none."
+The card used to reach Claude with a conversation's first message, through a mod's `prompt.context` hook. The engine's types (Claude Code 2.1.312, read October 30, 2026) said the event fires once per conversation and its answer stands until a compaction or `/clear` reads it again.
 
-So the engine sends the card once, and keeps it unchanged until the conversation is compacted or cleared. An earlier draft added it to the system prompt through `prompt.compose`, which "Fires when the engine renders a system prompt", so every prompt. Holding the card fixed there needed module state, which a reload clears, and a first prompt that came before the card was built locked it out for the session.
+### Prompt hooks a plugin can't count on
 
-The hook waits for the card at most `CARD_WAIT_MS`, so a slow CLI (a first run building it, say) leaves the card out of that conversation rather than holding the request.
+On a Team organisation, Claude Code's own security plugin, `cc-plugin-sec-default`, seats itself outermost and passes over a user plugin's `prompt.context`, `prompt.section` and `prompt.attachment` hooks and its `classic.*` ones. The person sees a line saying the hook was skipped, and the card never reaches Claude. Reported upstream as anthropics/claude-code#103626 (a `classic.UserPromptSubmit` hook bypassed on every session's first prompt), #104236 (`classic.Stop`, `StopFailure` and `SessionStart` passed over on Team organisations) and #102653 (`prompt.attachment` hooks no longer running since 2.1.299), all open on October 30, 2026. The engine's native events (`tool.call`, `session.start`, `prompt.submit`, `command.run`, `ui.render`) and the command hooks in `hooks.json` still run. So the mod registers none of the passed-over hooks, which a ManifestTest pins.
 
-Whether a subagent's or a `--bare` session's first message fires `prompt.context` the docs don't say, and the event's input carries no `agentId` or traits to tell. The card is short either way.
+### How it reaches Claude now
+
+The mod saves the card after each run and at session start: `xcrew card --save` keeps one entry per folder (as the file system spells it) and branch (its name, `commit <sha>`, or nothing outside git, as the ledger files it), dated by its newest data, in `~/Library/Caches/xcrew/cards.json`, written whole through a file renamed over it. `xcrew hook session-start`, the plugin's command hook, prints the entry for the folder and the branch checked out now at the end of its briefing, with how old its data is ("as of the run 2 h ago"), unless it's older than the history is kept (`HISTORY_KEPT_MS`, the same number of days on both sides, paired by a test). Claude Code's hooks reference (read October 30, 2026) lists `SessionStart`'s sources as `startup`, `resume`, `clear`, `compact` and `fork`, and a hook with no matcher fires for all of them, so the card comes back after a `/clear` or a compaction as it did before. The hook's `additionalContext` is capped at 10,000 characters; the briefing is about 3,300 and the card at most 800.
 
 The store is the plugin's, across every project, and a run scope (`test_sim · App`) doesn't name one. So each run records the session's folder (`$.session.cwd()`), and the card shows only scopes last run in this folder. Scopes from before that record stay out until they run again. The card is capped in lines and characters, with longer lists counted as "+N more".
 

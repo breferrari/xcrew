@@ -537,6 +537,19 @@ import XcrewTestSupport
     }
 }
 
+@Suite struct CardCommandTests {
+    /// The mod sends the card it built as JSON; the folder is kept as the file system spells it, as the hook reads it.
+    @Test func saveKeepsTheCardTheModSends() async {
+        let project = Project.temporary()
+        let context = CheckContext.fake(project: project)
+        let updated = Date().timeIntervalSince1970 * 1000 - 3 * 3_600_000
+        let json = #"{"version":1,"folder":"\#(project.root.path)","branch":"main","updated":\#(updated),"text":"Notes:\n- a"}"#
+        let run = await Run("card", "--save", context: context, stdin: json)
+        #expect(run.status == 0)
+        #expect(ProjectCard.text(folder: project.canonicalRoot, branch: "main", now: Date(), on: context.machine) == "Notes, as of the run 3 h ago:\n- a")
+    }
+}
+
 @Suite struct ProjectCommandTests {
     @Test func aTuistProjectInASubfolderIsGenerated() async {
         let project = Project.temporary(containing: ["ios/Tuist.swift"])
