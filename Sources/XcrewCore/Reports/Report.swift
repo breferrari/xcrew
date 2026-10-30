@@ -145,7 +145,8 @@ public struct Report: Sendable, Equatable, Codable {
             return await ChangedLines.warnings(warnings, in: listed, project: project, using: runner)
         }()
         async let coverage: ChangedLineCoverage? = {
-            guard let project, let bundle else { return nil }
+            // A run of no tests ran none of the changed lines, which says nothing of them.
+            guard let project, let bundle, read.testTotal != 0 else { return nil }
             return await ChangedLineCoverage.of(bundle, change: { await change.value() }, project: project, using: runner)
         }()
         async let why: String? = {
@@ -198,8 +199,7 @@ public struct Report: Sendable, Equatable, Codable {
         // about warnings the change causes in lines it left alone.
         if let inChanged = await inChanged, let note = warningsNote(inChanged, of: warnings.count) { notes.append(note) }
 
-        // A run of no tests ran none of the changed lines, which says nothing of them.
-        if tests != 0, let note = await coverage?.note { notes.append(note) }
+        if let note = await coverage?.note { notes.append(note) }
 
         // A run that failed because of the Mac says so first: its errors would read as the code's.
         if let why = await why { notes.insert(why, at: 0) }
