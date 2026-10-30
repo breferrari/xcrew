@@ -156,6 +156,17 @@ test('a row drawn before its notification is read leaves the call to be read', a
   expect(toasts.at(-1)?.startsWith('✗ test_sim')).toBe(true)
 })
 
+/** A failed run read from its notification names the pinned Xcode as a foreground failure does: once a session. */
+test('a backgrounded failure names the pin once a session', async ($, on) => {
+  const pin = 'xcrew: builds use Xcode 27.2 while the project pins Xcode 26.5 (.xcode-version): a different SDK may be the cause.'
+  const failed: Partial<Report> = { ok: false, failures: [], notes: [], pinNote: pin, pin: '26.5 (.xcode-version)' }
+  const { clock } = session(on, { reports: [failed, { ...UNREAD, backgroundTask: 'b8second' }, failed] })
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  expect((await notify($, clock)).context).toContain(pin)
+  await callTool($, TEST, { tool_use_id: 'toolu_bg2' })
+  expect((await notify($, clock, notificationText('the server\'s result', 'b8second'))).context ?? []).not.toContain(pin)
+})
+
 /** Read, the run has its own outcome: the row's line that it ended in the background isn't said as well. */
 test('a notification read for its result has no background line besides', async ($, on) => {
   const { toasts, clock } = session(on, { reports: [{ ok: true, failures: [], notes: [] }] })
