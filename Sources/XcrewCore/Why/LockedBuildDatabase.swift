@@ -18,16 +18,11 @@ struct LockedBuildDatabase: MachineCause {
         let holders = Set(lsof.stdout.split(whereSeparator: \.isNewline).compactMap { Int32($0) })
         let derivedData = database.firstMatch(of: #/^(.+)/Build/Intermediates\.noindex/XCBuildData/build\.db$/#).map { ProjectLayout.canonicalPath(String($0.1)) }
         let building = processes.filter(\.isXcodebuild).first { process in
-            holders.contains(process.id) || derivedData.map { Self.derivedData(of: process) == $0 } == true
+            holders.contains(process.id) || (derivedData != nil && process.derivedDataPath == derivedData)
         }
         if let building { return Self.held(by: building) }
         if let other = processes.first(where: { holders.contains($0.id) }) { return Self.heldElsewhere(by: other) }
         return Self.free
-    }
-
-    /// The DerivedData an xcodebuild builds into, spelled as the file system spells it.
-    static func derivedData(of process: ProcessList.Process) -> String? {
-        process.derivedDataPath.map(ProjectLayout.canonicalPath)
     }
 
     /// When nothing holds the database any more.
@@ -44,6 +39,6 @@ struct LockedBuildDatabase: MachineCause {
     /// Another process holding it, such as Xcode's build service: a build still going, not one to stop.
     static func heldElsewhere(by holder: ProcessList.Process) -> String {
         let name = holder.program.isEmpty ? "a process" : holder.program
-        return "\(name) holds its build database (\"database is locked\"): pid \(holder.id), running \(holder.age), a build still going, in Xcode or another session. The database is free once it ends."
+        return "\(name) holds its build database (\"database is locked\"): \(holder.described), a build still going, in Xcode or another session. The database is free once it ends."
     }
 }

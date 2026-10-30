@@ -10,26 +10,30 @@ struct XcodebuildLeftRunningCheck: Check {
     let title = "No xcodebuild left running for this project"
 
     func run(_ context: CheckContext) async -> CheckResult {
-        let list = await ProcessList.load(using: context.runner)
+        let list = await context.processes.value()
         guard !list.processes.isEmpty else { return .skip("couldn't list the processes") }
         let builds = list.processes.filter(\.isXcodebuild)
         let folders = await ProcessList.folders(of: builds, using: context.runner)
-        let root = ProjectLayout.canonical(context.project.root)
+        let root = context.project.canonicalRoot
         let projects = builds.filter { build in
             folders[build.id] == root || [context.project.root.path, root].contains { build.command.contains($0 + "/") }
         }
         // The process that started it, past an `xcrun` that ran it: launchd's pid 1 once its session ended.
-        func starter(of build: ProcessList.Process) -> (id: Int32, above: [ProcessList.Process]) {
+        func starter(of build: ProcessList.Process) -> Int32 {
             let above = list.ancestors(of: build.id)
-            let first = above.first { $0.program != "xcrun" }
-            return (first?.id ?? above.last?.parent ?? build.parent, above)
+            return above.first { $0.program != "xcrun" }?.id ?? above.last?.parent ?? build.parent
         }
-        if let left = projects.first(where: { starter(of: $0).id == 1 }) {
-            return .warn("an xcodebuild still builds this project after its Claude Code session ended, holding its build folder: \(left.described). Stopping it frees the folder: kill \(left.id)")
+        if let left = projects.first(where: { starter(of: $0) == 1 }) {
+            return .warn(Self.building(left, "an xcodebuild still builds this project after its Claude Code session ended"))
         }
-        if let served = projects.first(where: { starter(of: $0).above.contains(where: ProcessList.isMobileBuildMCPServer) }) {
-            return .warn("an xcodebuild MobileBuildMCP started still builds this project, holding its build folder: \(served.described). A call stopped partway leaves its xcodebuild running; a call moved to the background is still building. Stopping it frees the folder: kill \(served.id)").offThePrompt()
+        if let served = projects.first(where: { list.ancestors(of: $0.id).contains(where: ProcessList.isMobileBuildMCPServer) }) {
+            return .warn(Self.building(served, "an xcodebuild MobileBuildMCP started still builds this project", "A call stopped partway leaves its xcodebuild running; a call moved to the background is still building. ")).offThePrompt()
         }
         return .pass("no xcodebuild left running for this project")
+    }
+
+    /// `<who> still builds this project, holding its build folder: <pid, destination, age>. <why>Stopping it…: kill <pid>`
+    static func building(_ build: ProcessList.Process, _ who: String, _ why: String = "") -> String {
+        "\(who), holding its build folder: \(build.described). \(why)Stopping it frees the folder: kill \(build.id)"
     }
 }

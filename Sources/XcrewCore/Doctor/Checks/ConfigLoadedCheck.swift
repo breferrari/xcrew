@@ -13,7 +13,7 @@ struct ConfigLoadedCheck: Check {
         guard let written = try? FileManager.default.attributesOfItem(atPath: context.project.managedMarker.path)[.modificationDate] as? Date else {
             return .skip("no config xcrew wrote")
         }
-        let list = await ProcessList.load(using: context.runner)
+        let list = await context.processes.value()
         guard let (server, isSessions) = await list.mobileBuildMCPServer(serving: context.project, forSessionOf: context.machine.processID, using: context.runner) else {
             return .skip("MobileBuildMCP isn't running for this project")
         }

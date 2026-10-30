@@ -11,9 +11,9 @@ extension ProcessList.Process {
         command.firstMatch(of: #/-destination (.+?)(?= -[A-Za-z]|$)/#).map { String($0.1) }
     }
 
-    /// Its `-derivedDataPath`, up to the next flag.
+    /// Its `-derivedDataPath`, up to the next flag, spelled as the file system spells it.
     var derivedDataPath: String? {
-        command.firstMatch(of: #/-derivedDataPath (.+?)(?= -[A-Za-z]|$)/#).map { String($0.1) }
+        command.firstMatch(of: #/-derivedDataPath (.+?)(?= -[A-Za-z]|$)/#).map { ProjectLayout.canonicalPath(String($0.1)) }
     }
 
     /// How long it has run: `40 s`, `12 min`, `3 h`, `1 d 2 h`.

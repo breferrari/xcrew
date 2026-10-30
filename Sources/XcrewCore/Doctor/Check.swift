@@ -64,12 +64,16 @@ public struct CheckContext: Sendable {
     public let xcodeMCPStatus: Once<CommandResult>
     /// The Mac's Xcodes for the project, which three checks read: looked at once per doctor run, when first asked for.
     public let xcodes: Once<XcodeSnapshot>
+    /// The processes running, which three checks read: listed once per doctor run, when first asked for.
+    let processes: Once<ProcessList>
 
     public init(project: Project, machine: Machine) {
         self.project = project
         self.machine = machine
         xcodeMCPStatus = Once { await machine.runner.run("xcrun", "mcp-server", "status") }
-        xcodes = Once { await XcodeSnapshot.take(of: project, on: machine) }
+        let processes = Once { await ProcessList.load(using: machine.runner) }
+        self.processes = processes
+        xcodes = Once { await XcodeSnapshot.take(of: project, on: machine, processes: await processes.value()) }
     }
 
     public var runner: any CommandRunning { machine.runner }
