@@ -1,10 +1,12 @@
 name: CI
 
-# Runs once per change, on its pull request (or its merge-queue entry, once the repository has
-# one). The ruleset only merges a pull request that is up to date with main and green, so main
-# holds exactly what passed and needs no second run; the weekly canary covers main against new
-# tools.
+# Runs on each pull request (or its merge-queue entry, once the repository has one), and again
+# on main after each merge. The ruleset merges a green pull request without requiring it to be
+# up to date with main, so two that pass on their own can break main together: main's own run
+# catches that. The weekly canary covers main against new tools.
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
 
@@ -28,14 +30,21 @@ jobs:
           fetch-depth: 0
       # Markdown alone skips the jobs below, which then report as skipped and satisfy the
       # required checks. CHANGELOG.md, skills and the briefing are Markdown the tests read.
-      # A file a channel ships, the README among them, runs Distribution.
+      # A file a channel ships, the README among them, runs Distribution. A push to main runs
+      # everything: it has no pull request base, and a newer push cancels an older push's run,
+      # so each run must cover every commit since main last passed.
       - id: diff
         env:
+          EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           code=false
           distribution=false
-          for file in $(git diff --name-only "$BASE" HEAD); do
+          if [ "$EVENT" = push ]; then
+            code=true
+            distribution=true
+          fi
+          for file in $(if [ "$EVENT" != push ]; then git diff --name-only "$BASE" HEAD; fi); do
             case "$file" in
               CHANGELOG.md | skills/* | context/*) code=true ;;
               *.md) ;;

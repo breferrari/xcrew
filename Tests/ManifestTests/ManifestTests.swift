@@ -424,7 +424,7 @@ import Testing
     /// touches them, and a job left out of `needs` fails here.
     @Test func oneCheckNeedsEveryJob() throws {
         let ci = try text(".github/workflows/ci.yml")
-        let jobs = Set(ci.matches(of: /(?m)^  ([a-z][a-z-]*):$/).map { String($0.1) })
+        let jobs = Set(try #require(ci.firstMatch(of: /(?s)\njobs:\n.*/)).output.matches(of: /(?m)^  ([a-z][a-z-]*):$/).map { String($0.1) })
         let aggregate = try #require(ci.firstMatch(of: /(?s)\n  ci:\n(.*?)(?=\n  [a-z-]+:\n|\z)/)).output.1
         #expect(aggregate.contains("name: CI\n"))
         #expect(aggregate.contains("if: always()"))
@@ -436,6 +436,20 @@ import Testing
         let release = try text(".github/workflows/release.yml")
         let checks = try #require(release.firstMatch(of: /for check in ([^;]+); do/)).output.1
         #expect(checks.trimmingCharacters(in: .whitespaces) == #""CI""#)
+    }
+
+    /// CI runs on each push to main as well as on pull requests: the ruleset doesn't require a branch to be up to date
+    /// with main, so two pull requests green on their own can break it together. A push has no pull request base to
+    /// diff against, and its run stands in for older ones it cancels, so it runs every job.
+    @Test func ciRunsEveryJobOnEachPushToMain() throws {
+        let ci = try text(".github/workflows/ci.yml")
+        let triggers = try #require(ci.firstMatch(of: /(?s)\non:\n(.*?)\n\n/)).output.1
+        #expect(triggers.contains("  push:\n    branches: [main]\n"))
+        #expect(triggers.contains("  pull_request:\n"))
+        #expect(triggers.contains("  merge_group:"))
+        let changes = try #require(ci.firstMatch(of: /(?s)\n  changes:\n(.*?)(?=\n  [a-z-]+:\n|\z)/)).output.1
+        #expect(changes.contains("EVENT: ${{ github.event_name }}"))
+        #expect(changes.contains(/if \[ "\$EVENT" = push \]; then\n\s+code=true\n\s+distribution=true\n/))
     }
 
     /// Every job that builds Swift says which toolchain it used, so a failure on CI names the compiler that said no.
