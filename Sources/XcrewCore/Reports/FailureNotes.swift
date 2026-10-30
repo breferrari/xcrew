@@ -1,8 +1,8 @@
 import Foundation
 
 /// Adds what a result bundle knows to a failing MobileBuildMCP test run's text: each failure's
-/// location, a crash's exception and frames, the images a failed test attached, and each skipped
-/// test's reason, including skipped tests the text leaves out.
+/// location, a crash's exception and frames, the images a failed test attached, a pointer to `look`
+/// under a failed UI test, and each skipped test's reason, including skipped tests the text leaves out.
 public enum FailureNotes {
     /// At most this many tests are looked up: past it, the first ones are enough to start from.
     static let mostLookups = 10
@@ -74,6 +74,12 @@ public enum FailureNotes {
     /// What a failed test's image lines begin with, which the routing rules name.
     static let imageLabel = "image:"
 
+    /// Under a failed UI test, the line sending Claude to `look`: a test whose failed run kept a screen recording, the
+    /// rule `look` itself goes by.
+    static func lookLine(_ test: TestID) -> String {
+        "      look: the steps before the failure and the screen at it, with the `look` tool or `xcrew look \(test.shown)`"
+    }
+
     /// The text with its notes, and each failed test's images, for the failures pane.
     struct Added {
         let text: MobileText
@@ -122,6 +128,9 @@ public enum FailureNotes {
                     if isCrashed { added += (await bundle.crash(of: test) ?? [noCrashLog]).map { "      \($0)" } }
                     let attached = if let keepsImages { await bundle.images(of: test, keptIn: keepsImages) } else { FailureImages?.none }
                     if let attached { added += attached.shown.map { "      \(imageLabel) \($0)" } + (attached.more.map { ["      \($0)"] } ?? []) }
+                    if keepsImages != nil, FailedRun.runs(activities: await bundle.activities(of: test))?.contains(where: \.hasRecording) == true {
+                        added.append(lookLine(test))
+                    }
                     return (test, added, attached)
                 }
             }

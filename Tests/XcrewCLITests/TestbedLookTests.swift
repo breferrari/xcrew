@@ -242,4 +242,25 @@ struct TestbedLookTests {
             #expect(kept.content == .asWritten("a shape XCTest may use one day\n  with a second line"))
         }
     }
+
+    /// What Claude reads after a failed `test_sim` run: under each failed UI test, a line sending it to `look`.
+    @Test func aFailedUITestsNotesPointToLook() async throws {
+        try await Self.inFolder { root in
+            let text = try Self.capture("", "test_sim.txt")
+            let added = try #require(await FailureNotes.adding(to: MobileText(text), from: try Self.bundle("mobilebuildmcp", root: root), keepingImagesIn: root.appending(path: "images"))).text.text
+            let pointers = added.components(separatedBy: "\n").filter { $0.hasPrefix("      look: ") }
+            #expect(pointers == ["testFailsAfterTaps", "testMissingElement", "testPlanA", "testRenamedLabel"].map {
+                "      look: the steps before the failure and the screen at it, with the `look` tool or `xcrew look UITests/\($0)`"
+            }, "\(added)")
+        }
+    }
+
+    /// A failed test that kept no recording, as a snapshot test's run doesn't, gets no pointer.
+    @Test func aTestWithoutARecordingGetsNoPointer() async throws {
+        let (bundle, root) = TestbedSnapshotTests.bundle("mobilebuildmcp")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let text = try String(contentsOf: TestbedSnapshotTests.captures.appending(path: "test_sim.txt"), encoding: .utf8)
+        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: root.appending(path: "images"))).text.text
+        #expect(!added.contains("look: "), "\(added)")
+    }
 }
