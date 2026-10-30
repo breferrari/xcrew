@@ -39,6 +39,22 @@ import Testing
         #expect(unrecorded.map(\.hasRecording) == [false])
     }
 
+    /// A run's own attachments, from every step of it, each once: XCTest lists one under each step it belongs to.
+    @Test func aRunHoldsItsOwnAttachmentsOnce() throws {
+        let runs = try #require(FailedRun.runs(activities: Self.activities(#"""
+            {"title":"Start Test","isAssociatedWithFailure":false,"startTime":1,"attachments":[{"name":"Screen Recording.mp4","uuid":"R","lifetime":"keepAlways","timestamp":1}]},
+            {"title":"Waiting for \"Hello\" StaticText","isAssociatedWithFailure":false,"startTime":2,"childActivities":[
+              {"title":"Checking","isAssociatedWithFailure":false,"startTime":2.5,"attachments":[{"name":"Debug description","uuid":"D","lifetime":"keepAlways","timestamp":2.5}]}
+            ],"attachments":[{"name":"Debug description","uuid":"D","lifetime":"keepAlways","timestamp":2.5}]},
+            {"title":"XCTAssertTrue failed","isAssociatedWithFailure":true,"startTime":3,"attachments":[{"name":"App UI hierarchy for App","uuid":"H","lifetime":"keepAlways","timestamp":3.001}]}
+            """#)))
+        #expect(runs.first?.attachments == [
+            FailedRun.Attachment(name: "Screen Recording.mp4", id: "R", at: 1),
+            FailedRun.Attachment(name: "Debug description", id: "D", at: 2.5),
+            FailedRun.Attachment(name: "App UI hierarchy for App", id: "H", at: 3.001),
+        ])
+    }
+
     /// No answer, as `xcresulttool` gives when it fails, is not a run that passed.
     @Test func noAnswerIsNotNoFailure() {
         #expect(FailedRun.runs(activities: "") == nil)

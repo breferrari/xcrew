@@ -52,7 +52,7 @@ struct TestbedLookTests {
             try FileManager.default.copyItem(at: captures.appending(path: capture), to: export)
             let test = TestID(suite: "UITests", name: name)
             let run = try #require(pick(FailedRun.runs(activities: try Self.capture(capture, "activities-\(name).json")) ?? []))
-            let screen = await FailureScreen.keep(of: test, run: run, attachments: FailureImages.attachments(of: test, in: export), from: export, in: root.appending(path: "images"))
+            let screen = await FailureScreen.keep(of: test, run: run, files: Look.files(in: export), in: root.appending(path: "images"))
             // Read before the folder goes.
             return (screen, root.appending(path: "images"), screen.flatMap { FileManager.default.contents(atPath: $0.path) })
         }
@@ -97,9 +97,9 @@ struct TestbedLookTests {
             try FileManager.default.copyItem(at: Self.captures.appending(path: "xcodebuild"), to: export)
             let test = TestID(suite: "UITests", name: "testMissingElement")
             let run = try #require(FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testMissingElement.json"))?.last)
-            let attachments = FailureImages.attachments(of: test, in: export)
-            let first = try #require(await FailureScreen.keep(of: test, run: run, number: 1, attachments: attachments, from: export, in: root.appending(path: "images")))
-            let second = try #require(await FailureScreen.keep(of: test, run: run, number: 2, attachments: attachments, from: export, in: root.appending(path: "images")))
+            let files = Look.files(in: export)
+            let first = try #require(await FailureScreen.keep(of: test, run: run, number: 1, files: files, in: root.appending(path: "images")))
+            let second = try #require(await FailureScreen.keep(of: test, run: run, number: 2, files: files, in: root.appending(path: "images")))
             #expect(first.path != second.path)
             #expect(FileManager.default.fileExists(atPath: first.path) && FileManager.default.fileExists(atPath: second.path))
         }
@@ -119,7 +119,7 @@ struct TestbedLookTests {
     /// A run whose recording wasn't kept has no screen.
     @Test func aRunWithNoRecordingHasNoScreen() async throws {
         let (screen, _, _) = try await Self.screen("xcodebuild", "testMissingElement") { runs in
-            runs.first.map { FailedRun(device: $0.device, configuration: "Plan C", steps: [], failure: $0.failure, failedAt: $0.failedAt, deviceID: $0.deviceID) }
+            runs.first.map { FailedRun(device: $0.device, configuration: $0.configuration, steps: [], failure: $0.failure, failedAt: $0.failedAt, deviceID: $0.deviceID, attachments: $0.attachments.filter { !$0.name.hasSuffix(".mp4") }) }
         }
         #expect(screen == nil)
     }
@@ -189,10 +189,28 @@ struct TestbedLookTests {
             try FileManager.default.copyItem(at: Self.captures.appending(path: "xcodebuild"), to: export)
             let test = TestID(suite: "UITests", name: "testPlanA")
             let run = try #require(FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testPlanA.json"))?.first)
-            let kept = try #require(FailureHierarchy.keep(of: test, run: run, number: nil, attachments: FailureImages.attachments(of: test, in: export), from: export, in: root.appending(path: "images")))
-            #expect(kept.hierarchy?.elements.contains { $0.label == "Plan B" } == true)
+            let kept = try #require(FailureHierarchy.keep(of: test, run: run, number: nil, files: Look.files(in: export), in: root.appending(path: "images")))
+            guard case let .read(hierarchy) = kept.content else { Issue.record("not read: \(kept.content)"); return }
+            #expect(hierarchy.elements.contains { $0.label == "Plan B" })
             #expect(try String(contentsOfFile: kept.path, encoding: .utf8).hasPrefix("Application, 0x"))
             #expect(kept.path.hasPrefix(root.appending(path: "images/UITests/testPlanA").path))
+        }
+    }
+
+    /// A run's hierarchy is one of its own attachments: a run that attached none shows none, though another run of the
+    /// test on the same device and configuration did, as with `-test-iterations`; and one stamped just after the failing
+    /// step began is still the run's.
+    @Test func aRunShowsOnlyItsOwnHierarchy() async throws {
+        try await Self.inFolder { root in
+            let export = root.appending(path: "export")
+            try FileManager.default.copyItem(at: Self.captures.appending(path: "xcodebuild"), to: export)
+            let test = TestID(suite: "UITests", name: "testMissingElement")
+            let run = try #require(FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testMissingElement.json"))?.first)
+            let files = Look.files(in: export)
+            let without = FailedRun(device: run.device, configuration: run.configuration, steps: run.steps, failure: run.failure, failedAt: run.failedAt, deviceID: run.deviceID, attachments: run.attachments.filter { !$0.name.hasPrefix("App UI hierarchy") })
+            #expect(FailureHierarchy.keep(of: test, run: without, number: nil, files: files, in: root.appending(path: "images")) == nil)
+            let earlier = FailedRun(device: run.device, configuration: run.configuration, steps: run.steps, failure: run.failure, failedAt: run.failedAt - 0.001, deviceID: run.deviceID, attachments: run.attachments)
+            #expect(FailureHierarchy.keep(of: test, run: earlier, number: nil, files: files, in: root.appending(path: "images")) != nil)
         }
     }
 
@@ -202,13 +220,12 @@ struct TestbedLookTests {
             let export = root.appending(path: "export")
             try FileManager.default.copyItem(at: Self.captures.appending(path: "xcodebuild"), to: export)
             let test = TestID(suite: "UITests", name: "testMissingElement")
-            let attachments = FailureImages.attachments(of: test, in: export)
             let run = try #require(FailedRun.runs(activities: try Self.capture("xcodebuild", "activities-testMissingElement.json"))?.first)
-            let named = try #require(attachments.first { ($0["suggestedHumanReadableName"] as? String)?.hasPrefix("App UI hierarchy") == true && $0["configurationName"] as? String == run.configuration })
-            try "a shape XCTest may use one day\n  with a second line".write(to: export.appending(path: try #require(named["exportedFileName"] as? String)), atomically: true, encoding: .utf8)
-            let kept = try #require(FailureHierarchy.keep(of: test, run: run, number: nil, attachments: attachments, from: export, in: root.appending(path: "images")))
-            #expect(kept.hierarchy == nil)
-            #expect(kept.text == "a shape XCTest may use one day\n  with a second line")
+            let files = Look.files(in: export)
+            let named = try #require(run.attachments.first { $0.name.hasPrefix("App UI hierarchy") })
+            try "a shape XCTest may use one day\n  with a second line".write(to: try #require(files[named.id]), atomically: true, encoding: .utf8)
+            let kept = try #require(FailureHierarchy.keep(of: test, run: run, number: nil, files: files, in: root.appending(path: "images")))
+            #expect(kept.content == .asWritten("a shape XCTest may use one day\n  with a second line"))
         }
     }
 }

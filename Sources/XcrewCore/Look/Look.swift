@@ -69,21 +69,27 @@ public enum Look {
         let numbers = runs.indices.map { index in
             runs.filter { key($0) == key(runs[index]) }.count > 1 ? runs[..<index].filter { key($0) == key(runs[index]) }.count + 1 : nil
         }
-        // Every attachment: the hierarchy is told by its content, and the recordings make up nearly all of an export.
-        let kept = await bundle.attachments(of: test, onlyFailures: false) { export in
-            let attachments = FailureImages.attachments(of: test, in: export)
-            var kept: [(screen: FailureScreen?, hierarchy: FailureHierarchy?)] = []
-            for (failed, number) in zip(runs, numbers) {
-                let screen = failed.hasRecording ? await FailureScreen.keep(of: test, run: failed, number: number, attachments: attachments, from: export, in: run) : nil
-                kept.append((screen, FailureHierarchy.keep(of: test, run: failed, number: number, attachments: attachments, from: export, in: run)))
+        // Every attachment, and only for runs that attached any, as a unit test's don't: the hierarchy is told by its
+        // content, and the recordings make up nearly all of an export (docs/findings.md).
+        let kept: [(screen: FailureScreen?, hierarchy: FailureHierarchy?)] = if runs.contains(where: { !$0.attachments.isEmpty }) {
+            await bundle.attachments(of: test, onlyFailures: false) { export in
+                let files = files(in: export)
+                var kept: [(screen: FailureScreen?, hierarchy: FailureHierarchy?)] = []
+                for (failed, number) in zip(runs, numbers) {
+                    kept.append((await FailureScreen.keep(of: test, run: failed, number: number, files: files, in: run), FailureHierarchy.keep(of: test, run: failed, number: number, files: files, in: run)))
+                }
+                return kept
             }
-            return kept
+        } else {
+            runs.map { _ in (nil, nil) }
         }
         var lines = ["xcrew look: \(test.shown), in \(name)"]
         for (failed, found) in zip(runs, kept) {
             lines.append("  " + [failed.configuration, failed.device].filter { !$0.isEmpty }.joined(separator: " · "))
             lines += failed.steps.map { "    \(firstLine($0))" }
-            lines += ["    ✗ \(firstLine(failed.failure))", "    " + screenLine(found.screen, recorded: failed.hasRecording)]
+            lines.append("    ✗ \(firstLine(failed.failure))")
+            guard !failed.attachments.isEmpty else { continue }
+            lines.append("    " + screenLine(found.screen, recorded: failed.hasRecording))
             lines += hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps)).map { "    \($0)" }
         }
         return lines.joined(separator: "\n")
@@ -99,13 +105,21 @@ public enum Look {
     static func hierarchyLines(_ kept: FailureHierarchy?, query: UIQuery?) -> [String] {
         guard let kept else { return ["on screen: no hierarchy kept; XCTest attaches one when a query fails"] }
         let more = { (count: Int) in count > 0 ? ["  and \(count) more in \(kept.path)"] : [] }
-        guard let hierarchy = kept.hierarchy else {
-            let raw = kept.text.split(separator: "\n").map(String.init)
+        switch kept.content {
+        case let .asWritten(text):
+            let raw = text.split(separator: "\n").map(String.init)
             return ["on screen, as XCTest wrote it:"] + raw.prefix(mostElements).map { "  \($0)" } + more(raw.count - mostElements)
+        case let .read(hierarchy):
+            let shown = hierarchy.lines(query: query, most: mostElements)
+            let head = if let query, !shown.found { "on screen, nothing the query's \"\(query.text)\" \(query.type) matches:" } else { "on screen:" }
+            return [head] + shown.lines.map { "  \($0)" } + more(shown.more)
         }
-        let shown = hierarchy.lines(query: query, most: mostElements)
-        let head = if let query, !shown.found { "on screen, nothing the query's \"\(query.text)\" \(query.type) matches:" } else { "on screen:" }
-        return [head] + shown.lines.map { "  \($0)" } + more(shown.more)
+    }
+
+    /// An export's files by the attachment id that names each, its extension dropped.
+    static func files(in export: URL) -> [String: URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: export.path)) ?? []
+        return Dictionary(names.map { (URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent, export.appending(path: $0)) }) { first, _ in first }
     }
 
     static func firstLine(_ text: String) -> String {

@@ -44,6 +44,8 @@ import XcrewTestSupport
     @Test func aTestNamedWithItsTargetIsFound() async {
         let run = await Run("look", "AppUITests/LoginTests/testLogin", "--bundle", "/runs/Run.xcresult", context: context([Self.steps("LoginTests/testLogin"): Self.activities(recorded: false)]))
         #expect(run.text.hasPrefix("xcrew look: LoginTests/testLogin, in Run.xcresult\n"), "\(run.text)")
+        // A run that attached nothing, as a unit test's doesn't, has no screen or hierarchy to speak of.
+        #expect(!run.text.contains("screen") && !run.text.contains("on screen"), "\(run.text)")
     }
 
     /// When `xcresulttool` gives no answer, `look` says it couldn't read the bundle, never that nothing failed.

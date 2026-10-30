@@ -12,26 +12,16 @@ struct FailureScreen: Sendable, Equatable {
     /// How XCTest names a recording, as exported and as suggested (docs/findings.md).
     static let recordingSuffix = ".mp4"
 
-    /// The screen at `run`'s failure, from its recording among `attachments`, the test's in `export`'s manifest, kept in
-    /// `<run folder>/<suite>/<test>/`, numbered when the test failed more than once on one device and configuration.
-    /// Nil when the run kept no recording, or it couldn't be read.
-    static func keep(of test: TestID, run: FailedRun, number: Int? = nil, attachments: [[String: Any]], from export: URL, in runFolder: URL) async -> FailureScreen? {
-        // The run's own: the same configuration and device, started before the failure; the latest, when a test kept more.
-        let recordings = attachments.compactMap { attachment -> (file: URL, started: Double)? in
-            guard attachment["configurationName"] as? String == run.configuration, attachment["deviceId"] as? String == run.deviceID,
-                  let exported = attachment["exportedFileName"] as? String, let started = attachment["timestamp"] as? Double, started <= run.failedAt
-            else { return nil }
-            let file = export.appending(path: exported)
-            return isMovie(file) ? (file, started) : nil
-        }
-        guard let recording = recordings.max(by: { $0.started < $1.started }) else { return nil }
-        let kept = FailureImages.folder(of: test, in: runFolder)
-        try? FileManager.default.createDirectory(at: kept, withIntermediateDirectories: true)
-        let name = (["screen at failure", run.device, run.configuration] + (number.map { ["run \($0)"] } ?? [])).joined(separator: ", ").replacingOccurrences(of: "/", with: "-")
-        let destination = kept.appending(path: "\(name).png")
+    /// The screen at `run`'s failure, from the latest of its own recordings in an export, whose files `files` names by
+    /// attachment id; kept in `<run folder>/<suite>/<test>/`, numbered when the test failed more than once on one device
+    /// and configuration. Nil when the run kept no recording, or it couldn't be read.
+    static func keep(of test: TestID, run: FailedRun, number: Int? = nil, files: [String: URL], in runFolder: URL) async -> FailureScreen? {
+        let recordings = run.attachments.filter { $0.name.hasSuffix(recordingSuffix) && $0.at <= run.failedAt }
+        guard let recording = recordings.max(by: { $0.at < $1.at }), let file = files[recording.id], isMovie(file) else { return nil }
+        let destination = run.keptFile("screen at failure", extension: "png", number: number, of: test, in: runFolder)
         // A frame stays on screen until the next, and the recording until it stops: the gap is from the recording's end.
-        guard let frame = await lastFrame(of: recording.file, to: destination) else { return nil }
-        return FailureScreen(path: destination.path, secondsBefore: max(0, run.failedAt - recording.started - frame.length))
+        guard let frame = await lastFrame(of: file, to: destination) else { return nil }
+        return FailureScreen(path: destination.path, secondsBefore: max(0, run.failedAt - recording.at - frame.length))
     }
 
     /// Whether a file's first bytes say it's an MPEG-4 or QuickTime movie: an `ftyp` box first. The exported file's own

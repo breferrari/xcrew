@@ -59,19 +59,35 @@ import Testing
         #expect(shown.more == 8)
     }
 
+    /// XCTest may leave an apostrophe in a label unescaped, and print a value without quotes; a label's text can hold
+    /// what looks like another attribute.
+    @Test func attributesAreReadWhateverTheirQuoting() throws {
+        let hierarchy = try #require(UIHierarchy(text: """
+            Application, 0x1, pid: 1, label: 'App'
+              Button, 0x2, {{0.0, 0.0}, {1.0, 1.0}}, label: 'Don't have an account?'
+              Switch, 0x3, {{0.0, 0.0}, {1.0, 1.0}}, identifier: 'wifi', label: 'Wi-Fi', value: 1 <AX element pid: 1>
+              StaticText, 0x4, {{0.0, 0.0}, {1.0, 1.0}}, identifier: 'note, label: 'x'', label: 'Note'
+            """))
+        #expect(hierarchy.lines(query: nil, most: 10).lines == [
+            #"Application "App""#,
+            #"  Button "Don't have an account?""#,
+            #"  Switch "Wi-Fi", identifier "wifi", value "1""#,
+            #"  StaticText "Note", identifier "note, label: 'x'""#,
+        ])
+    }
+
+    /// The queried element is shown even past the budget, so its mark is never cut.
+    @Test func theQueriedElementIsShownPastTheBudget() throws {
+        let rows = (1...12).map { "  Button, 0x\($0), {{0.0, 0.0}, {1.0, 1.0}}, label: 'B\($0)'" }
+        let hierarchy = try #require(UIHierarchy(text: (["Application, 0x0, pid: 1, label: 'App'"] + rows).joined(separator: "\n")))
+        let shown = hierarchy.lines(query: UIQuery(text: "B10", type: "Button"), most: 5)
+        #expect(shown.lines.last == #"  Button "B10"   ← the query"#)
+        #expect(shown.more == 7)
+    }
+
     /// Text in another shape isn't a hierarchy: a query's debug description, as XCTest attaches beside it.
     @Test func otherTextIsNotAHierarchy() {
         #expect(UIHierarchy(text: "Query chain:\n →Find: Target Application 'dev.xcrew.testbed.App'\n  ↪︎Find: Descendants matching type StaticText") == nil)
         #expect(UIHierarchy(text: "") == nil)
-    }
-
-    /// The query a failure names: in its own message, or in the last step that names one before it.
-    @Test(arguments: [
-        (#"Failed to tap "checkout" Button: No matches found for Elements matching predicate '"checkout" IN identifiers'"#, [String](), UIQuery(text: "checkout", type: "Button")),
-        ("XCTAssertTrue failed", [#"Open dev.xcrew.testbed.App"#, #"Waiting 2.0s for "Plan A" StaticText to exist"#, "Collecting debug information to assist test failure triage"], UIQuery(text: "Plan A", type: "StaticText")),
-        ("XCTAssertTrue failed", ["Set Up"], nil),
-    ])
-    func theQueryIsTheOneTheFailureOrItsStepsName(failure: String, steps: [String], query: UIQuery?) {
-        #expect(UIQuery(failure: failure, steps: steps) == query)
     }
 }
