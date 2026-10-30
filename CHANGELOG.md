@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The project card reaches Claude on every plan. Claude Code passes over a plugin's prompt hooks on Team organisations, so the card that used to ride on the first message now comes with the session's start, and after a `/clear` or a compaction, and says how old its notes are.
+- A build or test that Claude moves to the background no longer shows as passed the moment it moves: the line above the prompt says it has no result yet, nothing is timed or recorded, and when the task ends the line says so and that its result is in the conversation.
 - A pinned Xcode that isn't the one building no longer shows in the line above the prompt. `xcrew doctor` still lists it, and when a build or test fails, its notes say which Xcode built and which the project pins, as a possible cause.
 
 ## 0.9.2 — 2026-10-30

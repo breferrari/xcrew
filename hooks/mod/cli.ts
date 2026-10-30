@@ -24,6 +24,8 @@ export type Report = {
   notes: string[]
   /** For a run repeated with `-test-iterations`: each repeated test's runs, and the verdict the CLI gives them. */
   repeated?: Repetition[]
+  /** The result said no outcome, as a call moved to the background answers with a handle. */
+  isUnread?: boolean
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */

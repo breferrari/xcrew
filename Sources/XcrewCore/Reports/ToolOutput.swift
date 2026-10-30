@@ -79,14 +79,18 @@ public struct ToolOutput: Sendable {
     static let noTestsRan = "no tests ran"
 
     public var summary: Summary {
-        let found: Summary? = switch shape {
+        guard let found = foundSummary else { return Summary(ok: !isError) }
+        return Summary(ok: found.ok, detail: found.detail.map(Self.shorten))
+    }
+
+    /// The outcome the result itself says, in the shape its server gives one; nil when it says none.
+    var foundSummary: Summary? {
+        switch shape {
         case let .mobileBuildMCPJSON(result): result.summary
         case let .xcodeMCPJSON(result): result.summary
         case let .mobileBuildMCPText(text): text.summary
         case .unrecognized: nil
         }
-        guard let found else { return Summary(ok: !isError) }
-        return Summary(ok: found.ok, detail: found.detail.map(Self.shorten))
     }
 
     /// How long the server says the run took, in milliseconds, which leaves out the hooks and

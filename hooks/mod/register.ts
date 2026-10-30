@@ -1,7 +1,7 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, StaleProject } from '../../types'
-import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
+import { backgroundNote, changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -189,6 +189,13 @@ export const register: Register = on => {
     const outcome = reportOf(reported, result.isError === true)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
+    // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
+    // its real end comes later, as a task notification (`UserMessage` below).
+    if (outcome.isUnread) {
+      if (e.tool_use_id) unreadCalls.set(e.tool_use_id, name)
+      await showEnding($, name, { at: ended, elapsed, ok: true, isUnread: true }, usesBand)
+      return result
+    }
     await quietly(() => $.store.set(historyKey(scope), [...earlier, elapsed].slice(-HISTORY)))
     await quietly(() => $.store.set(updatedKey(scope), ended))
     await quietly(async () => $.store.set(whereKey(scope), await $.session.cwd()))
@@ -219,6 +226,18 @@ export const register: Register = on => {
     const loop = isFullRun ? await quietly(() => countFullRun($, scope, { at: ended, ms: elapsed })) : undefined
     return loop ? withContext(resulting, loopNote(scope, loop, parsed.server === 'MobileBuildMCP')) : resulting
   }).catch(async ($, e, next) => next(e))
+  // A background task's notification names the call that started it: one whose result said no outcome gets its line.
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    const task = (e.props as { task?: { toolUseId?: string; status?: string; durationMs?: number } }).task
+    const tool = task?.toolUseId ? unreadCalls.get(task.toolUseId) : undefined
+    if (task?.toolUseId && tool) {
+      unreadCalls.delete(task.toolUseId)
+      const now = (await quietly(() => $.clock.now())) ?? 0
+      const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
+      void showEnding($, tool, { at: now, elapsed: task.durationMs ?? 0, ok: true, background: backgroundNote(task.status, task.durationMs) }, usesBand)
+    }
+    return next(e)
+  })
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const run = await read($, runState)
@@ -350,6 +369,13 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
 }
 
 /** The CLI's JSON answer, or nothing when it couldn't run or said something else. */
+/** Shows how a run ended: on the band where one draws, for as long as an ending stays, else as a toast. */
+async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean): Promise<void> {
+  if (!usesBand) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
+  await quietly(() => update($, runState, run => (run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending })))
+  await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
+}
+
 async function answer($: EngineInterface, args: string[], timeoutMs = 60_000, stdin?: string): Promise<unknown> {
   return answerOf(await xcrew($, args, timeoutMs, stdin).catch(() => undefined))
 }
@@ -505,6 +531,8 @@ let cardWrites: Promise<unknown> = Promise.resolve()
 let lastSavedCard: string | undefined
 /** How long one save may take before the next goes ahead. */
 const CARD_SAVE_MS = 15_000
+/** The calls whose result said no outcome, by `tool_use_id`, until a task notification names one: its tool's name. */
+const unreadCalls = new Map<string, string>()
 /** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */
 let ledgerWrites: Promise<unknown> = Promise.resolve()
 

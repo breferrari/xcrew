@@ -11,7 +11,11 @@ export type BandRun = {
   /** What the run is doing now, read from its log: `compiling Utility · Formatter.swift`, `testing 312 of 959`. */
   phase?: string
   /** `hasFailures`: the run left failures in the pane, which the band points to. */
-  ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string; hasFailures?: boolean }
+  /**
+   * `isUnread`: the result said no outcome, as a call moved to the background answers. `background`: what a background
+   * task's notification said of the call, after its name.
+   */
+  ended?: { at: number; elapsed: number; ok: boolean; detail?: string; comparison?: string; hasFailures?: boolean; isUnread?: boolean; background?: string }
 }
 
 /** A finished run as its row in the transcript draws it: its outcome, the first failures, and how many more. */

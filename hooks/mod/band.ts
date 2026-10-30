@@ -49,6 +49,9 @@ function outcomeSegments(run: BandRun, now: number): Segment[] {
 /** A finished run's outcome: the mark, the tool, its time and how it compares, and what it came to. */
 function endedSegments(tool: string, ended: NonNullable<BandRun['ended']>): Segment[] {
   const { ok, elapsed, comparison, detail } = ended
+  // Neither passed nor failed: no mark, and no colour that reads as either.
+  if (ended.background) return [segment(tool, undefined, 'semibold'), segment(ended.background)]
+  if (ended.isUnread) return [segment(tool, undefined, 'semibold'), ...piece(`no result yet, ${stopwatch(elapsed)}`)]
   return [
     segment(ok ? '✓' : '✗', ok ? 'success' : 'error'),
     segment(' '),
@@ -137,4 +140,13 @@ export function resultTree(elements: Elements, tool: string, row: ResultRow): Re
 /** The doctor's most serious problem: a pending restart over a finished run, anything else while no run shows. */
 export function problemsTree(elements: Elements, problems: BandProblems): RenderElement {
   return line(elements, problemSegments(problems))
+}
+
+/**
+ * What a background task's notification says of the call that started it, after its name. The task ending
+ * (`completed`) isn't the build passing, so that reads as neither; only a task failed or killed says how it ended.
+ */
+export function backgroundNote(status: string | undefined, durationMs: number | undefined): string {
+  if (status === 'failed' || status === 'killed') return `'s background task was ${status}`
+  return ` ended in the background${durationMs === undefined ? '' : ` (${stopwatch(durationMs)})`}: its result is in the conversation`
 }
