@@ -82,6 +82,10 @@ supplementaryDoctorChecks:
     section: xcrew
     command: mcs/checks/simulators--memory.sh
   - type: shellScript
+    name: This project's MobileBuildMCP storage is within its budget
+    section: xcrew
+    command: mcs/checks/mobilebuildmcp--storage.sh
+  - type: shellScript
     name: The project's Xcode pin applies
     section: xcrew
     command: mcs/checks/xcode--pin.sh

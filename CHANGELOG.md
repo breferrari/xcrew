@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The full `xcrew doctor` adds up this project's MobileBuildMCP storage across its checkouts and worktrees and, past a budget of 40 GB (`XCREW_STORAGE_BUDGET_GB` sets another), names the largest workspace with the `mobilebuildmcp purge --dry-run` command that lists what it would free. It also names the workspaces on this Mac whose project folder is gone. It deletes nothing, and stays out of the line above the prompt, since the report walks every file.
 - `/xcrew flaky` lists the tests marked flaky on the branch checked out, each with how many of its runs failed and the repeated run that found it flaky, straight from the ledger, without a turn.
 - When a build or test failed because of the Mac, as with a corrupt module cache or a missing simulator, the failures pane opens with that cause and its fix, as Claude read it, ahead of the failing tests and compile errors, and the line above the prompt points to the pane even when the run listed no errors.
 - `xcrew doctor` names a simulator `setup --worktree` made whose worktree is gone, or whose runtime the Mac has lost, with the `xcrun simctl delete` command that removes it; it deletes nothing, and judges only what setup recorded making, never a name. It also weighs the booted simulators against this Mac's memory, by two measures that disagree, and names them in the full doctor, off the line above the prompt, once the lower one passes three quarters of it.

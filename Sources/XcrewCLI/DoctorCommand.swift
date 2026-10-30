@@ -33,9 +33,9 @@ struct DoctorCommand: Command {
         // The mod shows these on the band; outside an Apple project every project check would fail.
         let onlyProblems = invocation.arguments.has("problems")
         if onlyProblems, !invocation.context.project.isApplePlatformProject { return 0 }
-        // It runs at session start and after prompts, so it leaves out checks that call the network or start a server, and the results the
+        // It runs at session start and after prompts, so it leaves out checks that call the network, start a server or walk files, and the results the
         // line above the prompt doesn't show.
-        let checks = Doctor.checks.filter { !onlyProblems || !($0.reachesNetwork || $0.startsAServer) }
+        let checks = Doctor.checks.filter { !onlyProblems || $0.isOnPrompt }
         let ran = await Doctor.run(checks, in: invocation.context)
         let problems = onlyProblems ? Doctor.problems(ran) : []
         let entries = onlyProblems ? problems.filter { !$0.result.isOffThePrompt } : ran

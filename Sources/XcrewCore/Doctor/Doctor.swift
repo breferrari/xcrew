@@ -10,6 +10,7 @@ public enum Doctor {
         SimulatorsCheck(),
         WorktreeLeftoversCheck(),
         SimulatorMemoryCheck(),
+        StorageBudgetCheck(),
         HeadlessXcodeMCPCheck(),
         XcodeMCPHandshakeCheck(),
         XcodePinCheck(),
