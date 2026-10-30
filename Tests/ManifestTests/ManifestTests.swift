@@ -998,6 +998,29 @@ import Testing
         #expect(options.isSubset(of: SetupCommand().valuedOptions.union(SetupCommand().flags)), "\(options.subtracting(SetupCommand().valuedOptions.union(SetupCommand().flags)).sorted())")
     }
 
+    /// The form reads `xcrew setup --choices`' JSON by the keys `types/index.d.ts` names: a key either side renames would
+    /// quietly empty the form.
+    @Test func theFormsChoicesTypeNamesTheCLIsKeys() throws {
+        let types = try text("types/index.d.ts")
+        let block = try #require(types.firstMatch(of: /export type SetupChoices = \{[\s\S]*?\n\}/)?.0)
+        var choices = SetupChoices()
+        choices.container = "A"; choices.containerProblem = "p"; choices.worktree = true
+        choices.schemes = [.init(name: "S", container: "A", roles: [.app, .unitTests, .uiTests], app: "App")]
+        choices.simulators = [.init(name: "iPhone", runtime: "27.2", twoDisplays: true)]
+        choices.picks = .init(appScheme: "S", uiScheme: "S", testScheme: "S", bundleID: "b", testSimulator: "iPhone", appSimulator: "iPhone")
+        choices.config = .init(owner: .edited, scheme: "S", debuggerBackend: "dap")
+        let json = String(decoding: try JSONEncoder().encode(choices), as: UTF8.self)
+        let keys = Set(json.matches(of: /"(\w+)":/).map { String($0.1) })
+        for key in keys { #expect(block.contains("\(key)"), "types/index.d.ts' SetupChoices doesn't name \(key)") }
+        for value in ["app", "unit-tests", "ui-tests", "xcrew", "edited", "other"] { #expect(block.contains("'\(value)'"), "\(value)") }
+    }
+
+    /// The form tells a write by the line setup prints when it wrote the config.
+    @Test func theFormKnowsSetupsWroteLine() throws {
+        let line = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const WROTE = '([^']*)'/)?.1)
+        #expect(try text("Sources/XcrewCLI/SetupCommand.swift").contains("xcrew: \(line)"))
+    }
+
     /// The offer to set up names the form for the person, and `/xcrew`'s usage lists it, as the mod answers it.
     @Test func theSetupOfferAndTheUsageNameTheForm() throws {
         #expect(SessionBriefing.setupOffer.contains("`/xcrew setup`"))

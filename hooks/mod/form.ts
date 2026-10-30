@@ -1,8 +1,12 @@
 import type { ElementConstructor, RenderElement } from 'claude-code'
 import type { SetupChoices, SetupForm, SetupPicks } from '../../types'
+import type { Elements } from './band'
 
 /** What Claude reads once after the person writes a config with the form: the session's MobileBuildMCP still has the old one. */
 export const SETUP_FACT = 'The person wrote a new MobileBuildMCP config with /xcrew setup; MobileBuildMCP reads it when Claude Code next starts.'
+
+/** What `xcrew setup` prints when it wrote the config, after its `xcrew: `. */
+export const WROTE = 'wrote .mobilebuildmcp/config.yaml'
 
 /** `/xcrew setup` where no surface draws pickers, as under `claude -p` or on the mobile app. */
 export const NO_FORM = 'The setup form needs a session that draws pickers (the terminal, the desktop app or VS Code). /xcrew:setup, the skill, sets xcrew up from here.'
@@ -46,12 +50,23 @@ export function setupArgs(choices: SetupChoices, picks: SetupPicks): string[] {
 }
 
 /** The form's elements, the terminal's, which draw pickers. */
-export type FormElements = {
-  Box: ElementConstructor<any>
-  Text: ElementConstructor<any>
+export type FormElements = Elements & {
   Select: ElementConstructor<any>
   Input: ElementConstructor<any>
   Button: ElementConstructor<any>
+}
+
+/** Each picker's key, with the pick it sets. */
+export const PICK_KEYS: Readonly<Record<string, keyof SetupPicks>> = { 'app-scheme': 'appScheme', 'ui-scheme': 'uiScheme', 'test-scheme': 'testScheme', 'bundle-id': 'bundleID', 'test-simulator': 'testSimulator', 'app-simulator': 'appSimulator', 'debugger-backend': 'debuggerBackend', 'worktree-simulator': 'worktreeSimulator' }
+
+/** The schemes once per name, as `xcodebuild -scheme` takes them: a workspace's and its project's of one name are one. */
+function schemesByName(schemes: SetupChoices['schemes']): SetupChoices['schemes'] {
+  const byName = new Map<string, SetupChoices['schemes'][number]>()
+  for (const scheme of schemes) {
+    const seen = byName.get(scheme.name)
+    byName.set(scheme.name, seen ? { ...seen, roles: [...new Set([...seen.roles, ...scheme.roles])] } : scheme)
+  }
+  return [...byName.values()]
 }
 
 /** What the form's controls do: a pick by its Select or Input key, the write, and closing it. */
@@ -81,14 +96,15 @@ export function formTree({ Box, Text, Select, Input, Button }: FormElements, for
     if (choices.container && choices.schemes.length === 0) {
       rows.push(Text({ children: [`${choices.container} has no shared scheme. /xcrew:setup, the skill, can list the others with xcodebuild -list.`] }))
     } else if (choices.schemes.length > 0) {
-      const schemes = choices.schemes.map(scheme => ({ value: scheme.name, label: `${scheme.name} · ${scheme.roles.map(role => ROLE_WORDS[role] ?? role).join(', ') || 'builds no app and runs no tests'}` }))
+      const schemes = schemesByName(choices.schemes).map(scheme => ({ value: scheme.name, label: `${scheme.name} · ${scheme.roles.map(role => ROLE_WORDS[role] ?? role).join(', ') || 'builds no app and runs no tests'}` }))
       const none = { value: '', label: 'none' }
       rows.push(select('app-scheme', 'App scheme', schemes, picks.appScheme))
       rows.push(select('ui-scheme', 'UI-test scheme', [none, ...schemes], picks.uiScheme ?? ''))
-      rows.push(select('test-scheme', 'Unit-test scheme', [none, ...schemes], picks.testScheme ?? ''))
+      // No "none": with no unit-test scheme passed, setup finds one itself.
+      rows.push(select('test-scheme', 'Unit-test scheme', schemes, picks.testScheme))
     }
     if (choices.container) {
-      rows.push(Input({ key: 'bundle-id', label: 'Bundle ID', placeholder: 'the project doesn\'t give one literally', value: picks.bundleID ?? '', onSubmit: (value: string) => act.pick('bundle-id', value), onInput: (value: string) => act.pick('bundle-id', value) }))
+      rows.push(Input({ key: 'bundle-id', label: 'Bundle ID', placeholder: 'the project doesn\'t give one literally', value: picks.bundleID ?? '', onInput: (value: string) => act.pick('bundle-id', value), onSubmit: (value: string) => act.pick('bundle-id', value) }))
       if (choices.simulators.length === 0) {
         rows.push(Text({ color: 'warning', children: ['No iOS simulator is installed: add one in Xcode, then open the form again.'] }))
       } else {

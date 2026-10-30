@@ -11,7 +11,7 @@ import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAI
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
-import { drawsForm, type FormElements, formTree, NO_FORM, SETUP_FACT, setupArgs, startingPicks } from './form'
+import { drawsForm, type FormElements, formTree, NO_FORM, PICK_KEYS, SETUP_FACT, setupArgs, startingPicks, WROTE } from './form'
 import { afterFullRun, type Crossing, loopNote } from './loop'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
@@ -337,10 +337,12 @@ export const register: Register = on => {
   })
   // The one unmatched prompt hook: a problem fixed any way at all leaves the band by the next prompt. Never awaited.
   on('prompt.submit', async ($, e, next) => {
-    // A config the form wrote is told once: the session's MobileBuildMCP still runs on the old one.
-    let wrote = false
-    await quietly(() => update($, wroteConfigState, was => ((wrote = was), false)))
-    if (wrote) e = { ...e, context: [...(e.context ?? []), SETUP_FACT] }
+    // A config the form wrote is told once: the session's MobileBuildMCP still runs on the old one. A read first, so
+    // a prompt writes nothing when there's nothing to tell.
+    if ((await quietly(() => read($, wroteConfigState))) === true) {
+      await quietly(() => update($, wroteConfigState, () => false))
+      e = withContext(e, SETUP_FACT)
+    }
     void (async () => {
       if (!drawsBand((await quietly(() => $.session.surfaces())) ?? [])) return
       if ((await $.clock.now()) - lastRead >= REREAD_EVERY_MS) await loadProblems($)
@@ -352,11 +354,7 @@ export const register: Register = on => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
     if (e.tool !== 'Bash') return result
-    if (runsSetup(e.command)) {
-      // Setup may have written the profiles: their scheme is read again.
-      sessionProfileSchemes = new Map()
-      void loadProblems($, true).catch(() => undefined)
-    }
+    if (runsSetup(e.command)) afterSetup($)
     if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, stale => afterGenerate(stale, e.command))
     return result
   }).catch(async ($, e, next) => next(e))
@@ -529,47 +527,58 @@ function cliText($: EngineInterface, args: string[]): Promise<string> {
 async function openForm($: EngineInterface): Promise<string> {
   if (!drawsForm((await quietly(() => $.session.surfaces())) ?? [])) return NO_FORM
   await update($, formState, () => ({ choices: null, picks: {} }))
-  await $.ui.open({ id: SETUP_PANE, title: 'xcrew setup' })
+  const opened = await $.ui.open({ id: SETUP_PANE, title: 'xcrew setup' })
+  if (!opened.isPlaced) return `The setup form couldn't be placed${'reason' in opened && opened.reason ? `: ${opened.reason}` : ''}. /xcrew:setup, the skill, sets xcrew up from here.`
   // The pane says it's reading meanwhile; the command's own line waits for the choices.
   await readChoices($).catch(() => undefined)
   return 'The setup form is open in a pane: pick, then Write config.'
 }
 
 /** Reads what setup offers, for `container` when the person picked one, and starts the picks from it. */
-async function readChoices($: EngineInterface, container?: string): Promise<void> {
+async function readChoices($: EngineInterface, container?: string, written?: string[]): Promise<void> {
   const answered = await answer($, ['setup', '--choices', ...(container ? ['--container', container] : [])], 120_000)
   const choices = answered !== null && typeof answered === 'object' && Array.isArray((answered as SetupChoices).containers) ? (answered as SetupChoices) : undefined
   await update($, formState, form => (choices
-    ? { choices, picks: { ...startingPicks(choices), ...(container ? { container } : {}) } }
+    ? { choices, picks: { ...startingPicks(choices), ...(container ? { container } : {}) }, ...(written ? { written } : {}) }
     : { choices: null, picks: form?.picks ?? {}, unread: 'xcrew setup --choices couldn\'t answer: /xcrew:setup, the skill, sets xcrew up instead.' }))
 }
-
-/** The form keys whose picks are setup's options, and the pick each one sets. */
-const FORM_PICKS: Record<string, keyof SetupPicks> = { 'app-scheme': 'appScheme', 'ui-scheme': 'uiScheme', 'test-scheme': 'testScheme', 'bundle-id': 'bundleID', 'test-simulator': 'testSimulator', 'app-simulator': 'appSimulator', 'debugger-backend': 'debuggerBackend', 'worktree-simulator': 'worktreeSimulator' }
 
 async function pickInForm($: EngineInterface, key: string, value: string): Promise<void> {
   if (key === 'container') {
     await update($, formState, form => ({ choices: null, picks: { ...(form?.picks ?? {}), container: value } }))
     return readChoices($, value)
   }
-  const pick = FORM_PICKS[key]
+  const pick = PICK_KEYS[key]
   if (!pick) return
-  await update($, formState, form => (form ? { ...form, picks: { ...form.picks, [pick]: value === '' ? undefined : value } as SetupPicks, written: undefined } : form))
+  await update($, formState, form => (form ? { ...form, picks: { ...form.picks, [pick]: value === '' ? undefined : value } as SetupPicks } : form))
 }
 
 /** Runs `xcrew setup` with the picks, shows what it said, and has Claude told once when it wrote the config. */
 async function writeFromForm($: EngineInterface): Promise<void> {
-  const form = await read($, formState)
-  if (!form?.choices || form.isWriting) return
-  await update($, formState, current => (current ? { ...current, isWriting: true, written: undefined } : current))
-  const said = await cliText($, setupArgs(form.choices, form.picks))
-  const wrote = said.includes('wrote .mobilebuildmcp/config.yaml')
-  await update($, formState, current => (current ? { ...current, isWriting: false, written: said.split('\n').filter(line => line.trim() !== '') } : current))
-  if (wrote) {
+  // Taken in one update, so a second press while the first writes finds it taken.
+  let form: SetupForm | null = null
+  await update($, formState, current => {
+    if (!current?.choices || current.isWriting) return current
+    form = current
+    return { ...current, isWriting: true, written: undefined }
+  })
+  const taken = form as SetupForm | null
+  if (!taken?.choices) return
+  const said = await cliText($, setupArgs(taken.choices, taken.picks))
+  const written = said.split('\n').filter(line => line.trim() !== '')
+  await update($, formState, current => (current ? { ...current, isWriting: false, written } : current))
+  if (said.includes(WROTE)) {
     await quietly(() => update($, wroteConfigState, () => true))
-    sessionProfileSchemes = new Map()
-    void loadProblems($, true).catch(() => undefined)
+    afterSetup($)
+    // The config is xcrew's now: the form says so, and a second write needs no --force.
+    await readChoices($, taken.picks.container, written).catch(() => undefined)
   }
+}
+
+/** Setup may have written the profiles: their scheme is read again, and whether MobileBuildMCP needs a restart. */
+function afterSetup($: EngineInterface): void {
+  sessionProfileSchemes = new Map()
+  void loadProblems($, true).catch(() => undefined)
 }
 
 /** A run has the band while it shows; the problems wait beneath it. */

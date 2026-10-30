@@ -105,4 +105,11 @@ import XcrewTestSupport
         let choices = SetupChoices.read(container: "App.xcworkspace", containers: ["App.xcworkspace"], containerProblem: nil, in: project, catalog: Self.catalog)
         #expect(choices.picks.bundleID == "dev.example.App")
     }
+
+    /// A config xcrew wrote holds what the person chose before: the form starts from it, not from setup's defaults.
+    @Test func theProfilesXcrewWroteAreThePicks() throws {
+        let project = project()
+        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 17", appSimulator: "iPhone Duo", appScheme: "Core", bundleID: "dev.example.Chosen", testScheme: "Core"), to: project, force: true)
+        #expect(choices(project).picks == SetupChoices.Picks(appScheme: "Core", uiScheme: nil, testScheme: "Core", bundleID: "dev.example.Chosen", testSimulator: "iPhone 17", appSimulator: "iPhone Duo"))
+    }
 }

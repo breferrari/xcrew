@@ -141,13 +141,15 @@ struct SetupCommand: Command {
         async let checkout = Worktree.checkout(of: context.project, using: context.runner)
         var choices = SetupChoices.read(container: container, containers: context.project.layout(.anywhereButHome).containers, containerProblem: problem, in: context.project, catalog: await catalog)
         if await checkout != nil { choices.worktree = true }
-        // mcs's answers are what setup writes with no option.
+        // mcs's answers are what setup writes with no option, unless the profiles xcrew wrote hold the person's own.
         func mcs(_ option: String) -> String? { Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } }
-        choices.picks.appScheme = mcs("app-scheme") ?? choices.picks.appScheme
-        choices.picks.uiScheme = mcs("ui-scheme") ?? choices.picks.uiScheme
-        choices.picks.testScheme = mcs("test-scheme") ?? choices.picks.testScheme
-        choices.picks.bundleID = mcs("bundle-id") ?? choices.picks.bundleID
-        choices.picks.testSimulator = mcs("test-simulator") ?? choices.picks.testSimulator
+        if choices.config == nil {
+            choices.picks.appScheme = mcs("app-scheme") ?? choices.picks.appScheme
+            choices.picks.uiScheme = mcs("ui-scheme") ?? choices.picks.uiScheme
+            choices.picks.testScheme = mcs("test-scheme") ?? choices.picks.testScheme
+            choices.picks.bundleID = mcs("bundle-id") ?? choices.picks.bundleID
+            choices.picks.testSimulator = mcs("test-simulator") ?? choices.picks.testSimulator
+        }
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(choices), as: UTF8.self))
         return 0
     }

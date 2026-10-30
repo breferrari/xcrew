@@ -23,7 +23,7 @@ const CHOICES = {
 }
 
 /** A session that draws in the terminal, with the CLI answering `choices` and printing `wrote` for a write. */
-async function session($: Engine, on: On, choices: unknown = CHOICES, surfaces: RenderSurface[] = ['terminal']) {
+async function session($: Engine, on: On, choices: unknown = CHOICES, surfaces: RenderSurface[] = ['terminal'], placed = true, after: unknown = choices) {
   mapStore(on)
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
@@ -31,11 +31,12 @@ async function session($: Engine, on: On, choices: unknown = CHOICES, surfaces: 
   const opened: string[] = []
   on('ui.open', (_, e) => {
     opened.push(e.id)
-    return { value: { isPlaced: true } }
+    return { value: placed ? { isPlaced: true } : { isPlaced: false, reason: 'the terminal is too narrow' } }
   })
+  let wrote = false
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
-  const calls = stubCli(on, { setup: args => (args.includes('--choices') ? choices : 'xcrew: wrote .mobilebuildmcp/config.yaml for Field.xcworkspace; restart Claude Code so MobileBuildMCP reads it') })
+  const calls = stubCli(on, { setup: args => (args.includes('--choices') ? (wrote ? after : choices) : ((wrote = true), 'xcrew: wrote .mobilebuildmcp/config.yaml for Field.xcworkspace; restart Claude Code so MobileBuildMCP reads it')) })
   await $.session.start({ cwd: '/project', surface: 'terminal', isInteractive: true })
   return { calls, opened }
 }
@@ -133,4 +134,39 @@ test('where nothing draws pickers, /xcrew setup names the skill and opens nothin
   const answer = await runCommand($, 'xcrew', 'setup')
   expect(opened).not.toContain('xcrew-setup')
   expect(answer).toMatchObject({ text: expect.stringContaining('/xcrew:setup') })
+})
+
+test('a scheme the workspace and its project both share is offered once', async ($, on) => {
+  await session($, on, { ...CHOICES, schemes: [...CHOICES.schemes, { name: 'App', container: 'Field.xcworkspace', roles: ['app'], app: 'App' }] })
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const schemes = (await ui.find({ type: 'Select', key: 'app-scheme' }))?.props as { options: { value: string }[] }
+  expect(schemes.options.map(option => option.value)).toEqual(['App', 'Core'])
+  await ui.unmount()
+})
+
+test('the unit-test scheme offers no "none": setup finds one itself when none is passed', async ($, on) => {
+  await session($, on)
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const unit = (await ui.find({ type: 'Select', key: 'test-scheme' }))?.props as { options: { value: string }[] }
+  expect(unit.options.map(option => option.value)).toEqual(['App', 'Core'])
+  await ui.unmount()
+})
+
+test('a form the session can\'t place says why, and names the skill', async ($, on) => {
+  await session($, on, CHOICES, ['terminal'], false)
+  const answer = await runCommand($, 'xcrew', 'setup')
+  expect(answer).toMatchObject({ text: expect.stringContaining('the terminal is too narrow') })
+  expect(answer).toMatchObject({ text: expect.stringContaining('/xcrew:setup') })
+})
+
+test('after a write the form reads the config it now has', async ($, on) => {
+  await session($, on, CHOICES, ['terminal'], true, { ...CHOICES, config: { owner: 'xcrew', scheme: 'App' } })
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'write' })
+  expect(await ui.find({ type: 'Text', text: /xcrew wrote the config; it builds App/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /wrote \.mobilebuildmcp\/config\.yaml/ })).toBeDefined()
+  await ui.unmount()
 })

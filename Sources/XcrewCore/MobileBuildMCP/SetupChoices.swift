@@ -43,6 +43,8 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         /// The app scheme's app's `PRODUCT_BUNDLE_IDENTIFIER`, when the project gives it literally.
         public var bundleID: String?
         public var testSimulator: String?
+        /// The app's simulator, when it isn't the test simulator.
+        public var appSimulator: String?
     }
 
     /// The config there is now.
@@ -73,6 +75,25 @@ public struct SetupChoices: Sendable, Equatable, Codable {
 
     /// The choices for `container`, a path from the root, or for none when `containerProblem` says why.
     public static func read(container: String?, containers: [String], containerProblem: String?, in project: Project, catalog: SimulatorCatalog) -> SetupChoices {
+        var choices = readWithoutConfig(container: container, containers: containers, containerProblem: containerProblem, in: project, catalog: catalog)
+        // The profiles xcrew wrote hold what the person chose before; setup's own rules are only for what they don't.
+        guard choices.config != nil, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else { return choices }
+        let names = ConfigRenderer.profiles(in: yaml).names
+        guard !names.isEmpty else { return choices }
+        func value(_ key: String, of profile: String) -> String? {
+            names.contains(profile) ? ConfigRenderer.setting(key, profile: profile, in: yaml) : nil
+        }
+        choices.picks.appScheme = value("scheme", of: "app")
+        choices.picks.uiScheme = value("scheme", of: "ui")
+        choices.picks.testScheme = value("scheme", of: "unit")
+        choices.picks.bundleID = value("bundleId", of: "app")
+        choices.picks.testSimulator = value("simulatorName", of: "unit") ?? value("simulatorName", of: "app") ?? choices.picks.testSimulator
+        let appSimulator = value("simulatorName", of: "app")
+        choices.picks.appSimulator = appSimulator == choices.picks.testSimulator ? nil : appSimulator
+        return choices
+    }
+
+    static func readWithoutConfig(container: String?, containers: [String], containerProblem: String?, in project: Project, catalog: SimulatorCatalog) -> SetupChoices {
         var choices = SetupChoices(container: container, containers: containers, containerProblem: containerProblem)
         choices.simulators = simulators(in: catalog)
         choices.picks.testSimulator = catalog.defaultIPhone

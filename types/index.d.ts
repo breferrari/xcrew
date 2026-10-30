@@ -59,14 +59,14 @@ export type SetupChoices = {
   containers: string[]
   containerProblem?: string
   schemes: { name: string; container: string; roles: ('app' | 'unit-tests' | 'ui-tests')[]; app?: string }[]
-  picks: { appScheme?: string; uiScheme?: string; testScheme?: string; bundleID?: string; testSimulator?: string }
+  picks: { appScheme?: string; uiScheme?: string; testScheme?: string; bundleID?: string; testSimulator?: string; appSimulator?: string }
   simulators: { name: string; runtime: string; twoDisplays?: boolean }[]
   config?: { owner: 'xcrew' | 'edited' | 'other'; scheme?: string; debuggerBackend?: string }
   worktree?: boolean
 }
 
 /** What the person picked in the setup form, each passed to `xcrew setup` as its option. */
-export type SetupPicks = SetupChoices['picks'] & { container?: string; appSimulator?: string; debuggerBackend?: 'dap' | 'lldb-cli'; worktreeSimulator?: 'clone' | 'fresh' | 'share' }
+export type SetupPicks = SetupChoices['picks'] & { container?: string; debuggerBackend?: 'dap' | 'lldb-cli'; worktreeSimulator?: 'clone' | 'fresh' | 'share' }
 
 /** The setup form: its choices once read, or why they couldn't be, the picks, and what the last write said. */
 export type SetupForm = { choices: SetupChoices | null; picks: SetupPicks; unread?: string; isWriting?: boolean; written?: string[] }
