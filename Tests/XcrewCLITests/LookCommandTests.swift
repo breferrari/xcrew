@@ -55,6 +55,14 @@ import XcrewTestSupport
         #expect(run.text.hasPrefix("xcrew look: Outer/Inner/testX, in Run.xcresult\n"), "\(run.text)")
     }
 
+    /// `Target/Suite/test()` is a test the bundle names `Suite/test()` when it lists no `Target/Suite/test()`: the target
+    /// is dropped, as for the form without `()`.
+    @Test func aTargetBeforeABundlesNameIsDropped() async {
+        let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testLogin()","name":"testLogin()","result":"Failed"}]}"#
+        let run = await Run("look", "AppUITests/LoginTests/testLogin()", "--bundle", "/runs/Run.xcresult", context: context([Self.listing("/runs/Run.xcresult"): listing, Self.steps("LoginTests/testLogin"): Self.activities(recorded: false)]))
+        #expect(run.text.hasPrefix("xcrew look: LoginTests/testLogin, in Run.xcresult\n"), "\(run.text)")
+    }
+
     /// When `xcresulttool` gives no answer, `look` says it couldn't read the bundle, never that nothing failed.
     @Test func aBundleThatCantBeReadIsSaidSo() async {
         let all = await Run("look", "--bundle", "/runs/Run.xcresult", context: context())

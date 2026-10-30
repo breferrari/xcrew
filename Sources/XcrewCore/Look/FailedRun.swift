@@ -36,14 +36,11 @@ struct FailedRun: Sendable, Equatable {
     /// and device none of its runs failed on, under a configuration the test list says it passed, so a run skipped,
     /// expected to fail or crashed without a marked step never counts, nor one a retry passed after a failure. Nil when
     /// the activities can't be read.
-    static func read(activities: String, listing: String, of test: TestID) -> (failed: [FailedRun], passed: [String])? {
+    /// `passedUnder` is `passedConfigurations` for the test, from the test list read once for every test of a run.
+    static func read(activities: String, passedUnder: Set<String>) -> (failed: [FailedRun], passed: [String])? {
         guard let runs = testRuns(activities) else { return nil }
         let failures = runs.compactMap(failed(_:))
         let failedOn = Set(failures.map(\.label))
-        let passedUnder = Set(ResultBundle.nodes(ResultBundle.parse(listing)).filter { $0["nodeType"] as? String == "Test Case" && ($0["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)) == test }
-            .flatMap { ResultBundle.nodes($0["children"]) }
-            .filter { $0["nodeType"] as? String == "Test Plan Configuration" && $0["result"] as? String == "Passed" }
-            .compactMap { $0["name"] as? String })
         var seen: Set<String> = []
         let passed = runs.compactMap { run -> String? in
             let label = label(configuration: configuration(of: run), device: device(of: run))
@@ -55,7 +52,24 @@ struct FailedRun: Sendable, Equatable {
 
     /// Where a test passed, as `read` finds it; none when the activities can't be read.
     static func passed(activities: String, listing: String, of test: TestID) -> [String] {
-        read(activities: activities, listing: listing, of: test)?.passed ?? []
+        read(activities: activities, passedUnder: passedConfigurations(of: test, in: ResultBundle.nodes(ResultBundle.parse(listing))))?.passed ?? []
+    }
+
+    /// The configurations the test list says a test passed under: every result recorded for one, its own and each of
+    /// its devices', whether the list nests devices under configurations or configurations under devices, passed. A pass
+    /// on one device never vouches for another device's run.
+    static func passedConfigurations(of test: TestID, in listing: [[String: Any]]) -> Set<String> {
+        var results: [String: [String]] = [:]
+        func walk(_ node: [String: Any], under configuration: String?) {
+            let type = node["nodeType"] as? String
+            let current = type == "Test Plan Configuration" ? node["name"] as? String : configuration
+            if let current, type == "Test Plan Configuration" || type == "Device" { results[current, default: []].append(node["result"] as? String ?? "") }
+            for child in node["children"] as? [[String: Any]] ?? [] { walk(child, under: current) }
+        }
+        for node in listing where node["nodeType"] as? String == "Test Case" && (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)) == test {
+            walk(node, under: nil)
+        }
+        return Set(results.filter { $0.value.allSatisfy { $0 == "Passed" } }.keys)
     }
 
     static func testRuns(_ activities: String) -> [[String: Any]]? {

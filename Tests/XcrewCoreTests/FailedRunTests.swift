@@ -78,6 +78,21 @@ import Testing
         #expect(FailedRun.passed(activities: activities, listing: listing, of: test) == ["Light · iPhone 17, iOS 27.2"])
     }
 
+    /// With several devices, the test list nests each device's result for a configuration: a pass on one device never
+    /// vouches for a run on another that crashed without a marked step, so a configuration counts only when every result
+    /// under it passed.
+    @Test func onePassingDeviceDoesNotVouchForAnother() {
+        let test = TestID(suite: "T", name: "t")
+        let device = { (id: String, model: String) in #"{"deviceId":"\#(id)","deviceName":"\#(id)","architecture":"arm64","modelName":"\#(model)","platform":"iOS Simulator","osVersion":"27.2"}"# }
+        let activities = #"{"testIdentifier":"T/t()","testName":"t()","testRuns":["# + [device("A", "iPhone 17"), device("B", "iPhone Air")].map {
+            #"{"device":\#($0),"testPlanConfiguration":{"configurationId":"1","configurationName":"Light"},"activities":[{"title":"Check","isAssociatedWithFailure":false,"startTime":1}]}"#
+        }.joined(separator: ",") + "]}"
+        let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"T/t()","name":"t()","result":"Failed","children":[{"nodeType":"Test Plan Configuration","name":"Light","result":"Failed","children":[{"nodeType":"Device","name":"A","result":"Passed"},{"nodeType":"Device","name":"B","result":"Failed"}]}]}]}"#
+        #expect(FailedRun.passed(activities: activities, listing: listing, of: test) == [])
+        let nested = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"T/t()","name":"t()","result":"Failed","children":[{"nodeType":"Device","name":"A","result":"Passed","children":[{"nodeType":"Test Plan Configuration","name":"Light","result":"Passed"}]},{"nodeType":"Device","name":"B","result":"Failed","children":[{"nodeType":"Test Plan Configuration","name":"Light","result":"Failed"}]}]}]}"#
+        #expect(FailedRun.passed(activities: activities, listing: nested, of: test) == [])
+    }
+
     /// No answer, as `xcresulttool` gives when it fails, is not a run that passed.
     @Test func noAnswerIsNotNoFailure() {
         #expect(FailedRun.runs(activities: "") == nil)

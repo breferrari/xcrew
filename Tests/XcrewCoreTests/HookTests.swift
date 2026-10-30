@@ -48,6 +48,33 @@ import XcrewTestSupport
         #expect(text?.contains("`Other`") == false)
     }
 
+    /// A workspace and the project it lists can both ship a scheme of one name: it's named once, and the schemes sort
+    /// across containers.
+    @Test func briefingNamesASchemeSharedByAWorkspaceAndItsProjectOnce() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write(#"<?xml version="1.0" encoding="UTF-8"?><Workspace version="1.0"><FileRef location="group:App.xcodeproj"/></Workspace>"#, to: "App.xcworkspace/contents.xcworkspacedata")
+        project.writeScheme("Zed", plan: "App.xctestplan", folder: "App.xcworkspace/xcshareddata")
+        project.writeScheme("App", plan: "App.xctestplan", folder: "App.xcworkspace/xcshareddata")
+        project.writeScheme("App", plan: "App.xctestplan")
+        project.writeScheme("Beta", plan: "App.xctestplan")
+        project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "App.xctestplan")
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
+        #expect(text.contains("Test plan `App`, the default of schemes `App`, `Beta` and `Zed`, runs each test"), "\(text)")
+    }
+
+    /// A project with hundreds of shared schemes is read only so far at session start, and each plan only once.
+    @Test func briefingReadsSchemesOnlySoFar() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        for index in 1...80 {
+            let name = "S" + String(repeating: "0", count: 3 - String(index).count) + String(index)
+            project.writeScheme(name, plan: "\(name).xctestplan")
+            project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "\(name).xctestplan")
+        }
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
+        // 50 schemes read: 5 named, 45 counted.
+        #expect(text.contains("- **xcrew:** and 45 more test plans run each test under several configurations."), "\(text)")
+    }
+
     /// One line per test plan, whichever schemes share it, and a few plans at most: a large modular app's schemes would
     /// otherwise each add one.
     @Test func briefingNamesEachTestPlanOnceAndAFewAtMost() async {

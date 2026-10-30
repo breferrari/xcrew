@@ -18,11 +18,13 @@ public enum Look {
         let run = bundle.runFolder(in: folder)
         FailureImages.prune(in: folder)
         if let test {
-            guard let read = FailedRun.read(activities: await bundle.activities(of: test), listing: await bundle.tests(), of: test) else {
+            let passedUnder = FailedRun.passedConfigurations(of: test, in: ResultBundle.nodes(ResultBundle.parse(await bundle.tests())))
+            guard let read = FailedRun.read(activities: await bundle.activities(of: test), passedUnder: passedUnder) else {
                 return "xcrew: couldn't read \(test.shown)'s steps in \(name); xcrun xcresulttool get test-results activities --test-id \(test.xcresultID) --path \(bundle.path) says why"
             }
             return await look(at: test, runs: read.failed, passed: read.passed, in: bundle, named: name, keptIn: run) ?? "xcrew: \(test.shown) didn't fail in \(name)"
         }
+        let listing = ResultBundle.nodes(ResultBundle.parse(await bundle.tests()))
         guard let failed = await bundle.failedTests() else {
             return "xcrew: couldn't read the tests in \(name); xcrun xcresulttool get test-results tests --path \(bundle.path) says why"
         }
@@ -35,10 +37,12 @@ public enum Look {
         while next < scanned.count, shown.count < mostTests {
             let batch = Array(scanned[next..<min(next + FailureNotes.mostAtOnce, scanned.count)])
             next += batch.count
+            let passedUnder = batch.map { FailedRun.passedConfigurations(of: $0, in: listing) }
             let looked = await withTaskGroup(of: (Int, String?).self) { group in
                 for (index, test) in batch.enumerated() {
+                    let passed = passedUnder[index]
                     group.addTask {
-                        guard let read = FailedRun.read(activities: await bundle.activities(of: test), listing: await bundle.tests(), of: test),
+                        guard let read = FailedRun.read(activities: await bundle.activities(of: test), passedUnder: passed),
                               read.failed.contains(where: \.hasRecording)
                         else { return (index, nil) }
                         return (index, await look(at: test, runs: read.failed, passed: read.passed, in: bundle, named: name, keptIn: run))

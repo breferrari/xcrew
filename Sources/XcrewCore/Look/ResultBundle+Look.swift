@@ -6,6 +6,11 @@ extension ResultBundle {
         await xcresulttool(["get", "test-results", "activities", "--test-id", test.xcresultID, "--path", path, "--compact"])
     }
 
+    /// Whether the test list names `test`, as the bundle spells it.
+    public func lists(_ test: TestID) async -> Bool {
+        Self.nodes(Self.parse(await tests())).contains { $0["nodeIdentifier"] as? String == test.xcresultID }
+    }
+
     /// The tests that failed under any configuration, in the listing's order; nil when the listing can't be read.
     func failedTests() async -> [TestID]? {
         guard let listing = Self.parse(await tests()) else { return nil }

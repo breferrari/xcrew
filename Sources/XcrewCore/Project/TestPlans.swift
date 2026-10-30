@@ -5,35 +5,44 @@ import Foundation
 enum TestPlans {
     struct Configured: Sendable, Equatable {
         let plan: String
-        /// The schemes whose default it is, in the order their names sort.
+        /// The schemes whose default it is, each once, in the order their names sort.
         let schemes: [String]
         let configurations: [String]
     }
 
+    /// Schemes read at most: the briefing reads them at every session start, and a large modular app has hundreds.
+    static let mostSchemes = 50
+
     /// Each such plan once, in the order of the first scheme that runs it, from these containers and the projects their
-    /// workspaces list.
+    /// workspaces list; each plan file read once, whichever schemes name it.
     static func configured(containers: [URL]) -> [Configured] {
-        var found: [(key: String, configured: Configured)] = []
-        for container in TestSchemes.containers(from: containers) {
+        var order: [String] = []
+        var plans: [String: (name: String, configurations: [String], schemes: Set<String>)] = [:]
+        var read = 0
+        scan: for container in TestSchemes.containers(from: containers) {
             let base = container.deletingLastPathComponent()
-            for scheme in TestSchemes.sharedSchemes(of: container) {
+            for file in TestSchemes.sharedSchemeFiles(of: container) {
+                guard read < mostSchemes else { break scan }
+                read += 1
+                guard let scheme = TestSchemes.parse(scheme: file) else { continue }
                 let references = ((try? scheme.document.nodes(forXPath: "//TestAction/TestPlans/TestPlanReference")) ?? []).compactMap { $0 as? XMLElement }
                 // The plan a run takes when none is named: the default, or the only one.
                 guard let reference = references.first(where: { $0.attribute(forName: "default")?.stringValue == "YES" }) ?? (references.count == 1 ? references.first : nil),
                       let location = reference.attribute(forName: "reference")?.stringValue
                 else { continue }
-                let file = TestSchemes.resolve(location, from: base)
-                let key = TestSchemes.key(file)
-                if let index = found.firstIndex(where: { $0.key == key }) {
-                    let known = found[index].configured
-                    found[index].configured = Configured(plan: known.plan, schemes: known.schemes + [scheme.name], configurations: known.configurations)
-                    continue
+                let plan = TestSchemes.resolve(location, from: base)
+                let key = TestSchemes.key(plan)
+                if plans[key] == nil {
+                    let names = (TestSchemes.plan(at: plan)?["configurations"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+                    plans[key] = (plan.deletingPathExtension().lastPathComponent, names, [])
+                    order.append(key)
                 }
-                let names = (TestSchemes.plan(at: file)?["configurations"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
-                guard names.count > 1 else { continue }
-                found.append((key, Configured(plan: file.deletingPathExtension().lastPathComponent, schemes: [scheme.name], configurations: names)))
+                plans[key]?.schemes.insert(scheme.name)
             }
         }
-        return found.map(\.configured)
+        return order.compactMap { key in
+            guard let found = plans[key], found.configurations.count > 1 else { return nil }
+            return Configured(plan: found.name, schemes: found.schemes.sorted(), configurations: found.configurations)
+        }
     }
 }

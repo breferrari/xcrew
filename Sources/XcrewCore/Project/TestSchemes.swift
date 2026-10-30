@@ -55,11 +55,18 @@ public enum TestSchemes {
 
     /// A container's shared schemes, parsed, in the order of their names.
     static func sharedSchemes(of container: URL) -> [(name: String, document: XMLDocument)] {
+        sharedSchemeFiles(of: container).compactMap(parse(scheme:))
+    }
+
+    /// A container's shared scheme files, unparsed, in the order of their names.
+    static func sharedSchemeFiles(of container: URL) -> [URL] {
         let folder = container.appending(path: "xcshareddata/xcschemes")
         let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        return files.filter { $0.pathExtension == "xcscheme" }.sorted { $0.lastPathComponent < $1.lastPathComponent }.compactMap { file in
-            (try? XMLDocument(contentsOf: file, options: xmlOptions)).map { (file.deletingPathExtension().lastPathComponent, $0) }
-        }
+        return files.filter { $0.pathExtension == "xcscheme" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    static func parse(scheme file: URL) -> (name: String, document: XMLDocument)? {
+        (try? XMLDocument(contentsOf: file, options: xmlOptions)).map { (file.deletingPathExtension().lastPathComponent, $0) }
     }
 
     /// A test plan as its JSON reads.
