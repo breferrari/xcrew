@@ -11,15 +11,20 @@ struct ProjectGraph: Sendable {
         let isUITest: Bool
         /// The targets it builds on: its dependencies and, for a test bundle, the app it runs in.
         var dependencies: Set<String>
+        /// The product type without `com.apple.product-type.`, as both formats name it: `framework`, `application`.
+        let kind: String
 
-        init(name: String, isTest: Bool, isUITest: Bool, dependencies: Set<String>) {
-            (self.name, self.isTest, self.isUITest, self.dependencies) = (name, isTest, isUITest, dependencies)
+        init(name: String, isTest: Bool, isUITest: Bool, dependencies: Set<String>, kind: String) {
+            (self.name, self.isTest, self.isUITest, self.dependencies, self.kind) = (name, isTest, isUITest, dependencies, kind)
         }
 
         /// A target as a project file declares it: what kind it is comes from its product type, in either format.
         init(name: String, productType: String, dependencies: Set<String>) {
-            self.init(name: name, isTest: productType.contains("test"), isUITest: productType.contains("ui-testing"), dependencies: dependencies)
+            let kind = productType.hasPrefix(Self.productTypePrefix) ? String(productType.dropFirst(Self.productTypePrefix.count)) : productType
+            self.init(name: name, isTest: productType.contains("test"), isUITest: productType.contains("ui-testing"), dependencies: dependencies, kind: kind)
         }
+
+        static let productTypePrefix = "com.apple.product-type."
     }
 
     /// A folder whose files all join `targets`, but for the files an exception set names, whose membership differs.
@@ -37,9 +42,18 @@ struct ProjectGraph: Sendable {
     var products: [String: String] = [:]
     /// Products a target links that no target in this project builds, for the workspace to resolve across projects.
     var links: [String: Set<String>] = [:]
+    /// Of `links`, the products a target only copies into its own, an app embedding a framework it doesn't link: Tuist
+    /// embeds every framework below an app's dependencies this way.
+    var embedsOnly: [String: Set<String>] = [:]
     /// Targets in other projects a target depends on, by name, through a proxy into that project, for the workspace to
     /// resolve.
     var external: [String: Set<String>] = [:]
+    /// The values a target's own settings give `PRODUCT_MODULE_NAME`, across its configurations, by target.
+    var moduleNameSettings: [String: Set<String>] = [:]
+    /// The targets whose settings give `PRODUCT_MODULE_NAME` for some configurations only.
+    var partialModuleNames: Set<String> = []
+    /// Each target's product, by its file name: `Core.framework`.
+    var productFiles: [String: String] = [:]
     /// Something the reading didn't model: the selection can't be trusted.
     var unmodeled: String?
 
@@ -109,7 +123,10 @@ struct ProjectGraph: Sendable {
         var productOwners: [String: String] = [:]
         for (id, target) in natives {
             guard let name = names[id] else { continue }
-            if let product = (target["productReference"] as? String).flatMap({ objects[$0]?["path"] as? String }) { productOwners[(product as NSString).lastPathComponent] = name }
+            if let product = (target["productReference"] as? String).flatMap({ objects[$0]?["path"] as? String }) {
+                productOwners[(product as NSString).lastPathComponent] = name
+                graph.productFiles[name] = (product as NSString).lastPathComponent
+            }
         }
         graph.products = productOwners
         for (id, target) in natives {
@@ -131,8 +148,10 @@ struct ProjectGraph: Sendable {
             // A test bundle runs in its host app, named by the product its TEST_HOST setting points at, built here or in
             // another project of the workspace.
             graph.links[name, default: []].formUnion(testHosts(of: target, in: objects))
+            var linked = Set<String>(), copied = Set<String>()
             for phase in target["buildPhases"] as? [String] ?? [] {
-                let links = Self.linkPhases.contains(objects[phase]?["isa"] as? String ?? "")
+                let isa = objects[phase]?["isa"] as? String ?? ""
+                let links = Self.linkPhases.contains(isa)
                 for buildFile in objects[phase]?["files"] as? [String] ?? [] {
                     guard let reference = objects[buildFile]?["fileRef"] as? String else { continue }
                     let files = (objects[reference]?["isa"] as? String) == "PBXVariantGroup" ? (objects[reference]?["children"] as? [String] ?? []) : [reference]
@@ -140,7 +159,11 @@ struct ProjectGraph: Sendable {
                         // Linking or embedding another target's product depends on it, entry or not: Xcode finds it implicitly.
                         // Anything else in the build folder, a file a script writes, is no product and no file of the project's.
                         if objects[file]?["sourceTree"] as? String == "BUILT_PRODUCTS_DIR", let product = objects[file]?["path"] as? String {
-                            if links, Self.isProduct(product) { graph.links[name, default: []].insert((product as NSString).lastPathComponent) }
+                            if links, Self.isProduct(product) {
+                                let file = (product as NSString).lastPathComponent
+                                graph.links[name, default: []].insert(file)
+                                if isa == "PBXCopyFilesBuildPhase" { copied.insert(file) } else { linked.insert(file) }
+                            }
                             continue
                         }
                         guard let url = location(file) else { continue }
@@ -148,8 +171,18 @@ struct ProjectGraph: Sendable {
                     }
                 }
             }
+            let embedsOnly = copied.subtracting(linked)
+            if !embedsOnly.isEmpty { graph.embedsOnly[name] = embedsOnly }
             let productType = target["productType"] as? String ?? ""
             graph.targets[name] = Target(name: name, productType: productType, dependencies: dependencies)
+            let configurations = (target["buildConfigurationList"] as? String).flatMap { objects[$0]?["buildConfigurations"] as? [String] } ?? []
+            let setting = configurations.filter { configuration in
+                (objects[configuration]?["buildSettings"] as? [String: Any] ?? [:]).keys.contains { Self.isModuleNameKey($0) }
+            }
+            for configuration in setting {
+                graph.addModuleNameSettings(objects[configuration]?["buildSettings"] as? [String: Any] ?? [:], of: name)
+            }
+            if !setting.isEmpty && setting.count < configurations.count { graph.partialModuleNames.insert(name) }
             for group in target["fileSystemSynchronizedGroups"] as? [String] ?? [] {
                 guard let url = location(group) else { graph.unmodeled = "a folder of \(name) isn't in the project folder"; continue }
                 let excepted = (objects[group]?["exceptions"] as? [String] ?? []).flatMap { objects[$0]?["membershipExceptions"] as? [String] ?? [] }
@@ -194,6 +227,17 @@ struct ProjectGraph: Sendable {
         return "/" + parts.joined(separator: "/")
     }
 
+    /// Keeps `PRODUCT_MODULE_NAME` from a target's settings, a conditional one (`PRODUCT_MODULE_NAME[config=Debug]`) too.
+    mutating func addModuleNameSettings(_ settings: [String: Any], of target: String) {
+        for (key, value) in settings where Self.isModuleNameKey(key) {
+            if let value = value as? String { moduleNameSettings[target, default: []].insert(value) }
+        }
+    }
+
+    static func isModuleNameKey(_ key: String) -> Bool {
+        key == "PRODUCT_MODULE_NAME" || key.hasPrefix("PRODUCT_MODULE_NAME[")
+    }
+
     mutating func addFolder(_ path: String, targets: Set<String>, excepted: [String]) {
         let exceptedPaths = Set(excepted.map { Self.lexical(URL(fileURLWithPath: path).appending(path: $0)) })
         if let index = folders.firstIndex(where: { $0.path == path }) {
@@ -234,6 +278,11 @@ struct ProjectGraph: Sendable {
             }
             let productType = target["product-type"] as? String ?? ""
             graph.targets[name] = Target(name: name, productType: productType, dependencies: dependencies)
+            let settings = target["build-settings"] as? [String: Any] ?? [:]
+            graph.addModuleNameSettings(settings, of: name)
+            // A conditional key alone sets it for the configurations it names, and leaves the others to the default.
+            if settings.keys.contains(where: Self.isModuleNameKey), settings["PRODUCT_MODULE_NAME"] == nil { graph.partialModuleNames.insert(name) }
+            if let product = target["product"] as? String { graph.productFiles[name] = (product as NSString).lastPathComponent }
         }
         func walk(_ nodes: [[String: Any]], in base: URL) {
             for node in nodes {

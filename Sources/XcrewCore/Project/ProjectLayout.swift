@@ -272,6 +272,11 @@ public struct ProjectLayout: Sendable {
         }
     }
 
+    /// A canonical path from `root`, itself canonical: the path past `root/`, or the path whole when it's elsewhere.
+    static func path(_ path: String, from root: String) -> String {
+        path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : path
+    }
+
     /// One spelling per folder: symlinks, the `/System/Volumes/Data` firmlink and, on a case-insensitive volume,
     /// letter case all resolve to the same path (docs/findings.md).
     static func canonical(_ url: URL) -> String {

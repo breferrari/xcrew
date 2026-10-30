@@ -635,3 +635,44 @@ struct TestbedToolErrorNoteTests {
         #expect(answer.contains(names), "\(answer)")
     }
 }
+
+/// The field fixture's four layers, App on Feature on Data on Core, are its module graph: each module imports the one
+/// below and nothing else of the workspace's, so every import is declared and no dependency goes unimported.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedModuleGraphTests {
+    @Test func theFieldFixturesLayersAreItsModules() throws {
+        let root = try TestbedTests.copy("field")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let graph = ModuleGraph.read(Project(root: root))
+        #expect(graph.unread == nil)
+        #expect(graph.modules.map { [$0.name] + $0.dependencies } == [["App", "Feature"], ["Core"], ["Data", "Core"], ["Feature", "Data"]])
+        #expect(graph.modules.map(\.project) == ["Modules/App/App.xcodeproj", "Modules/Core/Core.xcodeproj", "Modules/Data/Data.xcodeproj", "Modules/Feature/Feature.xcodeproj"])
+        #expect(graph.imports.filter { $0.placement != .declared } == [])
+        #expect(Set(graph.imports.filter { !$0.target.hasSuffix("Tests") }.map { "\($0.target) \($0.module)" }) == ["App Feature", "Data Core", "Feature Data"])
+        #expect(graph.unimported == [])
+        #expect(graph.notes == [])
+    }
+
+    /// An import past the layer below, and one up the layers, written at the top of a copy's sources: Tuist lists each
+    /// file in the project, so a new file would belong to no target until the project is generated again.
+    @Test func importsAcrossTheLayersArePlaced() throws {
+        let root = try TestbedTests.copy("field")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        for (file, line) in [("Modules/App/Sources/App.swift", "import Core\n"), ("Modules/Core/Sources/Core.swift", "import Feature\n")] {
+            let url = root.appending(path: file)
+            try (line + String(contentsOf: url, encoding: .utf8)).write(to: url, atomically: true, encoding: .utf8)
+        }
+        let crossing = ModuleGraph.read(Project(root: root)).imports.filter { $0.placement != .declared }
+        #expect(crossing == [
+            .init(target: "App", file: "Modules/App/Sources/App.swift", line: 1, module: "Core", placement: .transitiveOnly),
+            .init(target: "Core", file: "Modules/Core/Sources/Core.swift", line: 1, module: "Feature", placement: .upward),
+        ])
+    }
+
+    @Test(arguments: [("Modules/Core/Sources/Core.swift", "Core"), ("Modules/Data/Sources/Data.swift", "Data"), ("Modules/Feature/Sources/Greeting.swift", "Feature"), ("Modules/App/Sources/FieldApp.swift", "App"), ("Modules/Feature/Tests/ProbeTests.swift", "FeatureTests")])
+    func eachFileIsOwnedByItsModule(_ file: String, _ owner: String) throws {
+        let root = try TestbedTests.copy("field")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        #expect(FileOwners.of(file, in: Project(root: root)).targets == [owner])
+    }
+}
