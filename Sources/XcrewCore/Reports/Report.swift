@@ -108,10 +108,11 @@ public struct Report: Sendable, Equatable, Codable {
         }()
         async let pinNote: String? = {
             // MobileBuildMCP builds with the Xcode the pin decides; the Xcode MCP, with whichever is open.
-            // Only a failure whose errors another SDK or toolchain gives: a type error in a line just written isn't the pin's.
-            guard read.server == .mobileBuildMCP, let project, let machine, !read.summary.ok,
-                  read.failures.contains(where: { XcodePinCheck.mayBeTheToolchain("\($0.title): \($0.message)") })
-            else { return nil }
+            guard read.server == .mobileBuildMCP, let project, let machine, !read.summary.ok, project.xcodePin != nil else { return nil }
+            // A test run whose build failed lists only that; the compiler's errors are in the build log it names.
+            let errors = read.reportedErrors.map(\.message)
+            let logged = { read.buildLog(home: home).flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { BuildLog.errors(in: $0).map(\.message) } ?? [] }
+            guard errors.contains(where: XcodePinCheck.mayBeTheToolchain) || logged().contains(where: XcodePinCheck.mayBeTheToolchain) else { return nil }
             return XcodePinCheck.failureNote(await XcodeSnapshot.take(of: project, on: machine), hasXcodes: machine.runner.which("xcodes") != nil)
         }()
         var final = read

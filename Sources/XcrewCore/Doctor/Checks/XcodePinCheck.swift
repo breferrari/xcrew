@@ -7,13 +7,6 @@ struct XcodePinCheck: Check {
     let title = "The project's Xcode pin applies"
     /// For a failed MobileBuildMCP build, test or run: the Xcode building isn't the one the project pins, so a different SDK
     /// may be why, in the check's words and with its fix. Nothing when the pin applies or there's none.
-    /// Whether an error is one another SDK or toolchain gives, where the pin may be the cause: a module another Swift
-    /// compiled, an API newer than the SDK, a deployment target or SDK the toolchain doesn't support, a platform it
-    /// doesn't know.
-    static func mayBeTheToolchain(_ error: String) -> Bool {
-        error.contains(/compiled with Swift [\d.]+ cannot be imported|is only available in \S+ [\d.]+ or newer|deployment target|\bSDK\b|[Uu]nrecognized platform name/)
-    }
-
     static func failureNote(_ xcodes: XcodeSnapshot, hasXcodes: Bool) -> String? {
         let using = xcodes.forBuilds?.label ?? "the selected Xcode"
         switch xcodes.pinState {
@@ -24,6 +17,13 @@ struct XcodePinCheck: Check {
         case .none, .waiting, .applied:
             return nil
         }
+    }
+
+    /// Whether an error is one another SDK or toolchain gives, where the pin may be the cause: a module another Swift
+    /// compiled, an API newer than the SDK, a deployment target or SDK the toolchain doesn't support, a platform it
+    /// doesn't know.
+    static func mayBeTheToolchain(_ error: String) -> Bool {
+        error.contains(/compiled with Swift [\d.]+ cannot be imported|is only available in \S+ [\d.]+ or newer|deployment target|\bSDK\b|[Uu]nrecognized platform name/)
     }
 
     /// The command that installs a pinned Xcode: xcodes when it's on PATH, else Apple's download page.

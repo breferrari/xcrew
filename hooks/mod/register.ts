@@ -570,6 +570,8 @@ let lastSavedCard: string | undefined
 const CARD_SAVE_MS = 15_000
 /** The calls whose result said no outcome, by `tool_use_id`, until a task notification names one: its tool's name. */
 const unreadCalls = new Map<string, string>()
+/** How many such calls are kept waiting for their notification. */
+const UNREAD_KEPT = 20
 
 /** The pin notes Claude has read this session: each is named with the first failure it may explain, and not again. */
 const pinsNamed = new Set<string>()
@@ -579,8 +581,6 @@ function withPinNamedOnce(outcome: Report): Report {
   pinsNamed.add(outcome.pinNote)
   return { ...outcome, notes: [...outcome.notes, outcome.pinNote] }
 }
-/** How many such calls are kept waiting for their notification. */
-const UNREAD_KEPT = 20
 /** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */
 let ledgerWrites: Promise<unknown> = Promise.resolve()
 
