@@ -52,17 +52,17 @@ public struct AffectedTests: Sendable, Equatable, Codable {
         var targets = graphs.reduce(into: [String: ProjectGraph.Target]()) { all, graph in
             all.merge(graph.targets) { first, second in ProjectGraph.Target(name: first.name, isTest: first.isTest || second.isTest, dependencies: first.dependencies.union(second.dependencies)) }
         }
-        // A module links the one below it by its product, across projects, as a modular Tuist app does: a product no
-        // project here builds depends on something unread.
+        // A module links the one below it by its product, and depends on another project's target by name: each
+        // resolves among every project the workspace reads, and one that doesn't depends on something unread.
         let products = graphs.reduce(into: [String: String]()) { all, graph in all.merge(graph.products) { first, _ in first } }
         for graph in graphs {
-            for (target, linked) in graph.links {
+            for (target, linked) in graph.links.sorted(by: { $0.key < $1.key }) {
                 for product in linked.sorted() {
                     guard let producer = products[product] else { return everything("\(target) links \(product), which no project here builds") }
                     if producer != target { targets[target]?.dependencies.insert(producer) }
                 }
             }
-            for (target, names) in graph.external {
+            for (target, names) in graph.external.sorted(by: { $0.key < $1.key }) {
                 for name in names.sorted() {
                     guard targets[name] != nil else { return everything("\(target) depends on \(name), which no project here builds") }
                     targets[target]?.dependencies.insert(name)

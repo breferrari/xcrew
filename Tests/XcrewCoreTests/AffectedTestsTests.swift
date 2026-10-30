@@ -205,3 +205,79 @@ import XcrewTestSupport
         #expect(affected.runAll?.contains("Missing") == true)
     }
 }
+
+/// What a link is, and how far it resolves: only another target's product, found in any project the workspace reads.
+@Suite struct AffectedTestsLinkTests {
+    func json(_ files: String, _ targets: String) -> String {
+        "{ \"files\": [ \(files) ], \"targets\": [ \(targets) ] }"
+    }
+
+    /// A system framework is no product of the project's: linking it depends on nothing a change here could break.
+    @Test func linkingASystemFrameworkIsNoDependency() {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write(json("""
+            { "kind": "group", "name": "Frameworks", "children": [ { "path": "<SDKROOT>/System/Library/Frameworks/StoreKit.framework", "target-membership": [ { "build-phase": "App/frameworks" } ] } ] },
+            { "kind": "folder", "path": "App", "target-membership": [ "App" ] }
+            """, #"{ "name": "App", "id": "A", "product-type": "application" }, { "name": "AppTests", "id": "T", "product-type": "bundle.unit-test", "test-host-target": "App" }"#), to: "App.xcodeproj/project.xcproj")
+        #expect(AffectedTests.of(changed: ["App/AppApp.swift"], in: project).selections == ["AppTests"])
+    }
+
+    /// A file a script writes to the build folder and a target compiles is no product another target builds.
+    @Test func aGeneratedFileInTheBuildFolderIsNoLink() {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("""
+            // !$*UTF8*$!
+            {
+                archiveVersion = 1;
+                objectVersion = 77;
+                rootObject = P;
+                objects = {
+                    P = { isa = PBXProject; mainGroup = G; targets = (T, TT); };
+                    G = { isa = PBXGroup; children = (F, GEN); sourceTree = "<group>"; };
+                    F = { isa = PBXFileSystemSynchronizedRootGroup; path = App; sourceTree = "<group>"; };
+                    GEN = { isa = PBXFileReference; path = Generated.swift; sourceTree = BUILT_PRODUCTS_DIR; };
+                    GB = { isa = PBXBuildFile; fileRef = GEN; };
+                    S = { isa = PBXSourcesBuildPhase; files = (GB); };
+                    T = { isa = PBXNativeTarget; name = App; productType = "com.apple.product-type.application"; fileSystemSynchronizedGroups = (F); buildPhases = (S); dependencies = (); };
+                    TT = { isa = PBXNativeTarget; name = AppTests; productType = "com.apple.product-type.bundle.unit-test"; buildPhases = (); dependencies = (LD); };
+                    LD = { isa = PBXTargetDependency; target = T; targetProxy = LP; };
+                    LP = { isa = PBXContainerItemProxy; containerPortal = P; proxyType = 1; remoteGlobalIDString = T; remoteInfo = App; };
+                };
+            }
+            """, to: "App.xcodeproj/project.pbxproj")
+        #expect(AffectedTests.of(changed: ["App/AppApp.swift"], in: project).selections == ["AppTests"])
+    }
+
+    /// A module's tests can run in an app another project builds: the host resolves across the workspace.
+    @Test func aTestHostInAnotherProjectResolves() {
+        let project = Project.temporary(containing: ["App.xcworkspace", "A/A.xcodeproj", "B/B.xcodeproj"])
+        project.write(#"<?xml version="1.0" encoding="UTF-8"?><Workspace version="1.0"><FileRef location="group:A/A.xcodeproj"/><FileRef location="group:B/B.xcodeproj"/></Workspace>"#, to: "App.xcworkspace/contents.xcworkspacedata")
+        project.write(json(#"{ "kind": "group", "name": "Products", "children": [ { "path": "<PRODUCTS>/App.app" } ] }, { "kind": "folder", "path": "App", "target-membership": [ "App" ] }"#,
+                           #"{ "name": "App", "id": "A", "product": "Products/App.app", "product-type": "application" }"#), to: "A/A.xcodeproj/project.xcproj")
+        project.write("""
+            // !$*UTF8*$!
+            {
+                archiveVersion = 1;
+                objectVersion = 77;
+                rootObject = P;
+                objects = {
+                    P = { isa = PBXProject; mainGroup = G; targets = (TT); };
+                    G = { isa = PBXGroup; children = (); sourceTree = "<group>"; };
+                    TT = { isa = PBXNativeTarget; name = FeatureTests; productType = "com.apple.product-type.bundle.unit-test"; buildPhases = (); dependencies = (); buildConfigurationList = L; };
+                    L = { isa = XCConfigurationList; buildConfigurations = (D); };
+                    D = { isa = XCBuildConfiguration; name = Debug; buildSettings = { TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/App"; }; };
+                };
+            }
+            """, to: "B/B.xcodeproj/project.pbxproj")
+        #expect(AffectedTests.of(changed: ["A/App/AppApp.swift"], in: project).selections == ["FeatureTests"])
+    }
+
+    /// The JSON format names a dependency in another project by its target, as a proxy does in the classic one.
+    @Test func aJSONDependencyOnAnotherProjectsTargetResolves() {
+        let project = Project.temporary(containing: ["App.xcworkspace", "A/A.xcodeproj", "B/B.xcodeproj"])
+        project.write(#"<?xml version="1.0" encoding="UTF-8"?><Workspace version="1.0"><FileRef location="group:A/A.xcodeproj"/><FileRef location="group:B/B.xcodeproj"/></Workspace>"#, to: "App.xcworkspace/contents.xcworkspacedata")
+        project.write(json(#"{ "kind": "folder", "path": "Core", "target-membership": [ "Core" ] }"#, #"{ "name": "Core", "id": "C", "product-type": "framework" }"#), to: "A/A.xcodeproj/project.xcproj")
+        project.write(json("", #"{ "name": "Feature", "id": "F", "product-type": "framework", "dependencies": [ "Core" ] }, { "name": "FeatureTests", "id": "FT", "product-type": "bundle.unit-test", "dependencies": [ "Feature" ] }"#), to: "B/B.xcodeproj/project.xcproj")
+        #expect(AffectedTests.of(changed: ["A/Core/Store.swift"], in: project).selections == ["FeatureTests"])
+    }
+}

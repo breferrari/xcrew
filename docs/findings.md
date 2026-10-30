@@ -275,7 +275,7 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
   - an `.xcconfig`, `.xctestplan`, `Package.swift` or `Package.resolved`;
   - a manifest the generator reads;
   - a file no target owns, or one an exception set moves;
-  - a dependency on a target outside the project;
+  - a linked product, test host or dependency that no project the workspace reads builds;
   - a project file that can't be read.
 - **Dependents count at any depth.** A change to a framework selects the tests of every target that builds on it, however far up.
 - **What counts as depending:**

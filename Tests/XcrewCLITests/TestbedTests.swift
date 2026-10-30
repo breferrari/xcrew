@@ -269,14 +269,13 @@ struct TestbedModularAffectedTests {
 /// No fixture holds a path of the Mac that made it: Tuist writes its own scheme with the absolute path it ran from.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
 struct TestbedPrivacyTests {
-    @Test func noFixtureHoldsAnAbsolutePathOfTheMacThatMadeIt() throws {
-        var leaks: [String] = []
-        let enumerator = FileManager.default.enumerator(at: Testbed.root, includingPropertiesForKeys: [.isRegularFileKey])
-        while let file = enumerator?.nextObject() as? URL {
-            if file.pathComponents.contains(".git") { continue }
-            guard (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
-                  let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
-            if text.contains("/Users/") || text.contains("/home/") { leaks.append(file.path.replacing(Testbed.root.path, with: "")) }
+    @Test func noFixtureHoldsAnAbsolutePathOfTheMacThatMadeIt() async throws {
+        // The files the test bed commits: what a contributor generates or builds there stays out.
+        let listed = await SystemCommandRunner().run(["git", "-C", Testbed.root.path, "ls-files", "-z"], stdin: nil, timeout: .seconds(30))
+        #expect(listed.succeeded)
+        let leaks = listed.stdout.split(separator: "\0").map(String.init).filter { file in
+            let text = (try? String(contentsOf: Testbed.root.appending(path: file), encoding: .utf8)) ?? ""
+            return text.contains("/Users/") || text.contains("/home/")
         }
         #expect(leaks == [])
     }
