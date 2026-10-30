@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.7 — 2026-10-30
 
 - In a Tuist or XcodeGen project, after Claude edits a manifest, the next build or test, or a run that builds first, is refused once with the command that regenerates the project, such as `tuist generate --no-open`, so it doesn't build the project as it was. With several Tuist apps in one repository, each app edited needs its own generate, and the refusal names every one still to run. A generate that succeeds lets builds run again; if you generated in your own terminal, the next attempt goes through. After a change to `Tuist/Package.swift`, the command runs `tuist install` first. A spec your `project.yml` includes counts as a manifest too. A source file that only shares a manifest's name, like a `Project.swift` model, doesn't count.
 - Claude can list the tests it saw fail and then pass on the branch, each with the run where it failed and the run that passed it, ready for a pull request's test plan. `/xcrew ledger` shows you the same. The record lasts across sessions, per branch, and is dropped once no test run has touched it for weeks.
