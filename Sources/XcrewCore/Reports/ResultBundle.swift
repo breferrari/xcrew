@@ -172,11 +172,16 @@ public struct ResultBundle: Sendable {
     }
 
     /// `: A, B and C`, or `: A, B, C, D, E and 2 more`; nothing without names.
-    static func listed(_ names: [String], separator: String = ", ", or: Bool = false) -> String {
+    static func listed(_ names: [String], separator: String = ", ") -> String {
+        names.isEmpty ? "" : ": " + joined(names, separator: separator)
+    }
+
+    /// Names one after another, `a, b and c`, a few at most and the rest counted; with `or`, `a, b or c`.
+    static func joined(_ names: [String], separator: String = ", ", or: Bool = false) -> String {
         guard let last = names.last else { return "" }
         let conjunction = or ? " or " : " and "
-        if names.count > mostNamed { return ": " + names.prefix(mostNamed).joined(separator: separator) + conjunction + "\(names.count - mostNamed) more" }
-        return names.count == 1 ? ": \(last)" : ": " + names.dropLast().joined(separator: separator) + conjunction + last
+        if names.count > mostNamed { return names.prefix(mostNamed).joined(separator: separator) + conjunction + "\(names.count - mostNamed) more" }
+        return names.count == 1 ? last : names.dropLast().joined(separator: separator) + conjunction + last
     }
 
     // MARK: Asking xcresulttool
