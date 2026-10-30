@@ -24,6 +24,8 @@ export function isStale(updated: unknown, now: number): boolean {
 }
 /** The last test run's total per tool, for the next run's `testing 312 of 959`. */
 export const testsKey = (tool: string) => `tests.${tool}`
+/** The folder a scope last ran in: the store is the plugin's, across every project. */
+export const whereKey = (tool: string) => `where.${tool}`
 /** Whether a tool has written a log before: those say they're preparing until this run's appears; `clean` writes none. */
 export const logsKey = (tool: string) => `logs.${tool}`
 export const PREPARING = 'preparing'

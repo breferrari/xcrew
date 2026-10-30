@@ -4,14 +4,15 @@ import type { On } from 'claude-code'
 import { callTool, stubCli } from './testing'
 
 const NOW = Date.UTC(2026, 9, 30, 12, 0)
-const CARD = 'xcrew:project-card'
+const CARD = 'xcrewProjectCard'
 
-/** What earlier sessions stored: durations, when each was last updated, and test totals, by run scope. */
-function runs(scopes: Record<string, { runs: number[]; tests?: number }>): Record<string, unknown> {
+/** What earlier sessions stored: durations, when each was last updated, test totals, and the folder each last ran in, by run scope. */
+function runs(scopes: Record<string, { runs: number[]; tests?: number }>, folder = '/work/App'): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(scopes).flatMap(([scope, { runs, tests }]) => [
       [`durations.${scope}`, runs],
       [`updated.${scope}`, NOW - 60_000],
+      [`where.${scope}`, folder],
       ...(tests === undefined ? [] : [[`tests.${scope}`, tests]]),
     ]),
   )
@@ -24,7 +25,7 @@ function ledger(tests: { test: string; failing: string }[]): Record<string, unkn
 }
 
 /** A session in a project on `feat/card` whose store holds `stored`; the engine composes one section of its own. */
-function session(on: On, stored: Record<string, unknown> | 'unavailable') {
+function session(on: On, stored: Record<string, unknown> | 'unavailable', options: { branch?: () => Promise<string> } = {}) {
   const clock = mock.clock(on, { now: NOW })
   if (stored !== 'unavailable') mock.store(on, stored)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -34,8 +35,12 @@ function session(on: On, stored: Record<string, unknown> | 'unavailable') {
   on('ui.invalidate', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
-  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'The engine\'s own.', scope: 'shared' }] }))
-  stubCli(on, { project: args => ({ isGenerated: false, ...(args.includes('--branch') ? { root: '/work/App', branch: 'feat/card' } : {}) }), reports: [{ ok: true }] })
+  on('session.cwd', () => ({ value: '/work/App' }))
+  on('prompt.context', (_, e) => ({ blocks: e.blocks }))
+  stubCli(on, {
+    project: async args => ({ isGenerated: false, ...(args.includes('--branch') ? { root: '/work/App', branch: await (options.branch?.() ?? Promise.resolve('feat/card')) } : {}) }),
+    reports: [{ ok: true }],
+  })
   on('tool.call', () => ({ result: {}, text: 'done' }))
   return clock
 }
@@ -45,11 +50,11 @@ async function start(tool: Engine, clock: { settle: () => Promise<void> }): Prom
   await clock.settle()
 }
 
+/** The card, as the context of the conversation's first message carries it, after the engine's own blocks. */
 async function card(tool: Engine): Promise<string | undefined> {
-  const sections = (await tool.prompt.compose({ model: 'claude-opus-5-5', promptModel: 'claude-opus-5-5', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] })).sections
-  const found = sections.find(section => section.id === CARD)
-  if (found) expect(found.scope).toBe('session')
-  return found?.text
+  const blocks = (await tool.prompt.context({ blocks: [{ name: 'currentDate', text: '2026-10-30' }] })).blocks
+  expect(blocks[0]?.name).toBe('currentDate')
+  return blocks.find(block => block.name === CARD)?.text
 }
 
 test('the card gives the usual durations, slowest first, the red tests, and the selections when a full run is slow', async ($, on) => {
@@ -79,15 +84,6 @@ test('with nothing stored there is no card', async ($, on) => {
   expect(await card($)).toBeUndefined()
 })
 
-test('the card stays as it was built for the whole session, so the prompt cache holds', async ($, on) => {
-  const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }))
-  await start($, clock)
-  const first = await card($)
-  await callTool($, 'mcp__MobileBuildMCP__build_sim', { scheme: 'App' })
-  await clock.settle()
-  expect(await card($)).toBe(first)
-})
-
 test('a new session, as /clear starts, builds the card afresh', async ($, on) => {
   const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }))
   await start($, clock)
@@ -111,4 +107,38 @@ test('however much is stored, the card stays within ten lines and 800 characters
   expect(text.split('\n').length).toBeLessThanOrEqual(10)
   expect(text.length).toBeLessThanOrEqual(800)
   expect(text).toMatch(/\+\d+ more/)
+})
+
+test('durations a run in another project left are no notes on this one', async ($, on) => {
+  const clock = session(on, { ...runs({ 'build_sim · App': { runs: [45_000] } }), ...runs({ 'test_sim · Shop': { runs: [250_000], tests: 1200 } }, '/work/Shop') })
+  await start($, clock)
+  const text = (await card($)) ?? ''
+  expect(text).toContain('build_sim · App')
+  expect(text).not.toContain('Shop')
+})
+
+test('red tests no run has written within the history\'s time are no longer news', async ($, on) => {
+  const old = NOW - 30 * 24 * 60 * 60_000
+  const stale = { entries: [{ test: 'Old/testGone', red: { scope: 'test_sim', at: old, message: 'x' }, failing: 'test_sim', last: old }], updated: old }
+  const clock = session(on, { ...runs({ 'build_sim · App': { runs: [45_000] } }), 'ledger./work/App @ feat/card': stale })
+  await start($, clock)
+  expect(await card($)).not.toContain('Old/testGone')
+})
+
+test('a long list says how many it left out, durations and red tests alike', async ($, on) => {
+  const scopes = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`build_sim · Module${index}`, { runs: [10_000 + index] }]))
+  const reds = Array.from({ length: 12 }, (_, index) => ({ test: `Module${index}Tests/SomeVeryLongTestCaseName/test_somethingQuiteDescriptive_${index}`, failing: `test_sim · Module${index}WithAVeryLongSchemeName` }))
+  const clock = session(on, { ...runs(scopes), ...ledger(reds) })
+  await start($, clock)
+  const text = (await card($)) ?? ''
+  expect(text).toMatch(/Still red on feat\/card: .* \+\d+ more$/m)
+  expect(text).toContain('+3 more')
+})
+
+test('a card the CLI is too slow to finish stays out of that conversation', async ($, on) => {
+  const clock = session(on, runs({ 'build_sim · App': { runs: [45_000] } }), { branch: () => new Promise(() => {}) })
+  await start($, clock)
+  const read = card($)
+  await clock.advance(1_500)
+  expect(await read).toBeUndefined()
 })

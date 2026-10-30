@@ -2,17 +2,17 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, generatedOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
+import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
-import { CARD_SECTION, cardText } from './card'
+import { CARD_BLOCK, CARD_WAIT_MS, cardText } from './card'
 import { describe, historyOf, observe, runsWholeScope } from './context'
-import { afterTestRun, label, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
+import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
 import { afterGenerate, editedNote, letThroughNote, marked, marksOf, refusal } from './regenerate'
-import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, isStale, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, withContext } from './timing'
+import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, isStale, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, whereKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { buildsProject, FILE_EDITOR, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
 
@@ -167,6 +167,7 @@ export const register: Register = on => {
     const elapsed = outcome.durationMs ?? ended - started
     await quietly(() => $.store.set(historyKey(scope), [...earlier, elapsed].slice(-HISTORY)))
     await quietly(() => $.store.set(updatedKey(scope), ended))
+    await quietly(async () => $.store.set(whereKey(scope), await $.session.cwd()))
     await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
     // Only what the CLI read goes in the ledger: without it, the outcome is a guess no test plan should cite.
     if (kind === 'test' && reported !== undefined) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: runsWholeScope(parsed, e as unknown as Record<string, unknown>) })
@@ -234,15 +235,14 @@ export const register: Register = on => {
     found = []
     seenAt = {}
     void loadProblems($).catch(() => undefined)
-    void buildCard($)
     return started
   })
-  // The one unmatched prompt.compose hook: the project card, as it was built when the session started.
-  on('prompt.compose', async ($, e, next) => {
-    const composed = await next(e)
-    // The first prompt fixes what the session sends: a card not built by then stays out, so the text never changes.
-    sentCard ??= builtCard ?? null
-    return sentCard ? { sections: [...composed.sections, { id: CARD_SECTION, text: sentCard, scope: 'session' as const }] } : composed
+  // The one unmatched prompt.context hook: the project card, in the context of the conversation's first message. The
+  // engine keeps the answer until a compaction or /clear reads it again; a card not built in time stays out.
+  on('prompt.context', async ($, e, next) => {
+    const context = await next(e)
+    const text = await quietly(() => Promise.race([cardNow($), $.clock.sleep(CARD_WAIT_MS).then(() => undefined)]))
+    return text ? { ...context, blocks: [...context.blocks, { name: CARD_BLOCK, text }] } : context
   })
   // The one unmatched prompt hook: a problem fixed any way at all leaves the band by the next prompt. Never awaited.
   on('prompt.submit', async ($, e, next) => {
@@ -343,29 +343,30 @@ function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
   return update($, runState, () => run)
 }
 
-/** The project card built for this session, once built, and the text its prompts carry, fixed by the first one: `null` for none. */
-let builtCard: string | undefined
-let sentCard: string | null | undefined
-/** Which session's build may write the card: one a newer session started over never lands. */
-let cardBuild = 0
+/** The project card from what earlier runs in this folder stored: their durations, and the branch's red tests. */
+async function cardNow($: EngineInterface): Promise<string | undefined> {
+  const [folder, now] = await Promise.all([$.session.cwd(), $.clock.now()])
+  const scopes = (await storedHistory($)).filter(entry => entry.where === folder && !isStale(entry.updated, now))
+  const { head, ledger } = await branchLedger($)
+  const red = ledger && !isStale(ledger.updated, now) ? ledger.entries.filter(entry => !entry.green && !isStale(entry.last, now)) : []
+  return cardText(scopes, red, head ? label(head, true) : '')
+}
 
-/** Builds the card from what earlier runs stored: durations kept within the history's time, and the branch's red tests. */
-function buildCard($: EngineInterface): void {
-  sentCard = undefined
-  builtCard = undefined
-  const generation = ++cardBuild
-  void (async () => {
-    const now = await $.clock.now()
-    const scopes = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX)).map(key => key.slice(DURATIONS_PREFIX.length))
-    const scoped = await Promise.all(scopes.map(async scope => {
-      const [runs, updated, tests] = await Promise.all([$.store.get(historyKey(scope)), $.store.get(updatedKey(scope)), $.store.get(testsKey(scope))])
-      return isStale(updated, now) || !Array.isArray(runs) ? undefined : { scope, runs: runs as number[], ...(typeof tests === 'number' ? { tests } : {}) }
-    }))
-    const head = headOf(await answer($, ['project', '--branch'], 10_000))
-    const red = head ? (ledgerOf(await $.store.get(ledgerKey(head)))?.entries ?? []).filter(entry => !entry.green) : []
-    const text = cardText(scoped.filter(entry => entry !== undefined), red, head ? label(head, true) : '')
-    if (generation === cardBuild) builtCard = text
-  })().catch(() => undefined)
+/** Every run scope the store holds, with its durations, when a run last updated it, its test total and its folder. */
+async function storedHistory($: EngineInterface): Promise<{ scope: string; runs: number[]; updated: unknown; tests?: number; where?: unknown }[]> {
+  const scopes = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX)).map(key => key.slice(DURATIONS_PREFIX.length))
+  return Promise.all(scopes.map(async scope => {
+    const [runs, updated, tests, where] = await Promise.all([historyKey, updatedKey, testsKey, whereKey].map(key => quietly(() => $.store.get(key(scope)))))
+    return { scope, runs: Array.isArray(runs) ? (runs as number[]) : [], updated, where, ...(typeof tests === 'number' ? { tests } : {}) }
+  }))
+}
+
+/** The checkout the CLI names, and its ledger. */
+async function branchLedger($: EngineInterface): Promise<{ head?: Head; ledger?: Ledger }> {
+  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  if (!head) return {}
+  const ledger = ledgerOf(await $.store.get(ledgerKey(head)))
+  return { head, ...(ledger ? { ledger } : {}) }
 }
 
 /** The doctor's last answer, and when each problem was first found: bookkeeping a reload may start over. */
@@ -452,15 +453,15 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
 /** The ledger of the branch checked out now, as text. */
 async function ledgerNow($: EngineInterface): Promise<string> {
   await ledgerWrites
-  const head = headOf(await answer($, ['project', '--branch'], 10_000))
-  if (!head) return LEDGER_UNAVAILABLE
-  return ledgerText(ledgerOf(await $.store.get(ledgerKey(head))), head)
+  const { head, ledger } = await branchLedger($)
+  return head ? ledgerText(ledger, head) : LEDGER_UNAVAILABLE
 }
 
 /** `/xcrew history`. */
 async function history($: EngineInterface): Promise<string> {
-  const tools = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX)).map(key => key.slice(DURATIONS_PREFIX.length))
-  const updated = Object.fromEntries(await Promise.all(tools.map(async tool => [tool, await quietly(() => $.store.get(updatedKey(tool)))] as const)))
+  const stored = await storedHistory($)
+  const tools = stored.map(entry => entry.scope)
+  const updated = Object.fromEntries(stored.map(entry => [entry.scope, entry.updated]))
   // Dating and dropping lines is bookkeeping: without a clock the history still shows, all of it.
   const now = await quietly(() => $.clock.now())
   const { kept, stamp, gone } = now === undefined ? { kept: tools, stamp: [], gone: [] } : keptHistory(tools, updated, now)
@@ -468,7 +469,7 @@ async function history($: EngineInterface): Promise<string> {
   // The durations go first: should a later delete fail, nothing undated is left to be dated afresh.
   await Promise.all(gone.map(async tool => {
     await quietly(() => $.store.delete(historyKey(tool)))
-    await Promise.all([updatedKey(tool), testsKey(tool)].map(key => quietly(() => $.store.delete(key))))
+    await Promise.all([updatedKey(tool), testsKey(tool), whereKey(tool)].map(key => quietly(() => $.store.delete(key))))
   }))
-  return historyText(await Promise.all(kept.map(async tool => ({ tool, runs: (await $.store.get(historyKey(tool))) as number[] | undefined }))))
+  return historyText(kept.map(tool => ({ tool, runs: stored.find(entry => entry.scope === tool)?.runs })))
 }

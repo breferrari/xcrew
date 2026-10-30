@@ -246,12 +246,18 @@ XcodeGen's `info` and `entitlements` paths aren't counted yet, because reading t
 
 ## The project card
 
-The card reaches Claude as a section of the system prompt, which a mod adds with a `prompt.compose` hook. The engine's types (Claude Code 2.1.312, read October 30, 2026) say:
-- the event "Fires when the engine renders a system prompt";
-- "A section added at the end of what `next(e)` answered is `session`";
-- `session` text sits after the cache's boundary, where "text that varies hits that cache for nobody".
+The card reaches Claude in the context of a conversation's first message, which a mod adds with a `prompt.context` hook. The engine's types (Claude Code 2.1.312, read October 30, 2026) say the event:
+- "Fires once per conversation, when the engine computes the context blocks its first user message carries";
+- has an answer that "stands until `$.ui.invalidate("prompt.context")` or a re-read (compaction, `/clear`)";
+- treats a block whose name the engine doesn't route as one that "reaches the model in one copy … While it stands, a later answer adds, changes and takes back none."
 
-So the mod builds the card once, when a session starts, and every prompt of that session sends it unchanged. A card not built by the first prompt, as on a first run while the CLI builds, stays out for that session rather than changing the prompt later. Every session's prompt carries the card, so it's capped at ten lines and 800 characters, with longer lists counted as "+N more".
+So the engine sends the card once, and keeps it unchanged until the conversation is compacted or cleared. An earlier draft added it to the system prompt through `prompt.compose`, which "Fires when the engine renders a system prompt", so every prompt. Holding the card fixed there needed module state, which a reload clears, and a first prompt that came before the card was built locked it out for the session.
+
+The hook waits for the card at most `CARD_WAIT_MS`, so a slow CLI (a first run building it, say) leaves the card out of that conversation rather than holding the request.
+
+Whether a subagent's or a `--bare` session's first message fires `prompt.context` the docs don't say, and the event's input carries no `agentId` or traits to tell. The card is short either way.
+
+The store is the plugin's, across every project, and a run scope (`test_sim · App`) doesn't name one. So each run records the session's folder (`$.session.cwd()`), and the card shows only scopes last run in this folder. Scopes from before that record stay out until they run again. The card is capped in lines and characters, with longer lists counted as "+N more".
 
 ## Toolchains
 

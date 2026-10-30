@@ -47,7 +47,12 @@ export function ledgerOf(stored: unknown): Ledger | undefined {
  * same tool and scheme. A pass of another scheme or selection never ran them.
  */
 export function covers(passed: string, failed: string): boolean {
-  return passed === failed || (!passed.includes(' › ') && failed.startsWith(`${passed} › `))
+  return passed === failed || (isWholeScope(passed) && failed.startsWith(`${passed} › `))
+}
+
+/** Whether a run scope is a tool and scheme's whole suite, not a selection of its tests. */
+export function isWholeScope(scope: string): boolean {
+  return !scope.includes(' › ')
 }
 
 /**
