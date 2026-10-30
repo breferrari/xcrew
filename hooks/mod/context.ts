@@ -68,7 +68,17 @@ function parse(text: string): Record<string, unknown> | undefined {
 export function historyOf(tool: XcodeTool, input: Record<string, unknown>): string {
   const scheme = schemeOf(tool, input)
   const tests = selectedTests(input)
-  return `${tool.tool}${scheme ? ` · ${scheme}` : ''}${tests.length > 0 ? ` › ${tests.join(', ')}` : ''}`
+  return `${tool.tool}${scheme ? ` · ${scheme}` : ''}${tests.length > 0 ? `${SELECTED}${tests.join(SELECTIONS)}` : ''}`
+}
+
+/** What `historyOf` puts between a scope's tool and scheme and its selections, and between selections. */
+const SELECTED = ' › '
+const SELECTIONS = ', '
+
+/** A scope `historyOf` wrote, read back: its tool and scheme (`test_sim · App`), and its selections. */
+export function scopeParts(scope: string): { base: string; selections: string[] } {
+  const [base = '', selected] = scope.split(SELECTED)
+  return { base, selections: selected ? selected.split(SELECTIONS) : [] }
 }
 
 /** The tests a run's `-only-testing:` arguments select; none when it runs its scheme's whole suite. */

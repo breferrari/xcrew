@@ -1,5 +1,6 @@
 import type { Failure, Head, Repetition } from './cli'
 import { dayAndTime } from './format'
+import { scopeParts } from './context'
 import { isStale } from './timing'
 
 /**
@@ -47,42 +48,51 @@ export function ledgerOf(stored: unknown): Ledger | undefined {
  * same tool and scheme. A pass of another scheme or selection never ran them.
  */
 export function covers(passed: string, failed: string): boolean {
-  return passed === failed || (isWholeScope(passed) && failed.startsWith(`${passed} › `))
+  return passed === failed || (isWholeScope(passed) && scopeParts(failed).base === passed)
 }
 
 /**
  * Whether a run of `passed` scope ran `test`, red in `failing`: the scopes `covers` matches, or the same tool and scheme
- * with a selection that reaches the test. A selection is `Target[/Suite[/test]]`, as `-only-testing:` takes it, and a
- * test is named `Suite/test`, so the test's target comes from the selections of the run it failed in.
+ * with a selection that reaches the test. A selection is `TestTarget[/TestClass[/TestMethod]]` (`man xcodebuild`), a
+ * Swift Testing method with or without its `()`, and the ledger names a test `Suite/test`, without its target: the
+ * target comes from the selections of the run it failed in. A selection of a class or method reaches the test under a
+ * target that run could have run it in, or under any target when that run selected none; a selection of a whole target
+ * only when that run's selections leave the test exactly one target.
  */
 export function reaches(passed: string, test: string, failing: string): boolean {
   if (covers(passed, failing)) return true
-  const pass = parts(passed), fail = parts(failing)
+  const pass = scopeParts(passed), fail = scopeParts(failing)
   if (pass.base !== fail.base) return false
-  // The test's full path under each target its failing run selected it by.
-  const paths = fail.selections.flatMap(selection => {
-    const path = `${selection.split('/')[0]}/${test}`
-    return path === selection || path.startsWith(`${selection}/`) ? [path] : []
-  })
-  return pass.selections.some(selection => paths.some(path => path === selection || path.startsWith(`${selection}/`)))
+  // The targets the failing run could have run the test in; none known when it selected none.
+  const targets = new Set(fail.selections.map(path).filter(([, ...rest]) => within(test, rest)).map(([target = '']) => target))
+  return pass.selections.map(path).some(([target = '', ...rest]) =>
+    rest.length > 0
+      ? within(test, rest) && (fail.selections.length === 0 || targets.has(target))
+      : targets.size === 1 && targets.has(target),
+  )
 }
 
-/** A scope's tool and scheme (`test_sim · App`), and its selections. */
-function parts(scope: string): { base: string; selections: string[] } {
-  const [base = '', selected] = scope.split(' › ')
-  return { base, selections: selected ? selected.split(', ') : [] }
+/** A selection's components, a Swift Testing method's `()` taken off. */
+function path(selection: string): string[] {
+  return (selection.endsWith('()') ? selection.slice(0, -2) : selection).split('/')
+}
+
+/** Whether `test` (`Suite/test`) is the class or method `components` name, or in it; no components name everything. */
+function within(test: string, components: string[]): boolean {
+  const named = components.join('/')
+  return named === '' || test === named || test.startsWith(`${named}/`)
 }
 
 /** Whether a run scope is a tool and scheme's whole suite, not a selection of its tests. */
 export function isWholeScope(scope: string): boolean {
-  return !scope.includes(' › ')
+  return scopeParts(scope).selections.length === 0
 }
 
 /**
  * The ledger after a test run.
  * - A failing test enters red, or turns red again after a green, keeping its first red; either way it now fails in this
  *   run's scope.
- * - A run that ran every test of its scope turns green each red test it covers and didn't fail, a failing run
+ * - A run that ran every test of its scope turns green each red test it reaches and didn't fail, a failing run
  *   included: its other tests passed. A run that didn't get as far as tests (a build failure) turns nothing green.
  * - An entry no run has written for as long as the history is kept is dropped.
  */
@@ -116,10 +126,12 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
   return { entries, updated: run.at }
 }
 
-/** A repeated test's red, in the CLI's words for its verdict (`ResultBundle.repetitionsNote`). */
+/**
+ * A repeated test's red, when no failure of its own was listed: a real one in the CLI's words for its verdict
+ * (`ResultBundle.repetitionsNote`); a flaky one's counts are its label's, which each run updates.
+ */
 function verdictMessage(verdict: Repetition | undefined): string {
-  if (verdict?.verdict === 'real') return 'failed every run, a real failure'
-  return verdict ? `flaky, failing ${verdict.failed} of ${verdict.runs}` : 'failed in a repeated run'
+  return verdict?.verdict === 'real' ? 'failed every run, a real failure' : 'failed some of its repeated runs'
 }
 
 /** The stored ledgers no run has written for as long as the history is kept. */

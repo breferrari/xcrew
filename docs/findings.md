@@ -264,7 +264,7 @@ The mod gives Claude the ledger through a tool of its own, registered with `$.to
 A ledger is kept per branch, in `$.store`, under the project's real root and the branch `git symbolic-ref` names. With HEAD detached it is kept under the commit, which a later checkout of a branch never meets again: no attempt is made to carry it over.
 
 A run turns a red green when it ran the test without failing it:
-- It must cover the scope where the test fails now: the same tool, scheme and selection, or that tool and scheme's whole suite.
+- It must have run the test: the same tool and scheme as the run it fails in now, and either that run's selection, the whole suite, or a selection that reaches the test. `man xcodebuild` (Xcode 27.2, read October 30, 2026) gives a selection's form as `TestTarget[/TestClass[/TestMethod]]`, the target being "the name of a unit or UI testing bundle". The ledger names a test `Suite/test`, without its target, so the target comes from the selections of the run it failed in. A class or method selection reaches the test under a target that run could have run it in, or under any target when that run selected none. A whole-target selection reaches it only when those selections leave the test exactly one target. A Swift Testing method selection may end in `()`, as `xcresulttool` names its tests, and is read either way.
 - It must have run every test its scope names. A run with `-skip-testing:` hasn't. Nor has an Xcode MCP test run other than its run of all tests: those tools take their selection in arguments the scope doesn't read, so two `RunSomeTests` runs of different tests would share a scope.
 - A failing run counts as well, for the reds it ran that aren't among its failures, as long as it got as far as running tests.
 
