@@ -31,8 +31,6 @@ Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and
 | **A failing 961-test run** | ~80,000 characters, cut short by Claude Code | [~1,000 characters](#test-results-claude-can-act-on): the failures and the summary |
 | **Where a test failed** | Not reported on parallel simulators | The file's absolute path and line |
 | **A crash** | The test's name | The exception and the crashed thread's top frames |
-| **Which tests to run** | The whole suite, again and again | [The tests the change can break](#tests-that-follow-your-change), from the project's own targets |
-| **A test that fails now and then** | Fixed as if it were broken | Run again and called flaky or real |
 | **`XcodeWrite` in a Tuist or XcodeGen project** | Re-saves the whole generated `.pbxproj` | [You're asked first](#a-guard-for-generated-projects); otherwise Claude writes the file itself |
 | **An edit to a generated file** | Lost on the next generate | You're asked first, with the manifest to edit instead |
 | **A build after a manifest edit** | Builds the project as it was, with errors that don't say why | [Refused once](#a-guard-for-generated-projects), with the generate command to run first |
@@ -81,7 +79,6 @@ A line above the prompt follows every build and test:
 - **When it ends:** the outcome, compared with recent runs, and what failed.
 - **A long run** also sends a notification.
 - **Where the line can't draw**, such as VS Code, the status line counts and a toast reports the outcome.
-- **`/xcrew history`** lists each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped.
 
 The [image at the top](#your-xcode-crew-inside-claude-code) shows all four states.
 
@@ -93,6 +90,10 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
 - **A crash's exception and top frames**, from the crash log the result bundle attaches.
 - **Skipped tests with their reasons**, and **expected failures** that MobileBuildMCP's counts leave out.
 - **A warning when a filter matched no tests**, which MobileBuildMCP reports as a success.
+- **Flaky or real**: a test repeated with `-test-iterations` comes back with a verdict for each test. It's flaky when it failed some runs and passed others, and a real failure when it failed every run.
+- **Warnings in lines your branch changed**, named apart from the rest of a build's warnings.
+- **The changed lines a test run didn't run**, from its coverage, on a run with coverage on.
+- **A loop budget**: after the whole suite runs again and again in a short while, Claude is sent to the tests the change can break.
 - **Compile errors counted once.**
 - **Passing tests left out**, with the full list a file read away.
 
@@ -102,24 +103,27 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
   <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
 </picture>
 
-### Tests that follow your change
-
-- **The tests the change can break:** `xcrew affected` lists the test targets of every target that owns a changed file or depends on one, at any depth, as the project declares them. When a change touches what it can't read (the project file, a scheme, an `.xcconfig`, a package or a manifest), it says to run everything, and why. Claude asks it before running the whole suite, through a tool of the mod's.
-- **A loop budget:** after the whole suite runs again and again in a short while, Claude is sent to the tests the change can break, and the whole suite again before the pull request.
-- **Flaky or real:** a test repeated with `-test-iterations` comes back with a verdict for each test. It's flaky when it failed some runs and passed others, and a real failure when it failed every run.
-- **Warnings in lines your branch changed**, named apart from the rest of a build's warnings.
-- **The changed lines a test run didn't run**, from its coverage, on a run with coverage on.
-- **A red-to-green record:** `/xcrew ledger` shows the tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan.
-
 ### The last failures beside the chat
 
-After a failing run, the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw. `/xcrew failures` opens the failures pane, with every failing test and compile error of the last failing run, and `/xcrew close` closes the failures pane.
+After a failing run, the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw. It opens the failures pane, with every failing test and compile error of the last failing run.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane-light.png">
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png">
   <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
 </picture>
+
+#### Commands
+
+| Command | What it does |
+| --- | --- |
+| `/xcrew failures` | Opens the failures pane, with every failing test and compile error of the last failing run |
+| `/xcrew close` | Closes the failures pane |
+| `/xcrew history` | Each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped |
+| `/xcrew ledger` | The tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan |
+| `/xcrew doctor` | The doctor's report, below |
+
+They answer at once, without a turn for Claude.
 
 ### The right server for each job
 
@@ -134,12 +138,9 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 
 - **When MobileBuildMCP isn't usable**, because it's missing or older than Xcrew needs, the session sends builds to the Xcode MCP's `BuildProject` and tests to `RunAllTests`. They work through the open Xcode, its active scheme and its own DerivedData, and Claude tells you once what's lost meanwhile: coverage, simulator control, UI automation and LLDB.
 - **Simulators already booted** are named at the start, so Claude reuses one rather than booting another.
+- **A card at session start:** each conversation starts with a short card in Claude's context: how long builds and test runs usually take in this folder, the tests still failing on the branch, flaky ones marked, and, when a full test run is slow, the selections run before. It's built from what Xcrew already recorded, sent once per conversation, and kept to a few lines.
 
 [docs/findings.md](docs/findings.md) has the evidence behind each choice, and what was tried and rejected.
-
-### A card at session start
-
-Each conversation starts with a short card in Claude's context: how long builds and test runs usually take in this folder, the tests still failing on the branch, flaky ones marked, and, when a full test run is slow, the selections run before. It's built from what Xcrew already recorded, sent once per conversation, and kept to a few lines.
 
 ### A guard for generated projects
 
@@ -148,18 +149,14 @@ Each conversation starts with a short card in Claude's context: how long builds 
 - **In a classic Xcode project:** it stays allowed, since that's how a new file joins its target.
 - **After Claude edits a manifest** (`Project.swift`, `Tuist.swift`, `project.yml` and the like): the next build or test, or a run that builds first, is refused once, with the command that regenerates the project, such as `tuist generate --no-open`. Once that command succeeds, builds run again. If you generated in your own terminal, the next attempt goes through.
 
-### One Xcode per project
-
-- **A pin:** a project that names its Xcode in `.xcode-version`, beside the project or its folder, builds and tests with it through MobileBuildMCP, even when another Xcode is selected. It's the file xcodes and fastlane read. Without one, nothing changes.
-- **The doctor** says when the pin matches no installed Xcode, when MobileBuildMCP started without it, when CI's workflows name another Xcode, and when the open Xcode, which the Xcode MCP works through, isn't the one builds use.
-- **`xcrew xcode`** says which Xcode is which: those installed, the selected one, the project's pin, CI's, and the one open.
-
 ### Setup and doctor
 
 - **`/xcrew:setup`** writes MobileBuildMCP's per-project profiles from your schemes and installed simulators.
-- **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out. **`/xcrew doctor`** shows the same report in the chat.
+- **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
 - **Anything wrong** shows in the line above the prompt: a failing check until it's fixed, however you fix it, and a warning for a short while. When setup or `mcs sync` changed the config after MobileBuildMCP started, the line asks you to restart Claude Code.
+- **`xcrew xcode`** says which Xcode is which: those installed, the selected one, the project's `.xcode-version` pin, CI's, and the one open. A pinned Xcode is the one MobileBuildMCP builds and tests with.
 - **`xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
+- **`xcrew affected`** lists the tests your branch's changes can break: the test targets of every target that owns a changed file or depends on one, at any depth, as the project declares them. When a change touches what it can't read (the project file, a scheme, an `.xcconfig`, a package or a manifest), it says to run everything, and why. Claude asks it before running the whole suite, through a tool of the mod's.
 
 ```
 ok    mobilebuildmcp/version           version 2.7.1
@@ -198,19 +195,6 @@ ok    xcrew/up-to-date                 0.8.9, the latest release
 - **More:** [docs/architecture.md](docs/architecture.md) walks through the layout.
 
 ## Reference
-
-### Commands
-
-| Command | What it does |
-| --- | --- |
-| `/xcrew failures` | Opens the [failures pane](#the-last-failures-beside-the-chat): every failing test and compile error of the last failing run |
-| `/xcrew close` | Closes the failures pane |
-| `/xcrew ledger` | The branch's [red-to-green record](#tests-that-follow-your-change) of tests, and those still failing |
-| `/xcrew history` | Each tool's usual duration, per scheme and test selection |
-| `/xcrew doctor` | The [doctor's report](#setup-and-doctor) on this Mac and project |
-| `/xcrew:setup` | Writes MobileBuildMCP's profiles, with Claude finding your schemes |
-
-The `/xcrew` commands answer at once, without a turn for Claude.
 
 ### Configuration
 
@@ -259,7 +243,7 @@ Everything Xcrew reads, runs, changes and sends on your Mac. Nothing in it reads
 
 | | |
 | --- | --- |
-| **Reads** | Every tool call Claude makes, with its arguments and result, because it hooks `tool.call`. It acts only on the Xcode MCP's and MobileBuildMCP's tools by their names, on Write and Edit calls to a file a generator reads or writes, and on Bash commands that run setup or a generate, and passes every other call on untouched. It keeps, in Claude Code's own store, each build, test and run's recent durations, with the folder each last ran in, how many tests each test run ran and whether its server writes a log to follow, and each branch's red-to-green ledger of tests, with flaky tests marked, dropped once no run has written it for weeks. For the session only, it keeps the last failing run's failures and the recent whole-suite runs the loop budget counts |
+| **Reads** | Every tool call Claude makes, with its arguments and result, because it hooks `tool.call`. It acts only on the Xcode MCP's and MobileBuildMCP's tools by their names, on Write and Edit calls to a file a generator reads or writes, and on Bash commands that run setup or a generate, and passes every other call on untouched. It keeps, in Claude Code's own store, each build, test and run's recent durations, with when each last ran and the folder each last ran in, how many tests each test run ran and whether its server writes a log to follow, and each branch's red-to-green ledger of tests, with flaky tests marked, dropped once no run has written it for weeks. For the session only, it keeps the run in progress, the last failing run's failures, the recent whole-suite runs the loop budget counts, the doctor's latest problems, which build of the CLI to run, each build or test result's row, and the generate command a manifest edit is waiting on |
 | **Hooks** | `tool.call`: the `XcodeWrite` guard, the question before an edit to a generated file, the refusal of a build after a manifest edit, the `affected` and ledger tools' answers, timing for builds, tests and runs, and, after a setup or generate command in Bash, a look for problems and whether the project is up to date. `tool.describe`: the guard's line in `XcodeWrite`'s description. `ui.render`: the line above the prompt, the failures pane, and the row a build or test result shows in the transcript. `command.run`: `/xcrew`. `prompt.context`: the project card in the context of each conversation's first message. `prompt.submit`: after a prompt, at most every so often, asks the doctor again what's missing, for the line above the prompt. `session.start`: registers `/xcrew` and the ledger and `affected` tools Claude reads, and asks the doctor what's missing |
 | **Changes** | In a Tuist or XcodeGen project, it holds `XcodeWrite`, and Write or Edit of a file the generator writes, to ask you, and refuses the call if you say no or nobody can be asked; it says so in `XcodeWrite`'s description. After Claude edits a manifest, it refuses the next build or test, or a run that builds first, once, and adds a line to the edit's result naming the generate command. After a build or test call, Claude reads the CLI's shorter result and notes in place of the server's. At the start of each conversation, it adds a short card to Claude's context: the usual run times in this folder and the tests still failing on the branch, from its own store. Nothing else |
 | **Shows** | The line above the prompt, the failures pane, a row with each build or test result, a toast or the status line where the line can't draw, and a notification after a long run |

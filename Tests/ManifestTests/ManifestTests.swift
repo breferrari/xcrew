@@ -503,6 +503,38 @@ import Testing
         }
     }
 
+    /// What Privacy says of each value the mod keeps: in Claude Code's store across sessions, by its key's prefix, and in
+    /// the session's state, by its atom's key.
+    static let keptValues = [
+        "durations": "each build, test and run's recent durations",
+        "updated": "when each last ran",
+        "where": "the folder each last ran in",
+        "tests": "how many tests each test run ran",
+        "logs": "whether its server writes a log to follow",
+        "ledger": "red-to-green ledger of tests",
+        "run": "the run in progress",
+        "loop": "the recent whole-suite runs the loop budget counts",
+        "failures": "the last failing run's failures",
+        "problems": "the doctor's latest problems",
+        "build": "which build of the CLI to run",
+        "row": "each build or test result's row",
+        "stale": "the generate command a manifest edit is waiting on",
+    ]
+
+    /// Privacy names every value the mod keeps.
+    @Test func privacyNamesEveryValueTheModKeeps() throws {
+        let register = try text("hooks/mod/register.ts")
+        let atoms = register.matches(of: /atom\(\{ plugin: 'xcrew', key: '(\w+)' \}/).map { String($0.1) }
+        let modules = try ["timing", "ledger"].map { try text("hooks/mod/\($0).ts") }.joined()
+        let prefixes = modules.matches(of: /`(\w+)\.\$\{|_PREFIX = '(\w+)\.'/).map { String($0.1 ?? $0.2 ?? "") }
+        #expect(atoms.contains("stale") && prefixes.contains("ledger"))
+        #expect(Set(atoms + prefixes) == Set(Self.keptValues.keys))
+        let reads = try privacyRow("Reads", of: "The mod")
+        for (key, said) in Self.keptValues {
+            #expect(reads.contains(said), "Privacy doesn't say the mod keeps \(key): \(said)")
+        }
+    }
+
     /// The README's doctor report lists the doctor's checks, in the order the doctor prints them.
     @Test func theREADMEsDoctorReportListsEveryCheck() throws {
         let report = try #require(try text("README.md").firstMatch(of: /(?s)```\n(ok    mobilebuildmcp\/version.*?)```/)).1
