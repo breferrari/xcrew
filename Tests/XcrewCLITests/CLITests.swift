@@ -561,6 +561,26 @@ import XcrewTestSupport
     }
 }
 
+/// The mod sends the ledger and run times it holds; the CLI answers with the block, then the images to attach.
+@Suite struct EvidenceCommandTests {
+    @Test func evidencePrintsTheBlockForTheLedgerTheModSends() async {
+        let json = #"{"ledger":[{"test":"Suite/testA","red":{"scope":"test_sim · App","at":1793370240000,"message":"failed"},"failing":"test_sim · App","last":1793370240000}],"times":[]}"#
+        let run = await Run("evidence", context: .fake(), stdin: json)
+        #expect(run.status == 0)
+        #expect(run.text == "## Evidence\n\nStill red:\n- `Suite/testA`: \"failed\"")
+    }
+
+    @Test func evidenceWithNothingToSaySaysSo() async {
+        let run = await Run("evidence", context: .fake(), stdin: #"{"ledger":[],"times":[]}"#)
+        #expect(run.status == 0)
+        #expect(run.text == EvidenceCommand.nothing)
+    }
+
+    @Test func evidenceRefusesInputThatIsntTheModsJSON() async {
+        #expect(await Run("evidence", context: .fake(), stdin: "not json").status != 0)
+    }
+}
+
 @Suite struct ProjectCommandTests {
     @Test func aTuistProjectInASubfolderIsGenerated() async {
         let project = Project.temporary(containing: ["ios/Tuist.swift"])

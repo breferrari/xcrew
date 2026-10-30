@@ -22,6 +22,8 @@ public struct Report: Sendable, Equatable, Codable {
     /// A build or test call whose result holds nothing in its server's own forms, and isn't an error: a call Claude moved
     /// to the background answers with Claude Code's handle, not the server's result. Absent otherwise.
     public var isUnread: Bool?
+    /// A test run's result bundle, which the ledger keeps for a test's first red run.
+    public var bundle: String?
 
     /// The warnings in lines the branch changed, a few named; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
@@ -161,7 +163,8 @@ public struct Report: Sendable, Equatable, Codable {
             result: compact ?? (edited ? final.text : nil),
             notes: notes,
             repeated: repeatedTests,
-            isUnread: kind != .run && !final.isError && final.isNotTheServers ? true : nil
+            isUnread: kind != .run && !final.isError && final.isNotTheServers ? true : nil,
+            bundle: bundle?.path
         )
     }
 }

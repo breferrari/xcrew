@@ -8,6 +8,7 @@ public enum CLI {
         AffectedCommand(),
         ReportCommand(),
         CardCommand(),
+        EvidenceCommand(),
         PhaseCommand(),
         ProjectCommand(),
         XcodeSkillsCommand(),

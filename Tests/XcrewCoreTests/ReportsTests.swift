@@ -345,7 +345,7 @@ func failingRunText(passing: Int) -> String {
 
     @Test func aPassingRunKeepsTheServersResult() async {
         let report = await Self.report("mobileTestsPassed")
-        #expect(report == Report(ok: true, detail: "3 passed", durationMs: 14_544, tests: 3, failures: [], result: nil, notes: []))
+        #expect(report == Report(ok: true, detail: "3 passed", durationMs: 14_544, tests: 3, failures: [], result: nil, notes: [], bundle: "/Users/dev/Library/Developer/MobileBuildMCP/workspaces/sample-0000/result-bundles/test_sim.xcresult"))
     }
 
     @Test func aFailingRunCarriesItsFailuresForThePane() async {

@@ -14,9 +14,24 @@ const DAY_MS = 24 * 60 * 60_000
  * A project on `branch` (the CLI names it and the project's root), whose test runs report the next of `reports`. The
  * store starts with `stored`; registered tools are collected in `registered`.
  */
-function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; reportFails?: () => boolean } = {}) {
+function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; store?: Map<string, unknown>; reportFails?: () => boolean } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 9, 30, 12, 0) })
-  mock.store(on, options.stored ?? {})
+  const store = options.store
+  if (store) {
+    // The store as a plain map, so the test reads what the mod kept.
+    on('store.get', (_, e) => ({ value: store.get(e.key) }))
+    on('store.set', (_, e) => {
+      store.set(e.key, e.value)
+      return { value: undefined }
+    })
+    on('store.keys', () => ({ value: [...store.keys()] }))
+    on('store.delete', (_, e) => {
+      store.delete(e.key)
+      return { value: undefined }
+    })
+  } else {
+    mock.store(on, options.stored ?? {})
+  }
   const registered: { name: string; isDeferred?: unknown }[] = []
   on('session.surfaces', () => ({ value: ['terminal'] }))
   on('ui.invalidate', () => ({ value: undefined }))
@@ -87,6 +102,16 @@ test('a test that fails again after its green is red again, keeping its first re
   expect(text).not.toContain('Red, then green')
   // The red is the first run's, an hour before either later one.
   expect(text).toBe(first)
+})
+
+test('a red test keeps the result bundle of the run it first failed in, for the evidence pack', async ($, on) => {
+  const store = new Map<string, unknown>()
+  const { clock } = project(on, [{ ...FAILED, bundle: '/runs/first.xcresult' }, { ...FAILED, bundle: '/runs/second.xcresult' }], { store })
+  await run($)
+  await clock.advance(60 * 60_000)
+  await run($)
+  const ledger = [...store.entries()].find(([key]) => key.startsWith('ledger.'))?.[1] as { entries: { test: string; red: { bundle?: string } }[] } | undefined
+  expect(ledger?.entries.find(entry => entry.test === TEST)?.red.bundle).toBe('/runs/first.xcresult')
 })
 
 test('a compile error never enters the ledger', async ($, on) => {

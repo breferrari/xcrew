@@ -40,6 +40,7 @@ Sources/
     Xcode/              the installed Xcodes, the selected and open ones, the project's `.xcode-version` pin and CI's
     Affected/           which tests a change can break: the project file read for target ownership and dependencies
     Look/               a failed UI test's runs from its result bundle: the steps before each failure, the screen at it from the run's recording, and the accessibility hierarchy XCTest attached
+    Evidence/           a pull request's evidence for its branch, from the mod's ledger and the runs' result bundles and logs: a block safe to paste, and apart from it the images to attach
     XcrewVersion.swift  the version, held equal to plugin.json and the changelog; the marketplace installs it from the `stable` branch
   XcrewCLI/             one Command type per subcommand, and the dispatcher
   xcrew/                main.swift: builds the live Machine and calls CLI.run

@@ -26,6 +26,8 @@ export type Report = {
   repeated?: Repetition[]
   /** The result said no outcome, as a call moved to the background answers with a handle. */
   isUnread?: boolean
+  /** A test run's result bundle. */
+  bundle?: string
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */

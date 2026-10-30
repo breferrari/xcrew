@@ -18,12 +18,12 @@ export type LedgerRun = { scope: string; at: number }
  * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, and when a run
  * last wrote it.
  */
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string }; failing: string; green?: LedgerRun; last: number; flaky?: { failed: number; runs: number } }
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun; last: number; flaky?: { failed: number; runs: number } }
 
 export type Ledger = { entries: LedgerEntry[]; updated: number }
 
 /** A finished test run, as the ledger reads it. `ranAll`: it ran every test its scope names, so its passes count. */
-export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; ranAll: boolean; repeated?: readonly Repetition[] }
+export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; ranAll: boolean; repeated?: readonly Repetition[]; bundle?: string }
 
 /** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
 export function label(head: Head, isShort: boolean): string {
@@ -88,7 +88,8 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
     if (entries.some(entry => entry.test === test)) continue
     const flaky = flakyAfter(test)
     const message = failed.get(test)?.message ?? 'failed some of its repeated runs'
-    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(message) }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}) })
+    // The run's result bundle, for the evidence pack's images: a test's first red is the one kept.
+    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(message), ...(run.bundle ? { bundle: run.bundle } : {}) }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}) })
   }
   return { entries, updated: run.at }
 }

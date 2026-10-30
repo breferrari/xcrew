@@ -450,3 +450,56 @@ struct TestbedMediaFlagTests {
         }
     }
 }
+
+/// The evidence pack's changed lines, from the newest test run's coverage and the newest build's warnings in this
+/// project's MobileBuildMCP workspace, each dated by its run: the coverage capture's real answers.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedEvidenceTests {
+    /// A copy of the coverage capture on a branch that wrote `price(for:)`'s body, its last commit at `committed`, with
+    /// MobileBuildMCP's newest test run and build at `ran`.
+    static func project(committed: Date, ran: Date) throws -> (project: Project, context: CheckContext) {
+        let root = try TestbedTests.copy("captures/coverage")
+        let project = Project(root: root)
+        let workspace = root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root.path))")
+        let bundle = workspace.appending(path: "result-bundles/test_sim_1.xcresult"), log = workspace.appending(path: "logs/build_sim_1.log")
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "\(root.path)/App/Pricing.swift:4:13: warning: initialization of immutable value 'rate' was never used\n\(root.path)/App/Other.swift:2:5: warning: deprecated\n".write(to: log, atomically: true, encoding: .utf8)
+        for item in [bundle, log] { try FileManager.default.setAttributes([.modificationDate: ran], ofItemAtPath: item.path) }
+        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
+        let captured = { (file: String) in
+            try String(contentsOf: root.appending(path: file), encoding: .utf8).replacingOccurrences(of: "\\/testbed\\/captures\\/coverage", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
+        }
+        responses.merge([
+            "git -C \(root.path) log -1 --format=%ct": .init(status: 0, stdout: "\(Int(committed.timeIntervalSince1970))\n"),
+            "xcrun xccov view --archive --file-list --json \(bundle.path)": .init(status: 0, stdout: try captured("file-list.json")),
+            "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(bundle.path)": .init(status: 0, stdout: try captured("Pricing.json")),
+        ]) { _, new in new }
+        return (project, CheckContext.fake(FakeRunner(responses: responses), project: project))
+    }
+
+    static let ran = Date(timeIntervalSince1970: 1_793_370_240)
+    static let input = #"{"ledger":[],"times":[]}"#
+
+    @Test func theChangedLinesComeFromTheNewestRunsDatedByThem() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran)
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text == """
+            ## Evidence
+
+            Changed lines:
+            - From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5.
+            - From the build of 2026-10-30 14:24 UTC: 1 of 2 warnings are in lines this branch changed: Pricing.swift:4 initialization of immutable value 'rate' was never used.
+            """, "\(run.text)")
+    }
+
+    /// A run before the branch's last commit is named as older, never left out and never shown as current.
+    @Test func runsOlderThanTheLastCommitAreNamedOlder() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(36 * 60), ran: Self.ran)
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC, older than the branch's last commit (2026-10-30 15:00 UTC): 5 of 6"), "\(run.text)")
+        #expect(run.text.contains("- From the build of 2026-10-30 14:24 UTC, older than the branch's last commit (2026-10-30 15:00 UTC): 1 of 2 warnings"), "\(run.text)")
+    }
+}
