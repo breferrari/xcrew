@@ -10,14 +10,13 @@ import XcrewTestSupport
     func context(pin: String? = nil, workflow: String? = nil, running: String? = nil, launch: String? = nil, onlyOne: Bool = false) -> CheckContext {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let apps = project.root.appending(path: "Applications")
-        XcodesTests.bundle(in: apps, "Xcode-27.2.0-Beta.3.app", identifier: "com.apple.dt.Xcode", version: "27.2", build: "27B5038j")
-        if !onlyOne { XcodesTests.bundle(in: apps, "Xcode-26.4.app", identifier: "com.apple.dt.Xcode", version: "26.4", build: "17E192") }
+        if onlyOne { FakeXcode.install(in: apps, "Xcode-27.2.0-Beta.3.app", version: "27.2", build: "27B5038j") } else { FakeXcode.installBoth(in: apps) }
         if let pin { project.write(pin, to: ".xcode-version") }
         if let workflow { project.write(workflow, to: ".github/workflows/ci.yml") }
-        let processes = running.map { "\(apps.path)/\($0)/Contents/MacOS/Xcode\n" } ?? ""
+        let processes = running.map { "  202 \(apps.path)/\($0)/Contents/MacOS/Xcode\n" } ?? ""
         let context = CheckContext.fake(FakeRunner(responses: [
             "xcode-select -p": .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n"),
-            "ps -axo comm=": .init(status: 0, stdout: "/usr/sbin/cfprefsd\n\(processes)"),
+            "ps -axo pid=,comm=": .init(status: 0, stdout: "  101 /usr/sbin/cfprefsd\n\(processes)"),
         ]), project: project, applications: apps)
         if let launch {
             let record = Xcodes.launchRecord(of: project, on: context.machine)
@@ -43,9 +42,9 @@ import XcrewTestSupport
 
     /// The launcher says why it didn't apply the pin: the CLI wasn't built yet, or answered too late.
     @Test func aPinTheServerStartedWithoutWarnsWhy() async {
-        let result = await XcodePinCheck().run(context(pin: "26.4\n", launch: "not applied: the CLI took longer than 2 s\n"))
+        let result = await XcodePinCheck().run(context(pin: "26.4\n", launch: "timed out 2\n"))
         #expect(result.status == .warn)
-        #expect(result.message == "the project pins Xcode 26.4 (.xcode-version), but MobileBuildMCP started without it (the CLI took longer than 2 s), so it builds with Xcode 27.2: restart Claude Code")
+        #expect(result.message == "the project pins Xcode 26.4 (.xcode-version), but MobileBuildMCP started without it (the xcrew CLI took longer than 2 s), so it builds with Xcode 27.2: restart Claude Code")
     }
 
     /// A server started before the pin, or before xcrew applied pins, left no record of it.

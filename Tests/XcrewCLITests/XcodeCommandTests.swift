@@ -11,8 +11,7 @@ import XcrewTestSupport
     func context(pin: String? = nil) -> (CheckContext, URL) {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let apps = project.root.appending(path: "Applications")
-        FakeXcode.install(in: apps, "Xcode-27.2.0-Beta.3.app", version: "27.2", build: "27B5038j")
-        FakeXcode.install(in: apps, "Xcode-26.4.app", version: "26.4", build: "17E192")
+        FakeXcode.installBoth(in: apps)
         if let pin { project.write(pin, to: ".xcode-version") }
         let runner = FakeRunner(responses: ["xcode-select -p": .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n")])
         return (CheckContext.fake(runner, project: project, applications: apps), URL(fileURLWithPath: ProjectLayout.canonical(apps)))
@@ -33,6 +32,17 @@ import XcrewTestSupport
         let unmatched = await Run("xcode", "--developer-dir", context: context(pin: "25.0").0)
         #expect(unmatched.status == XcodeCommand.noMatch)
         #expect(unmatched.output == [])
+    }
+
+    /// A server started with another Xcode than the pin's, the pin changed since, didn't start with the pin: the command
+    /// says so as `xcode/pin` does.
+    @Test func aServerStartedWithAnotherXcodeIsNotThePins() async throws {
+        let (context, apps) = context(pin: "26.4\n")
+        let record = Xcodes.launchRecord(of: context.project, on: context.machine)
+        try FileManager.default.createDirectory(at: record.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "applied \(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n".write(to: record, atomically: true, encoding: .utf8)
+        let run = await Run("xcode", context: context)
+        #expect(run.output.contains("builds: Xcode 27.2, since MobileBuildMCP started without the pin"), "\(run.output)")
     }
 
     @Test func withoutAnOptionItSaysWhichXcodeIsWhich() async {

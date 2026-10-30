@@ -50,18 +50,26 @@ import Testing
         return (read(output), Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18, read(errors))
     }
 
-    var real: String { (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var")).map { _ in "/private" + project.path } ?? project.path }
+    /// The project's real path, as the launcher's `pwd -P` prints it.
+    func real() async throws -> String {
+        try await ShimTests.physicalPath(project)
+    }
 
-    func record() -> String? {
-        try? String(contentsOf: URL(fileURLWithPath: cache.path + "/launches" + real), encoding: .utf8)
+    /// The launcher's record for the project: below `launches`, at its real path.
+    func recordPath() async throws -> String {
+        cache.path + "/launches" + (try await real())
+    }
+
+    func record() async throws -> String? {
+        try? String(contentsOfFile: try await recordPath(), encoding: .utf8)
     }
 
     @Test func aPinnedXcodeTheCLINamesIsTheServersDeveloperFolder() async throws {
         try pin()
         try xcrew("echo /Apps/Xcode-26.4.app/Contents/Developer")
         let started = try await start()
-        #expect(started.output == "cwd=\(real) developer=/Apps/Xcode-26.4.app/Contents/Developer\n")
-        #expect(record() == "applied /Apps/Xcode-26.4.app/Contents/Developer\n")
+        #expect(started.output == "cwd=\(try await real()) developer=/Apps/Xcode-26.4.app/Contents/Developer\n")
+        #expect(try await record() == "applied /Apps/Xcode-26.4.app/Contents/Developer\n")
         #expect(started.errors == "")
     }
 
@@ -69,29 +77,41 @@ import Testing
     @Test func aCLINotYetBuiltOrTooSlowLeavesTheServerAsWithoutAPin() async throws {
         try pin()
         try xcrew("exit 75")
-        #expect(try await start().output == "cwd=\(real) developer=none\n")
-        #expect(record() == "not applied: the xcrew CLI wasn't built yet; it is once the session has started\n")
+        #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
+        #expect(try await record() == "not built\n")
         try xcrew("sleep 30; echo /Apps/Xcode-26.4.app/Contents/Developer")
         let slow = try await start()
-        #expect(slow.output == "cwd=\(real) developer=none\n")
+        #expect(slow.output == "cwd=\(try await real()) developer=none\n")
         #expect(slow.seconds < 5)
-        #expect(record() == "not applied: the xcrew CLI took longer than 2 s\n")
+        #expect(try await record() == "timed out 2\n")
     }
 
     @Test func aPinNoInstalledXcodeMatchesIsRecorded() async throws {
         try pin()
         try xcrew("exit 4")
-        #expect(try await start().output == "cwd=\(real) developer=none\n")
-        #expect(record() == "not applied: no installed Xcode is the pinned one\n")
+        #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
+        #expect(try await record() == "no match\n")
     }
 
     /// Without a pin the CLI isn't asked, and an earlier start's record goes: the server no longer has its Xcode.
     @Test func withoutAPinTheCLIIsNotAskedAndTheOldRecordGoes() async throws {
         try xcrew("echo asked >> \"\(base.path)/asked\"; exit 3")
-        try FileManager.default.createDirectory(at: URL(fileURLWithPath: cache.path + "/launches" + real).deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "applied /Apps/Xcode-26.4.app/Contents/Developer\n".write(toFile: cache.path + "/launches" + real, atomically: true, encoding: .utf8)
-        #expect(try await start().output == "cwd=\(real) developer=none\n")
+        let path = try await recordPath()
+        try FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "applied /Apps/Xcode-26.4.app/Contents/Developer\n".write(toFile: path, atomically: true, encoding: .utf8)
+        #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
         #expect(!FileManager.default.fileExists(atPath: base.appending(path: "asked").path))
-        #expect(record() == nil)
+        #expect(try await record() == nil)
+    }
+
+    /// A pin inside a dependency or a hidden folder is a vendored project's, not this one's: the CLI isn't asked.
+    @Test func aVendoredProjectsPinIsNotThisOnes() async throws {
+        try xcrew("echo asked >> \"\(base.path)/asked\"; exit 3")
+        for folder in ["Pods/Charts", "node_modules/kit", ".build/checkouts"] {
+            try FileManager.default.createDirectory(at: project.appending(path: folder), withIntermediateDirectories: true)
+            try "16.0\n".write(to: project.appending(path: "\(folder)/.xcode-version"), atomically: true, encoding: .utf8)
+        }
+        #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
+        #expect(!FileManager.default.fileExists(atPath: base.appending(path: "asked").path))
     }
 }

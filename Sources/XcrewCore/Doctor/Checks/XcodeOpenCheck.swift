@@ -7,12 +7,12 @@ struct XcodeOpenCheck: Check {
     let title = "The open Xcode is the one builds use"
 
     func run(_ context: CheckContext) async -> CheckResult {
-        let open = await Xcodes.running(on: context.machine)
-        guard let first = open.first else { return .pass("Xcode isn't open") }
-        guard let builds = await Xcodes.forBuilds(of: context.project, on: context.machine) else { return .skip("no Xcode is selected here") }
-        guard let other = open.first(where: { !Xcodes.same($0, builds) }) else {
-            return .pass("the open Xcode \(first.version) is the one MobileBuildMCP builds with")
+        let xcodes = await context.xcodes.value()
+        guard !xcodes.open.isEmpty else { return .pass("Xcode isn't open") }
+        guard let builds = xcodes.forBuilds else { return .skip("no Xcode is selected here") }
+        guard let other = xcodes.open.first(where: { !$0.isSameToolchain(as: builds) }) else {
+            return .pass("the open \(builds.label) is the one MobileBuildMCP builds with")
         }
-        return .warn("two toolchains in one session: the Xcode MCP works through the open Xcode \(other.version), but MobileBuildMCP builds with Xcode \(builds.version), so their builds, errors and tests can disagree: quit Xcode \(other.version) and open \(builds.path)")
+        return .warn("two toolchains in one session: the Xcode MCP works through the open \(other.label), but MobileBuildMCP builds with \(builds.label), so their builds, errors and tests can disagree: quit \(other.label) and open \(builds.path)")
     }
 }

@@ -10,3 +10,11 @@ public enum FakeXcode {
         if let build { try! PropertyListEncoder().encode(["ProductBuildVersion": build]).write(to: contents.appending(path: "version.plist")) }
     }
 }
+
+extension FakeXcode {
+    /// The Mac most tests stand for: Xcode 27.2 beta 3 and Xcode 26.4 in `folder`.
+    public static func installBoth(in folder: URL) {
+        install(in: folder, "Xcode-27.2.0-Beta.3.app", version: "27.2", build: "27B5038j")
+        install(in: folder, "Xcode-26.4.app", version: "26.4", build: "17E192")
+    }
+}

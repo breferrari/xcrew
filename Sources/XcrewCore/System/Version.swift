@@ -1,11 +1,12 @@
 import Foundation
 
-/// A dotted version number, compared part by part; missing parts count as zero.
+/// A dotted version number, compared part by part; missing parts count as zero. Each part is its first run of digits:
+/// `v2` is 2, and a beta's `2b3` is 2.
 struct Version: Comparable, CustomStringConvertible {
     let parts: [Int]
 
     init(_ text: String) {
-        parts = text.split(separator: ".").map { Int($0.filter(\.isNumber)) ?? 0 }
+        parts = text.split(separator: ".").map { part in Int(part.drop { !$0.isNumber }.prefix { $0.isNumber }) ?? 0 }
     }
 
     var description: String { parts.map(String.init).joined(separator: ".") }

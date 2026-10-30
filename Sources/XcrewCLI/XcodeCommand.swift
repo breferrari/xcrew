@@ -18,30 +18,38 @@ struct XcodeCommand: Command {
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
-        let (project, machine) = (invocation.context.project, invocation.context.machine)
-        let installed = await Xcodes.installed(on: machine)
-        let pin = Xcodes.pin(of: project)
-        let match = pin.flatMap { Xcodes.matching($0.version, in: installed) }
+        let context = invocation.context
         if invocation.arguments.has("developer-dir") {
-            guard pin != nil else { return Self.noPin }
-            guard let match else { return Self.noMatch }
-            invocation.print("\(match.path)/Contents/Developer")
-            return 0
+            switch await Xcodes.pinned(in: context.project, on: context.machine) {
+            case .none: return Self.noPin
+            case .notInstalled: return Self.noMatch
+            case let .installed(install):
+                invocation.print(install.developerFolder)
+                return 0
+            }
         }
-        for install in installed { invocation.print("installed: Xcode \(install.version) (\(install.build)) at \(install.path)") }
-        invocation.print("selected: \(await Xcodes.selected(on: machine).map { "Xcode \($0.version)" } ?? "none")")
-        if let pin {
-            invocation.print("pinned: Xcode \(pin.version) (\(pin.file)), \(match.map { "installed at \($0.path)" } ?? "not installed")")
-        } else {
+        let xcodes = await context.xcodes.value()
+        for install in xcodes.installed { invocation.print("installed: \(install.label) (\(install.build)) at \(install.path)") }
+        invocation.print("selected: \(xcodes.selected?.label ?? "none")")
+        let builds = xcodes.forBuilds?.label ?? "the selected Xcode"
+        switch xcodes.pinState {
+        case .none:
             invocation.print("pinned: none")
+            invocation.print("builds: \(builds)")
+        case let .notInstalled(pin, file):
+            invocation.print("pinned: Xcode \(pin) (\(file)), not installed")
+            invocation.print("builds: \(builds)")
+        case let .applied(install):
+            invocation.print("pinned: \(install.label) (\(xcodes.pin?.file ?? Project.xcodePinFile)), installed at \(install.path)")
+            invocation.print("builds: \(builds)")
+        case let .notApplied(pin, file, _):
+            let match = Xcodes.matching(pin, in: xcodes.installed)
+            invocation.print("pinned: Xcode \(pin) (\(file)), \(match.map { "installed at \($0.path)" } ?? "not installed")")
+            invocation.print("builds: \(builds), since MobileBuildMCP started without the pin")
         }
-        let builds = await Xcodes.forBuilds(of: project, on: machine).map { "Xcode \($0.version)" } ?? "the selected Xcode"
-        let applied = if case .applied = Xcodes.launch(of: project, on: machine) { true } else { false }
-        invocation.print("builds: \(builds)\(pin != nil && !applied ? ", since MobileBuildMCP started without the pin" : "")")
-        let named = Xcodes.ci(of: project).compactMap { named in named.version.map { "Xcode \($0) (\(named.file):\(named.line))" } }
+        let named = xcodes.ci.map { "Xcode \($0.version) (\($0.file):\($0.line))" }
         invocation.print("CI: \(named.isEmpty ? "names no Xcode version" : named.joined(separator: ", "))")
-        let open = await Xcodes.running(on: machine).map { "Xcode \($0.version)" }
-        invocation.print("open: \(open.isEmpty ? "none" : open.joined(separator: ", "))")
+        invocation.print("open: \(xcodes.open.isEmpty ? "none" : xcodes.open.map(\.label).joined(separator: ", "))")
         return 0
     }
 }

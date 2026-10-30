@@ -26,7 +26,7 @@ public struct SessionBriefing: Sendable {
 
     /// The Xcode the project pins, read from its file alone: whether the server started with it is the doctor's to say.
     func pinnedXcode() -> String? {
-        Xcodes.pin(of: project).map { "This project pins Xcode \($0.version) (`\($0.file)`), which MobileBuildMCP builds and tests with. The Xcode MCP works through whichever Xcode is open, so open that one." }
+        project.xcodePin.map { "This project pins Xcode \($0.version) (`\($0.file)`), which MobileBuildMCP builds and tests with. The Xcode MCP works through whichever Xcode is open, so open that one." }
     }
 
     func profiles() -> String? {

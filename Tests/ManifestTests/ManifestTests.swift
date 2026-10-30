@@ -169,9 +169,45 @@ import Testing
         let launcher = try text("libexec/mobilebuildmcp-server"), shim = try text("bin/xcrew")
         #expect(launcher.contains("\"$plugin/bin/xcrew\" --if-built xcode --developer-dir"))
         #expect(launcher.contains("\n        \(XcodeCommand.noPin)) outcome= ;;"))
-        #expect(launcher.contains("\n        \(XcodeCommand.noMatch)) outcome=\"not applied: no installed Xcode is the pinned one\" ;;"))
-        #expect(shim.contains("[ -x \"$binary\" ] || exit 75") && launcher.contains("\n        75) outcome="))
+        #expect(launcher.contains("\n        \(XcodeCommand.noMatch)) outcome=\"no match\" ;;"))
+        #expect(shim.contains("[ -x \"$binary\" ] || exit 75") && launcher.contains("\n        75) outcome=\"not built\" ;;"))
         #expect(launcher.contains("\nPIN_SECONDS=2\n"))
+    }
+
+    /// The launcher writes its record where the doctor reads it, in the words it parses: xcrew's cache, as the shim and
+    /// `Machine` name it, below `launches` at the project's real path.
+    @Test func theLauncherRecordsWhatTheDoctorReads() throws {
+        let launcher = try text("libexec/mobilebuildmcp-server"), shim = try text("bin/xcrew")
+        let cache = #"${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}"#
+        #expect(shim.contains("cache=\(cache)\n") && launcher.contains("record=\"\(cache)/launches$(pwd -P)\""))
+        let home = URL(fileURLWithPath: "/Users/someone")
+        #expect(Machine(environment: [:], home: home, runner: SystemCommandRunner()).cacheFolder.path == "/Users/someone/Library/Caches/xcrew")
+
+        let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-record-\(UUID().uuidString)")
+        let project = Project(root: folder.appending(path: "project"))
+        try FileManager.default.createDirectory(at: project.root, withIntermediateDirectories: true)
+        let machine = Machine(environment: ["XCREW_CACHE": folder.appending(path: "cache").path], home: folder, runner: SystemCommandRunner())
+        #expect(Xcodes.launchRecord(of: project, on: machine).path == folder.appending(path: "cache").path + "/launches" + project.canonicalRoot)
+        let written: [(String, Xcodes.Launch)] = [("applied $developer", .applied("/Apps/X.app/Contents/Developer")), ("no match", .noMatch), ("not built", .notBuilt), ("timed out $PIN_SECONDS", .timedOut("2"))]
+        for (outcome, launch) in written {
+            #expect(launcher.contains("outcome=\"\(outcome)\""), "\(outcome)")
+            let line = outcome.replacingOccurrences(of: "$developer", with: "/Apps/X.app/Contents/Developer").replacingOccurrences(of: "$PIN_SECONDS", with: "2")
+            let record = Xcodes.launchRecord(of: project, on: machine)
+            try FileManager.default.createDirectory(at: record.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "\(line)\n".write(to: record, atomically: true, encoding: .utf8)
+            #expect(Xcodes.launch(of: project, on: machine) == launch, "\(outcome)")
+        }
+    }
+
+    /// The launcher's quick look for a pin passes over the folders the project walk leaves out, hidden ones too, and
+    /// reaches one level below the deepest folder that can hold a container.
+    @Test func theLauncherLooksForAPinWhereTheProjectWalkDoes() throws {
+        let launcher = try text("libexec/mobilebuildmcp-server")
+        let look = try #require(launcher.split(separator: "\n").first { $0.contains("-name .xcode-version") }.map(String.init))
+        #expect(look.contains("-maxdepth \(ProjectLayout.searchDepth + 1) "))
+        #expect(look.contains("-name '.?*'"))
+        for folder in ProjectLayout.dependencyFolders { #expect(look.contains("-name \(folder) "), "\(folder)") }
+        #expect(look.matches(of: /-name [A-Za-z]/).count == ProjectLayout.dependencyFolders.count)
     }
 
     /// The routing rules tell Claude how to turn coverage on, which the changed-line note needs, and what it costs, so

@@ -22,11 +22,20 @@ struct ProcessList: Sendable {
         return ProcessList(ps: await processes.stdout, comm: await programs.stdout)
     }
 
-    init(ps: String, comm: String = "") {
-        let programs = comm.split(whereSeparator: \.isNewline).reduce(into: [Int32: String]()) { programs, line in
+    /// Each process's program, by id, as its whole path: `ps -axo pid=,comm=`.
+    static func programs(using runner: any CommandRunning) async -> [Int32: String] {
+        programs(in: await runner.run("ps", "-axo", "pid=,comm=").stdout)
+    }
+
+    static func programs(in comm: String) -> [Int32: String] {
+        comm.split(whereSeparator: \.isNewline).reduce(into: [Int32: String]()) { programs, line in
             let fields = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-            if fields.count == 2, let id = Int32(fields[0]) { programs[id] = String(fields[1].split(separator: "/").last ?? "") }
+            if fields.count == 2, let id = Int32(fields[0]) { programs[id] = String(fields[1]) }
         }
+    }
+
+    init(ps: String, comm: String = "") {
+        let programs = Self.programs(in: comm).mapValues { String($0.split(separator: "/").last ?? "") }
         processes = ps.split(whereSeparator: \.isNewline).compactMap { line in
             let fields = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
             guard fields.count == 4, let id = Int32(fields[0]), let parent = Int32(fields[1]), let elapsed = Self.seconds(String(fields[2])) else { return nil }

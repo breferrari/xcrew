@@ -1,19 +1,65 @@
 import Foundation
 
-/// Which Xcode a session's tools build with: those installed, the one selected, the project's pin, CI's, and the one
-/// running, which the Xcode MCP works through (docs/findings.md, *Which Xcode*).
+/// The Mac's Xcodes: those installed, the one selected, the ones open, which the Xcode MCP works through, and what the
+/// MobileBuildMCP launcher did with the project's pin (docs/findings.md, *Which Xcode*).
 public enum Xcodes {
-    /// An Xcode a CI workflow names: the file, the line, and its version; nil when the workflow picks the newest or a
-    /// range, which can't be compared.
-    public struct Named: Sendable, Equatable {
-        public let file: String
-        public let line: Int
-        public let version: String?
+    static let bundleIdentifier = "com.apple.dt.Xcode"
+
+    /// What the launcher did with the project's pin when it last started the server, as it records it: the facts, which
+    /// the doctor words.
+    public enum Launch: Sendable, Equatable {
+        /// `applied <developer folder>`: it set `DEVELOPER_DIR` to this folder.
+        case applied(String)
+        /// `not built`: the xcrew CLI had no build yet, and the launcher never starts one.
+        case notBuilt
+        /// `no match`: no installed Xcode was the pinned one.
+        case noMatch
+        /// `timed out <seconds>`: the CLI didn't answer within the launcher's limit.
+        case timedOut(String)
+
+        /// Why the server started without the pin, in the doctor's words; nothing when it started with it.
+        public var reason: String? {
+            switch self {
+            case .applied: nil
+            case .notBuilt: "the xcrew CLI wasn't built yet; it is once the session has started"
+            case .noMatch: "no installed Xcode was the pinned one when it started"
+            case let .timedOut(seconds): "the xcrew CLI took longer than \(seconds) s"
+            }
+        }
     }
 
-    static let bundleIdentifier = "com.apple.dt.Xcode"
-    /// The pin, as xcodes' `XCODE_VERSION.md` names it: one version, beside the project or its workspace.
-    public static let pinFile = ".xcode-version"
+    /// The installed Xcode a project's pin names, found the cheap way first, for the launcher: the applications folder,
+    /// then Spotlight only when that has none.
+    public enum Pinned: Sendable, Equatable {
+        case none
+        case notInstalled
+        case installed(XcodeInstall)
+    }
+
+    /// Every installed Xcode, newest first: the apps in the applications folder and those Spotlight finds elsewhere,
+    /// each once, each one whose bundle is Xcode's.
+    public static func installed(on machine: Machine) async -> [XcodeInstall] {
+        async let elsewhere = spotlight(on: machine)
+        var seen = Set<String>()
+        let apps = (applications(on: machine) + (await elsewhere)).filter { seen.insert(ProjectLayout.canonicalPath($0.path)).inserted }
+        return apps.compactMap(install).sorted { Version($0.version) > Version($1.version) }
+    }
+
+    public static func pinned(in project: Project, on machine: Machine) async -> Pinned {
+        guard let pin = project.xcodePin else { return .none }
+        let listed = applications(on: machine).compactMap(install)
+        if let match = matching(pin.version, in: listed) { return .installed(match) }
+        return (await spotlight(on: machine)).compactMap(install).first { Version($0.version) == Version(pin.version) }.map(Pinned.installed) ?? .notInstalled
+    }
+
+    static func applications(on machine: Machine) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: machine.applications, includingPropertiesForKeys: nil)) ?? []).filter { $0.pathExtension == "app" }
+    }
+
+    static func spotlight(on machine: Machine) async -> [URL] {
+        let found = await machine.runner.run(["mdfind", "kMDItemCFBundleIdentifier == '\(bundleIdentifier)'"], stdin: nil, timeout: .seconds(10))
+        return found.succeeded ? found.stdout.split(whereSeparator: \.isNewline).map { URL(fileURLWithPath: String($0)) } : []
+    }
 
     private struct Info: Decodable {
         let CFBundleIdentifier: String?
@@ -22,16 +68,6 @@ public enum Xcodes {
 
     private struct VersionInfo: Decodable {
         let ProductBuildVersion: String?
-    }
-
-    /// Every installed Xcode, newest first: the apps in the applications folder and those Spotlight finds elsewhere,
-    /// each one whose bundle is Xcode's.
-    public static func installed(on machine: Machine) async -> [XcodeInstall] {
-        let found = await machine.runner.run(["mdfind", "kMDItemCFBundleIdentifier == '\(bundleIdentifier)'"], stdin: nil, timeout: .seconds(10))
-        let elsewhere = found.succeeded ? found.stdout.split(whereSeparator: \.isNewline).map { URL(fileURLWithPath: String($0)) } : []
-        let listed = ((try? FileManager.default.contentsOfDirectory(at: machine.applications, includingPropertiesForKeys: nil)) ?? []).filter { $0.pathExtension == "app" }
-        var seen = Set<String>()
-        return (listed + elsewhere).compactMap(install).filter { seen.insert(ProjectLayout.canonicalPath($0.path)).inserted }.sorted { isNewer($0.version, than: $1.version) }
     }
 
     /// The Xcode at `app`, read from its `Info.plist` and `version.plist`; nothing when the app isn't Xcode.
@@ -45,21 +81,9 @@ public enum Xcodes {
         return XcodeInstall(path: app.path, version: version, build: build ?? "")
     }
 
-    /// The installed Xcode a pin names, by its version's numbers: a beta's `b<n>` and trailing zeros aside.
+    /// The installed Xcode a pin names, by its version: a beta's `b<n>` and trailing zeros aside.
     public static func matching(_ pin: String, in installed: [XcodeInstall]) -> XcodeInstall? {
-        installed.first { numbers($0.version) == numbers(pin) }
-    }
-
-    /// The project's pin and where it is: `.xcode-version` at the root, or beside one of its Xcode containers.
-    public static func pin(of project: Project) -> (version: String, file: String)? {
-        let folders = [""] + project.xcodeContainers.map { URL(fileURLWithPath: $0).deletingLastPathComponent().relativePath }.filter { $0 != "." }
-        for folder in folders {
-            let file = folder.isEmpty ? pinFile : "\(folder)/\(pinFile)"
-            guard let text = try? String(contentsOf: project.root.appending(path: file), encoding: .utf8) else { continue }
-            let version = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !version.isEmpty { return (version, file) }
-        }
-        return nil
+        installed.first { Version($0.version) == Version(pin) }
     }
 
     /// The Xcode builds use when nothing overrides it: the one `DEVELOPER_DIR` names, else `xcode-select`'s.
@@ -72,34 +96,18 @@ public enum Xcodes {
         return developer.flatMap(app(holding:)).flatMap(install)
     }
 
-    /// Each Xcode app running: the Xcode MCP works through the one open.
+    /// Each Xcode open: the Xcode MCP works through it.
     public static func running(on machine: Machine) async -> [XcodeInstall] {
-        let listed = await machine.runner.run(["ps", "-axo", "comm="], stdin: nil, timeout: .seconds(10))
-        guard listed.succeeded else { return [] }
-        let suffix = "/Contents/MacOS/Xcode"
-        return listed.stdout.split(whereSeparator: \.isNewline).map(String.init).filter { $0.hasSuffix(".app\(suffix)") }
-            .compactMap { install(at: URL(fileURLWithPath: String($0.dropLast(suffix.count)))) }
+        let suffix = ".app/Contents/MacOS/Xcode"
+        return await ProcessList.programs(using: machine.runner).values.sorted().filter { $0.hasSuffix(suffix) }
+            .compactMap { install(at: URL(fileURLWithPath: String($0.dropLast(suffix.count - ".app".count)))) }
     }
 
-    /// The Xcodes a project's GitHub Actions workflows name: setup-xcode's `xcode-version`, an `xcode-select -s` or
-    /// `--switch` to an app, and a `DEVELOPER_DIR` inside one.
-    public static func ci(of project: Project) -> [Named] {
-        let folder = project.root.appending(path: ".github/workflows")
-        let files = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.sorted()
-        return files.flatMap { name -> [Named] in
-            let text = (try? String(contentsOf: folder.appending(path: name), encoding: .utf8)) ?? ""
-            return text.split(separator: "\n", omittingEmptySubsequences: false).enumerated().compactMap { index, line in
-                named(in: String(line)).map { Named(file: ".github/workflows/\(name)", line: index + 1, version: $0) }
-            }
-        }
-    }
-
-    /// What the MobileBuildMCP launcher did with the project's pin when it last started the server.
-    public enum Launch: Sendable, Equatable {
-        /// It set `DEVELOPER_DIR` to this developer folder.
-        case applied(String)
-        /// It started the server as without a pin, and why.
-        case notApplied(String)
+    /// The app a developer folder is in: `/Applications/Xcode.app` for `/Applications/Xcode.app/Contents/Developer`.
+    static func app(holding developer: String) -> URL? {
+        let parts = URL(fileURLWithPath: developer).pathComponents
+        guard let index = parts.firstIndex(where: { $0.hasSuffix(".app") }) else { return nil }
+        return URL(fileURLWithPath: NSString.path(withComponents: Array(parts[...index])))
     }
 
     /// Where the launcher records it: xcrew's cache, below `launches` at the project's real path, as `bin/xcrew` keeps
@@ -108,57 +116,11 @@ public enum Xcodes {
         URL(fileURLWithPath: machine.cacheFolder.path + "/launches" + project.canonicalRoot)
     }
 
-    /// The launcher's last record for the project: `applied <developer folder>` or `not applied: <why>`.
+    /// The launcher's last record for the project.
     public static func launch(of project: Project, on machine: Machine) -> Launch? {
         guard let text = try? String(contentsOf: launchRecord(of: project, on: machine), encoding: .utf8), let line = GitHead.firstLine(text) else { return nil }
         if line.hasPrefix("applied ") { return .applied(String(line.dropFirst("applied ".count))) }
-        if line.hasPrefix("not applied: ") { return .notApplied(String(line.dropFirst("not applied: ".count))) }
-        return nil
-    }
-
-    /// The Xcode MobileBuildMCP builds with: the pin's, when its server started with it, else the selected one.
-    public static func forBuilds(of project: Project, on machine: Machine) async -> XcodeInstall? {
-        if case let .applied(developer) = launch(of: project, on: machine), let install = app(holding: developer).flatMap(install) { return install }
-        return await selected(on: machine)
-    }
-
-    /// Whether two installs are one toolchain: the same version and build.
-    static func same(_ one: XcodeInstall, _ other: XcodeInstall) -> Bool {
-        numbers(one.version) == numbers(other.version) && one.build == other.build
-    }
-
-    /// The version a workflow line names: `.some(nil)` when it names the newest or a range, nil when it names none.
-    static func named(in line: String) -> String?? {
-        if let input = line.firstMatch(of: /xcode-version:\s*['"]?([^'"\s#]+)/) {
-            let value = String(input.1)
-            return .some(value.first?.isNumber == true ? String(value.prefix { $0.isNumber || $0 == "." }) : nil)
-        }
-        guard line.contains("xcode-select") || line.contains("DEVELOPER_DIR"), let app = line.firstMatch(of: /Xcode[_-]?(\d+(?:\.\d+)*)[^\/\s]*\.app/) else { return nil }
-        return .some(String(app.1))
-    }
-
-    /// The app a developer folder is in: `/Applications/Xcode.app` for `/Applications/Xcode.app/Contents/Developer`.
-    static func app(holding developer: String) -> URL? {
-        guard let range = developer.range(of: ".app/") ?? (developer.hasSuffix(".app") ? developer.range(of: ".app", options: .backwards) : nil) else { return nil }
-        return URL(fileURLWithPath: String(developer[..<range.upperBound]).trimmingSuffix("/"))
-    }
-
-    /// A version's numbers, without trailing zeros: `27.2b3` and `27.2.0` are both `[27, 2]`.
-    static func numbers(_ version: String) -> [Int] {
-        var parts = version.trimmingCharacters(in: .whitespacesAndNewlines).prefix { $0.isNumber || $0 == "." }.split(separator: ".").compactMap { Int($0) }
-        while parts.count > 1, parts.last == 0 { parts.removeLast() }
-        return parts
-    }
-
-    static func isNewer(_ version: String, than other: String) -> Bool {
-        let (a, b) = (numbers(version), numbers(other))
-        for (x, y) in zip(a, b) where x != y { return x > y }
-        return a.count > b.count
-    }
-}
-
-private extension String {
-    func trimmingSuffix(_ suffix: String) -> String {
-        hasSuffix(suffix) ? String(dropLast(suffix.count)) : self
+        if line.hasPrefix("timed out ") { return .timedOut(String(line.dropFirst("timed out ".count))) }
+        return ["not built": Launch.notBuilt, "no match": .noMatch][line]
     }
 }

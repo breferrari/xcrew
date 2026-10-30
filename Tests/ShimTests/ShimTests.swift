@@ -68,7 +68,7 @@ import Testing
     }
 
     /// The path with every symlink resolved, as `pwd -P` prints it (Foundation drops `/private`).
-    func physicalPath(_ url: URL) async throws -> String {
+    static func physicalPath(_ url: URL) async throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/pwd")
         process.arguments = ["-P"]
@@ -111,7 +111,7 @@ import Testing
         let fake = #"echo "cwd=$(pwd -P) args=$* path=$PATH""#
         let before = try await startServer("/bin/sh", ["-c", inline, "mobilebuildmcp", project.path], faking: "mobilebuildmcp", as: fake)
         let after = try await startServer(repository.appending(path: "libexec/mobilebuildmcp-server").path, [project.path], faking: "mobilebuildmcp", as: fake)
-        #expect(before.contains("cwd=\(try await physicalPath(project)) args=mcp path="))
+        #expect(before.contains("cwd=\(try await Self.physicalPath(project)) args=mcp path="))
         #expect(before.hasSuffix(":/opt/homebrew/bin:/usr/local/bin\n"))
         #expect(after == before)
     }
@@ -131,7 +131,7 @@ import Testing
     @Test func buildsOnFirstUseAndRunsTheBinary() async throws {
         let run = try await shim("doctor", "--list")
         #expect(run.status == 0)
-        #expect(run.output == "ran doctor --list root=\(try await physicalPath(root))\n")
+        #expect(run.output == "ran doctor --list root=\(try await Self.physicalPath(root))\n")
         #expect(builds == 1)
     }
 
@@ -142,7 +142,7 @@ import Testing
         #expect(builds == 0)
         _ = try await shim("help")
         let after = try await shim("--if-built", "xcode")
-        #expect(after.output == "ran xcode root=\(try await physicalPath(root))\n")
+        #expect(after.output == "ran xcode root=\(try await Self.physicalPath(root))\n")
         #expect(builds == 1)
     }
 
@@ -247,7 +247,7 @@ extension ShimTests {
         let run = try await shim("--binary-path")
         #expect(run.status == 0)
         let path = run.output.trimmingCharacters(in: .newlines)
-        #expect(path.hasPrefix(try await physicalPath(cache)) || path.hasPrefix(cache.path))
+        #expect(path.hasPrefix(try await Self.physicalPath(cache)) || path.hasPrefix(cache.path))
         #expect(FileManager.default.isExecutableFile(atPath: path))
         #expect(builds == 1)
     }

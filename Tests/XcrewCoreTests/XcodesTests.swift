@@ -11,14 +11,9 @@ import XcrewTestSupport
     /// "Xcode".
     static func applications() -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-apps-\(UUID().uuidString)")
-        bundle(in: folder, "Xcode-26.4.app", identifier: "com.apple.dt.Xcode", version: "26.4", build: "17E192")
-        bundle(in: folder, "Xcode-27.2.0-Beta.3.app", identifier: "com.apple.dt.Xcode", version: "27.2", build: "27B5038j")
-        bundle(in: folder, "Xcodes.app", identifier: "com.xcodesorg.xcodesapp", version: "4.1.1", build: nil)
+        FakeXcode.installBoth(in: folder)
+        FakeXcode.install(in: folder, "Xcodes.app", identifier: "com.xcodesorg.xcodesapp", version: "4.1.1", build: nil)
         return folder
-    }
-
-    static func bundle(in folder: URL, _ name: String, identifier: String, version: String, build: String?) {
-        FakeXcode.install(in: folder, name, identifier: identifier, version: version, build: build)
     }
 
     func machine(_ applications: URL, runner: FakeRunner = FakeRunner(), environment: [String: String] = [:]) -> Machine {
@@ -37,7 +32,7 @@ import XcrewTestSupport
     @Test func spotlightFindsAnXcodeKeptElsewhere() async {
         let apps = Self.applications()
         let elsewhere = apps.deletingLastPathComponent().appending(path: "elsewhere-\(UUID().uuidString)")
-        Self.bundle(in: elsewhere, "Xcode-25.3.app", identifier: "com.apple.dt.Xcode", version: "25.3", build: "16E140")
+        FakeXcode.install(in: elsewhere, "Xcode-25.3.app", version: "25.3", build: "16E140")
         let runner = FakeRunner(responses: [Self.spotlight: .init(status: 0, stdout: "\(elsewhere.path)/Xcode-25.3.app\n")])
         #expect(await Xcodes.installed(on: machine(apps, runner: runner)).map(\.version) == ["27.2", "26.4", "25.3"])
     }
@@ -54,10 +49,10 @@ import XcrewTestSupport
 
     @Test func thePinIsTheFileBesideTheProjectOrItsContainer() {
         let root = Project.temporary(containing: ["ios/App.xcworkspace"])
-        #expect(Xcodes.pin(of: root) == nil)
+        #expect(root.xcodePin == nil)
         root.write("26.4\n", to: "ios/.xcode-version")
-        #expect(Xcodes.pin(of: root)?.version == "26.4")
-        #expect(Xcodes.pin(of: root)?.file == "ios/.xcode-version")
+        #expect(root.xcodePin?.version == "26.4")
+        #expect(root.xcodePin?.file == "ios/.xcode-version")
     }
 
     /// The selected Xcode is the one `DEVELOPER_DIR` names, else `xcode-select`'s, as the app holding the developer folder.
@@ -69,8 +64,8 @@ import XcrewTestSupport
         #expect(await Xcodes.selected(on: overridden)?.version == "27.2")
     }
 
-    /// GitHub Actions names an Xcode three ways: setup-xcode's input, `xcode-select -s` and `DEVELOPER_DIR`. A version
-    /// that picks the newest names none.
+    /// GitHub Actions names an Xcode three ways: setup-xcode's input, `xcode-select -s` and `DEVELOPER_DIR`. One that
+    /// picks the newest, `latest-stable`, names no version to compare.
     @Test func ciNamesItsXcodeInAWorkflow() {
         let project = Project.temporary()
         project.write("""
@@ -88,15 +83,15 @@ import XcrewTestSupport
                     with:
                       xcode-version: latest-stable
             """, to: ".github/workflows/ci.yml")
-        let named = Xcodes.ci(of: project)
-        #expect(named.map(\.line) == [5, 9, 10, 13])
-        #expect(named.map(\.version) == ["26.3", "26.4", "26.4.1", nil])
+        let named = CIXcodes.named(in: project)
+        #expect(named.map(\.line) == [5, 9, 10])
+        #expect(named.map(\.version) == ["26.3", "26.4", "26.4.1"])
         #expect(named.allSatisfy { $0.file == ".github/workflows/ci.yml" })
     }
 
     @Test func theRunningXcodeIsTheAppAroundItsProcess() async {
         let apps = Self.applications()
-        let runner = FakeRunner(responses: ["ps -axo comm=": .init(status: 0, stdout: "/usr/sbin/cfprefsd\n\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/MacOS/Xcode\n/System/Applications/Mail.app/Contents/MacOS/Mail\n")])
+        let runner = FakeRunner(responses: ["ps -axo pid=,comm=": .init(status: 0, stdout: "  101 /usr/sbin/cfprefsd\n  202 \(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/MacOS/Xcode\n  303 /System/Applications/Mail.app/Contents/MacOS/Mail\n")])
         #expect(await Xcodes.running(on: machine(apps, runner: runner)).map(\.version) == ["27.2"])
     }
 }
