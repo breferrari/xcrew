@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- When Claude runs the whole test suite again and again in a short while, the run that makes it a habit tells Claude to run only the tests the change can break, and the whole suite again before the pull request. A fast suite never hears it.
+
 ## 0.8.9 — 2026-10-30
 
 - When a test fails for no reason the change explains, Claude runs it alone several times, and Xcrew says whether it's flaky (failed some runs) or a real failure (failed every run). A flaky test stays red, marked flaky, in the red-to-green record and on the project card, until a repeated run passes it every time.

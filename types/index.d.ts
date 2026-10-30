@@ -39,8 +39,14 @@ export type CliBuild = { path: string | null; at: number }
  * app and the command that generates it, and whether a build was refused for them. */
 export type StaleProject = { marks: { app: string; generate: string }[]; refused: boolean }
 
+/** A full-suite run this session: when it ended, and how long it took. */
+export type FullRun = { at: number; ms: number }
+
+/** Each scope's recent full-suite runs this session, for the loop budget. */
+export type FullRuns = Record<string, FullRun[]>
+
 declare module 'claude-code' {
   interface PluginState {
-    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null }
+    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null; loop: FullRuns }
   }
 }
