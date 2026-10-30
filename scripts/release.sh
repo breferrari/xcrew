@@ -78,7 +78,7 @@ if [ -z "$tagged" ] && [ -z "$merged" ]; then
   perl -pi -e "s/^## Unreleased\$/## $version — $(date +%Y-%m-%d)/" CHANGELOG.md
   swift test --filter ManifestTests >/dev/null
   # Every channel still installs the release before it's proposed: CI checks the same on its pull request.
-  scripts/distribution.sh marketplace listing techpack >/dev/null
+  scripts/distribution.sh marketplace listing techpack footprint >/dev/null
   git commit -qam "Release $version"
   git push -q -u origin "$branch"
 

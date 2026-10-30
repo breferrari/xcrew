@@ -391,6 +391,12 @@ import Testing
         #expect(ceiling % 100_000 == 0 && ceiling >= size && ceiling - size < 100_000, "\(ceiling) isn't \(size) rounded up to the next 100 KB")
     }
 
+    /// A release is proposed only after every channel passes, as CI checks its pull request: release.sh names each.
+    @Test func marketplaceReleaseChecksEveryChannel() throws {
+        let call = try #require(try text("scripts/release.sh").firstMatch(of: /scripts\/distribution\.sh ([a-z ]+)/)).1
+        #expect(call.split(separator: " ").map(String.init) == distributionChannels())
+    }
+
     /// Each Distribution step runs its channel's tests by their name's prefix, so each channel has some, and every test
     /// of a file only one channel ships carries that channel's prefix.
     @Test func eachDistributionStepRunsItsChannelsTests() throws {
