@@ -30,7 +30,8 @@ struct ProjectCommand: Command {
         var commit: String?
         /// With `--generated`: the manifest to edit instead of the file, when a generator writes it, from the root.
         var manifest: String?
-        /// With `--hash`: the file's SHA-256 in hex, for the manifest guard to tell an edit undone; empty when it isn't there.
+        /// With `--hash`: the file's SHA-256 in hex, for the manifest guard to tell an edit undone; empty when it isn't
+        /// there, and none when it's there but can't be read.
         var hash: String?
     }
 
@@ -54,7 +55,9 @@ struct ProjectCommand: Command {
             }
         }
         if let file = invocation.arguments["hash"] {
-            answer.hash = (try? Data(contentsOf: Self.file(file, in: project))).map { SHA256.hash(data: $0).hex } ?? ""
+            let url = Self.file(file, in: project)
+            // A file that's there but can't be read gives no hash, which leaves an edit standing.
+            answer.hash = FileManager.default.fileExists(atPath: url.path) ? (try? Data(contentsOf: url)).map { SHA256.hash(data: $0).hex } : ""
         }
         if invocation.arguments.has("branch") {
             answer.root = project.canonicalRoot

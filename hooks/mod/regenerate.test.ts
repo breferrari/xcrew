@@ -1,25 +1,30 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On, ToolCallResult } from 'claude-code'
 import { callTool, stubCli, type CliCall } from './testing'
+import { isUndone, marked } from './regenerate'
 
 const GENERATE = 'tuist generate --no-open --path ios'
 const MANIFEST = '/work/App/ios/Project.swift'
+const DEPENDENCIES = '/work/App/ios/Tuist/Package.swift'
 
 /**
  * A Tuist project whose CLI names `GENERATE` for an edit to `MANIFEST` and nothing for any other file, and gives each
  * file's hash by how far edits have moved it: an edit from `a` to `b` or a Write moves it on, one from `b` to `a` back. Beneath
  * the mod, every tool answers, and a Bash command fails when `failing` holds it.
  */
-function tuistProject(on: On, failing: string[] = []): CliCall[] {
+function tuistProject(on: On, failing: string[] = [], hashes: { hold?: () => Promise<void> } = {}): CliCall[] {
   mock.store(on)
   const versions = new Map<string, number>()
   const hashArgument = (args: readonly string[]) => args[args.indexOf('--hash') + 1] ?? ''
   const calls = stubCli(on, {
-    project: args => ({
-      isGenerated: true,
-      ...(args.includes('--manifest') && args.includes(MANIFEST) ? { generate: GENERATE, app: 'ios' } : {}),
-      ...(args.includes('--hash') ? { hash: `v${versions.get(hashArgument(args)) ?? 0}` } : {}),
-    }),
+    project: async args => {
+      if (args.includes('--hash')) await hashes.hold?.()
+      return {
+        isGenerated: true,
+        ...(args.includes('--manifest') && [MANIFEST, DEPENDENCIES].some(file => args.includes(file)) ? { generate: GENERATE, app: 'ios' } : {}),
+        ...(args.includes('--hash') ? { hash: `v${versions.get(hashArgument(args)) ?? 0}` } : {}),
+      }
+    },
   })
   on('tool.call', (_, e) => {
     if (e.tool === 'Bash' && failing.includes(e.command)) return { isError: true, result: 'Exit code 1', text: 'Exit code 1' }
@@ -66,6 +71,50 @@ test('an edit made again after an undo is refused again', async ($, on) => {
   await undoEdit($)
   await editManifest($)
   expect((await build($)).deny).toContain(GENERATE)
+})
+
+/** Refused, the person may have generated from the edit in their own terminal: an undo then leaves that project stale. */
+test('an edit undone after its build was refused still holds the build back', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  await build($)
+  await undoEdit($)
+  expect((await build($)).deny).toContain(GENERATE)
+})
+
+/** Of two edited files, one undone leaves the other's edit standing. */
+test('an app with one of two edits undone is still refused', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  await callTool($, 'Edit', { file_path: DEPENDENCIES, old_string: 'a', new_string: 'b' })
+  await undoEdit($)
+  expect((await build($)).deny).toContain(GENERATE)
+})
+
+/** An edit made while a build reads the hashes is kept: what was undone goes, not what the build read before. */
+test('an edit made while a build reads the hashes keeps its mark', async ($, on) => {
+  let release = () => {}
+  let reached = () => {}
+  let holding = false
+  const held = new Promise<void>(resolve => (release = resolve))
+  const reading = new Promise<void>(resolve => (reached = resolve))
+  tuistProject(on, [], { hold: () => (holding ? (reached(), held) : Promise.resolve()) })
+  await editManifest($)
+  await undoEdit($)
+  holding = true
+  const building = build($)
+  await reading
+  holding = false
+  await callTool($, 'Edit', { file_path: DEPENDENCIES, old_string: 'a', new_string: 'b' })
+  release()
+  expect((await building).deny).toContain(GENERATE)
+})
+
+/** A mark an older mod saved names no file: its edit can't be told undone, and a later file's hash doesn't change that. */
+test('a mark without files keeps its edit standing when a file is added to it', () => {
+  const stale = marked({ marks: [{ app: 'ios', generate: GENERATE }], refused: false }, { app: 'ios', generate: GENERATE }, { path: DEPENDENCIES, before: 'v0' })
+  const mark = stale.marks[0]
+  expect(mark && isUndone(mark, { [DEPENDENCIES]: 'v0' })).toBe(false)
 })
 
 test('a second build without a generate goes through, says why, and the next one runs plainly', async ($, on) => {

@@ -49,17 +49,35 @@ export function marksOf(stale: StaleProject | null | undefined): readonly Mark[]
 export function marked(stale: StaleProject | null, mark: { app: string; generate: string }, file?: { path: string; before: string | null }): StaleProject {
   const earlier = marksOf(stale).find(other => other.app === mark.app)
   const generate = earlier?.generate.includes(mark.generate) ? earlier.generate : mark.generate
-  const files = { ...(earlier?.files ?? {}), ...(file && !(file.path in (earlier?.files ?? {})) ? { [file.path]: file.before } : {}) }
-  return { marks: [...marksOf(stale).filter(other => other.app !== mark.app), { app: mark.app, generate, ...(Object.keys(files).length > 0 ? { files } : {}) }], refused: false }
+  // An earlier edit without its hash, as an older mod marked one, can't be told undone: nor can the mark, whatever follows.
+  const files = earlier && !earlier.files ? (file ? { [file.path]: null } : {}) : { ...(file && { [file.path]: file.before }), ...earlier?.files }
+  const kept = { app: mark.app, generate, ...(Object.keys(files).length > 0 ? { files } : {}), ...(earlier?.wasRefused ? { wasRefused: true as const } : {}) }
+  return { marks: [...marksOf(stale).filter(other => other.app !== mark.app), kept], refused: false }
 }
 
 /**
  * Whether a mark's edits are all undone: each file it holds has the hash it had before its first edit, `now` giving
- * the hashes read now. A file whose hash couldn't be read, then or now, leaves the edit standing.
+ * the hashes read now. A file whose hash couldn't be read, then or now, leaves the edit standing, and so does a mark a
+ * build was refused for: the person may have generated from the edit since.
  */
 export function isUndone(mark: Mark, now: Readonly<Record<string, string | undefined>>): boolean {
   const files = Object.entries(mark.files ?? {})
-  return files.length > 0 && files.every(([path, before]) => before !== null && now[path] === before)
+  return !mark.wasRefused && files.length > 0 && files.every(([path, before]) => now[path] === before)
+}
+
+/** The stale project as a refusal leaves it: each mark refused for, and the next build let through. */
+export function refused(stale: StaleProject | null): StaleProject | null {
+  return stale && { marks: marksOf(stale).map(mark => ({ ...mark, wasRefused: true as const })), refused: true }
+}
+
+/**
+ * The stale project without the marks found undone, as they were when read: a mark changed since, by an edit meanwhile,
+ * stays. Null when none is left.
+ */
+export function withoutUndone(stale: StaleProject | null, undone: readonly Mark[]): StaleProject | null {
+  const same = (mark: Mark) => undone.some(gone => JSON.stringify(gone) === JSON.stringify(mark))
+  const left = marksOf(stale).filter(mark => !same(mark))
+  return left.length > 0 && stale ? { ...stale, marks: left } : null
 }
 
 /**

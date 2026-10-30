@@ -590,6 +590,9 @@ import XcrewTestSupport
         // `printf 'let project = 1\n' | shasum -a 256`
         #expect(await Run("project", "--hash", "Project.swift", context: .fake(project: project)).text == #"{"hash":"5e1ed27607f9dcae1c94968c6098a2b4b8212d629d2ce41df57138765aba2f5b","isGenerated":true}"#)
         #expect(await Run("project", "--hash", "Missing.swift", context: .fake(project: project)).text == #"{"hash":"","isGenerated":true}"#)
+        // A file that's there but can't be read isn't one that's missing: no hash, so the edit stands.
+        project.write("", to: "Folder/.keep")
+        #expect(await Run("project", "--hash", "Folder", context: .fake(project: project)).text == #"{"isGenerated":true}"#)
     }
 
     @Test func aTuistProjectInASubfolderIsGenerated() async {
