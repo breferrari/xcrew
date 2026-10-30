@@ -10,6 +10,13 @@ type Target = { scheme?: string; destination?: string }
 const mobile: { current?: string; profiles: Record<string, { scheme?: string; simulatorName?: string }> } = { profiles: {} }
 let xcode: Target = {}
 
+/**
+ * Xcode's scheme selection, when Xcode hosts MobileBuildMCP's server: written over the scheme of the profile active as
+ * it's read, at the server's start and, while the server follows it, at each change. The server's own listing of its
+ * defaults is newer than any of it.
+ */
+const fromXcode: { active?: string; last?: string; profiles: Record<string, string>; listings: number } = { profiles: {}, listings: 0 }
+
 /** Learns from one finished call's output. */
 export function observe(tool: XcodeTool, text: string): void {
   // Only these answers name one; parsing every other result would read large outputs for nothing.
@@ -18,7 +25,11 @@ export function observe(tool: XcodeTool, text: string): void {
   if (!json) return
   if (tool.server === 'MobileBuildMCP') {
     const data = json.data as { currentProfile?: string; profiles?: typeof mobile.profiles } | undefined
-    if (json.schema === 'mobilebuildmcp.output.session-defaults' && data?.profiles) mobile.profiles = data.profiles
+    if (json.schema === 'mobilebuildmcp.output.session-defaults' && data?.profiles) {
+      mobile.profiles = data.profiles
+      fromXcode.profiles = {}
+      fromXcode.listings += 1
+    }
     if (typeof data?.currentProfile === 'string') mobile.current = data.currentProfile
     return
   }
@@ -47,14 +58,48 @@ function profile() {
   return mobile.current === undefined ? undefined : mobile.profiles[mobile.current]
 }
 
+/** The profile chosen during the session, else the config's active one at the server's start; none when neither is known. */
+export function currentProfile(): string | undefined {
+  return mobile.current ?? fromXcode.active
+}
+
+/** What a profile's own entries are kept under: its name, or `''` for the config's when its name isn't known. */
+export function profileKey(): string {
+  return currentProfile() ?? ''
+}
+
+/** How many listings of the session's defaults have been seen: one after a read began is newer than what it read. */
+export function listingsSeen(): number {
+  return fromXcode.listings
+}
+
+/**
+ * The selection read at the server's start, written over the profile active then, `activeProfile`, unless a listing
+ * seen since the read began (`listings` differs) already says what the server holds.
+ */
+export function xcodeStarted(scheme: string | undefined, activeProfile: string | undefined, listings: number): void {
+  fromXcode.active = activeProfile
+  fromXcode.last = scheme
+  if (scheme !== undefined && listings === fromXcode.listings) fromXcode.profiles[activeProfile ?? ''] = scheme
+}
+
+/** A selection read later: only a change is written, over the profile in use then. */
+export function xcodeSelected(scheme: string | undefined): void {
+  if (scheme === undefined || scheme === fromXcode.last) return
+  fromXcode.last = scheme
+  fromXcode.profiles[profileKey()] = scheme
+}
+
 /** Whether the call or what the session showed of the server's defaults names the scheme a run builds. */
 export function namesScheme(tool: XcodeTool, input: Record<string, unknown>): boolean {
   return schemeOf(tool, input) !== undefined
 }
 
-/** The scheme the call builds: its own argument, else the profile in use; the Xcode MCP's active one. */
+/** The scheme the call builds: its own argument, else Xcode's selection or the profile in use; the Xcode MCP's active one. */
 function schemeOf(tool: XcodeTool, input: Record<string, unknown>): string | undefined {
-  return tool.server === 'MobileBuildMCP' ? ((input.scheme as string | undefined) ?? profile()?.scheme) : xcode.scheme
+  if (tool.server !== 'MobileBuildMCP') return xcode.scheme
+  // A listed profile's scheme may be JSON's null, which names none.
+  return (input.scheme as string | undefined) ?? fromXcode.profiles[profileKey()] ?? profile()?.scheme ?? undefined
 }
 
 function parse(text: string): Record<string, unknown> | undefined {

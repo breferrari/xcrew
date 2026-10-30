@@ -12,7 +12,23 @@ const DAY = 24 * 60 * 60_000
  * A session whose project's root is `root`, as `xcrew project --branch` answers, its MobileBuildMCP profile building
  * `scheme` (none: no scheme to build), each build taking the next of `took`, its outcome the next of `reports`.
  */
-function session(on: On, { root = '/work/App', scheme, took = [], reports = [{ ok: true }], stored = {}, rootFails = 0, cwd = root }: { root?: string; scheme?: string; took?: number[]; reports?: Partial<Report>[]; stored?: Record<string, unknown>; rootFails?: number; cwd?: string } = {}) {
+function session(
+  on: On,
+  { root = '/work/App', scheme, took = [], reports = [{ ok: true }], stored = {}, rootFails = 0, cwd = root, profiles = {}, xcode, xcodeServerAfter = 0, xcodeHeld, selections = [], outputs = {} }: {
+    root?: string; scheme?: string; took?: number[]; reports?: Partial<Report>[]; stored?: Record<string, unknown>; rootFails?: number; cwd?: string
+    /** Each profile's scheme, as `--profiles --profile <name>` answers it. */
+    profiles?: Record<string, string>
+    /** What `--xcode` answers when Xcode hosts MobileBuildMCP's server: the selection at its start. */
+    xcode?: { activeProfile: string; scheme: string; follows: boolean }
+    /** How many `--xcode` asks find no server before one is found; what holds each answer back until it resolves. */
+    xcodeServerAfter?: number
+    xcodeHeld?: Promise<void>
+    /** What each `--xcuserstate` read answers in turn, the last one again after. */
+    selections?: string[]
+    /** What a tool answers, by its name. */
+    outputs?: Record<string, string>
+  } = {},
+) {
   const clock = mock.clock(on, { now: NOW })
   const store = mapStore(on, stored)
   const toasts: string[] = []
@@ -29,10 +45,25 @@ function session(on: On, { root = '/work/App', scheme, took = [], reports = [{ o
   on('ui.notify', () => ({ value: { isSent: true, channel: 'terminal_bell' } }))
   const cli = stubCli(on, {
     // The first `rootFails` reads of the root get no answer naming one, as a CLI still building answers.
-    project: args => ({ isGenerated: false, ...(args.includes('--branch') && rootFails-- <= 0 ? { root, branch: 'main' } : {}), ...(args.includes('--profiles') && scheme ? { scheme } : {}) }),
+    project: async args => {
+      if (args.includes('--xcode') && xcodeHeld) await xcodeHeld
+      const server = !args.includes('--xcode') || xcodeServerAfter-- <= 0
+      const profile = args.includes('--profile') ? profiles[args[args.indexOf('--profile') + 1] ?? ''] : scheme
+      const selected = args.includes('--xcuserstate') ? (selections.length > 1 ? selections.shift() : selections[0]) : undefined
+      return {
+        isGenerated: false,
+        ...(args.includes('--branch') && rootFails-- <= 0 ? { root, branch: 'main' } : {}),
+        ...(args.includes('--profiles') && profile ? { scheme: profile } : {}),
+        ...(args.includes('--xcode') && server ? { xcodeHostsServer: xcode !== undefined } : {}),
+        ...(args.includes('--xcode') && server && xcode ? { activeProfile: xcode.activeProfile, xcodeState: '/work/App/App.xcworkspace/xcuserdata/someone.xcuserdatad/UserInterfaceState.xcuserstate', xcodeScheme: xcode.scheme, followsXcode: xcode.follows } : {}),
+        ...(selected ? { xcodeScheme: selected } : {}),
+      }
+    },
     reports,
   })
-  on('tool.call', async () => {
+  on('tool.call', async (_, e) => {
+    const output = outputs[e.tool.split('__').pop() ?? '']
+    if (output !== undefined) return { result: {}, text: output }
     await clock.advance(took.shift() ?? 0)
     return { result: {}, text: 'done' }
   })
@@ -70,6 +101,119 @@ test("a run whose call names no scheme is kept under the profile's", async ($, o
   await start($, clock)
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
   expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · App')))).toEqual([30_000])
+})
+
+const switched = (profile: string) => JSON.stringify({ schema: 'mobilebuildmcp.output.session-profile', data: { previousProfile: 'unit', currentProfile: profile } })
+
+/** A profile chosen before any answer listed the profiles builds its own scheme, which the config names. */
+test("a run after choosing a profile is kept under that profile's scheme", async ($, on) => {
+  const { clock, store, cli } = session(on, { scheme: 'AppTests', profiles: { app: 'App', unit: 'AppTests' }, took: [30_000, 40_000], outputs: { session_use_defaults_profile: switched('app') } })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__session_use_defaults_profile', { profile: 'app' })
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · App')))).toEqual([30_000])
+  expect(cli.some(call => call.args.join(' ') === 'project --profiles --profile app')).toBe(true)
+})
+
+/** Under Xcode, MobileBuildMCP writes Xcode's selection at its start over the profile active then, and no other. */
+test("under Xcode, the scheme selected at the server's start keys the active profile's runs", async ($, on) => {
+  const { clock, store } = session(on, {
+    scheme: 'AppTests', profiles: { app: 'App', unit: 'AppTests' }, xcode: { activeProfile: 'unit', scheme: 'Feature', follows: false },
+    took: [30_000, 40_000], outputs: { session_use_defaults_profile: switched('app') },
+  })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await callTool($, 'mcp__MobileBuildMCP__session_use_defaults_profile', { profile: 'app' })
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Feature')))).toEqual([30_000])
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · App')))).toEqual([40_000])
+})
+
+/** MobileBuildMCP follows a later selection in Xcode, writing it over the profile active then, unless the config turns that off. */
+test('under Xcode, a later selection is followed only while MobileBuildMCP follows it', async ($, on) => {
+  const { clock, store } = session(on, { scheme: 'AppTests', xcode: { activeProfile: 'unit', scheme: 'Feature', follows: true }, selections: ['Feature', 'Core'], took: [30_000, 40_000] })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Feature')))).toEqual([30_000])
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Core')))).toEqual([40_000])
+})
+
+test('with disableXcodeAutoSync, a later selection in Xcode is not followed', async ($, on) => {
+  const { clock, store, cli } = session(on, { scheme: 'AppTests', xcode: { activeProfile: 'unit', scheme: 'Feature', follows: false }, selections: ['Core'], took: [30_000, 40_000] })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Feature')))).toEqual([30_000, 40_000])
+  expect(cli.some(call => call.args.includes('--xcuserstate'))).toBe(false)
+})
+
+/** The server's own listing of its defaults is newer than a selection the mod saw earlier. */
+test("a listing of the session's defaults wins over an earlier selection in Xcode", async ($, on) => {
+  const listed = JSON.stringify({ schema: 'mobilebuildmcp.output.session-defaults', data: { currentProfile: 'unit', profiles: { unit: { scheme: 'AppTests' } } } })
+  const { clock, store } = session(on, { scheme: 'AppTests', xcode: { activeProfile: 'unit', scheme: 'Feature', follows: true }, selections: ['Feature'], took: [30_000], outputs: { session_show_defaults: listed } })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · AppTests')))).toEqual([30_000])
+})
+
+/** A listed profile whose scheme is JSON's null names none, so the config's is asked for. */
+test("a listed profile's null scheme falls back to the config's", async ($, on) => {
+  const listed = JSON.stringify({ schema: 'mobilebuildmcp.output.session-defaults', data: { currentProfile: 'unit', profiles: { unit: { scheme: null } } } })
+  const { clock, store } = session(on, { scheme: 'AppTests', profiles: { unit: 'AppTests' }, took: [30_000], outputs: { session_show_defaults: listed } })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · AppTests')))).toEqual([30_000])
+})
+
+/** MobileBuildMCP names its global defaults `(default)`: the config's `sessionDefaults`, which the CLI answers for. */
+test("after switching to the global defaults, a run is kept under their scheme", async ($, on) => {
+  const { clock, store, cli } = session(on, { scheme: 'AppTests', profiles: { '(default)': 'Global' }, took: [30_000], outputs: { session_use_defaults_profile: switched('(default)') } })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__session_use_defaults_profile', { global: true })
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Global')))).toEqual([30_000])
+  expect(cli.some(call => call.args.join(' ') === 'project --profiles --profile (default)')).toBe(true)
+})
+
+/** A server not started yet when the session begins is looked for again, not taken as one Xcode didn't start. */
+test("Xcode's selection is read once MobileBuildMCP's server is found", async ($, on) => {
+  const { clock, store } = session(on, { scheme: 'AppTests', xcode: { activeProfile: 'unit', scheme: 'Feature', follows: false }, xcodeServerAfter: 1, took: [30_000] })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Feature')))).toEqual([30_000])
+})
+
+/** The start selection is the config's active profile's, even when its answer comes after a switch. */
+test("a selection at the server's start answered after a profile switch stays the config's active profile's", async ($, on) => {
+  let release = () => {}
+  const xcodeHeld = new Promise<void>(resolve => (release = resolve))
+  const { clock, store } = session(on, {
+    scheme: 'AppTests', profiles: { app: 'App', unit: 'AppTests' }, xcode: { activeProfile: 'unit', scheme: 'Feature', follows: false }, xcodeHeld,
+    took: [30_000], outputs: { session_use_defaults_profile: switched('app') },
+  })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__session_use_defaults_profile', { profile: 'app' })
+  release()
+  await clock.settle()
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · App')))).toEqual([30_000])
+})
+
+/** A listing that lands while the start selection is being read is the newer of the two. */
+test("a listing before the start selection's answer wins over it", async ($, on) => {
+  let release = () => {}
+  const xcodeHeld = new Promise<void>(resolve => (release = resolve))
+  const listed = JSON.stringify({ schema: 'mobilebuildmcp.output.session-defaults', data: { currentProfile: 'unit', profiles: { unit: { scheme: 'AppTests' } } } })
+  const { clock, store } = session(on, { scheme: 'AppTests', xcode: { activeProfile: 'unit', scheme: 'Feature', follows: false }, xcodeHeld, took: [30_000], outputs: { session_show_defaults: listed } })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  release()
+  await clock.settle()
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · AppTests')))).toEqual([30_000])
 })
 
 /** With no scheme the run's can be named, it's timed and shown, and kept under no key without one. */

@@ -117,6 +117,30 @@ export function profileSchemeOf(answer: unknown): string | undefined {
   return typeof scheme === 'string' && scheme !== '' ? scheme : undefined
 }
 
+/** Xcode's selection at MobileBuildMCP's start, as `xcrew project --xcode` answers when Xcode hosts its server. */
+export function xcodeSelectionOf(answer: unknown): { state: string; scheme?: string; follows: boolean; activeProfile?: string } | undefined {
+  const read = answer as { xcodeState?: unknown; followsXcode?: unknown; activeProfile?: unknown } | undefined
+  if (typeof read?.xcodeState !== 'string') return undefined
+  return {
+    state: read.xcodeState,
+    follows: read.followsXcode === true,
+    ...(xcodeSchemeOf(answer) === undefined ? {} : { scheme: xcodeSchemeOf(answer) }),
+    ...(typeof read.activeProfile === 'string' ? { activeProfile: read.activeProfile } : {}),
+  }
+}
+
+/** Whether Xcode started MobileBuildMCP's server, as `xcrew project --xcode` answers; undefined while no server is found. */
+export function xcodeHostsServerOf(answer: unknown): boolean | undefined {
+  const hosts = (answer as { xcodeHostsServer?: unknown } | undefined)?.xcodeHostsServer
+  return typeof hosts === 'boolean' ? hosts : undefined
+}
+
+/** The scheme selected in Xcode, as `xcrew project --xcuserstate <file>` answers. */
+export function xcodeSchemeOf(answer: unknown): string | undefined {
+  const scheme = (answer as { xcodeScheme?: unknown } | undefined)?.xcodeScheme
+  return typeof scheme === 'string' && scheme !== '' ? scheme : undefined
+}
+
 /** The line offering setup, as `xcrew project --profiles` answers while MobileBuildMCP has no scheme to build with. */
 export function setupOfferOf(answer: unknown): string | undefined {
   const setup = (answer as { setup?: unknown } | undefined)?.setup

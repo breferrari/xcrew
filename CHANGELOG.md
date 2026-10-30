@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A MobileBuildMCP build or test that names no scheme keeps its times under the scheme it built: the profile chosen during the session, and when Xcode started MobileBuildMCP, the scheme selected in Xcode, followed as it changes unless `disableXcodeAutoSync` is set. Runs of different profiles no longer share usual times, test counts or the loop budget.
 - A failing test run now gets xcrew's notes, as it was meant to: MobileBuildMCP's results open with a blank line, which kept xcrew from reading them as test runs. A run repeated with `-test-iterations` lists each test once with how many runs failed, with skip reasons from the result bundle, and a crash shows the Swift error and the test's line.
 - A build or test that Claude moves to the background now ends like any other when its task does: its result is read and shortened, with xcrew's notes, and its time, its failures, the red-to-green ledger and the line above the prompt are all updated. When the result can't be read, the run's log and its result bundle say how it went. In 0.9.3 the line saying such a task had ended never appeared, and nothing was recorded.
 - The coverage of a branch's changed lines no longer counts the tests themselves, says once that a run never reached a module, as a filtered run often doesn't, rather than listing its lines as not run, and isn't given for a run that ran no tests.

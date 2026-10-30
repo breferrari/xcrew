@@ -14,8 +14,8 @@ function engine(on: On, outputs: Record<string, string> = {}) {
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('process.run', (_, e) => {
-    // The session start's own look for problems isn't a command's run.
-    if (!e.argv.includes('--problems')) runs.push(e.argv)
+    // The session start's own look for problems, and its read of Xcode's selection, aren't a command's run.
+    if (!e.argv.includes('--problems') && !e.argv.includes('--xcode')) runs.push(e.argv)
     return { value: { exitCode: 0, stdout: outputs[e.argv[1] ?? ''] ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return { registered, runs }

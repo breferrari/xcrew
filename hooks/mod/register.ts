@@ -2,11 +2,11 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, type Failure, type Problem, type Ran, type Report } from './cli'
+import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
-import { describe, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, runsWholeScope } from './context'
+import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, runsWholeScope, xcodeSelected, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
@@ -135,7 +135,9 @@ export const register: Register = on => {
     const label = labelOf(name, target)
     const input = e as unknown as Record<string, unknown>
     // Durations and test totals are kept per repository, scheme and test selection, not only per tool. A MobileBuildMCP
-    // call that names no scheme builds its profile's; one whose scheme no one can name keeps no history.
+    // call that names no scheme builds Xcode's selection, when Xcode hosts the server, or its profile's; one whose scheme
+    // no one can name keeps no history.
+    if (parsed.server === 'MobileBuildMCP' && input.scheme === undefined) await quietly(() => followXcode($))
     const needsScheme = parsed.server === 'MobileBuildMCP' && !namesScheme(parsed, input)
     const fallbackScheme = needsScheme ? await profileScheme($) : undefined
     const scope = historyOf(parsed, input, fallbackScheme)
@@ -310,11 +312,12 @@ export const register: Register = on => {
     for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
     // A cleared conversation is a new session: its warnings show again, and the pin is named again.
     sessionRootRead = undefined
-    sessionProfileScheme = undefined
+    sessionProfileSchemes = new Map()
     found = []
     pinsNamed.clear()
     seenAt = {}
     void loadProblems($).catch(() => undefined)
+    void quietly(() => readXcodeStart($))
     // The card is saved from the history as it's left: fresh, and this version's.
     void quietly(() => pruneHistory($)).then(() => saveCard($))
     return started
@@ -334,7 +337,7 @@ export const register: Register = on => {
     if (e.tool !== 'Bash') return result
     if (runsSetup(e.command)) {
       // Setup may have written the profiles: their scheme is read again.
-      sessionProfileScheme = undefined
+      sessionProfileSchemes = new Map()
       void loadProblems($, true).catch(() => undefined)
     }
     if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, stale => afterGenerate(stale, e.command))
@@ -598,15 +601,48 @@ async function sessionRoot($: EngineInterface): Promise<string> {
   return named ?? (await quietly(() => $.session.cwd())) ?? ''
 }
 
-/** The scheme MobileBuildMCP's profile builds with, for a call that names none, once the CLI has answered: read again after setup. */
-let sessionProfileScheme: { scheme?: string } | undefined
+/**
+ * The scheme each MobileBuildMCP profile builds with, for a call that names none, once the CLI has answered: the config's
+ * active one under `''`. Read again after setup.
+ */
+let sessionProfileSchemes = new Map<string, { scheme?: string }>()
 
 async function profileScheme($: EngineInterface): Promise<string | undefined> {
-  if (sessionProfileScheme) return sessionProfileScheme.scheme
-  const answered = await answer($, ['project', '--profiles'], 10_000)
+  const profile = currentProfile()
+  const cached = sessionProfileSchemes.get(profileKey())
+  if (cached) return cached.scheme
+  const answered = await answer($, ['project', '--profiles', ...(profile === undefined ? [] : ['--profile', profile])], 10_000)
   if (answered === undefined) return undefined
-  sessionProfileScheme = { ...(profileSchemeOf(answered) === undefined ? {} : { scheme: profileSchemeOf(answered) }) }
-  return sessionProfileScheme.scheme
+  const scheme = profileSchemeOf(answered)
+  sessionProfileSchemes.set(profileKey(), scheme === undefined ? {} : { scheme })
+  return scheme
+}
+
+/**
+ * Where MobileBuildMCP reads Xcode's selection and whether it follows it, once the CLI has answered; null when Xcode
+ * doesn't host the server. Kept across a cleared conversation, as the server is.
+ */
+let xcodeSelection: Promise<{ state: string; follows: boolean } | null | undefined> | undefined
+
+/** Reads the selection at the server's start once: a CLI that couldn't answer, or found no server yet, is asked again. */
+async function readXcodeStart($: EngineInterface): Promise<{ state: string; follows: boolean } | null | undefined> {
+  const listings = listingsSeen()
+  xcodeSelection ??= answer($, ['project', '--xcode'], 10_000).then(answered => {
+    if (xcodeHostsServerOf(answered) === undefined) return undefined
+    const read = xcodeSelectionOf(answered)
+    if (read) xcodeStarted(read.scheme, read.activeProfile, listings)
+    return read ? { state: read.state, follows: read.follows } : null
+  })
+  const read = await xcodeSelection
+  if (read === undefined) xcodeSelection = undefined
+  return read
+}
+
+/** Before a MobileBuildMCP run, takes a selection Xcode changed since, while the server follows it. */
+async function followXcode($: EngineInterface): Promise<void> {
+  const read = await readXcodeStart($)
+  if (!read?.follows) return
+  xcodeSelected(xcodeSchemeOf(await answer($, ['project', '--xcuserstate', read.state], 10_000)))
 }
 
 /** A scope's passing and failed runs before this one, read when it began: none once no run has updated it for weeks. */

@@ -73,8 +73,18 @@ public enum ConfigRenderer {
     }
 
     /// The scheme MobileBuildMCP builds with when a call names none, by `hasSchemeToBuild`'s rule: the active profile's,
-    /// or with none active, the global `sessionDefaults`'. Nil when that has none.
-    public static func schemeToBuild(in yaml: String) -> String? {
+    /// or with none active, the global `sessionDefaults`'. With `profile`, that profile's, which stands alone. Nil when
+    /// that has none.
+    public static func schemeToBuild(in yaml: String, profile: String? = nil) -> String? {
+        setting("scheme", profile: profile, in: yaml)
+    }
+
+    /// MobileBuildMCP's name for its global defaults when it reports the profile in use (`formatProfileLabel(null)`):
+    /// the config's `sessionDefaults`.
+    public static let globalProfile = "(default)"
+
+    /// One of a profile's settings, by `schemeToBuild`'s rule; YAML's null and an empty value name none.
+    public static func setting(_ key: String, profile named: String? = nil, in yaml: String) -> String? {
         let active = profiles(in: yaml).active
         var section: Substring = ""
         var keyIndent: Int?
@@ -95,15 +105,26 @@ public enum ConfigRenderer {
                     continue
                 }
             }
-            // YAML's null, spelled either way, names none.
-            guard let scheme = value(of: "scheme", in: line), !["", "null", "~"].contains(scheme) else { continue }
-            if let active {
-                if section == "sessionDefaultsProfiles:", profile == active { return scheme }
+            guard let found = value(of: key, in: line), !["", "null", "~"].contains(found) else { continue }
+            if named == globalProfile {
+                if section == "sessionDefaults:" { return found }
+            } else if let named {
+                if section == "sessionDefaultsProfiles:", profile == named { return found }
+            } else if let active {
+                if section == "sessionDefaultsProfiles:", profile == active { return found }
             } else if section == "sessionDefaults:" {
-                return scheme
+                return found
             }
         }
         return nil
+    }
+
+    /// Whether the config turns off MobileBuildMCP's following of Xcode's scheme selection after its start
+    /// (`disableXcodeAutoSync: true` at the top level).
+    public static func disablesXcodeAutoSync(in yaml: String) -> Bool {
+        yaml.split(whereSeparator: \.isNewline).contains { line in
+            !line.hasPrefix(" ") && ["true", "True", "TRUE"].contains(value(of: "disableXcodeAutoSync", in: line) ?? "")
+        }
     }
 
     /// Whether MobileBuildMCP has a scheme to build with: the active profile's, since a named profile stands alone, or
@@ -194,11 +215,14 @@ public enum ConfigRenderer {
     /// the project root, its working directory, with `~` for the home folder (docs/findings.md, *MobileBuildMCP's config
     /// paths*).
     public static func containerPaths(in yaml: String, root: URL, home: URL) -> [String] {
-        values(of: ["workspacePath:", "projectPath:"], in: yaml).map { path in
-            if path.hasPrefix("/") { return path }
-            if path == "~" || path.hasPrefix("~/") { return home.appending(path: String(path.dropFirst(2))).path }
-            return root.appending(path: path).standardizedFileURL.path
-        }
+        values(of: ["workspacePath:", "projectPath:"], in: yaml).map { resolved($0, root: root, home: home) }
+    }
+
+    /// A config's path as MobileBuildMCP resolves it: absolute as given, `~` for the home folder, else from the root.
+    static func resolved(_ path: String, root: URL, home: URL) -> String {
+        if path.hasPrefix("/") { return path }
+        if path == "~" || path.hasPrefix("~/") { return home.appending(path: String(path.dropFirst(2))).path }
+        return root.appending(path: path).standardizedFileURL.path
     }
 
     /// A path as the config writes it: from the project root (`./App.xcworkspace`) when it's inside it, else as given.

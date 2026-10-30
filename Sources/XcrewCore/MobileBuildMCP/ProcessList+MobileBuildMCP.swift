@@ -37,4 +37,19 @@ extension ProcessList {
     static func isMobileBuildMCPServer(_ process: Process) -> Bool {
         process.command.contains("/mobilebuildmcp/") && process.command.contains("build/cli.js mcp")
     }
+
+    /// Whether `id` or a process above it is Xcode, by MobileBuildMCP 2.7.1's test (`utils/xcode-process.js`): a program
+    /// named `Xcode`, or a command naming `Contents/MacOS/Xcode` or `com.apple.dt.Xcode`.
+    ///
+    /// The parser splits `pid ppid comm args` on spaces: the name is `comm`'s first word, the command all after it. `ps`
+    /// cuts `comm` to 16 characters when a column follows it.
+    func runsUnderXcode(_ id: Int32) -> Bool {
+        let chain = processes.filter { $0.id == id } + ancestors(of: id)
+        return chain.contains { process in
+            let comm = process.programPath.prefix(16).split(whereSeparator: \.isWhitespace)
+            let name = comm.first.map(String.init) ?? ""
+            let command = (comm.dropFirst() + process.command.split(whereSeparator: \.isWhitespace)).joined(separator: " ")
+            return name == "Xcode" || command.contains("Contents/MacOS/Xcode") || command.contains("com.apple.dt.Xcode")
+        }
+    }
 }
