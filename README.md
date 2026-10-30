@@ -107,12 +107,6 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
 
 After a failing run, the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw. It opens the failures pane, with every failing test and compile error of the last failing run.
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane-light.png">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png">
-  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
-</picture>
-
 #### Commands
 
 | Command | What it does |
@@ -124,6 +118,12 @@ After a failing run, the line above the prompt ends with `/xcrew failures`, or t
 | `/xcrew doctor` | The doctor's report, below |
 
 They answer at once, without a turn for Claude.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
+</picture>
 
 ### The right server for each job
 
