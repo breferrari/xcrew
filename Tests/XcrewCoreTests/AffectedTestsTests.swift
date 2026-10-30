@@ -151,6 +151,15 @@ import XcrewTestSupport
         project.write(json("", #"{ "name": "Checks", "id": "C2", "product-type": "bundle.unit-test", "dependencies": [ "Lib" ] }, { "name": "Lib", "id": "L2", "product-type": "framework" }"#), to: "B/B.xcodeproj/project.xcproj")
         #expect(AffectedTests.of(changed: ["A/Lib/Thing.swift"], in: project).selections == ["Checks"])
     }
+
+    /// A UI test bundle of one name in two projects stays a UI test bundle once the two are read as one.
+    @Test func aUITestBundleInTwoProjectsStaysOne() {
+        let project = Project.temporary(containing: ["App.xcworkspace", "A/A.xcodeproj", "B/B.xcodeproj"])
+        project.write(#"<?xml version="1.0" encoding="UTF-8"?><Workspace version="1.0"><FileRef location="group:A/A.xcodeproj"/><FileRef location="group:B/B.xcodeproj"/></Workspace>"#, to: "App.xcworkspace/contents.xcworkspacedata")
+        project.write(json(#"{ "kind": "folder", "path": "Lib", "target-membership": [ "Lib" ] }"#, #"{ "name": "Lib", "id": "L", "product-type": "framework" }, { "name": "Checks", "id": "C", "product-type": "bundle.ui-testing", "dependencies": [ "Lib" ] }"#), to: "A/A.xcodeproj/project.xcproj")
+        project.write(json("", #"{ "name": "Checks", "id": "C2", "product-type": "bundle.ui-testing" }"#), to: "B/B.xcodeproj/project.xcproj")
+        #expect(AffectedTests.of(changed: ["A/Lib/Thing.swift"], in: project).uiSelections == ["Checks"])
+    }
 }
 
 /// A target that links a product no project here builds depends on something unread: everything runs.

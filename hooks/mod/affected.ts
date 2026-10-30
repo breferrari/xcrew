@@ -35,14 +35,14 @@ export const NAMED_UP_TO = 10
 /** Where the whole list is, in a long selection: the CLI's answer, which Claude's Bash and a `!` command both reach. */
 const WHOLE_LIST = 'all of them: `xcrew affected` in Bash, or `!xcrew affected` at the prompt'
 
-/** Some targets: up to `NAMED_UP_TO` named, the rest counted. */
-function someOf(targets: readonly string[]): string {
-  return targets.length > NAMED_UP_TO ? `${targets.slice(0, NAMED_UP_TO).join(', ')} and ${targets.length - NAMED_UP_TO} more` : targets.join(', ')
+/** Targets named, as `named` lists them, while they're up to `NAMED_UP_TO`; else counted as `many` words them. */
+function namedOrCounted(targets: readonly string[], many: (count: number) => string, named: (targets: readonly string[]) => string = joined): string {
+  return targets.length > NAMED_UP_TO ? many(targets.length) : named(targets)
 }
 
-/** One kind's targets, with the arguments that run them while they're few enough to use, else where the rest are. */
+/** One kind's targets, with the arguments that run them while they're few enough to use, else a few named and where the rest are. */
 function group(targets: readonly string[]): string {
-  if (targets.length > ARGUMENTS_UP_TO) return `${someOf(targets)}; ${WHOLE_LIST}`
+  if (targets.length > ARGUMENTS_UP_TO) return `${targets.slice(0, NAMED_UP_TO).join(', ')} and ${targets.length - NAMED_UP_TO} more; ${WHOLE_LIST}`
   return `${targets.join(', ')} (${targets.map(target => `-only-testing:${target}`).join(' ')})`
 }
 
@@ -51,13 +51,11 @@ function schemesText(schemes: Affected['schemes'], selections: readonly string[]
   if (!Array.isArray(schemes) || schemes.length === 0) return ''
   const named = schemes.map(scheme => {
     const twin = schemes.some(other => other !== scheme && other.name === scheme.name)
-    const targets = scheme.targets.length > NAMED_UP_TO ? `${scheme.targets.length} targets` : scheme.targets.join(', ')
-    return `\`${scheme.name}\`${twin ? ` in ${scheme.container}` : ''} (${targets})`
+    return `\`${scheme.name}\`${twin ? ` in ${scheme.container}` : ''} (${namedOrCounted(scheme.targets, count => `${count} targets`, targets => targets.join(', '))})`
   })
   const tested = new Set(schemes.flatMap(scheme => scheme.targets))
   const untested = selections.filter(target => !tested.has(target))
-  const none = untested.length > NAMED_UP_TO ? `${untested.length} of the selected targets` : joined(untested)
-  const cover = untested.length === 0 ? 'Between them they test every selected target.' : `None of them tests ${none}.`
+  const cover = untested.length === 0 ? 'Between them they test every selected target.' : `None of them tests ${namedOrCounted(untested, count => `${count} of the selected targets`)}.`
   return ` Schemes that test only selected targets: ${joined(named)}. ${cover}`
 }
 
@@ -73,9 +71,9 @@ export function affectedText(answer: unknown): string {
   if (selections.length === 0) {
     return changed === 0 ? `Nothing has changed, so no tests are affected.${since}` : `No test target covers the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}`
   }
-  // What runs them: a UI test bundle drives the app on a simulator, a unit test bundle runs in its host.
   const ui = new Set(Array.isArray(affected.uiSelections) ? affected.uiSelections : [])
-  const unit = selections.filter(target => !ui.has(target)), uiTargets = selections.filter(target => ui.has(target))
+  const uiTargets = selections.filter(target => ui.has(target))
+  const unit = selections.filter(target => !ui.has(target))
   const count = `The changes can break ${selections.length} test ${selections.length === 1 ? 'target' : 'targets'}`
   const listed = unit.length > 0 && uiTargets.length > 0
     ? `${count}, ${unit.length} unit and ${uiTargets.length} UI. Unit: ${group(unit)}. UI: ${group(uiTargets)}.`

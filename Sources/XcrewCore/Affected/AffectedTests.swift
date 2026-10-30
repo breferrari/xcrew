@@ -55,7 +55,7 @@ public struct AffectedTests: Sendable, Equatable, Codable {
         }
         // Targets of the same name in two projects keep every dependency: dropping one could skip a test.
         var targets = graphs.reduce(into: [String: ProjectGraph.Target]()) { all, graph in
-            all.merge(graph.targets) { first, second in ProjectGraph.Target(name: first.name, isTest: first.isTest || second.isTest, dependencies: first.dependencies.union(second.dependencies)) }
+            all.merge(graph.targets) { first, second in ProjectGraph.Target(name: first.name, isTest: first.isTest || second.isTest, isUITest: first.isUITest || second.isUITest, dependencies: first.dependencies.union(second.dependencies)) }
         }
         // A module links the one below it by its product, and depends on another project's target by name: each
         // resolves among every project the workspace reads, and one that doesn't depends on something unread.
