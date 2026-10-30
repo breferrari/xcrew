@@ -4,8 +4,9 @@ import type { BandProblems, BandRun, CliBuild, FailureList, ResultRow, StaleProj
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, generatedOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
+import { CARD_SECTION, cardText } from './card'
 import { describe, historyOf, observe, runsWholeScope } from './context'
-import { afterTestRun, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
+import { afterTestRun, label, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
@@ -233,7 +234,15 @@ export const register: Register = on => {
     found = []
     seenAt = {}
     void loadProblems($).catch(() => undefined)
+    void buildCard($)
     return started
+  })
+  // The one unmatched prompt.compose hook: the project card, as it was built when the session started.
+  on('prompt.compose', async ($, e, next) => {
+    const composed = await next(e)
+    // The first prompt fixes what the session sends: a card not built by then stays out, so the text never changes.
+    sentCard ??= builtCard ?? null
+    return sentCard ? { sections: [...composed.sections, { id: CARD_SECTION, text: sentCard, scope: 'session' as const }] } : composed
   })
   // The one unmatched prompt hook: a problem fixed any way at all leaves the band by the next prompt. Never awaited.
   on('prompt.submit', async ($, e, next) => {
@@ -332,6 +341,31 @@ function cliText($: EngineInterface, args: string[]): Promise<string> {
 /** A run has the band while it shows; the problems wait beneath it. */
 function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
   return update($, runState, () => run)
+}
+
+/** The project card built for this session, once built, and the text its prompts carry, fixed by the first one: `null` for none. */
+let builtCard: string | undefined
+let sentCard: string | null | undefined
+/** Which session's build may write the card: one a newer session started over never lands. */
+let cardBuild = 0
+
+/** Builds the card from what earlier runs stored: durations kept within the history's time, and the branch's red tests. */
+function buildCard($: EngineInterface): void {
+  sentCard = undefined
+  builtCard = undefined
+  const generation = ++cardBuild
+  void (async () => {
+    const now = await $.clock.now()
+    const scopes = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX)).map(key => key.slice(DURATIONS_PREFIX.length))
+    const scoped = await Promise.all(scopes.map(async scope => {
+      const [runs, updated, tests] = await Promise.all([$.store.get(historyKey(scope)), $.store.get(updatedKey(scope)), $.store.get(testsKey(scope))])
+      return isStale(updated, now) || !Array.isArray(runs) ? undefined : { scope, runs: runs as number[], ...(typeof tests === 'number' ? { tests } : {}) }
+    }))
+    const head = headOf(await answer($, ['project', '--branch'], 10_000))
+    const red = head ? (ledgerOf(await $.store.get(ledgerKey(head)))?.entries ?? []).filter(entry => !entry.green) : []
+    const text = cardText(scoped.filter(entry => entry !== undefined), red, head ? label(head, true) : '')
+    if (generation === cardBuild) builtCard = text
+  })().catch(() => undefined)
 }
 
 /** The doctor's last answer, and when each problem was first found: bookkeeping a reload may start over. */

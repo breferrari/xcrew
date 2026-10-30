@@ -244,6 +244,15 @@ XcodeGen's `info` and `entitlements` paths aren't counted yet, because reading t
 
 `$.ui.ask`, per the engine's types (Claude Code 2.1.312), "Rejects when dismissed, and in a `-p` run (no one to ask)". Either way the mod refuses the call with the reason, as it did before it asked. The types name no error that tells a dismissal from a failure to show the dialog, so any rejection refuses. A typed answer refuses too, carrying the person's words, rather than the mod reading their intent.
 
+## The project card
+
+The card reaches Claude as a section of the system prompt, which a mod adds with a `prompt.compose` hook. The engine's types (Claude Code 2.1.312, read October 30, 2026) say:
+- the event "Fires when the engine renders a system prompt";
+- "A section added at the end of what `next(e)` answered is `session`";
+- `session` text sits after the cache's boundary, where "text that varies hits that cache for nobody".
+
+So the mod builds the card once, when a session starts, and every prompt of that session sends it unchanged. A card not built by the first prompt, as on a first run while the CLI builds, stays out for that session rather than changing the prompt later. Every session's prompt carries the card, so it's capped at ten lines and 800 characters, with longer lists counted as "+N more".
+
 ## Toolchains
 
 On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The `macos-26` runner image (version 20261013.0424.1) carries Xcode 26.0.1 to 26.6, and Apple's [Xcode system requirements](https://developer.apple.com/xcode/system-requirements/) put Swift 6.2 in Xcode 26.0 and 26.0.1, 6.2.1 to 6.2.3 in 26.1 to 26.3, and 6.3 in 26.4.1 to 26.6. So CI's newest toolchain was Swift 6.3, older than the contributor's 6.4.2. Each Swift job now prints its toolchain, and a floor job builds and tests on the oldest Xcode whose Swift is the version `Package.swift`'s `swift-tools-version` names.

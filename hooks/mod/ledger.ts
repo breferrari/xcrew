@@ -26,7 +26,7 @@ export type Ledger = { entries: LedgerEntry[]; updated: number }
 export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; ranAll: boolean }
 
 /** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
-function label(head: Head, isShort: boolean): string {
+export function label(head: Head, isShort: boolean): string {
   if (head.branch) return head.branch
   if (head.commit) return `commit ${isShort ? head.commit.slice(0, 12) : head.commit}`
   return isShort ? 'this folder' : ''
