@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.9 — 2026-10-30
 
 - When a test fails for no reason the change explains, Claude runs it alone several times, and Xcrew says whether it's flaky (failed some runs) or a real failure (failed every run). A flaky test stays red, marked flaky, in the red-to-green record and on the project card, until a repeated run passes it every time.
 - Of a build's warnings, Claude is told which are in lines your branch changed, so it fixes its own and leaves the rest. Warnings elsewhere are counted, never claimed new or old.
