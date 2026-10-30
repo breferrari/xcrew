@@ -21,16 +21,24 @@ public struct FailureImages: Sendable, Equatable {
     /// How long a run's images are kept: as long as the shim keeps a build no checkout has run.
     static let keptDays = 14
 
-    /// A test's images among its exported attachments, moved to `<run>/<suite>/<test>/`: a snapshot's reference, failing
-    /// render and difference first, then the rest in the order they were attached. Nil when it attached none.
+    /// A test's images among its exported attachments, moved to `<run>/<suite>/<test>/`: each snapshot comparison's
+    /// reference, failing render and difference together, a repeated run's one comparison after another, the rest in the
+    /// order they were attached. Nil when it attached none.
     static func keep(of test: TestID, from export: URL, in run: URL) -> FailureImages? {
         let manifest = (try? JSONSerialization.jsonObject(with: Data(contentsOf: export.appending(path: "manifest.json")))) as? [[String: Any]] ?? []
         let attachments = manifest.filter { ($0["testIdentifier"] as? String).map(TestID.init(xcresultID:)) == test }.flatMap { $0["attachments"] as? [[String: Any]] ?? [] }
-        let images = attachments.enumerated().compactMap { index, attachment -> (name: String, file: URL, index: Int)? in
+        let found = attachments.compactMap { attachment -> (name: String, file: URL)? in
             guard let exported = attachment["exportedFileName"] as? String, let suggested = attachment["suggestedHumanReadableName"] as? String else { return nil }
             let file = export.appending(path: exported)
-            return keptName(suggested: suggested, content: file).map { ($0, file, index) }
-        }.sorted { (rank($0.name), $0.index) < (rank($1.name), $1.index) }
+            return keptName(suggested: suggested, content: file).map { ($0, file) }
+        }
+        // The nth reference, failure and difference go together: one comparison's, in a run repeated with -test-iterations.
+        var seen: [Int: Int] = [:]
+        let images = found.enumerated().map { index, image in
+            let rank = rank(image.name)
+            defer { seen[rank, default: 0] += 1 }
+            return (name: image.name, file: image.file, order: [seen[rank, default: 0], rank, index])
+        }.sorted { $0.order.lexicographicallyPrecedes($1.order) }
         guard !images.isEmpty else { return nil }
         let folder = [test.suite, test.name].reduce(run) { $0.appending(path: $1.replacingOccurrences(of: "/", with: "-")) }
         try? FileManager.default.removeItem(at: folder)
@@ -51,10 +59,10 @@ public struct FailureImages: Sendable, Equatable {
         }
     }
 
-    /// Image formats Claude's Read shows, by extension.
-    static let extensions: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"]
+    /// Image formats Claude's Read shows, by extension: those Claude takes as images.
+    static let extensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp"]
 
-    /// The format a file's first bytes say it is, as its extension; nil when they say none of the image formats.
+    /// The format a file's first bytes say it is, as its extension; nil when they say none of `extensions`.
     static func format(of data: Data) -> String? {
         let bytes = [UInt8](data.prefix(12))
         func starts(_ prefix: [UInt8], at offset: Int = 0) -> Bool {
@@ -63,9 +71,7 @@ public struct FailureImages: Sendable, Equatable {
         if starts([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return "png" }
         if starts([0xFF, 0xD8, 0xFF]) { return "jpg" }
         if starts(Array("GIF8".utf8)) { return "gif" }
-        if starts([0x49, 0x49, 0x2A, 0x00]) || starts([0x4D, 0x4D, 0x00, 0x2A]) { return "tiff" }
         if starts(Array("RIFF".utf8)), starts(Array("WEBP".utf8), at: 8) { return "webp" }
-        if starts(Array("ftyp".utf8), at: 4), ["heic", "heix", "mif1", "msf1"].contains(where: { starts(Array($0.utf8), at: 8) }) { return "heic" }
         return nil
     }
 

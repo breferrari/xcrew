@@ -12,12 +12,12 @@ public struct ResultBundle: Sendable {
 
     public let path: String
     let runner: any CommandRunning
-    /// A fresh folder for one crash log export; tests pass one they have filled.
+    /// A fresh folder for one export of a test's attachments; tests pass one they have filled.
     let exportFolder: @Sendable () -> URL
     /// The run's test list, which skips and expected failures both read: asked for once, when first needed.
     let listing: Once<String>
 
-    public init(path: String, runner: any CommandRunning, exportFolder: @escaping @Sendable () -> URL = { FileManager.default.temporaryDirectory.appending(path: "xcrew-crash-\(UUID().uuidString)") }) {
+    public init(path: String, runner: any CommandRunning, exportFolder: @escaping @Sendable () -> URL = { FileManager.default.temporaryDirectory.appending(path: "xcrew-attachments-\(UUID().uuidString)") }) {
         self.path = path
         self.runner = runner
         self.exportFolder = exportFolder
@@ -206,13 +206,11 @@ public struct ResultBundle: Sendable {
     }
 
     /// A failed test's images, moved to `<folder>/<run>/<suite>/<test>/` under the names their attachments suggest, so
-    /// Claude can Read them later in the session, and with `crashed`, its crash's summary, both from one export. Every
-    /// attachment is exported: the snapshot libraries' images aren't associated with the failure, so `--only-failures`
-    /// would leave them out, and the crash log is among them.
-    public func images(of test: TestID, keptIn folder: URL, crashed: Bool = false) async -> (images: FailureImages?, crash: [String]?) {
+    /// Claude can Read them later in the session. Every attachment is exported: the snapshot libraries' images aren't
+    /// associated with the failure, so `--only-failures` would leave them out.
+    public func images(of test: TestID, keptIn folder: URL) async -> FailureImages? {
         await attachments(of: test, onlyFailures: false) { export in
-            (FailureImages.keep(of: test, from: export, in: folder.appending(path: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)),
-             crashed ? Self.crashSummary(in: export) : nil)
+            FailureImages.keep(of: test, from: export, in: folder.appending(path: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent))
         }
     }
 }

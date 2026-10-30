@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import XcrewCore
 import XcrewTestSupport
@@ -116,14 +117,58 @@ import XcrewTestSupport
         #expect(FileManager.default.fileExists(atPath: Self.kept(cache, "reference_0_R.png")))
     }
 
-    /// A crashed test's images and crash log come from one export: every attachment holds the crash log too.
-    @Test func aCrashedTestsImagesAndCrashLogComeFromOneExport() async throws {
-        let (cache, bundle, images) = try Self.export([Attachment(suggested: "Screenshot.png", exported: "S", bytes: Self.png)], test: "FormatterTests/test_crash()")
-        let export = bundle.exportFolder().path
-        try Captured.text("crashLog").write(toFile: export + "/crash.ips", atomically: true, encoding: .utf8)
-        let added = await FailureNotes.addingText(to: Captured.text("mobileTestsCrashedAndSkipped"), from: bundle, keepingImagesIn: images)
-        #expect(added.contains("Crash: xctest at implicit closure #1 in FormatterTests.test_crash()\n      crashed: EXC_BREAKPOINT (SIGTRAP)"), "\(added)")
-        #expect(added.contains("      image: \(cache.appending(path: "images/test_sim_1/FormatterTests/test_crash/Screenshot.png").path)"), "\(added)")
+    /// A test repeated with `-test-iterations` attaches a reference, a failure and a difference each run: the three
+    /// listed are one run's, not three references.
+    @Test func aRepeatedTestListsOneRunsReferenceFailureAndDifference() async throws {
+        let (cache, bundle, images) = try Self.export(["A", "B"].flatMap { run in
+            ["reference_0", "failure_1", "difference_2"].map { Attachment(suggested: "\($0)_\(run).png", exported: "\($0)\(run)", bytes: Self.png) }
+        })
+        let added = await FailureNotes.addingText(to: Self.failed, from: bundle, keepingImagesIn: images)
+        let listed = added.components(separatedBy: "\n").filter { $0.contains("image: ") }
+        #expect(listed == ["reference_0_A.png", "failure_1_A.png", "difference_2_A.png"].map { "      image: \(Self.kept(cache, $0))" }, "\(added)")
+        #expect(added.contains("      and 3 more images in "))
+    }
+
+    /// Claude's Read shows PNG, JPEG, GIF and WebP; an image in another format isn't listed as one to Read.
+    @Test func onlyFormatsReadShowsAreListed() async throws {
+        let heic = Data([0, 0, 0, 24]) + Data("ftypheic".utf8) + Data(count: 4)
+        let (cache, bundle, images) = try Self.export([
+            Attachment(suggested: "Screenshot", exported: "H", bytes: heic),
+            Attachment(suggested: "scan.tiff", exported: "T", bytes: Data([0x49, 0x49, 0x2A, 0x00])),
+            Attachment(suggested: "Screenshot 2", exported: "P", bytes: Self.png),
+        ])
+        let added = await FailureNotes.addingText(to: Self.failed, from: bundle, keepingImagesIn: images)
+        #expect(added.components(separatedBy: "\n").filter { $0.contains("image: ") } == ["      image: \(Self.kept(cache, "Screenshot 2.png"))"], "\(added)")
+    }
+
+    /// Records each command it's asked to run, and answers none.
+    final class RecordingRunner: CommandRunning {
+        let calls = Mutex<[String]>([])
+        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+            calls.withLock { $0.append(argv.joined(separator: " ")) }
+            return .notFound
+        }
+        func which(_ name: String) -> String? { nil }
+    }
+
+    /// A crash's log is read from the export of the failure's own attachments, not every attachment the test made:
+    /// that one is small, and holds the failure's crash log alone.
+    @Test func aCrashedTestsLogComesFromItsFailuresOwnAttachments() async {
+        let runner = RecordingRunner()
+        let bundle = ResultBundle(path: Self.bundle, runner: runner)
+        _ = await FailureNotes.addingText(to: Captured.text("mobileTestsCrashedAndSkipped"), from: bundle, keepingImagesIn: URL(fileURLWithPath: "/nonexistent/images"))
+        let exports = runner.calls.withLock { $0 }.filter { $0.contains("export attachments") && $0.contains("--test-id FormatterTests/test_crash()") }
+        #expect(exports.count == 2, "\(exports)")
+        #expect(exports.contains { $0.hasSuffix("--only-failures") }, "\(exports)")
+    }
+
+    /// Past the tests looked up for images, a test the text doesn't place is still looked up for its location.
+    @Test func aLateFailureTheTextDoesntPlaceStillGetsItsLocation() async {
+        let located = (1...FailureNotes.mostLookups + 1).map { "  ✗ Suite / test_\($0)(): failed\n    /Users/dev/App/Tests/Suite.swift:\($0)\n" }.joined(separator: "\n")
+        let text = "🧪 Test\n\nTest Failures (12):\n\n\(located)\n  ✗ Suite / test_late(): failed\n\n❌ 12 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
+        let runner = RecordingRunner()
+        _ = await FailureNotes.addingText(to: text, from: ResultBundle(path: Self.bundle, runner: runner), keepingImagesIn: URL(fileURLWithPath: "/nonexistent/images"))
+        #expect(runner.calls.withLock { $0 }.contains("xcrun xcresulttool get test-results test-details --test-id Suite/test_late() --path \(Self.bundle) --compact"))
     }
 
     /// The failures pane shows the same paths under the test.

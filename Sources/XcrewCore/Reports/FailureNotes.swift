@@ -92,8 +92,10 @@ public enum FailureNotes {
             if text.location(after: index) != nil { located.insert(failing.test) }
             if isCrash(failing.message) { crashed.insert(failing.test) }
         }
-        // Any failed test may have attached images; without them, only one the text doesn't place, or that crashed.
-        let lookups = (imagesFolder == nil ? order.filter { !located.contains($0) || crashed.contains($0) } : order).prefix(mostLookups)
+        // A test the text doesn't place, or that crashed, is looked up for that; the first failed tests for their images too.
+        let detailed = Set(order.filter { !located.contains($0) || crashed.contains($0) }.prefix(mostLookups))
+        let imaged = Set(imagesFolder == nil ? [] : order.prefix(mostLookups))
+        let lookups = order.filter { detailed.contains($0) || imaged.contains($0) }
         let listedSkips = text.lines.compactMap { line -> TestID? in
             if case let .skipped(test) = line.kind { return test }
             return nil
@@ -110,15 +112,15 @@ public enum FailureNotes {
             var found: [TestID: [String]] = [:]
             func lookUpNext() {
                 guard let test = pending.next() else { return }
-                let isLocated = located.contains(test), isCrashed = crashed.contains(test)
+                let isLocated = !detailed.contains(test) || located.contains(test), isCrashed = detailed.contains(test) && crashed.contains(test)
+                let keepsImages = imaged.contains(test) ? imagesFolder : nil
                 group.addTask {
                     var added: [String] = []
                     if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: test)) {
                         added.append("    \(location)")
                     }
-                    // One export gives both the images and a crash's log.
-                    let (attached, crash) = if let imagesFolder { await bundle.images(of: test, keptIn: imagesFolder, crashed: isCrashed) } else { (nil, isCrashed ? await bundle.crash(of: test) : nil) }
-                    if isCrashed { added += (crash ?? [noCrashLog]).map { "      \($0)" } }
+                    if isCrashed { added += (await bundle.crash(of: test) ?? [noCrashLog]).map { "      \($0)" } }
+                    let attached = if let keepsImages { await bundle.images(of: test, keptIn: keepsImages) } else { FailureImages?.none }
                     if let attached { added += attached.shown.map { "      \(imageLabel) \($0)" } + (attached.more.map { ["      \($0)"] } ?? []) }
                     return (test, added, attached)
                 }
