@@ -511,6 +511,14 @@ import Testing
         }
     }
 
+    /// The plugin's icon, which the directory's listing shows, is xcrew-assets' `icon.png` at the pinned commit, byte for
+    /// byte: it's drawn and rendered there.
+    @Test(.enabled(if: Assets.isCheckedOut, "no xcrew-assets checkout"))
+    func listingIconIsTheAssetsIcon() throws {
+        let shipped = try Data(contentsOf: Self.repository.appending(path: ".claude-plugin/icon.png"))
+        #expect(shipped == (try Data(contentsOf: Assets.root.appending(path: "icon.png"))), ".claude-plugin/icon.png isn't xcrew-assets' icon.png")
+    }
+
     /// CI runs the assets' tests or fails: a missing checkout there is a broken workflow, not a Mac without the clone.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == "true"))
     func listingCIHasTheAssets() {

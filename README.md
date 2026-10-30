@@ -1,10 +1,10 @@
-<!-- The images are breferrari/xcrew-assets at 3ccc991164b2fe1cf0afdd18542cedd723a5ab68 (v0.1.0). To change one, see CONTRIBUTING.md. -->
+<!-- The images are breferrari/xcrew-assets at 570b5f6f7a56c2689536e550f3a078856619b746 (v0.2.0). To change one, see CONTRIBUTING.md. -->
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/banner-light.png">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/banner.png">
-  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/banner.png" alt="Xcrew: a brushed-steel screw with a copper-orange X in its head" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/banner-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/banner.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/banner.png" alt="Xcrew: a brushed-steel screw with a copper-orange X in its head" width="100%">
 </picture>
 
 ### Your **Xcode** crew inside **Claude Code**.
@@ -20,9 +20,9 @@
 Claude Code can build, test and preview Apple apps through Apple's Xcode MCP and MobileBuildMCP, and read Apple's docs through Sosumi. On their own, the three overlap, misroute and bury Claude in output. **Xcrew turns them into one setup, and adds what none of them has.**
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/band-light.png">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/band.png">
-  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/band-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/band.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/band.png" alt="The line above Claude Code's prompt: a test run with its elapsed time, a gauge and the phase; then a passing run, a failing run and a failed build, each against its usual time" width="100%">
 </picture>
 
 | | On their own | With Xcrew |
@@ -100,9 +100,9 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
 - **Passing tests left out**, with the full list a file read away.
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/test-result-light.png">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/test-result.png">
-  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/test-result-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/test-result.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/test-result.png" alt="What Claude reads from a failing test run: two failures, one with its file and line, one a crash with its exception and top frames; a skipped test with its reason; and the summary" width="100%">
 </picture>
 
 ### The last failures beside the chat
@@ -110,9 +110,9 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
 After a failing run, the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw. It opens the failures pane, with every failing test and compile error of the last failing run.
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/failures-pane-light.png">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/failures-pane.png">
-  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/failures-pane-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/failures-pane.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
 </picture>
 
 ### Commands
@@ -205,9 +205,9 @@ ok    xcrew/up-to-date                 0.8.9, the latest release
 ## How it works
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/architecture-light.png">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/architecture.png">
-  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/3ccc991164b2fe1cf0afdd18542cedd723a5ab68/architecture.png" alt="Claude Code loads the plugin's four pieces: the manifest starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/architecture-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/architecture.png">
+  <img src="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/architecture.png" alt="Claude Code loads the plugin's four pieces: the manifest starts the three MCP servers; the session hook, the mod and the skills call the Swift CLI, which the mcs techpack calls too" width="100%">
 </picture>
 
 | Piece | What it does |
