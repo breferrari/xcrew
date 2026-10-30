@@ -67,14 +67,17 @@ public struct ToolOutput: Sendable {
         public let images: [String]?
         /// How many more images it attached, and where they are, as the notes word it.
         public let moreImages: String?
+        /// The test target a failing test belongs to, from the run's result bundle.
+        public let target: String?
 
-        public init(title: String, message: String, where location: String? = nil, isTest: Bool = false, images: [String]? = nil, moreImages: String? = nil) {
+        public init(title: String, message: String, where location: String? = nil, isTest: Bool = false, images: [String]? = nil, moreImages: String? = nil, target: String? = nil) {
             self.title = title
             self.message = message
             self.where = location
             self.isTest = isTest
             self.images = images
             self.moreImages = moreImages
+            self.target = target
         }
     }
 

@@ -354,6 +354,16 @@ func failingRunText(passing: Int) -> String {
         #expect(report.failures.map(\.title) == ["PlainTests/testConcatenation"])
     }
 
+    /// A failing test's target, from the test bundle the result bundle files it under: the ledger reads it to tell which
+    /// later selection ran the test.
+    @Test func aFailingTestCarriesItsTargetFromTheResultBundle() async {
+        let bundle = "\(Captured.workspace)/result-bundles/test_sim.xcresult"
+        let listing = #"{"testNodes":[{"nodeType":"Test Plan","name":"App","children":[{"nodeType":"Unit test bundle","name":"PlainKitTests","result":"Failed","children":[{"nodeType":"Test Suite","name":"PlainTests","children":[{"nodeType":"Test Case","name":"testConcatenation()","nodeIdentifier":"PlainTests/testConcatenation()","result":"Failed"}]}]}]}]}"#
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: listing)])
+        let report = await Self.report("mobileTestsFailed", isError: true, runner: runner)
+        #expect(report.failures.map(\.target) == ["PlainKitTests"])
+    }
+
     @Test func aRunThatRanNoTestsTellsClaudeWhy() async {
         let report = await Self.report("mobileTestsNoneRan")
         #expect(report.notes == [Report.noTestsNote])

@@ -113,6 +113,22 @@ test('a test red in a whole-suite run is green once a run of its method passes',
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
+const FAILED_IN_TARGET: Partial<Report> = { ok: false, failures: [{ ...FAILED.failures![0]!, target: 'AppTests' }] }
+
+test('a test whose target the report named is green once a run of that whole target passes, though it failed in a whole-suite run', async ($, on) => {
+  project(on, [FAILED_IN_TARGET, PASSED])
+  await run($)
+  await run($, 'AppTests')
+  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
+})
+
+test('a class of the same name in another target never ran a test whose target the report named', async ($, on) => {
+  project(on, [FAILED_IN_TARGET, PASSED])
+  await run($)
+  await run($, 'OtherTests/GreetingTests')
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+})
+
 test('a pass of the whole suite on the same tool and scheme turns a selection\'s red green', async ($, on) => {
   project(on, [FAILED, PASSED])
   await run($, 'AppTests')

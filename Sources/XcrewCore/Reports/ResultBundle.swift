@@ -77,6 +77,19 @@ public struct ResultBundle: Sendable {
         }
     }
 
+    /// Each test's target in `xcresulttool get test-results tests` output: the test bundle it's filed under, a unit or UI
+    /// test bundle named as its target is.
+    public static func targets(listing: String) -> [TestID: String] {
+        var found: [TestID: String] = [:]
+        for bundle in nodes(parse(listing)) where (bundle["nodeType"] as? String)?.hasSuffix("test bundle") == true {
+            guard let name = bundle["name"] as? String else { continue }
+            for node in nodes(bundle["children"]) where node["nodeType"] as? String == "Test Case" {
+                if let id = node["nodeIdentifier"] as? String { found[TestID(xcresultID: id)] = name }
+            }
+        }
+        return found
+    }
+
     /// Frames of the crashed thread shown: enough to reach the test's own code from the crash.
     static let topFrames = 5
 

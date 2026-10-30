@@ -111,7 +111,7 @@ import Testing
     /// Every field of a failure the CLI reports is one the mod's type for it names: a field it doesn't name is one the
     /// ledger and the pane never read.
     @Test func theModsFailureTypeNamesEachFieldTheCLIReports() throws {
-        let failure = ToolOutput.Failure(title: "T", message: "M", where: "W", isTest: true, images: ["/i.png"], moreImages: "and 1 more image in /f")
+        let failure = ToolOutput.Failure(title: "T", message: "M", where: "W", isTest: true, images: ["/i.png"], moreImages: "and 1 more image in /f", target: "AppTests")
         let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(failure)) as? [String: Any]).keys
         let items = try #require(try text("types/index.d.ts").firstMatch(of: /items: \{([^}]*)\}\[\]/)?.1)
         for key in keys {

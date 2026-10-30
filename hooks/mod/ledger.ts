@@ -16,10 +16,10 @@ export const LEDGER_PREFIX = 'ledger.'
 export type LedgerRun = { scope: string; at: number }
 
 /**
- * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, and when a run
- * last wrote it.
+ * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, when a run last
+ * wrote it, and its target, from the result bundle, when the report named one.
  */
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun; last: number; flaky?: { failed: number; runs: number } }
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun; last: number; flaky?: { failed: number; runs: number }; target?: string }
 
 export type Ledger = { entries: LedgerEntry[]; updated: number }
 
@@ -54,15 +54,18 @@ export function covers(passed: string, failed: string): boolean {
 /**
  * Whether a run of `passed` scope ran `test`, red in `failing`: the scopes `covers` matches, or the same tool and scheme
  * with a selection that reaches the test. A selection is `TestTarget[/TestClass[/TestMethod]]` (`man xcodebuild`), a
- * Swift Testing method with or without its `()`, and the ledger names a test `Suite/test`, without its target: the
- * target comes from the selections of the run it failed in. A selection of a class or method reaches the test under a
- * target that run could have run it in, or under any target when that run selected none; a selection of a whole target
- * only when that run's selections leave the test exactly one target.
+ * Swift Testing method with or without its `()`, and the ledger names a test `Suite/test`. With its `target`, from the
+ * result bundle, a selection reaches the test when it names that target and, past it, the test or a class it's in.
+ * Without one, as in entries recorded before the report named it, the target comes from the selections of the run it
+ * failed in: a selection of a class or method reaches the test under a target that run could have run it in, or under
+ * any target when that run selected none; a selection of a whole target only when that run's selections leave the test
+ * exactly one target.
  */
-export function reaches(passed: string, test: string, failing: string): boolean {
+export function reaches(passed: string, test: string, failing: string, target?: string): boolean {
   if (covers(passed, failing)) return true
   const pass = scopeParts(passed), fail = scopeParts(failing)
   if (pass.base !== fail.base) return false
+  if (target !== undefined) return pass.selections.map(path).some(([named = '', ...rest]) => named === target && within(test, rest))
   // The targets the failing run could have run the test in; none known when it selected none.
   const targets = new Set(fail.selections.map(path).filter(([, ...rest]) => within(test, rest)).map(([target = '']) => target))
   return pass.selections.map(path).some(([target = '', ...rest]) =>
@@ -111,17 +114,19 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
   const entries = (ledger?.entries ?? []).filter(entry => !isStale(entry.last, run.at)).map((entry): LedgerEntry => {
     if (failing.has(entry.test)) {
       const flaky = flakyAfter(entry.test, entry.flaky)
-      return { test: entry.test, red: entry.red, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}) }
+      const target = entry.target ?? failed.get(entry.test)?.target
+      return { test: entry.test, red: entry.red, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) }
     }
     const cleared = !entry.flaky || repeated.get(entry.test)?.verdict === 'passed'
-    const passes = !entry.green && cleared && run.ranAll && testsRan && reaches(run.scope, entry.test, entry.failing)
+    const passes = !entry.green && cleared && run.ranAll && testsRan && reaches(run.scope, entry.test, entry.failing, entry.target)
     return passes ? { ...entry, green: { scope: run.scope, at: run.at }, last: run.at } : entry
   })
   for (const test of failing) {
     if (entries.some(entry => entry.test === test)) continue
     const flaky = flakyAfter(test)
     const message = failed.get(test)?.message ?? verdictMessage(repeated.get(test))
-    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(message), bundle: run.bundle }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}) })
+    const target = failed.get(test)?.target
+    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(message), bundle: run.bundle }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) })
   }
   return { entries, updated: run.at }
 }

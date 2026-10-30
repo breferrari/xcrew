@@ -65,11 +65,14 @@ public struct Report: Sendable, Equatable, Codable {
         (try? URL(fileURLWithPath: String(path)).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
-    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest.
-    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
+    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest;
+    /// and its target, from the result bundle, for the ledger.
+    static func attaching(_ images: [TestID: FailureImages], targets: [TestID: String] = [:], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
         failures.map { failure in
-            guard failure.isTest, let attached = images[TestID(xcresultID: failure.title)] else { return failure }
-            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: attached.shown, moreImages: attached.more)
+            let test = TestID(xcresultID: failure.title)
+            guard failure.isTest, images[test] != nil || targets[test] != nil else { return failure }
+            let attached = images[test]
+            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: attached?.shown, moreImages: attached?.more, target: targets[test])
         }
     }
 
@@ -146,13 +149,15 @@ public struct Report: Sendable, Equatable, Codable {
         if let why = await why { notes.insert(why, at: 0) }
         if let pinNote = await pinNote { notes.append(pinNote) }
 
+        // A failing test's target, from the run's test list, which skips and expected failures read too.
+        let targets = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { ResultBundle.targets(listing: await bundle.tests()) } else { [TestID: String]() }
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(
             ok: summary.ok,
             detail: summary.detail,
             durationMs: final.reportedDuration,
             tests: tests,
-            failures: summary.ok ? [] : Self.attaching(images, to: final.failures),
+            failures: summary.ok ? [] : Self.attaching(images, targets: targets, to: final.failures),
             result: compact ?? (edited ? final.text : nil),
             notes: notes,
             repeated: repeatedTests,
