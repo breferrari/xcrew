@@ -27,6 +27,10 @@ function session(on: On, answer: unknown) {
 
 const ask = async (tool: Engine, input: Record<string, unknown> = {}) => String((await callTool(tool, TOOL, input)).result ?? '')
 
+/** `count` targets named `prefix` and a number, in order: `U01`, `U02`, … */
+const named = (prefix: string, count: number) => Array.from({ length: count }, (_, index) => `${prefix}${String(index + 1).padStart(2, '0')}`)
+const ALL = 'all of them: `xcrew affected` in Bash, or `!xcrew affected` at the prompt'
+
 test('Claude finds the affected tool behind ToolSearch, registered beside the ledger', async ($, on) => {
   const seen = session(on, {})
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
@@ -36,7 +40,7 @@ test('Claude finds the affected tool behind ToolSearch, registered beside the le
 test('a selection names the test targets and the -only-testing arguments that run them, with the base', async ($, on) => {
   session(on, { base: 'origin/main, from 0123456789ab', changed: ['Core/Store.swift'], selections: ['AppTests', 'CoreTests'] })
   const text = await ask($)
-  expect(text).toStartWith('The changes can break these test targets: AppTests, CoreTests')
+  expect(text).toStartWith('The changes can break 2 test targets: AppTests, CoreTests')
   expect(text).toContain('-only-testing:AppTests -only-testing:CoreTests')
   expect(text).toContain('origin/main, from 0123456789ab')
 })
@@ -102,4 +106,35 @@ test('session start registers exactly the ledger, affected, look and evidence to
   const seen = session(on, {})
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   expect(seen.registered).toEqual([{ name: 'ledger', isDeferred: undefined }, { name: 'affected', isDeferred: undefined }, { name: 'look', isDeferred: undefined }, { name: 'evidence', isDeferred: undefined }])
+})
+
+/** A large selection, as a big modular app's: the count first, by what runs them, a few names of each, the rest counted. */
+test('a large selection says its count first, by kind, and names a few of each', async ($, on) => {
+  const unit = named('U', 25), ui = named('UI', 3)
+  session(on, { changed: ['Core/Store.swift'], selections: [...unit, ...ui].sort(), uiSelections: ui })
+  const text = await ask($)
+  expect(text).toStartWith('The changes can break 28 test targets, 25 unit and 3 UI.')
+  expect(text).toContain(`Unit: ${unit.slice(0, 10).join(', ')} and 15 more; ${ALL}.`)
+  expect(text).not.toContain('-only-testing:U01')
+  expect(text).toContain('UI: UI01, UI02, UI03 (-only-testing:UI01 -only-testing:UI02 -only-testing:UI03).')
+})
+
+/** Up to 20 targets of a kind, the arguments that run them are given; past that, the list is too long to use. */
+test('the -only-testing arguments are given for up to 20 targets of a kind', async ($, on) => {
+  session(on, { changed: ['Core/Store.swift'], selections: named('U', 20) })
+  expect(await ask($)).toContain('-only-testing:U20')
+})
+
+test('past 20 targets of a kind, no arguments are given', async ($, on) => {
+  session(on, { changed: ['Core/Store.swift'], selections: named('U', 21) })
+  const text = await ask($)
+  expect(text).not.toContain('-only-testing:')
+  expect(text).toContain(`and 11 more; ${ALL}.`)
+})
+
+/** A scheme with many targets is counted, as is what none of the schemes tests. */
+test('a scheme of many targets is counted rather than listed', async ($, on) => {
+  const unit = named('U', 30)
+  session(on, { changed: ['Core/Store.swift'], selections: unit, schemes: [{ name: 'Feature', container: 'App.xcworkspace', targets: unit.slice(0, 15) }] })
+  expect(await ask($)).toContain(' Schemes that test only selected targets: `Feature` (15 targets). None of them tests 15 of the selected targets.')
 })

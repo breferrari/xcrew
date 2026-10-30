@@ -22,10 +22,28 @@ export const AFFECTED_TOOL = {
 export const AFFECTED_TOOL_NAME = 'mcp__xcrew__affected'
 
 /** What `xcrew affected` answers. */
-export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null; schemes?: { name: string; container: string; targets: string[] }[] }
+export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null; uiSelections?: string[]; schemes?: { name: string; container: string; targets: string[] }[] }
 
 export function affectedArgs(input: Record<string, unknown>): string[] {
   return ['affected', ...(typeof input.base === 'string' && input.base !== '' ? ['--base', input.base] : [])]
+}
+
+/** Past this many targets of a kind, their `-only-testing:` arguments are too many to use, and aren't given. */
+export const ARGUMENTS_UP_TO = 20
+/** How many targets of a kind, or of a scheme, are named before the rest are counted. */
+export const NAMED_UP_TO = 10
+/** Where the whole list is, in a long selection: the CLI's answer, which Claude's Bash and a `!` command both reach. */
+const WHOLE_LIST = 'all of them: `xcrew affected` in Bash, or `!xcrew affected` at the prompt'
+
+/** Some targets: up to `NAMED_UP_TO` named, the rest counted. */
+function someOf(targets: readonly string[]): string {
+  return targets.length > NAMED_UP_TO ? `${targets.slice(0, NAMED_UP_TO).join(', ')} and ${targets.length - NAMED_UP_TO} more` : targets.join(', ')
+}
+
+/** One kind's targets, with the arguments that run them while they're few enough to use, else where the rest are. */
+function group(targets: readonly string[]): string {
+  if (targets.length > ARGUMENTS_UP_TO) return `${someOf(targets)}; ${WHOLE_LIST}`
+  return `${targets.join(', ')} (${targets.map(target => `-only-testing:${target}`).join(' ')})`
 }
 
 /** The shared schemes that test only selected targets, each with its own, and the selected targets none of them tests. */
@@ -33,15 +51,17 @@ function schemesText(schemes: Affected['schemes'], selections: readonly string[]
   if (!Array.isArray(schemes) || schemes.length === 0) return ''
   const named = schemes.map(scheme => {
     const twin = schemes.some(other => other !== scheme && other.name === scheme.name)
-    return `\`${scheme.name}\`${twin ? ` in ${scheme.container}` : ''} (${scheme.targets.join(', ')})`
+    const targets = scheme.targets.length > NAMED_UP_TO ? `${scheme.targets.length} targets` : scheme.targets.join(', ')
+    return `\`${scheme.name}\`${twin ? ` in ${scheme.container}` : ''} (${targets})`
   })
   const tested = new Set(schemes.flatMap(scheme => scheme.targets))
   const untested = selections.filter(target => !tested.has(target))
-  const cover = untested.length === 0 ? 'Between them they test every selected target.' : `None of them tests ${joined(untested)}.`
+  const none = untested.length > NAMED_UP_TO ? `${untested.length} of the selected targets` : joined(untested)
+  const cover = untested.length === 0 ? 'Between them they test every selected target.' : `None of them tests ${none}.`
   return ` Schemes that test only selected targets: ${joined(named)}. ${cover}`
 }
 
-/** The answer as Claude reads it; without one from the CLI, the whole suite. */
+/** The answer as Claude reads it, the count first; without one from the CLI, the whole suite. */
 export function affectedText(answer: unknown): string {
   const affected = (answer ?? {}) as Affected
   const since = affected.base ? ` Compared with ${affected.base}.` : ''
@@ -49,12 +69,19 @@ export function affectedText(answer: unknown): string {
     return affected.runAll ? `No narrower selection: ${affected.runAll}; the whole suite covers the changes.${since}` : `xcrew couldn't say which tests the changes can break; the whole suite covers them.${since}`
   }
   const changed = affected.changed?.length ?? 0
-  if (affected.selections.length === 0) {
+  const selections = affected.selections
+  if (selections.length === 0) {
     return changed === 0 ? `Nothing has changed, so no tests are affected.${since}` : `No test target covers the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}`
   }
+  // What runs them: a UI test bundle drives the app on a simulator, a unit test bundle runs in its host.
+  const ui = new Set(Array.isArray(affected.uiSelections) ? affected.uiSelections : [])
+  const unit = selections.filter(target => !ui.has(target)), uiTargets = selections.filter(target => ui.has(target))
+  const count = `The changes can break ${selections.length} test ${selections.length === 1 ? 'target' : 'targets'}`
+  const listed = unit.length > 0 && uiTargets.length > 0
+    ? `${count}, ${unit.length} unit and ${uiTargets.length} UI. Unit: ${group(unit)}. UI: ${group(uiTargets)}.`
+    : `${count}${uiTargets.length > 0 ? ', all UI' : ''}: ${group(selections)}.`
   return (
-    `The changes can break these test targets: ${affected.selections.join(', ')} (${affected.selections.map(target => `-only-testing:${target}`).join(' ')}). ` +
-    `They cover the targets that own or depend on the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}` +
-    schemesText(affected.schemes, affected.selections)
+    `${listed} They cover the targets that own or depend on the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}` +
+    schemesText(affected.schemes, selections)
   )
 }

@@ -75,7 +75,7 @@ import Testing
     @Test func affectedsAnswerIsTheShapeTheModReads() throws {
         let type = try #require(try text("hooks/mod/affected.ts").firstMatch(of: /export type Affected = \{(.+)\}\n/)).output.1
         let scheme = TestSchemes.Scheme(name: "Feature", container: "Feature.xcodeproj", targets: ["FeatureTests"])
-        let answer = AffectedCommand.Answer(base: "origin/main", changed: ["a"], selections: ["FeatureTests"], runAll: "r", schemes: [scheme])
+        let answer = AffectedCommand.Answer(base: "origin/main", changed: ["a"], selections: ["FeatureTests"], runAll: "r", schemes: [scheme], uiSelections: ["AppUITests"])
         let keys = { (value: any Encodable) throws -> [String] in
             try (JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any] ?? [:]).keys.sorted()
         }

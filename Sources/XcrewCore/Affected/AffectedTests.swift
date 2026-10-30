@@ -8,6 +8,8 @@ public struct AffectedTests: Sendable, Equatable, Codable {
     public var selections: [String]?
     /// Why everything must run, naming the file or project behind it.
     public var runAll: String?
+    /// The selections that are UI test bundles; absent when none is.
+    public var uiSelections: [String]?
     /// The shared schemes that test only targets in `selections`; absent when there are none.
     public var schemes: [TestSchemes.Scheme]?
 
@@ -83,8 +85,9 @@ public struct AffectedTests: Sendable, Equatable, Codable {
             }
         }
         let selections = affected.filter { targets[$0]?.isTest == true }.sorted()
+        let ui = selections.filter { targets[$0]?.isUITest == true }
         let schemes = TestSchemes.testingOnly(Set(selections), in: containers, from: project.root)
-        return AffectedTests(selections: selections, schemes: schemes.isEmpty ? nil : schemes)
+        return AffectedTests(selections: selections, runAll: nil, uiSelections: ui.isEmpty ? nil : ui, schemes: schemes.isEmpty ? nil : schemes)
     }
 
     static func everything(_ reason: String) -> AffectedTests {

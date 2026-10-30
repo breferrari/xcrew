@@ -48,6 +48,18 @@ import XcrewTestSupport
         #expect(affected.runAll == nil)
     }
 
+    /// A UI test bundle is said apart from the unit tests: a simulator and the app run it, not the unit tests' host alone.
+    @Test func aUITestBundleIsSaidApart() {
+        let project = project()
+        let withUI = Self.chain
+            .replacingOccurrences(of: #"{ "kind": "folder", "path": "AppTests", "target-membership": [ "AppTests" ] },"#, with: #"{ "kind": "folder", "path": "AppTests", "target-membership": [ "AppTests" ] }, { "kind": "folder", "path": "AppUITests", "target-membership": [ "AppUITests" ] },"#)
+            .replacingOccurrences(of: #"{ "name": "AppTests", "id": "AT", "product-type": "bundle.unit-test", "test-host-target": "App" },"#, with: #"{ "name": "AppTests", "id": "AT", "product-type": "bundle.unit-test", "test-host-target": "App" }, { "name": "AppUITests", "id": "AU", "product-type": "bundle.ui-testing", "dependencies": [ "App" ] },"#)
+        project.write(withUI, to: "App.xcodeproj/project.xcproj")
+        let affected = AffectedTests.of(changed: ["Core/Store.swift"], in: project)
+        #expect(affected.selections == ["AppTests", "AppUITests", "CoreTests", "FeatureTests"])
+        #expect(affected.uiSelections == ["AppUITests"])
+    }
+
     @Test func aChangeAtTheTopSelectsOnlyItsOwnTests() {
         #expect(AffectedTests.of(changed: ["App/AppApp.swift"], in: project()).selections == ["AppTests"])
         #expect(AffectedTests.of(changed: ["AppTests/AppTests.swift"], in: project()).selections == ["AppTests"])
