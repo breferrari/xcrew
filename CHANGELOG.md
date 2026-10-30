@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- When a test fails for no reason the change explains, Claude runs it alone five times, and Xcrew says whether it's flaky (failed some runs) or a real failure (failed every run). A flaky test stays red, marked flaky, in the red-to-green record and on the project card, until a repeated run passes it every time.
+- When a test fails for no reason the change explains, Claude runs it alone several times, and Xcrew says whether it's flaky (failed some runs) or a real failure (failed every run). A flaky test stays red, marked flaky, in the red-to-green record and on the project card, until a repeated run passes it every time.
 
 ## 0.8.8 — 2026-10-30
 
