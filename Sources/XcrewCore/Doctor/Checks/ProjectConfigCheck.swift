@@ -9,6 +9,9 @@ struct ProjectConfigCheck: Check {
         guard project.hasMobileBuildMCPConfig, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else {
             // Its fix writes a MobileBuildMCP config, which only an Apple-platform project has a use for.
             guard project.layout(.anywhereButHome).isApplePlatform else { return .skip("not an Apple project") }
+            if await Worktree.takesMainConfig(project, using: context.runner) {
+                return .fail("no .mobilebuildmcp/config.yaml in this worktree: xcrew setup --worktree writes it from the main checkout's")
+            }
             return .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup" + (project.isConfiguredByMCS ? " (or, with the mcs CLI, mcs sync)" : ""))
         }
         let lists = ConfigRenderer.lists(in: yaml)

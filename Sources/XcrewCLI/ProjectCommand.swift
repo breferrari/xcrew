@@ -59,7 +59,7 @@ struct ProjectCommand: Command {
             }
         }
         if invocation.arguments.has("profiles"), !project.hasSchemeToBuild {
-            answer.setup = SessionBriefing.setupOffer
+            answer.setup = await SessionBriefing.setupOffer(for: project, using: invocation.context.runner)
         }
         if invocation.arguments.has("setup") {
             do {

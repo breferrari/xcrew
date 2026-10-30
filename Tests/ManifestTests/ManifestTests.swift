@@ -173,6 +173,12 @@ import Testing
         #expect(line.contains("before changing"))
     }
 
+    /// What the briefing and the doctor offer a worktree is a form of setup that exists.
+    @Test func aWorktreeIsOfferedTheSetupThatExists() {
+        #expect(SetupCommand().flags.contains("worktree"))
+        #expect(Worktree.setupOffer.contains("`xcrew setup --worktree`"))
+    }
+
     /// The failure notes' pointer to `look` names the tool the mod registers and the CLI's command, and the result bundle's
     /// own spelling of a test in a nested suite.
     @Test func theFailureNotesPointToLookByItsNames() throws {

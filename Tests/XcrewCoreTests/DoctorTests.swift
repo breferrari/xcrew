@@ -130,6 +130,12 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["A.xcworkspace"])
         project.write(#"{"configuredPacks":["other"]}"#, to: ".claude/.mcs-project")
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup"))
+        // In a worktree whose main checkout has one, the fix copies it.
+        let main = Project.temporary(containing: ["App.xcodeproj"])
+        main.write("schemaVersion: 1\n", to: ".mobilebuildmcp/config.yaml")
+        var linked = FakeRunner()
+        linked.linkWorktree(project, to: main)
+        #expect(await ProjectConfigCheck().run(.fake(linked, project: project)) == .fail("no .mobilebuildmcp/config.yaml in this worktree: xcrew setup --worktree writes it from the main checkout's"))
         project.write(#"{"configuredPacks":["xcrew"],"mcsVersion":"2.0.0"}"#, to: ".claude/.mcs-project")
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup (or, with the mcs CLI, mcs sync)"))
     }

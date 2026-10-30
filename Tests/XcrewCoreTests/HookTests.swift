@@ -48,6 +48,20 @@ import XcrewTestSupport
         #expect(text?.contains("`Other`") == false)
     }
 
+    /// A worktree whose main checkout has a config is offered the worktree's setup, which copies it, not a fresh one.
+    @Test func briefingOffersAWorktreeTheMainCheckoutsConfig() async {
+        let main = Project.temporary(containing: ["App.xcodeproj"])
+        main.write("schemaVersion: 1\n", to: ".mobilebuildmcp/config.yaml")
+        let worktree = Project.temporary(containing: ["App.xcodeproj"])
+        var runner = FakeRunner(installed: ["mobilebuildmcp"], responses: ["mobilebuildmcp --version": CommandResult(status: 0, stdout: "2.7.1\n")])
+        runner.linkWorktree(worktree, to: main)
+        worktree.write("#!/bin/sh\n", to: "bin/mobilebuildmcp")
+        runner.paths["mobilebuildmcp"] = worktree.root.appending(path: "bin/mobilebuildmcp").path
+        let text = await SessionBriefing(project: worktree, machine: CheckContext.fake(runner, project: worktree).machine).text(routing: "rules\n") ?? ""
+        #expect(text.contains("- **xcrew:** \(Worktree.setupOffer)"), "\(text)")
+        #expect(!text.contains(SessionBriefing.setupOffer), "\(text)")
+    }
+
     /// A workspace and the project it lists can both ship a scheme of one name: it's named once, and the schemes sort
     /// across containers.
     @Test func briefingNamesASchemeSharedByAWorkspaceAndItsProjectOnce() async {

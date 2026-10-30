@@ -20,6 +20,12 @@ public enum ConfigWriter {
         force: Bool = false,
         now: Date = Date()
     ) throws -> Outcome {
+        try write(ConfigRenderer.render(answers, root: project.root, simulatorIDs: simulatorIDs, carried: carried), to: project, force: force, now: now)
+    }
+
+    /// Writes `yaml` as the config, under the same rules: a config xcrew didn't write, or one edited since, is kept
+    /// unless `force`, with a backup when replaced.
+    public static func write(_ yaml: String, to project: Project, force: Bool = false, now: Date = Date()) throws -> Outcome {
         let fileManager = FileManager.default
         let config = project.mobileBuildMCPConfig
         let existing = try? Data(contentsOf: config)
@@ -33,7 +39,7 @@ public enum ConfigWriter {
             backup = config.appendingPathExtension("backup-\(stamp)")
             try fileManager.copyItem(at: config, to: backup!)
         }
-        let content = Data(ConfigRenderer.render(answers, root: project.root, simulatorIDs: simulatorIDs, carried: carried).utf8)
+        let content = Data(yaml.utf8)
         // The doctor asks for a restart when the marker is newer than MobileBuildMCP, so the same config isn't written again.
         if existing == content, marker == Self.fingerprint(content) { return .written(backup: nil) }
         try fileManager.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)

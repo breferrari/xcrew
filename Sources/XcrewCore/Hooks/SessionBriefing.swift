@@ -23,7 +23,7 @@ public struct SessionBriefing: Sendable {
         async let head = GitHead.of(project, using: machine.runner)
         let mobileBuildMCP = await status
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
-        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + gaps()
+        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + (await gaps())
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), now: Date(), on: machine)
         return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "")
@@ -93,11 +93,17 @@ public struct SessionBriefing: Sendable {
     }
 
     /// Fast checks only: this runs before every session's first prompt.
-    func gaps() -> [String] {
+    func gaps() async -> [String] {
         var gaps: [String] = []
         if !project.hasSchemeToBuild {
-            gaps.append(Self.setupOffer)
+            gaps.append(await Self.setupOffer(for: project, using: machine.runner))
         }
         return gaps
+    }
+
+    /// The setup to offer a project with no scheme to build: in a worktree whose main checkout has a config, the one
+    /// that copies it.
+    public static func setupOffer(for project: Project, using runner: any CommandRunning) async -> String {
+        await Worktree.takesMainConfig(project, using: runner) ? Worktree.setupOffer : setupOffer
     }
 }
