@@ -92,6 +92,7 @@ A MobileBuildMCP test result can run past 100,000 characters, mostly passing tes
 - **A warning when a filter matched no tests**, which MobileBuildMCP reports as a success.
 - **Flaky or real**: a test repeated with `-test-iterations` comes back with a verdict for each test. It's flaky when it failed some runs and passed others, and a real failure when it failed every run.
 - **Warnings in lines your branch changed**, named apart from the rest of a build's warnings.
+- **The changed lines a test run didn't run**, from its coverage, on a run with coverage on.
 - **Compile errors counted once.**
 - **Passing tests left out**, with the full list a file read away.
 

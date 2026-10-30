@@ -163,6 +163,28 @@ public struct ResultBundle: Sendable {
         await xcresulttool(["get", "test-results", "summary", "--path", path, "--compact"])
     }
 
+    // MARK: Asking xccov
+
+    /// Whether the run gathered coverage: the scheme, its test plan or `-enableCodeCoverage YES` turns it on.
+    func hasCoverage() async -> Bool {
+        (Self.parse(await xcresulttool(["get", "content-availability", "--path", path])) as? [String: Any])?["hasCoverage"] as? Bool == true
+    }
+
+    /// The files the coverage archive holds, spelled as the build was started.
+    func coveredFiles() async -> [String] {
+        Self.parse(await xccov(["--file-list", "--json"])) as? [String] ?? []
+    }
+
+    /// One file's line counts, as `xccov` gives them.
+    func coverage(of file: String) async -> String {
+        await xccov(["--file", file, "--json"])
+    }
+
+    func xccov(_ arguments: [String]) async -> String {
+        let ran = await runner.run(["xcrun", "xccov", "view", "--archive"] + arguments + [path], stdin: nil, timeout: .seconds(15))
+        return ran.succeeded ? ran.stdout : ""
+    }
+
     /// A crash's summary, from the crash log the result bundle attached to the test.
     public func crash(of test: TestID) async -> [String]? {
         let folder = exportFolder()

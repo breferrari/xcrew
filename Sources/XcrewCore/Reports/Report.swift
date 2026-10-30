@@ -28,6 +28,16 @@ public struct Report: Sendable, Equatable, Codable {
         return "xcrew: \(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
     }
 
+    /// The changed lines of the warned files, and a test run's changed-line coverage, from one listing of the change.
+    static func branch(warned: [String], bundle: ResultBundle?, project: Project?, runner: any CommandRunning) async -> (lines: [String: [ClosedRange<Int>]]?, coverage: ChangedLineCoverage?) {
+        guard let project else { return (nil, nil) }
+        let covered = if let bundle { await bundle.hasCoverage() } else { false }
+        guard !warned.isEmpty || covered, case let .success(change) = await GitChanges.since(nil, in: project, using: runner) else { return (nil, nil) }
+        async let lines = warned.isEmpty ? nil : ChangedLines.of(warned, in: change, project: project, using: runner)
+        async let coverage = if covered, let bundle { await ChangedLineCoverage.of(bundle, in: change, project: project, using: runner) } else { ChangedLineCoverage?.none }
+        return (await lines, await coverage)
+    }
+
     static let noTestsNote =
         "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names."
 
@@ -65,10 +75,11 @@ public struct Report: Sendable, Equatable, Codable {
         let bundle = isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
         // The summary is needed whatever the run came to, so it's asked for while the failures are looked up.
         async let bundleSummary: String? = { await bundle?.summary() }()
-        // Which lines the branch changed is asked of git meanwhile, for the warnings that name a place.
+        // What the branch changed is asked of git once, meanwhile, for the warnings that name a place and for a test
+        // run's coverage.
         let warnings = read.warnings
         let warned = warnings.compactMap(\.path)
-        async let changed: [String: [ClosedRange<Int>]]? = { if let project, !warned.isEmpty { await ChangedLines.of(warned, in: project, using: runner) } else { nil } }()
+        async let branch = Self.branch(warned: warned, bundle: bundle, project: project, runner: runner)
         var final = read
         var edited = false
         // A saved result stays saved unless it's compacted below: Claude Code saved it for its size, which the collapse alone may not cut enough.
@@ -100,13 +111,16 @@ public struct Report: Sendable, Equatable, Codable {
 
         // The warnings in lines this branch changed, named: those are Claude's to fix. Nothing is said about the rest, or
         // about warnings the change causes in lines it left alone.
-        if let changed = await changed {
+        let (changed, coverage) = await branch
+        if let changed {
             let inChanged = warnings.filter { warning in
                 guard let path = warning.path, let line = warning.line else { return false }
                 return changed[path]?.contains { $0.contains(line) } == true
             }
             if let note = warningsNote(inChanged, of: warnings.count) { notes.append(note) }
         }
+
+        if let note = coverage?.note { notes.append(note) }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(

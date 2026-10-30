@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: breferrari/xcrew-testbed
-          ref: 7d1e62f26d491186bf7625a6de677017eaa2e220 # v0.3.0
+          ref: 78d21e259a64691a08d8726aaba926da5b18e79e # v0.4.0
           path: xcrew-testbed
       - name: Swift tests
         run: swift test
@@ -57,6 +57,8 @@ jobs:
         run: |
           scripts/saved-notice.sh "$(readlink -f "$(command -v claude)")" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
         shell: bash
+      - name: xcrew still reads the coverage xccov gives
+        run: scripts/coverage-shape.sh 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       - name: The CLI builds and checks the installed MobileBuildMCP
         run: bin/xcrew doctor --check mobilebuildmcp/version
       - name: MobileBuildMCP still accepts the config xcrew writes

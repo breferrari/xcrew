@@ -150,6 +150,14 @@ import Testing
         #expect(!routing.contains("-retry-tests-on-failure") && !routing.contains("-run-tests-until-failure"))
     }
 
+    /// The routing rules tell Claude how to turn coverage on, which the changed-line note needs, and what it costs, so
+    /// it stays off the edit-and-test loop.
+    @Test func theRoutingRulesTurnCoverageOnBeforeAPullRequest() throws {
+        let routing = try text("context/routing.md")
+        #expect(routing.contains("\"-enableCodeCoverage\", \"YES\""))
+        #expect(routing.contains("it slows the run"))
+    }
+
     /// The CLI decides flaky or real; the mod reads each verdict by the names the CLI writes, and no other.
     @Test func theModKnowsEveryVerdictTheCLIGives() throws {
         let union = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /verdict: ('[^}]*?')\s*\}/)?.1)

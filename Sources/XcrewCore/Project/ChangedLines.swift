@@ -8,7 +8,12 @@ enum ChangedLines {
     /// Nothing when git can't say what changed.
     static func of(_ paths: some Sequence<String>, in project: Project, using runner: any CommandRunning) async -> [String: [ClosedRange<Int>]]? {
         guard case let .success(change) = await GitChanges.since(nil, in: project, using: runner) else { return nil }
-        let given = Dictionary(grouping: Set(paths), by: ProjectLayout.canonicalPath)
+        return await of(paths, in: change, project: project, using: runner)
+    }
+
+    /// The same, for a change already listed.
+    static func of(_ paths: some Sequence<String>, in change: GitChanges.Change, project: Project, using runner: any CommandRunning) async -> [String: [ClosedRange<Int>]]? {
+        let given = canonical(paths)
         let untracked = Set(change.untracked)
         let tracked = change.files.filter { given[$0] != nil && !untracked.contains($0) }
         var lines: [String: [ClosedRange<Int>]] = [:]
@@ -24,6 +29,18 @@ enum ChangedLines {
             for path in given[file] ?? [] { found[path] = ranges }
         }
         return found
+    }
+
+    /// Each path by its spelling on the file system, its folder resolved once for all the files in it: a coverage
+    /// archive can list thousands.
+    static func canonical(_ paths: some Sequence<String>) -> [String: [String]] {
+        var folders: [String: String] = [:]
+        return Dictionary(grouping: Set(paths)) { path in
+            let url = URL(fileURLWithPath: path)
+            let folder = url.deletingLastPathComponent().path
+            if folders[folder] == nil { folders[folder] = ProjectLayout.canonicalPath(folder) }
+            return "\(folders[folder] ?? folder)/\(url.lastPathComponent)"
+        }
     }
 
     /// The new side of each hunk, `@@ -l,s +l,s @@`, by file: a count of 0 adds no line, an omitted count means one.

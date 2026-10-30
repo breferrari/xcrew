@@ -35,7 +35,7 @@ Sources/
     MobileBuildMCP/     profile answers, config rendering and writing, the simulator catalog
     Doctor/             the Check protocol, the registry, and one file per check in Checks/
     Hooks/              hook input and replies, the session briefing
-    Reports/            reading the servers' output for the mod: each result decoded once into its server's shape (MobileBuildMCP's text as typed lines, every line shape read in MobileBuildMCPLine), failures, the warnings in lines the branch changed, logs, result bundles
+    Reports/            reading the servers' output for the mod: each result decoded once into its server's shape (MobileBuildMCP's text as typed lines, every line shape read in MobileBuildMCPLine), failures, the warnings in lines the branch changed, the changed lines a test run ran, logs, result bundles
     XcodeSkills/        finding and copying the skills Xcode ships
     Affected/           which tests a change can break: the project file read for target ownership and dependencies
     XcrewVersion.swift  the version, held equal to plugin.json and the changelog; the marketplace installs it from the `stable` branch

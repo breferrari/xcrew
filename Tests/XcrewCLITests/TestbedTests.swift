@@ -275,9 +275,20 @@ struct TestbedPrivacyTests {
         #expect(listed.succeeded)
         let leaks = listed.stdout.split(separator: "\0").map(String.init).filter { file in
             let text = (try? String(contentsOf: Testbed.root.appending(path: file), encoding: .utf8)) ?? ""
-            return text.contains("/Users/") || text.contains("/home/")
+            return Self.holdsAHomePath(text)
         }
         #expect(leaks == [])
+    }
+
+    /// A home folder's path, as written or as JSON escapes it: `\/Users\/`.
+    static func holdsAHomePath(_ text: String) -> Bool {
+        let plain = text.replacingOccurrences(of: "\\/", with: "/")
+        return plain.contains("/Users/") || plain.contains("/home/")
+    }
+
+    @Test func aPathJSONEscapedIsStillAPath() {
+        #expect(Self.holdsAHomePath(#"["\/Users\/dev\/App\/Pricing.swift"]"#))
+        #expect(!Self.holdsAHomePath(#"["\/testbed\/captures\/coverage\/App\/Pricing.swift"]"#))
     }
 }
 
@@ -288,5 +299,45 @@ struct TestbedRepetitionTests {
         let listing = try String(contentsOf: Testbed.root.appending(path: "captures/repetitions/tests.json"), encoding: .utf8)
         let found = ResultBundle.repetitions(listing: listing)
         #expect(found.map { "\($0.test) \($0.failed)/\($0.runs) \($0.verdict)" } == ["RepetitionTests/testFailsEveryOtherRun 2/5 flaky", "RepetitionTests/testFailsEveryRun 5/5 real", "RepetitionTests/testPassesEveryRun 0/5 passed"])
+    }
+}
+
+/// The test bed's capture of what xccov answered about a real run with coverage on, replayed: the test ran
+/// `price(for: 2)`, so of `Pricing.swift` every line ran but the discount's `return`, line 5.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedCoverageTests {
+    static let bundle = "/coverage/Run.xcresult"
+
+    func captured(_ file: String, in root: URL) throws -> String {
+        try String(contentsOf: root.appending(path: file), encoding: .utf8)
+            .replacingOccurrences(of: "\\/testbed\\/captures\\/coverage", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
+    }
+
+    @Test func aRealRunsLineCountsSayWhichLinesRan() throws {
+        let pricing = try String(contentsOf: Testbed.root.appending(path: "captures/coverage/Pricing.json"), encoding: .utf8)
+        #expect(ChangedLineCoverage.lines(pricing) == [2: true, 3: true, 4: true, 5: false, 6: true, 7: true, 8: true])
+    }
+
+    /// The whole reading, from the captured answers, for a branch that wrote `price(for:)`'s body.
+    @Test func aChangedLineTheRealRunDidNotRunIsNamed() async throws {
+        let root = try TestbedTests.copy("captures/coverage")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let project = Project(root: root)
+        let base = "0123456789abcdef0123456789abcdef01234567"
+        let git = { (arguments: String) in "git -C \(root.path) \(arguments)" }
+        let runner = FakeRunner(responses: [
+            git("rev-parse --show-toplevel"): .init(status: 0, stdout: "\(root.path)\n"),
+            git("rev-parse --abbrev-ref origin/HEAD"): .init(status: 0, stdout: "origin/main\n"),
+            git("merge-base HEAD origin/main"): .init(status: 0, stdout: "\(base)\n"),
+            git("diff --name-only --no-renames --no-relative -z \(base)"): .init(status: 0, stdout: "App/Pricing.swift\u{0}"),
+            git("ls-files -z --others --exclude-standard --full-name"): .init(status: 0),
+            git("-c core.quotePath=false diff -U0 --no-color --no-renames --no-relative --no-prefix \(base) -- \(ProjectLayout.canonical(root))/App/Pricing.swift"): .init(status: 0, stdout: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n"),
+            "xcrun xcresulttool get content-availability --path \(Self.bundle)": .init(status: 0, stdout: try captured("content-availability.json", in: root)),
+            "xcrun xccov view --archive --file-list --json \(Self.bundle)": .init(status: 0, stdout: try captured("file-list.json", in: root)),
+            "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(Self.bundle)": .init(status: 0, stdout: try captured("Pricing.json", in: root)),
+        ])
+        let output = #"{"schema":"mobilebuildmcp.output.test-result","didError":false,"data":{"summary":{"status":"SUCCEEDED"},"artifacts":{"xcresultPath":"\#(Self.bundle)"}}}"#
+        let report = await Report.make(kind: .test, output: ToolOutput(text: output, server: .mobileBuildMCP), home: "/home", runner: runner, project: project)
+        #expect(report.notes.contains("xcrew: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5."), "\(report.notes)")
     }
 }
