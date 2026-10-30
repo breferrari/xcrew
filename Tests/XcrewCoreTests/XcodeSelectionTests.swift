@@ -32,7 +32,9 @@ import XcrewTestSupport
     @Test func aDamagedStateReadsAsNothing() throws {
         let captured = try Data(contentsOf: Self.captured)
         #expect(XcodeSelection.scheme(in: captured.prefix(captured.count / 2)) == nil)
-        let looped = Array("bplist00".utf8) + [0xA1, 0x00] + [8] + [0, 0, 0, 0, 0, 0, 1, 1] + [0, 0, 0, 0, 0, 0, 0, 1] + [0, 0, 0, 0, 0, 0, 0, 0] + [0, 0, 0, 0, 0, 0, 0, 10]
+        // Header, one array holding itself, its offset, and the trailer: one-byte offsets and references, one object.
+        let trailer: [UInt8] = [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10]
+        let looped: [UInt8] = Array("bplist00".utf8) + [0xA1, 0x00, 8] + trailer
         #expect(BinaryPropertyList.read(Data(looped)) == nil)
         #expect(BinaryPropertyList.read(BinaryPropertyList.array([.string("a"), .uid(3), .integer(300)]).encoded) == .array([.string("a"), .uid(3), .integer(300)]))
     }
@@ -40,8 +42,9 @@ import XcrewTestSupport
     /// A trailer claiming more objects than fit, or references shared so often the walk would never end, read as
     /// nothing.
     @Test func aHostileStateReadsAsNothing() {
-        let trailer: [UInt8] = [0, 0, 0, 0, 0, 0, 8, 1] + [0x20, 0, 0, 0, 0, 0, 0, 0] + [0, 0, 0, 0, 0, 0, 0, 0] + [0, 0, 0, 0, 0, 0, 0, 8]
-        #expect(BinaryPropertyList.read(Data(Array("bplist00".utf8) + [UInt8](repeating: 0, count: 32) + trailer)) == nil)
+        let trailer: [UInt8] = [0, 0, 0, 0, 0, 0, 8, 1, 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8]
+        let overflowing: [UInt8] = Array("bplist00".utf8) + [UInt8](repeating: 0, count: 32) + trailer
+        #expect(BinaryPropertyList.read(Data(overflowing)) == nil)
         // Object n is an array holding object n + 1 twice, 40 deep: 2^40 visits without a budget.
         let depth = 40
         var objects: [[UInt8]] = (0..<depth).map { [0xA2, UInt8($0 + 1), UInt8($0 + 1)] }
@@ -52,7 +55,12 @@ import XcrewTestSupport
             bytes += object
         }
         let table = bytes.count
-        bytes += offsets + [0, 0, 0, 0, 0, 0, 1, 1] + [0, 0, 0, 0, 0, 0, 0, UInt8(objects.count)] + [UInt8](repeating: 0, count: 8) + [0, 0, 0, 0, 0, 0, 0, UInt8(table)]
+        let sizes: [UInt8] = [0, 0, 0, 0, 0, 0, 1, 1]
+        let count: [UInt8] = [0, 0, 0, 0, 0, 0, 0, UInt8(objects.count)]
+        let top = [UInt8](repeating: 0, count: 8)
+        let tableAt: [UInt8] = [0, 0, 0, 0, 0, 0, 0, UInt8(table)]
+        bytes += offsets
+        bytes += sizes + count + top + tableAt
         #expect(BinaryPropertyList.read(Data(bytes)) == nil)
     }
 
