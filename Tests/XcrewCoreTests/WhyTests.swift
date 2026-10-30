@@ -231,27 +231,48 @@ import XcrewTestSupport
         ❌ Build failed. (⏱️ 1.1s)
         """
 
-    /// The Mac's processes, as `ps` lists them: one xcodebuild building into `building`, if any.
-    static func note(building: String?) async -> String? {
-        let command = building.map { "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -workspace App.xcworkspace -scheme App -destination platform=iOS Simulator,name=iPhone 17 -derivedDataPath \($0)" }
+    static let database = "\(derivedData)/Build/Intermediates.noindex/XCBuildData/build.db"
+    static let free = "xcrew: this build failed because of the Mac, not the code: its build database is locked (\"database is locked\") by another build, and no process holds it now. Build again."
+
+    /// The note `why` gives for `locked`: with `holder` holding the database, as `lsof` names it, and an xcodebuild building
+    /// into `building`, if any.
+    static func note(building: String?, holder: (id: Int32, program: String)? = nil) async -> String? {
+        let xcodebuild = "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
+        var ps = "    1     0 3-00:00:00 /sbin/launchd\n", comm = "    1 /sbin/launchd\n"
+        if let building {
+            ps += " 4242     1    12:05 \(xcodebuild) build -workspace App.xcworkspace -scheme App -destination platform=iOS Simulator,name=iPhone 17 -derivedDataPath \(building)\n"
+            comm += " 4242 \(xcodebuild)\n"
+        }
+        if let holder {
+            ps += " \(holder.id)     1       00:40 /Applications/Xcode.app/Contents/SharedFrameworks/XCBuild.framework/\(holder.program)\n"
+            comm += " \(holder.id) /Applications/Xcode.app/Contents/SharedFrameworks/XCBuild.framework/\(holder.program)\n"
+        }
         let runner = FakeRunner(responses: [
-            "ps -axo pid=,ppid=,etime=,command=": .init(status: 0, stdout: "    1     0 3-00:00:00 /sbin/launchd\n" + (command.map { " 4242     1    12:05 \($0)\n" } ?? "")),
-            "ps -axo pid=,comm=": .init(status: 0, stdout: "    1 /sbin/launchd\n" + (command == nil ? "" : " 4242 /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild\n")),
+            "ps -axo pid=,ppid=,etime=,command=": .init(status: 0, stdout: ps),
+            "ps -axo pid=,comm=": .init(status: 0, stdout: comm),
+            "lsof -t \(database)": holder.map { .init(status: 0, stdout: "\($0.id)\n") } ?? .init(status: 1),
         ])
         return await Why.note(for: ToolOutput(text: locked, server: .mobileBuildMCP, isError: true), home: "/home", project: .temporary(), runner: runner)
     }
 
     @Test func anXcodebuildLeftRunningIsNamedWithItsStop() async {
-        #expect(await Self.note(building: Self.derivedData) == "xcrew: this build failed because of the Mac, not the code: an xcodebuild left running holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A build stopped before it finished leaves one. Stop it, then build again: kill 4242")
+        #expect(await Self.note(building: Self.derivedData) == "xcrew: this build failed because of the Mac, not the code: an xcodebuild left running holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A build stopped partway leaves one. Stop it, then build again: kill 4242")
     }
 
-    /// With none running, the build that held it has ended, and building again is the fix.
-    @Test func withNoneRunningTheLockHasPassed() async {
-        #expect(await Self.note(building: nil) == "xcrew: this build failed because of the Mac, not the code: another build held its build database (\"database is locked\") and has since ended. Build again.")
+    /// Whatever holds the database open is named, though it isn't an xcodebuild building into that folder: the build
+    /// service of a newer Xcode.
+    @Test func whateverHoldsTheDatabaseIsNamed() async {
+        #expect(await Self.note(building: nil, holder: (5151, "SWBBuildService")) == "xcrew: this build failed because of the Mac, not the code: SWBBuildService holds its build database (\"database is locked\"): pid 5151, running 40 s. A build stopped partway leaves one. Stop it, then build again: kill 5151")
     }
 
-    /// An xcodebuild building into other DerivedData doesn't hold this one.
-    @Test func anXcodebuildElsewhereIsntTheOne() async {
-        #expect(await Self.note(building: "/Users/dev/Library/Developer/Xcode/DerivedData/Other-123456") == "xcrew: this build failed because of the Mac, not the code: another build held its build database (\"database is locked\") and has since ended. Build again.")
+    /// With nothing holding it, the note says so, not that a build has ended, which it didn't see.
+    @Test func withNoneRunningNothingHoldsItNow() async {
+        #expect(await Self.note(building: nil) == Self.free)
+    }
+
+    /// An xcodebuild building into other DerivedData, one whose name only starts the same included, doesn't hold this one.
+    @Test(arguments: ["/Users/dev/Library/Developer/Xcode/DerivedData/Other-123456", "\(derivedData)-2"])
+    func anXcodebuildElsewhereIsntTheOne(_ building: String) async {
+        #expect(await Self.note(building: building) == Self.free)
     }
 }

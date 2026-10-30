@@ -22,4 +22,9 @@ public struct FailureEvidence: Sendable {
     func errors(startingWith words: String) -> [ReportedError] {
         errors.filter { $0.message.hasPrefix(words) && !$0.isInside(root: root) }
     }
+
+    /// The errors whose message holds `words` anywhere, and that point at none of the project's own files.
+    func errors(containing words: String) -> [ReportedError] {
+        errors.filter { $0.message.contains(words) && !$0.isInside(root: root) }
+    }
 }
