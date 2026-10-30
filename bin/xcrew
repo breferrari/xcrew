@@ -32,6 +32,13 @@ if [ -z "$key" ]; then
 fi
 binary="$cache/$key/xcrew"
 
+# The MobileBuildMCP launcher asks only of a build that's there: a first build would hold up the server's start.
+# 75 is sysexits' EX_TEMPFAIL: try again later.
+if [ "${1:-}" = --if-built ]; then
+    shift
+    [ -x "$binary" ] || exit 75
+fi
+
 if [ ! -x "$binary" ]; then
     # One build at a time: at session start the hook and the mod both start this. The second waits,
     # then finds the first one's build. The holder writes its process id, so a lock left by a build

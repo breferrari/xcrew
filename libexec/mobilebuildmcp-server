@@ -1,4 +1,42 @@
 #!/bin/sh
 # Starts MobileBuildMCP in the project Claude Code names, since it reads its config from its working
 # directory. Homebrew's prefixes are appended to PATH because Claude Code can start servers without them.
-cd "$1" && PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" exec mobilebuildmcp mcp
+#
+# A project that pins its Xcode in .xcode-version builds with it: the server gets that Xcode's developer
+# folder as DEVELOPER_DIR, which every xcodebuild and simctl it runs inherits. The xcrew CLI is asked only
+# when it's already built, for at most PIN_SECONDS; otherwise the server starts as it would without a pin.
+# What happened is recorded for the doctor's xcode/pin check (docs/findings.md, *Which Xcode*).
+PIN_SECONDS=2
+
+plugin=$(cd -P "$(dirname "$0")/.." && pwd)
+cd "$1" || exit
+record="${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}/launches$(pwd -P)"
+if [ -z "$(find . -maxdepth 3 -name .xcode-version -print 2>/dev/null | head -n 1)" ]; then
+    rm -f "$record"
+else
+    answer=$(mktemp)
+    "$plugin/bin/xcrew" --if-built xcode --developer-dir < /dev/null > "$answer" 2> /dev/null &
+    asked=$!
+    (sleep "$PIN_SECONDS"; kill "$asked" 2> /dev/null) < /dev/null > /dev/null 2>&1 &
+    timer=$!
+    wait "$asked"
+    status=$?
+    # Reaped here, quietly: the shell would otherwise report the stopped timer on the server's standard error.
+    { kill "$timer" && wait "$timer"; } 2> /dev/null
+    developer=$(head -n 1 "$answer")
+    rm -f "$answer"
+    # The statuses are the CLI's (XcodeCommand) and the shim's.
+    case $status in
+        0) export DEVELOPER_DIR="$developer"; outcome="applied $developer" ;;
+        3) outcome= ;;
+        4) outcome="not applied: no installed Xcode is the pinned one" ;;
+        75) outcome="not applied: the xcrew CLI wasn't built yet; it is once the session has started" ;;
+        *) outcome="not applied: the xcrew CLI took longer than $PIN_SECONDS s" ;;
+    esac
+    if [ -n "$outcome" ]; then
+        mkdir -p "$(dirname "$record")" && printf '%s\n' "$outcome" > "$record"
+    else
+        rm -f "$record"
+    fi
+fi
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" exec mobilebuildmcp mcp

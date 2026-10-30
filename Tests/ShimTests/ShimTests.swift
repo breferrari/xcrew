@@ -135,6 +135,17 @@ import Testing
         #expect(builds == 1)
     }
 
+    /// The MobileBuildMCP launcher asks only of a build that's there: `--if-built` never starts one.
+    @Test func ifBuiltRunsABuildThatIsThereAndNeverBuilds() async throws {
+        let before = try await shim("--if-built", "xcode")
+        #expect(before.status == 75)
+        #expect(builds == 0)
+        _ = try await shim("help")
+        let after = try await shim("--if-built", "xcode")
+        #expect(after.output == "ran xcode root=\(try await physicalPath(root))\n")
+        #expect(builds == 1)
+    }
+
     @Test func reusesTheBuild() async throws {
         _ = try await shim("help")
         _ = try await shim("help")

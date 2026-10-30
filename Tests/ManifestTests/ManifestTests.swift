@@ -163,6 +163,17 @@ import Testing
         #expect(routing.contains("`-only-testing:`") && loop.contains("`-only-testing:`"))
     }
 
+    /// The MobileBuildMCP launcher reads the exit statuses the CLI's `xcode --developer-dir` and the shim's `--if-built`
+    /// give, and waits no longer than its named limit.
+    @Test func theLauncherReadsTheCLIsAndTheShimsStatuses() throws {
+        let launcher = try text("libexec/mobilebuildmcp-server"), shim = try text("bin/xcrew")
+        #expect(launcher.contains("\"$plugin/bin/xcrew\" --if-built xcode --developer-dir"))
+        #expect(launcher.contains("\n        \(XcodeCommand.noPin)) outcome= ;;"))
+        #expect(launcher.contains("\n        \(XcodeCommand.noMatch)) outcome=\"not applied: no installed Xcode is the pinned one\" ;;"))
+        #expect(shim.contains("[ -x \"$binary\" ] || exit 75") && launcher.contains("\n        75) outcome="))
+        #expect(launcher.contains("\nPIN_SECONDS=2\n"))
+    }
+
     /// The routing rules tell Claude how to turn coverage on, which the changed-line note needs, and what it costs, so
     /// it stays off the edit-and-test loop.
     @Test func theRoutingRulesTurnCoverageOnBeforeAPullRequest() throws {

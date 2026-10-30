@@ -11,7 +11,7 @@ All behaviour lives in a dependency-free Swift package. Everything else is a thi
 | Skills (`skills/`) | `xcrew setup`, `xcrew project --setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
 | mcs (`techpack.yaml`) | `mcs/configure.sh` → `xcrew setup`; `mcs/checks/*.sh` → `xcrew doctor --check <id>` |
 
-The two local MCP servers start from scripts in `libexec/`, `mobilebuildmcp-server` and `xcode-mcp-server`, rather than from an inline shell command: the plugin directory reads a server command only as a file of the plugin with plain arguments. `libexec/` stays off Claude's `PATH`, which `bin/` is on. They're declared in the manifest's `mcpServers`, not a root `.mcp.json`, because the plugin's root is this repository's, where Claude Code would read that file as the project's own.
+The two local MCP servers start from scripts in `libexec/`, `mobilebuildmcp-server` and `xcode-mcp-server`, rather than from an inline shell command: the plugin directory reads a server command only as a file of the plugin with plain arguments. `libexec/` stays off Claude's `PATH`, which `bin/` is on. They're declared in the manifest's `mcpServers`, not a root `.mcp.json`, because the plugin's root is this repository's, where Claude Code would read that file as the project's own. `mobilebuildmcp-server` also gives the server the project's pinned Xcode as `DEVELOPER_DIR`, asking `bin/xcrew --if-built xcode --developer-dir` only of a build already there and only briefly, and records what it did for the doctor.
 
 `bin/xcrew` builds the package on first use, keyed by a hash of its sources, so a plugin update rebuilds once, and Swift's ABI stability keeps a build working across Xcode updates. It keeps that key in its cache and hashes again only when a source changes. One build runs at a time, and a build no checkout has run for two weeks is removed, so the installed plugin and a development clone each keep theirs.
 
@@ -37,6 +37,7 @@ Sources/
     Hooks/              hook input and replies, the session briefing
     Reports/            reading the servers' output for the mod: each result decoded once into its server's shape (MobileBuildMCP's text as typed lines, every line shape read in MobileBuildMCPLine), failures, the warnings in lines the branch changed, the changed lines a test run ran, logs, result bundles
     XcodeSkills/        finding and copying the skills Xcode ships
+    Xcode/              the installed Xcodes, the selected and open ones, the project's `.xcode-version` pin and CI's
     Affected/           which tests a change can break: the project file read for target ownership and dependencies
     XcrewVersion.swift  the version, held equal to plugin.json and the changelog; the marketplace installs it from the `stable` branch
   XcrewCLI/             one Command type per subcommand, and the dispatcher

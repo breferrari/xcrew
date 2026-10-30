@@ -1,7 +1,8 @@
 import Foundation
 
 /// What a Claude Code session in an Apple-platform project starts with: the routing rules, the
-/// profiles this project's config defines, the simulators booted now, then whatever this Mac or project still lacks.
+/// profiles this project's config defines, the Xcode it pins, the simulators booted now, then whatever this Mac or
+/// project still lacks.
 /// Silent in any other project.
 public struct SessionBriefing: Sendable {
     let project: Project
@@ -18,9 +19,14 @@ public struct SessionBriefing: Sendable {
         async let bootedNow = booted()
         let mobileBuildMCP = await status
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
-        let notes = [failover, failover == nil ? profiles() : nil, bootedNote(await bootedNow)].compactMap { $0 } + gaps()
+        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), bootedNote(await bootedNow)].compactMap { $0 } + gaps()
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         return lines.joined(separator: "\n")
+    }
+
+    /// The Xcode the project pins, read from its file alone: whether the server started with it is the doctor's to say.
+    func pinnedXcode() -> String? {
+        Xcodes.pin(of: project).map { "This project pins Xcode \($0.version) (`\($0.file)`), which MobileBuildMCP builds and tests with. The Xcode MCP works through whichever Xcode is open, so open that one." }
     }
 
     func profiles() -> String? {

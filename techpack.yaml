@@ -81,6 +81,18 @@ supplementaryDoctorChecks:
     section: xcrew
     command: mcs/checks/mobilebuildmcp--simulators.sh
   - type: shellScript
+    name: The project's Xcode pin applies
+    section: xcrew
+    command: mcs/checks/xcode--pin.sh
+  - type: shellScript
+    name: CI uses the project's Xcode
+    section: xcrew
+    command: mcs/checks/xcode--ci.sh
+  - type: shellScript
+    name: The open Xcode is the one builds use
+    section: xcrew
+    command: mcs/checks/xcode--open.sh
+  - type: shellScript
     name: Headless Xcode MCP enabled
     section: xcrew
     command: mcs/checks/xcode-mcp--headless-enabled.sh

@@ -10,6 +10,7 @@ public enum CLI {
         PhaseCommand(),
         ProjectCommand(),
         XcodeSkillsCommand(),
+        XcodeCommand(),
         HookCommand(),
     ]
 

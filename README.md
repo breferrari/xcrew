@@ -146,6 +146,7 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 - **`/xcrew:setup`** writes MobileBuildMCP's per-project profiles from your schemes and installed simulators.
 - **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
 - **Anything wrong** shows in the line above the prompt: a failing check until it's fixed, however you fix it, and a warning for a short while. When setup or `mcs sync` changed the config after MobileBuildMCP started, the line asks you to restart Claude Code.
+- **`xcrew xcode`** says which Xcode is which: those installed, the selected one, the project's `.xcode-version` pin, CI's, and the one open. A pinned Xcode is the one MobileBuildMCP builds and tests with.
 - **`xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
 - **`xcrew affected`** lists the tests your branch's changes can break: the test targets of every target that owns a changed file or depends on one, at any depth, as the project declares them. When a change touches what it can't read (the project file, a scheme, an `.xcconfig`, a package or a manifest), it says to run everything, and why. Claude asks it before running the whole suite, through a tool of the mod's.
 
@@ -155,6 +156,9 @@ ok    mobilebuildmcp/no-legacy-binary  none
 ok    mobilebuildmcp/project-config    .mobilebuildmcp/config.yaml
 ok    mobilebuildmcp/simulators        iPhone 17
 ok    xcode-mcp/headless-enabled       enabled
+ok    xcode/pin                        Xcode 26.4, at /Applications/Xcode-26.4.app
+ok    xcode/ci                         CI uses Xcode 26.4 too
+ok    xcode/open                       the open Xcode 26.4 is the one MobileBuildMCP builds with
 warn  xcode-mcp/claude-approved        not approved yet: have Claude call XcodeOpenWorkspace, then allow it in Xcode's dialog
 ok    xcode-mcp/unsigned-agents-off    off
 ok    xcode-mcp/macro-copy-phase       none

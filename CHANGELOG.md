@@ -3,6 +3,7 @@
 ## Unreleased
 
 - When Claude runs the whole test suite again and again in a short while, the run that makes it a habit tells Claude to run only the tests the change can break, and the whole suite again before the pull request. A fast suite never hears it.
+- A project that pins its Xcode in `.xcode-version` builds and tests with it through MobileBuildMCP, even when another is selected. `xcrew doctor` says when the pin can't apply, when CI uses another Xcode, and when the Xcode that's open isn't the one builds use, which would put two toolchains in one session. `xcrew xcode` lists which is which.
 
 ## 0.8.9 — 2026-10-30
 

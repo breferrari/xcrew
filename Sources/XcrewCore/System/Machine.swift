@@ -8,12 +8,15 @@ public struct Machine: Sendable {
     public let runner: any CommandRunning
     /// This process's id.
     public let processID: Int32
+    /// Where apps are installed, Xcode among them.
+    public let applications: URL
 
-    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier) {
+    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications")) {
         self.environment = environment
         self.home = home
         self.runner = runner
         self.processID = processID
+        self.applications = applications
     }
 
     public static let live = Machine(

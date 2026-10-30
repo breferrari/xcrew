@@ -35,6 +35,14 @@ import XcrewTestSupport
         #expect(text?.contains("- **xcrew:** MobileBuildMCP profiles here: `unit` (active), `app`. Switch with `session_use_defaults_profile`.") == true)
     }
 
+    /// A project that pins its Xcode says so, and that the Xcode MCP works through the open one, which no pin changes.
+    @Test func briefingNamesThePinnedXcode() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("26.4\n", to: ".xcode-version")
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n")
+        #expect(text?.contains("- **xcrew:** This project pins Xcode 26.4 (`.xcode-version`), which MobileBuildMCP builds and tests with. The Xcode MCP works through whichever Xcode is open, so open that one.") == true)
+    }
+
     /// `simctl list devices booted` filters on each device's description, so a shut-down device whose name holds the word
     /// is listed too; only its `state` says.
     static let booted = #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-2":[{"udid":"A1","state":"Booted","name":"iPhone 17","isAvailable":true,"deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-17"},{"udid":"B2","state":"Shutdown","name":"Booted Test Phone","isAvailable":true}],"com.apple.CoreSimulator.SimRuntime.iOS-26-4":[{"udid":"C3","state":"Booted","name":"iPad Air 11-inch (M3)","isAvailable":true}]}}"#
