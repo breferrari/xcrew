@@ -25,6 +25,6 @@ public struct EvidenceInput: Sendable, Decodable {
     }
 
     public let ledger: [Entry]
-    /// The card's run-time lines, as the mod formats them: `test_sim · App: usually 1m 20s, 312 tests`.
+    /// The card's run-time lines, worded by the mod and shown as they are: `test_sim: usually 1:20, 312 tests`.
     public let times: [String]
 }

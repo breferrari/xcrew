@@ -24,7 +24,11 @@ export type ScopeHistory = { scope: string; runs: readonly number[]; tests?: num
 
 /** The usual times of the scopes shown, longest first, as the card and the evidence pack word them: `test_sim: usually 1:20, 312 tests`. */
 export function durationLines(history: readonly ScopeHistory[]): string[] {
-  return timedScopes(history).slice(0, DURATIONS_SHOWN).map(({ scope, usual, tests }) => `${scope}: usually ${stopwatch(usual)}${tests === undefined ? '' : `, ${tests} tests`}`)
+  return shownDurations(timedScopes(history))
+}
+
+function shownDurations(timed: readonly (ScopeHistory & { usual: number })[]): string[] {
+  return timed.slice(0, DURATIONS_SHOWN).map(({ scope, usual, tests }) => `${scope}: usually ${stopwatch(usual)}${tests === undefined ? '' : `, ${tests} tests`}`)
 }
 
 /** The scopes with runs, longest usual time first, each with its usual time. */
@@ -36,7 +40,7 @@ function timedScopes(history: readonly ScopeHistory[]): (ScopeHistory & { usual:
 export function cardText(history: readonly ScopeHistory[], red: readonly LedgerEntry[], branch: string): string | undefined {
   const timed = timedScopes(history)
   if (timed.length === 0 && red.length === 0) return undefined
-  const durations = durationLines(history).map(line => `- ${line}`)
+  const durations = shownDurations(timed).map(line => `- ${line}`)
   const slow = timed.find(entry => isWholeScope(entry.scope) && entry.tests !== undefined && entry.usual >= SLOW_FULL_RUN_MS)
   const selections = slow ? timed.filter(entry => entry.scope !== slow.scope && covers(slow.scope, entry.scope)) : []
   // The red tests come first: when the card is cut, what's still failing matters more than how long runs take.

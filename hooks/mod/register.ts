@@ -7,7 +7,7 @@ import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { describe, historyOf, isFullSuiteRun, isRepeatedRun, lost, observe, runsWholeScope } from './context'
-import { EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, evidenceInput } from './evidence'
+import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
@@ -406,8 +406,8 @@ async function isGeneratedProject($: EngineInterface): Promise<boolean> {
 }
 
 /** A CLI command's own text, or why it couldn't run. */
-function cliText($: EngineInterface, args: string[], stdin?: string): Promise<string> {
-  return xcrew($, args, 120_000, stdin).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
+function cliText($: EngineInterface, args: string[]): Promise<string> {
+  return xcrew($, args, 120_000).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
 }
 
 /** A run has the band while it shows; the problems wait beneath it. */
@@ -426,7 +426,6 @@ function saveCard($: EngineInterface): void {
       // A save the CLI never answers gives way, so the next one still lands.
       Promise.race([
         (async () => {
-          await ledgerWrites
           const card = await cardNow($)
           const saved = card && JSON.stringify(card)
           if (!saved || saved === lastSavedCard) return
@@ -440,23 +439,24 @@ function saveCard($: EngineInterface): void {
 }
 
 /**
- * What the mod knows of this folder and branch, still fresh: the run scopes last run in this folder, and the branch's
- * ledger entries, read once the ledger's pending writes have landed. The card and the evidence read the same.
+ * What the mod knows of this folder and branch: the run scopes last run in this folder, still fresh, and the branch's
+ * ledger as `/xcrew ledger` shows it, read once the ledger's pending writes have landed. The card and the evidence read
+ * the same.
  */
 async function branchState($: EngineInterface) {
   await ledgerWrites
   const [folder, now] = await Promise.all([$.session.cwd(), $.clock.now()])
   const scopes = (await storedHistory($)).filter(entry => entry.where === folder && !isStale(entry.updated, now))
   const { head, ledger } = await branchLedger($)
-  const entries = ledger && !isStale(ledger.updated, now) ? ledger.entries.filter(entry => !isStale(entry.last, now)) : []
-  return { folder, now, head, scopes, entries }
+  return { folder, now, head, scopes, entries: ledger?.entries ?? [], updated: ledger?.updated }
 }
 
 /** The card as the CLI keeps it: its folder and branch, the time of its newest data, and its text, if it has any. */
 async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
-  const { folder, now, head, scopes, entries } = await branchState($)
+  const { folder, now, head, scopes, entries, updated: ledgerUpdated } = await branchState($)
   if (!head) return undefined
-  const red = entries.filter(entry => !entry.green)
+  // The card is read at every session start, so it drops what no run has written for as long as the history is kept.
+  const red = isStale(ledgerUpdated, now) ? [] : entries.filter(entry => !entry.green && !isStale(entry.last, now))
   const text = cardText(scopes, red, label(head, true))
   const times = [...scopes.map(entry => entry.updated), ...red.map(entry => entry.last)].filter((time): time is number => typeof time === 'number')
   const [updated, oldest] = times.length > 0 ? [Math.max(...times), Math.min(...times)] : [now, now]
@@ -465,8 +465,10 @@ async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
 
 /** The evidence for this branch, as the CLI words it from the ledger and the run times of the scopes last run in this folder. */
 async function evidenceNow($: EngineInterface): Promise<string> {
-  const { entries, scopes } = await branchState($)
-  return cliText($, ['evidence'], evidenceInput(entries, scopes))
+  const { head, entries, scopes } = await branchState($)
+  if (!head) return EVIDENCE_UNAVAILABLE
+  // Its stdout alone: the block is pasted into a pull request as it is, and stderr is the shim's and the tools' own.
+  return xcrew($, ['evidence'], EVIDENCE_TIMEOUT_MS, evidenceInput(entries, scopes)).then(ran => ran.stdout.trimEnd(), error => couldntRun(['evidence'], error))
 }
 
 /** Every run scope the store holds, with its durations, when a run last updated it, its test total and its folder. */
