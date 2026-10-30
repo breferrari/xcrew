@@ -696,8 +696,8 @@ import XcrewTestSupport
             "rev-parse --show-toplevel": .init(status: 0, stdout: "\(project.root.path)\n"),
             "rev-parse --abbrev-ref origin/HEAD": .init(status: 0, stdout: "origin/main\n"),
             "merge-base HEAD origin/main": .init(status: 0, stdout: "0123456789abcdef0123456789abcdef01234567\n"),
-            "diff --name-only 0123456789abcdef0123456789abcdef01234567": .init(status: 0, stdout: "App/ContentView.swift\n"),
-            "ls-files --others --exclude-standard --full-name": .init(status: 0, stdout: "AppTests/NewTests.swift\n"),
+            "diff --name-only --no-renames --no-relative -z 0123456789abcdef0123456789abcdef01234567": .init(status: 0, stdout: "App/ContentView.swift\u{0}"),
+            "ls-files -z --others --exclude-standard --full-name": .init(status: 0, stdout: "AppTests/NewTests.swift\u{0}"),
         ])
         let answer = try await run(project, runner)
         #expect(answer["base"] as? String == "origin/main, from 0123456789ab")
@@ -710,11 +710,12 @@ import XcrewTestSupport
         let runner = git(project, [
             "rev-parse --show-toplevel": .init(status: 0, stdout: "\(project.root.path)\n"),
             "rev-parse --abbrev-ref origin/HEAD": .init(status: 128),
-            "diff --name-only HEAD": .init(status: 0, stdout: "App/ContentView.swift\n"),
-            "ls-files --others --exclude-standard --full-name": .init(status: 0),
+            "remote": .init(status: 0),
+            "diff --name-only --no-renames --no-relative -z HEAD": .init(status: 0, stdout: "App/ContentView.swift\u{0}"),
+            "ls-files -z --others --exclude-standard --full-name": .init(status: 0),
         ])
         let answer = try await run(project, runner)
-        #expect(answer["base"] as? String == "the working tree, since there is no remote default branch")
+        #expect(answer["base"] as? String == "the working tree, since there is no remote")
         #expect(answer["selections"] as? [String] == ["AppTests"])
     }
 
@@ -723,8 +724,8 @@ import XcrewTestSupport
         let runner = git(project, [
             "rev-parse --show-toplevel": .init(status: 0, stdout: "\(project.root.path)\n"),
             "merge-base HEAD release/2.0": .init(status: 0, stdout: "fedcba9876543210fedcba9876543210fedcba98\n"),
-            "diff --name-only fedcba9876543210fedcba9876543210fedcba98": .init(status: 0, stdout: "README.md\n"),
-            "ls-files --others --exclude-standard --full-name": .init(status: 0),
+            "diff --name-only --no-renames --no-relative -z fedcba9876543210fedcba9876543210fedcba98": .init(status: 0, stdout: "README.md\u{0}"),
+            "ls-files -z --others --exclude-standard --full-name": .init(status: 0),
         ])
         let answer = try await run(project, runner, base: "release/2.0")
         #expect(answer["base"] as? String == "release/2.0, from fedcba987654")
@@ -736,5 +737,49 @@ import XcrewTestSupport
         let answer = try await run(project(), FakeRunner())
         #expect(answer["selections"] == nil)
         #expect((answer["runAll"] as? String)?.contains("git") == true)
+    }
+}
+
+/// What the first reading of git missed, each a skip that wasn't safe.
+@Suite struct AffectedCommandEdgeTests {
+    let base = "0123456789abcdef0123456789abcdef01234567"
+
+    func run(_ project: Project, _ answers: [String: CommandResult]) async throws -> [String: Any] {
+        let runner = FakeRunner(responses: Dictionary(uniqueKeysWithValues: (answers.merging(["rev-parse --show-toplevel": .init(status: 0, stdout: "\(project.root.path)\n")]) { first, _ in first }).map { ("git -C \(project.root.path) \($0.key)", $0.value) }))
+        let text = await Run("affected", context: .fake(runner, project: project)).text
+        return try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any], "\(text)")
+    }
+
+    /// `origin/HEAD` is set only by a clone: a pushed branch without it still has a default branch on the remote.
+    @Test func withoutOriginHEADTheRemotesMainIsTheBase() async throws {
+        let answer = try await run(Project.temporary(), [
+            "rev-parse --abbrev-ref origin/HEAD": .init(status: 128),
+            "rev-parse --verify --quiet origin/main": .init(status: 0, stdout: "\(base)\n"),
+            "merge-base HEAD origin/main": .init(status: 0, stdout: "\(base)\n"),
+            "diff --name-only --no-renames --no-relative -z \(base)": .init(status: 0),
+            "ls-files -z --others --exclude-standard --full-name": .init(status: 0),
+        ])
+        #expect(answer["base"] as? String == "origin/main, from 0123456789ab")
+    }
+
+    /// With a remote and no default branch found on it, the branch's own commits can't be told apart: everything runs.
+    @Test func aRemoteWithNoDefaultBranchRunsEverything() async throws {
+        let answer = try await run(Project.temporary(), [
+            "rev-parse --abbrev-ref origin/HEAD": .init(status: 128),
+            "remote": .init(status: 0, stdout: "upstream\n"),
+        ])
+        #expect(answer["selections"] == nil)
+        #expect((answer["runAll"] as? String)?.contains("default branch") == true)
+    }
+
+    /// Names come back as git writes them, NUL-separated, so a name with any character survives.
+    @Test func aNameWithAnyCharacterSurvives() async throws {
+        let answer = try await run(Project.temporary(), [
+            "rev-parse --abbrev-ref origin/HEAD": .init(status: 0, stdout: "origin/main\n"),
+            "merge-base HEAD origin/main": .init(status: 0, stdout: "\(base)\n"),
+            "diff --name-only --no-renames --no-relative -z \(base)": .init(status: 0, stdout: "App/Café.swift\u{0}Core/Old Name.swift\u{0}"),
+            "ls-files -z --others --exclude-standard --full-name": .init(status: 0),
+        ])
+        #expect(answer["changed"] as? [String] == ["App/Café.swift", "Core/Old Name.swift"])
     }
 }

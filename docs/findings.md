@@ -278,6 +278,15 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
   - a dependency on a target outside the project;
   - a project file that can't be read.
 - **Dependents count at any depth.** A change to a framework selects the tests of every target that builds on it, however far up.
+- **What counts as depending:**
+  - an explicit dependency;
+  - a test bundle's host;
+  - linking another target's product (a `BUILT_PRODUCTS_DIR` reference in a build phase, a `<PRODUCTS>` file's `target-membership`), which Xcode follows implicitly.
+
+  Targets of the same name in two projects keep every dependency. A dependency on a target in another project, as a Tuist app with one project per module has, still runs everything. Resolving it across projects is the follow-up.
+- **Ownership:** a file inside a bundle the project lists whole (an asset catalog, a data model) is the bundle's. An exception set naming a folder covers the files under it.
+- **The change:** git lists it with `--no-renames`, so a moved file's old owner counts too, and with `-z` and `--no-relative`, so every name comes back as written. With no `origin/HEAD` (a clone sets it, a push doesn't), `origin/main` and then `origin/master` are tried. With a remote but none of them, everything runs. Only with no remote at all is the working tree the change.
+- Paths are compared as the file system spells the project's folder, `.` and `..` resolved by their words. `standardizedFileURL` would drop `/private` from `/private/var` and miss.
 
 ## Toolchains
 

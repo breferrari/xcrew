@@ -10,7 +10,7 @@ public struct AffectedTests: Sendable, Equatable, Codable {
     public var runAll: String?
 
     /// Files whose effect on the build the reading doesn't model: build settings, packages, test plans.
-    static let everythingNames: Set = ["Package.swift", "Package.resolved"]
+    static let everythingNames = Set(ProjectLayout.packageMarkers + ["Package.resolved"])
     static let everythingExtensions: Set = ["xcconfig", "xctestplan", "xcscheme"]
 
     /// `changed` holds paths from the project's root.
@@ -48,7 +48,10 @@ public struct AffectedTests: Sendable, Equatable, Codable {
             if found.isEmpty { return everything("no target owns \(file)") }
             owners.formUnion(found)
         }
-        let targets = graphs.reduce(into: [String: ProjectGraph.Target]()) { all, graph in all.merge(graph.targets) { first, _ in first } }
+        // Targets of the same name in two projects keep every dependency: dropping one could skip a test.
+        let targets = graphs.reduce(into: [String: ProjectGraph.Target]()) { all, graph in
+            all.merge(graph.targets) { first, second in ProjectGraph.Target(name: first.name, isTest: first.isTest || second.isTest, dependencies: first.dependencies.union(second.dependencies)) }
+        }
         // Every target that builds on an affected one is affected too, however far up.
         var affected = owners
         var grew = true
@@ -70,10 +73,7 @@ public struct AffectedTests: Sendable, Equatable, Codable {
     static func projects(in project: Project, layout: ProjectLayout) -> [URL] {
         let containers = layout.containers.map { project.root.appending(path: $0) }
         let workspaces = containers.filter { Project.isXcodeWorkspace($0.lastPathComponent) }
-        let referenced = workspaces.flatMap { workspace -> [URL] in
-            let contents = (try? String(contentsOf: workspace.appending(path: "contents.xcworkspacedata"), encoding: .utf8)) ?? ""
-            return contents.matches(of: /location\s*=\s*"(?:group|container):([^"]+\.xcodeproj)"/).map { workspace.deletingLastPathComponent().appending(path: String($0.1)) }
-        }
+        let referenced = workspaces.flatMap(TestSchemes.projects)
         let bundles = referenced + containers.filter { Project.isXcodeProject($0.lastPathComponent) }
         return bundles.reduce(into: []) { unique, bundle in if !unique.contains(where: { ProjectLayout.canonical($0) == ProjectLayout.canonical(bundle) }) { unique.append(bundle) } }
     }
