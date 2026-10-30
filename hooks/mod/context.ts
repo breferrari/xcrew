@@ -47,12 +47,12 @@ function profile() {
   return mobile.current === undefined ? undefined : mobile.profiles[mobile.current]
 }
 
-/** The scheme the call builds: its own argument, else the profile in use; the Xcode MCP's active one. */
 /** Whether the call or what the session showed of the server's defaults names the scheme a run builds. */
 export function namesScheme(tool: XcodeTool, input: Record<string, unknown>): boolean {
   return schemeOf(tool, input) !== undefined
 }
 
+/** The scheme the call builds: its own argument, else the profile in use; the Xcode MCP's active one. */
 function schemeOf(tool: XcodeTool, input: Record<string, unknown>): string | undefined {
   return tool.server === 'MobileBuildMCP' ? ((input.scheme as string | undefined) ?? profile()?.scheme) : xcode.scheme
 }

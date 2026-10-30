@@ -8,12 +8,12 @@ const MALFORMED =
 
 type Seen = { toasts: string[]; statuses: (string | undefined)[]; cli: CliCall[] }
 
-/** Records what the mod shows and asks the CLI; `cli` is how the stand-in CLI answers. */
 /** A scope's key in these sessions, which have no repository root. */
 const at = (scope: string) => scopeKey('', scope)
 
 /**
- * A session with `stored` in its store, whose CLI answers as `cli` says and, unless it says otherwise, names `App` as the
+ * Records what the mod shows and asks the CLI, in a session with `stored` in its store, whose CLI answers as `cli` says
+ * and, unless it says otherwise, names `App` as the
  * profile's scheme. It has no repository root to name, so its history's keys have none.
  */
 function watch(on: On, stored: Record<string, unknown> = {}, cli: Parameters<typeof stubCli>[1] = {}): Seen {

@@ -72,8 +72,6 @@ public enum ConfigRenderer {
         return (names, withScheme, values(of: ["activeSessionDefaultsProfile:"], in: yaml).first)
     }
 
-    /// Whether MobileBuildMCP has a scheme to build with: the active profile's, since a named profile stands alone, or
-    /// with none active, the global `sessionDefaults`' (docs/findings.md, *MobileBuildMCP's profiles*).
     /// The scheme MobileBuildMCP builds with when a call names none, by `hasSchemeToBuild`'s rule: the active profile's,
     /// or with none active, the global `sessionDefaults`'. Nil when that has none.
     public static func schemeToBuild(in yaml: String) -> String? {
@@ -97,7 +95,8 @@ public enum ConfigRenderer {
                     continue
                 }
             }
-            guard let scheme = value(of: "scheme", in: line), !scheme.isEmpty else { continue }
+            // YAML's null, spelled either way, names none.
+            guard let scheme = value(of: "scheme", in: line), !["", "null", "~"].contains(scheme) else { continue }
             if let active {
                 if section == "sessionDefaultsProfiles:", profile == active { return scheme }
             } else if section == "sessionDefaults:" {
@@ -107,6 +106,8 @@ public enum ConfigRenderer {
         return nil
     }
 
+    /// Whether MobileBuildMCP has a scheme to build with: the active profile's, since a named profile stands alone, or
+    /// with none active, the global `sessionDefaults`' (docs/findings.md, *MobileBuildMCP's profiles*).
     public static func hasSchemeToBuild(in yaml: String) -> Bool {
         let profiles = profiles(in: yaml)
         if let active = profiles.active { return profiles.withScheme.contains(active) }

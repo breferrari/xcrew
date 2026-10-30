@@ -31,4 +31,11 @@ import Testing
         #expect(ConfigRenderer.schemeToBuild(in: "schemaVersion: 1\nsessionDefaults:\n  scheme: 'App Tests' # the app's\n  workspacePath: ./App.xcworkspace\n") == "App Tests")
         #expect(ConfigRenderer.schemeToBuild(in: "schemaVersion: 1\nsessionDefaults:\n  workspacePath: ./App.xcworkspace\n") == nil)
     }
+
+    /// An empty scheme, or YAML's null, names none: there's nothing to build with.
+    @Test func anEmptyOrNullSchemeIsNone() {
+        #expect(ConfigRenderer.schemeToBuild(in: "sessionDefaultsProfiles:\n  unit:\n    scheme: ''\nactiveSessionDefaultsProfile: unit\n") == nil)
+        #expect(ConfigRenderer.schemeToBuild(in: "schemaVersion: 1\nsessionDefaults:\n  scheme: null\n") == nil)
+        #expect(ConfigRenderer.schemeToBuild(in: "schemaVersion: 1\nsessionDefaults:\n  scheme: ~\n") == nil)
+    }
 }

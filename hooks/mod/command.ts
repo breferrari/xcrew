@@ -28,14 +28,15 @@ export function keptHistory(tools: string[], updated: Readonly<Record<string, un
 /** `/xcrew history`: each tool's usual duration, slowest first, from its passing runs, and its failed runs apart. */
 export function historyText(stored: { tool: string; runs: number[] | undefined; failed?: number[] }[]): string {
   const rows = stored.map(({ tool, runs, failed }) => ({ tool, runs: runs ?? [], failed: failed ?? [] }))
-  const timed = rows.filter(row => row.runs.length > 0).sort((a, b) => average(b.runs) - average(a.runs))
+  const timed = rows.filter(row => row.runs.length > 0 || row.failed.length > 0).sort((a, b) => (b.runs.length > 0 ? average(b.runs) : 0) - (a.runs.length > 0 ? average(a.runs) : 0))
   if (timed.length === 0) return 'No builds or test runs timed yet.'
   // Claude Code puts the plugin's name before the first line; a heading keeps the rows aligned.
   const heading = `usual durations, over the last ${HISTORY} runs of each tool`
   // Numbers first: a long scheme and test selection then can't push them out of line.
   const stats = timed.map(({ runs, failed }) => {
     const failures = failed.length > 0 ? ` · ${failed.length} failed ${failed.length === 1 ? 'run' : 'runs'}, ${stopwatch(average(failed))}` : ''
-    return `avg ${stopwatch(average(runs))} · last ${stopwatch(runs.at(-1) ?? 0)} · ${runs.length} ${runs.length === 1 ? 'run' : 'runs'}${failures}`
+    const passing = runs.length > 0 ? `avg ${stopwatch(average(runs))} · last ${stopwatch(runs.at(-1) ?? 0)} · ${runs.length} ${runs.length === 1 ? 'run' : 'runs'}` : 'no passing run yet'
+    return `${passing}${failures}`
   })
   const width = Math.max(...stats.map(stat => stat.length))
   const lines = timed.map(({ tool }, index) => `${(stats[index] ?? '').padEnd(width)}  ${tool}`)

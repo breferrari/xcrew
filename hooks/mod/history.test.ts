@@ -12,7 +12,7 @@ const DAY = 24 * 60 * 60_000
  * A session whose project's root is `root`, as `xcrew project --branch` answers, its MobileBuildMCP profile building
  * `scheme` (none: no scheme to build), each build taking the next of `took`, its outcome the next of `reports`.
  */
-function session(on: On, { root = '/work/App', scheme, took = [], reports = [{ ok: true }], stored = {} }: { root?: string; scheme?: string; took?: number[]; reports?: Partial<Report>[]; stored?: Record<string, unknown> } = {}) {
+function session(on: On, { root = '/work/App', scheme, took = [], reports = [{ ok: true }], stored = {}, rootFails = 0, cwd = root }: { root?: string; scheme?: string; took?: number[]; reports?: Partial<Report>[]; stored?: Record<string, unknown>; rootFails?: number; cwd?: string } = {}) {
   const clock = mock.clock(on, { now: NOW })
   const store = mapStore(on, stored)
   const toasts: string[] = []
@@ -20,7 +20,7 @@ function session(on: On, { root = '/work/App', scheme, took = [], reports = [{ o
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
   on('session.surfaces', () => ({ value: ['vscode'] }))
-  on('session.cwd', () => ({ value: root }))
+  on('session.cwd', () => ({ value: cwd }))
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
     return { value: undefined }
@@ -28,7 +28,8 @@ function session(on: On, { root = '/work/App', scheme, took = [], reports = [{ o
   on('ui.status', () => ({ value: undefined }))
   on('ui.notify', () => ({ value: { isSent: true, channel: 'terminal_bell' } }))
   const cli = stubCli(on, {
-    project: args => ({ isGenerated: false, ...(args.includes('--branch') ? { root, branch: 'main' } : {}), ...(args.includes('--profiles') && scheme ? { scheme } : {}) }),
+    // The first `rootFails` reads of the root get no answer naming one, as a CLI still building answers.
+    project: args => ({ isGenerated: false, ...(args.includes('--branch') && rootFails-- <= 0 ? { root, branch: 'main' } : {}), ...(args.includes('--profiles') && scheme ? { scheme } : {}) }),
     reports,
   })
   on('tool.call', async () => {
@@ -92,4 +93,40 @@ test("a session's start drops old-format, stale and empty history", async ($, on
   const { clock, store } = session(on, { stored })
   await start($, clock)
   expect([...store.keys()].sort()).toEqual([historyKey(kept), updatedKey(kept)].sort())
+})
+
+/** A failed run on a scope no run has updated for weeks starts it over: the old runs don't come back as usual times. */
+test('a failed run after weeks away brings no old runs back', async ($, on) => {
+  const key = scopeKey('/work/App', 'BuildProject')
+  const stored = { [historyKey(key)]: [600_000], [updatedKey(key)]: NOW - 20 * DAY, [failedKey(key)]: [1_000] }
+  // No session start prunes it first, as in a session that began before the scope went stale.
+  const { toasts, store } = session(on, { took: [5_000, 60_000], reports: [{ ok: false }, { ok: true }], stored })
+  await callTool($, 'mcp__xcode__BuildProject')
+  await callTool($, 'mcp__xcode__BuildProject')
+  expect(toasts.at(-1)).toBe('✓ BuildProject · 1:00')
+  expect(store.get(failedKey(key))).toEqual([5_000])
+})
+
+/** A failed test run stops early: its count is no total for the next run's `testing 300 of 959`. */
+test("a failed test run's count isn't kept as the total", async ($, on) => {
+  const { clock, store } = session(on, { scheme: 'App', took: [5_000], reports: [{ ok: false, tests: 40 }] })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  expect(store.get(testsKey(scopeKey('/work/App', 'test_sim · App')))).toBeUndefined()
+})
+
+/** A root the CLI couldn't name yet, as while it builds, is asked again: the session's runs aren't kept under its folder for good. */
+test('a root not named yet is asked for again', async ($, on) => {
+  const { store } = session(on, { root: '/work/App', cwd: '/work/App/ios', took: [10_000, 20_000], rootFails: 1 })
+  await callTool($, 'mcp__xcode__BuildProject')
+  await callTool($, 'mcp__xcode__BuildProject')
+  expect(store.get(historyKey(scopeKey('/work/App', 'BuildProject')))).toEqual([20_000])
+})
+
+/** A scope whose every run failed is still in the history, with no usual time. */
+test('/xcrew history shows a scope whose runs all failed', async ($, on) => {
+  const { clock } = session(on, { took: [5_000], reports: [{ ok: false }] })
+  await start($, clock)
+  await callTool($, 'mcp__xcode__BuildProject')
+  expect((await runCommand($, 'xcrew', 'history')).text).toContain('no passing run yet · 1 failed run, 0:05  BuildProject')
 })

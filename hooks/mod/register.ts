@@ -16,7 +16,7 @@ import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
 import { afterGenerate, editedNote, isUndone, letThroughNote, marked, marksOf, refusal, refused, withoutUndone } from './regenerate'
-import { DURATIONS_PREFIX, drawsBand, endingOf, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
+import { DURATIONS_PREFIX, drawsBand, endingOf, FAILED_PREFIX, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
 
@@ -135,16 +135,13 @@ export const register: Register = on => {
     const input = e as unknown as Record<string, unknown>
     // Durations and test totals are kept per repository, scheme and test selection, not only per tool. A MobileBuildMCP
     // call that names no scheme builds its profile's; one whose scheme no one can name keeps no history.
-    const fallbackScheme = parsed.server === 'MobileBuildMCP' && !namesScheme(parsed, input) ? profileSchemeOf(await answer($, ['project', '--profiles'], 10_000)) : undefined
+    const needsScheme = parsed.server === 'MobileBuildMCP' && !namesScheme(parsed, input)
+    const fallbackScheme = needsScheme ? await profileScheme($) : undefined
     const scope = historyOf(parsed, input, fallbackScheme)
-    const unnamed = parsed.server === 'MobileBuildMCP' && !namesScheme(parsed, input) && fallbackScheme === undefined
-    const key = unnamed ? undefined : scopeKey(await sessionRoot($), scope)
+    const key = needsScheme && fallbackScheme === undefined ? undefined : scopeKey(await sessionRoot($), scope)
 
     const started = await quietly(() => $.clock.now())
-    const stored = key === undefined ? [] : (((await quietly(() => $.store.get(historyKey(key)))) as number[] | undefined) ?? [])
-    const updated = key === undefined ? undefined : await quietly(() => $.store.get(updatedKey(key)))
-    // Runs from weeks ago say nothing about this one: they don't count, and this run starts the line afresh.
-    const earlier = started !== undefined && isStale(updated, started) ? [] : stored
+    const { passed: earlier, failed: earlierFailed } = await earlierRuns($, key, started)
     // What the gauge measures against; a tool's first run has none and shows its time alone.
     const usual = earlier.length > 0 ? average(earlier) : undefined
     const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
@@ -208,7 +205,7 @@ export const register: Register = on => {
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
     // its real end comes later, as a task notification (`UserMessage` below).
-    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), server: parsed.server, kind, earlier, usesBand, ranAll: runsWholeScope(parsed, input), fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}) }
+    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, ranAll: runsWholeScope(parsed, input), fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
         backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }) })
@@ -312,6 +309,7 @@ export const register: Register = on => {
     for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
     // A cleared conversation is a new session: its warnings show again, and the pin is named again.
     sessionRootRead = undefined
+    sessionProfileScheme = undefined
     found = []
     pinsNamed.clear()
     seenAt = {}
@@ -333,14 +331,18 @@ export const register: Register = on => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
     if (e.tool !== 'Bash') return result
-    if (runsSetup(e.command)) void loadProblems($, true).catch(() => undefined)
+    if (runsSetup(e.command)) {
+      // Setup may have written the profiles: their scheme is read again.
+      sessionProfileScheme = undefined
+      void loadProblems($, true).catch(() => undefined)
+    }
     if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, stale => afterGenerate(stale, e.command))
     return result
   }).catch(async ($, e, next) => next(e))
 }
 
 /** A finished build, test or run call, as its ending is recorded. */
-type Ending = { tool: string; scope: string; key?: string; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; ranAll: boolean; fullSuite: boolean; toolUseId?: string }
+type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; ranAll: boolean; fullSuite: boolean; toolUseId?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
 type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean> }
@@ -350,18 +352,21 @@ type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: strin
  * read more than a log's verdict, the card, its row and the band; the loop note, when a full run crossed the budget.
  */
 async function recordEnding($: EngineInterface, run: Ending, outcome: Report, isRead: boolean, ended: number, elapsed: number): Promise<string | undefined> {
-  const { tool, scope, key, kind, earlier } = run
+  const { tool, scope, key, kind, earlier, earlierFailed } = run
   if (key !== undefined) {
-    // A failed run's time is kept apart: one that fails early would pull the usual time down.
-    if (outcome.ok) await quietly(() => $.store.set(historyKey(key), [...earlier, elapsed].slice(-HISTORY)))
-    else await quietly(async () => $.store.set(failedKey(key), [...(((await $.store.get(failedKey(key))) as number[] | undefined) ?? []), elapsed].slice(-HISTORY)))
+    // A failed run's time is kept apart: one that fails early would pull the usual time down. Both lists are written as
+    // read when the run began, so a scope gone stale starts over whichever way the run ended.
+    const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
+    await quietly(() => $.store.set(historyKey(key), outcome.ok ? add(earlier) : [...earlier]))
+    await quietly(() => $.store.set(failedKey(key), outcome.ok ? [...earlierFailed] : add(earlierFailed)))
     await quietly(() => $.store.set(updatedKey(key), ended))
   }
   await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
   // Only what the CLI read goes in the ledger: without it, or from a log's verdict alone, the outcome says no test's own.
   const readTests = kind === 'test' && isRead && !outcome.isVerdictOnly
   if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: run.ranAll, repeated: outcome.repeated ?? [], bundle: outcome.bundle })
-  if (key !== undefined && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
+  // A failed run may have stopped early: its count is no total for the next run's.
+  if (key !== undefined && outcome.ok && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
   saveCard($)
   const ending = endingOf(outcome, ended, elapsed, earlier)
   const requestId = run.toolUseId
@@ -390,9 +395,7 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   // A run going meanwhile keeps the band: this one ended earlier, in the background.
   const usesBand = call.usesBand && !(await anotherRunGoing($))
   // The runs that ended meanwhile count among the earlier ones; the server's time leaves out the wait for the notification.
-  const key = call.key
-  const stored = key === undefined ? [] : (((await quietly(() => $.store.get(historyKey(key)))) as number[] | undefined) ?? [])
-  const earlier = key === undefined || isStale(await quietly(() => $.store.get(updatedKey(key))), ended) ? [] : stored
+  const { passed: earlier, failed: earlierFailed } = await earlierRuns($, call.key, ended)
   const loop = await recordEnding($, { ...call, usesBand, earlier }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
   return { ...(outcome.result === undefined ? {} : { result: outcome.result }), notes: [...outcome.notes, ...(loop ? [loop] : [])] }
 }
@@ -568,7 +571,8 @@ async function evidenceNow($: EngineInterface): Promise<string> {
  * a run last updated it, and its test total.
  */
 async function storedHistory($: EngineInterface): Promise<{ key: string; root: string; scope: string; runs: number[]; failed: number[]; updated: unknown; tests?: number }[]> {
-  const keys = (await $.store.keys()).filter(key => key.startsWith(DURATIONS_PREFIX)).map(key => key.slice(DURATIONS_PREFIX.length))
+  const stored = await $.store.keys()
+  const keys = [...new Set([DURATIONS_PREFIX, FAILED_PREFIX].flatMap(prefix => stored.filter(key => key.startsWith(prefix)).map(key => key.slice(prefix.length))))]
   const scoped = keys.flatMap(key => {
     const parts = keyParts(key)
     return parts ? [{ key, ...parts }] : []
@@ -587,15 +591,41 @@ let sessionRootRead: string | undefined
 
 async function sessionRoot($: EngineInterface): Promise<string> {
   if (sessionRootRead !== undefined) return sessionRootRead
-  const root = headOf(await answer($, ['project', '--branch'], 10_000))?.root ?? (await quietly(() => $.session.cwd())) ?? ''
-  sessionRootRead = root
-  return root
+  const named = headOf(await answer($, ['project', '--branch'], 10_000))?.root
+  // Only a root the CLI named is kept: one it couldn't name yet, as while it builds, is asked for again.
+  if (named !== undefined) sessionRootRead = named
+  return named ?? (await quietly(() => $.session.cwd())) ?? ''
+}
+
+/** The scheme MobileBuildMCP's profile builds with, for a call that names none, once the CLI has answered: read again after setup. */
+let sessionProfileScheme: { scheme?: string } | undefined
+
+async function profileScheme($: EngineInterface): Promise<string | undefined> {
+  if (sessionProfileScheme) return sessionProfileScheme.scheme
+  const answered = await answer($, ['project', '--profiles'], 10_000)
+  if (answered === undefined) return undefined
+  sessionProfileScheme = { ...(profileSchemeOf(answered) === undefined ? {} : { scheme: profileSchemeOf(answered) }) }
+  return sessionProfileScheme.scheme
+}
+
+/** A scope's passing and failed runs before this one, read when it began: none once no run has updated it for weeks. */
+async function earlierRuns($: EngineInterface, key: string | undefined, now: number | undefined): Promise<{ passed: number[]; failed: number[] }> {
+  if (key === undefined) return { passed: [], failed: [] }
+  const [passed, failed, updated] = await Promise.all([historyKey, failedKey, updatedKey].map(name => quietly(() => $.store.get(name(key)))))
+  // Runs from weeks ago say nothing about this one: they don't count, and this run starts the line afresh.
+  if (now !== undefined && isStale(updated, now)) return { passed: [], failed: [] }
+  return { passed: Array.isArray(passed) ? (passed as number[]) : [], failed: Array.isArray(failed) ? (failed as number[]) : [] }
+}
+
+/** Drops a scope's keys, its durations first: should a later delete fail, nothing is left to count or to be dated afresh. */
+async function dropScope($: EngineInterface, key: string): Promise<void> {
+  await quietly(() => $.store.delete(historyKey(key)))
+  await Promise.all(SCOPE_PREFIXES.filter(prefix => prefix !== DURATIONS_PREFIX).map(prefix => quietly(() => $.store.delete(`${prefix}${key}`))))
 }
 
 /**
  * Leaves the history with this version's keys, each holding runs a run wrote lately: a scope stored before keys held
- * their root, one no run has updated for as long as the history is kept, and one with no runs, all go. Its durations
- * go first: should a later delete fail, nothing is left to count.
+ * their root, one no run has updated for as long as the history is kept, and one with no runs, all go.
  */
 async function pruneHistory($: EngineInterface): Promise<void> {
   const [keys, now] = await Promise.all([$.store.keys(), $.clock.now()])
@@ -608,8 +638,7 @@ async function pruneHistory($: EngineInterface): Promise<void> {
     const [runs, failed, updated] = await Promise.all([historyKey(key), failedKey(key), updatedKey(key)].map(name => $.store.get(name)))
     const isEmpty = (!Array.isArray(runs) || runs.length === 0) && (!Array.isArray(failed) || failed.length === 0)
     if (keyParts(key) && !isEmpty && !isStale(updated, now)) return
-    await quietly(() => $.store.delete(historyKey(key)))
-    await Promise.all(SCOPE_PREFIXES.filter(prefix => prefix !== 'durations.').map(prefix => quietly(() => $.store.delete(`${prefix}${key}`))))
+    await dropScope($, key)
   }))
 }
 
@@ -750,10 +779,10 @@ async function history($: EngineInterface): Promise<string> {
   const now = await quietly(() => $.clock.now())
   const { kept, stamp, gone } = now === undefined ? { kept: keys, stamp: [], gone: [] } : keptHistory(keys, updated, now)
   await Promise.all(stamp.map(key => quietly(() => $.store.set(updatedKey(key), now))))
-  // The durations go first: should a later delete fail, nothing undated is left to be dated afresh.
-  await Promise.all(gone.map(async key => {
-    await quietly(() => $.store.delete(historyKey(key)))
-    await Promise.all(SCOPE_PREFIXES.filter(prefix => prefix !== 'durations.').map(prefix => quietly(() => $.store.delete(`${prefix}${key}`))))
+  await Promise.all(gone.map(key => dropScope($, key)))
+  const byKey = new Map(stored.map(entry => [entry.key, entry]))
+  return historyText(kept.flatMap(key => {
+    const entry = byKey.get(key)
+    return entry ? [{ tool: entry.scope, runs: entry.runs, failed: entry.failed }] : []
   }))
-  return historyText(kept.flatMap(key => stored.filter(entry => entry.key === key).map(entry => ({ tool: entry.scope, runs: entry.runs, failed: entry.failed }))))
 }

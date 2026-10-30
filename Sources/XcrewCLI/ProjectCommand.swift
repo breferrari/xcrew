@@ -70,8 +70,8 @@ struct ProjectCommand: Command {
             }
         }
         if invocation.arguments.has("profiles") {
-            if project.hasSchemeToBuild {
-                answer.scheme = project.schemeToBuild
+            if let scheme = project.schemeToBuild {
+                answer.scheme = scheme
             } else {
                 answer.setup = await SessionBriefing.setupOffer(for: project, using: invocation.context.runner)
             }
