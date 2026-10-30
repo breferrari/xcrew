@@ -111,6 +111,42 @@ import XcrewTestSupport
         #expect(CIXcodes.named(in: project).map { "\($0.line) \($0.version)" } == ["2 26.4", "5 26.4"])
     }
 
+    /// Reading the pin only to print or check it chooses nothing; a selecting command, an assignment, or `$GITHUB_ENV` does.
+    @Test func aPinReadOnlyToPrintItChoosesNothing() {
+        let project = Project.temporary()
+        project.write("26.5\n", to: ".xcode-version")
+        project.write("""
+            steps:
+              - run: echo "Pinned: $(cat .xcode-version)"
+              - run: test "$(cat .xcode-version)" = "26.5"
+              - run: XCODE=$(cat .xcode-version)
+              - run: echo "XCODE=$(cat .xcode-version)" >> $GITHUB_ENV
+              - run: xcodes install --select
+              - run: xcodes select && xcodebuild -version
+              - run: xcodes select 26.4
+              - run: V=$(cat .xcode-version-ci)
+            """, to: ".github/workflows/ci.yml")
+        #expect(CIXcodes.named(in: project).map { "\($0.line) \($0.version)" } == ["4 26.5", "5 26.5", "6 26.5", "7 26.5"])
+    }
+
+    /// A pin file outside the project, not a file, or holding no version, names nothing; an explicit Xcode on the same line
+    /// still does.
+    @Test func onlyAVersionInAFileOfTheProjectCounts() {
+        let project = Project.temporary()
+        project.write("ruby 3.3\nxcode 26.4\n", to: ".tool-versions")
+        project.write("""
+            steps:
+              - uses: some/setup-xcode@v1
+                with:
+                  xcode-version-file: ../../../../../../etc/hosts
+              - uses: some/setup-xcode@v1
+                with:
+                  xcode-version-file: .tool-versions
+              - run: sudo xcode-select -s /Applications/Xcode_26.4.app && test -f .xcode-version && xcodes select
+            """, to: ".github/workflows/ci.yml")
+        #expect(CIXcodes.named(in: project).map { "\($0.line) \($0.version)" } == ["8 26.4"])
+    }
+
     /// Without a pin, a workflow reading the file names nothing: there's no version to use.
     @Test func aWorkflowReadingAMissingPinNamesNothing() {
         let project = Project.temporary()

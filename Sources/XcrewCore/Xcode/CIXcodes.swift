@@ -14,9 +14,8 @@ public enum CIXcodes {
     /// `DEVELOPER_DIR` inside one, and a pin file a line reads to choose its Xcode. One that picks the newest, or a range,
     /// names no version to compare and isn't listed.
     public static func named(in project: Project) -> [Named] {
-        let pinned = { (path: String) in
-            (try? String(contentsOf: project.root.appending(path: path), encoding: .utf8)).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
-        }
+        // A pin file holds one version; anything else names none to compare.
+        let pinned = { (path: String) in project.pinned(at: path).flatMap { $0.wholeMatch(of: /\d+(?:\.\d+)*/).map { String($0.output) } } }
         let folder = project.root.appending(path: ".github/workflows")
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.sorted()
         return files.flatMap { name in
@@ -40,18 +39,23 @@ public enum CIXcodes {
     static func version(in written: String, pinned: (String) -> String? = { _ in nil }) -> String? {
         let line = code(of: written)
         if let input = line.firstMatch(of: /xcode-version:\s*['"]?(\d+(?:\.\d+)*)(?=['"\s#]|$)/) { return String(input.1) }
-        if let path = pinRead(by: line) { return pinned(path) }
+        if let path = pinRead(by: line), let version = pinned(path) { return version }
         guard line.contains("xcode-select") || line.contains("DEVELOPER_DIR") else { return nil }
         return line.firstMatch(of: /Xcode[_-]?(\d+(?:\.\d+)*)[^\/\s]*\.app/).map { String($0.1) }
     }
 
-    /// The pin file a workflow line reads to choose an Xcode, from the project's root: `cat` or `<` of it, an action's
-    /// `xcode-version-file`, or `xcodes select` or `install`, which read the root's when given no version. Hashing it for a
-    /// cache key, or a path filter, chooses nothing.
+    /// The pin file a workflow line reads to choose an Xcode, from the project's root: an action's `xcode-version-file`,
+    /// `xcodes select` or `install` given no version, which read the pin in the current folder (xcodes' `select` help and
+    /// its install's version-file lookup, docs/findings.md), or `cat` or `<` of it on a line that selects an Xcode, assigns
+    /// what it read, or adds it to `$GITHUB_ENV`. Printing or checking it, hashing it for a cache key, or a path filter,
+    /// chooses nothing.
     static func pinRead(by line: String) -> String? {
-        if let read = line.firstMatch(of: /(?:\bcat\s+|<\s*)["']?(?:\.\/)?([\w.\/-]*\.xcode-version)/) { return String(read.1) }
         if let input = line.firstMatch(of: /xcode-version-file:\s*["']?(?:\.\/)?([^\s"'#]+)/) { return String(input.1) }
-        return line.contains(/\bxcodes\s+(?:select|install)\s*$/) ? Project.xcodePinFile : nil
+        if line.contains(/\bxcodes\s+(?:select|install)\b(?!\s+["']?\d)/) { return Project.xcodePinFile }
+        guard line.contains(/xcode-select|DEVELOPER_DIR|\w+=\$\(|GITHUB_ENV/),
+              let read = line.firstMatch(of: /(?:\bcat\s+|<\s*)["']?(?:\.\/)?([\w.\/-]*\.xcode-version)(?=["'\s)]|$)/)
+        else { return nil }
+        return String(read.1)
     }
 
     /// A line without its comment: from a `#` that starts it or follows a space.
