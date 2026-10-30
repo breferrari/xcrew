@@ -69,10 +69,9 @@ public struct Report: Sendable, Equatable, Codable {
     /// and its target, from the result bundle, for the ledger.
     static func attaching(_ images: [TestID: FailureImages], targets: [TestID: String] = [:], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
         failures.map { failure in
+            guard failure.isTest else { return failure }
             let test = TestID(xcresultID: failure.title)
-            guard failure.isTest, images[test] != nil || targets[test] != nil else { return failure }
-            let attached = images[test]
-            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: attached?.shown, moreImages: attached?.more, target: targets[test])
+            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: images[test]?.shown, moreImages: images[test]?.more, target: targets[test])
         }
     }
 
@@ -116,7 +115,7 @@ public struct Report: Sendable, Equatable, Codable {
         if let collapsed = read.collapsingWarnings() { (final, edited) = (collapsed, saved == nil) }
         if let text = final.mobileText {
             if let bundle, text.isTestRun {
-                if let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images")) { (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images) }
+                if let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images"), repeated: repeated) { (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images) }
             } else if let cleaned = text.withoutExcerpts() {
                 (final, edited) = (ToolOutput(cleaned, isError: output.isError), true)
             }

@@ -98,6 +98,12 @@ public struct ResultBundle: Sendable {
 
     /// A crash log's exception and the top frames of the thread that crashed, as `image  symbol`.
     public static func crashSummary(log: String) -> [String]? {
+        crashReport(log: log)?.summary
+    }
+
+    /// A crash log's summary, and the test's line: the crashed thread's first frame with a source file of its own, below
+    /// the runtime's frames.
+    static func crashReport(log: String) -> (summary: [String], location: String?)? {
         guard let newline = log.firstIndex(of: "\n"),
               let report = parse(String(log[log.index(after: newline)...])) as? [String: Any],
               let threads = report["threads"] as? [[String: Any]],
@@ -107,29 +113,20 @@ public struct ResultBundle: Sendable {
         let images = report["usedImages"] as? [[String: Any]] ?? []
         let exception = report["exception"] as? [String: Any]
         let crashed = (exception?["type"] as? String).map { type in "crashed: \(type)\((exception?["signal"] as? String).map { " (\($0))" } ?? "")" }
-        let own = frames.firstIndex { ownFrame($0) != nil }.map { min($0 + 1, mostFrames) } ?? topFrames
+        let ownIndex = frames.firstIndex { ownFrame($0) != nil }
+        let own = ownIndex.map { min($0 + 1, mostFrames) } ?? topFrames
         let top = frames.prefix(own).map { frame in
             let index = frame["imageIndex"] as? Int ?? -1
             let image = images.indices.contains(index) ? images[index]["name"] as? String ?? "?" : "?"
             return "\(image)  \(frame["symbol"] as? String ?? "?")"
         }
-        return (crashed.map { [$0] } ?? []) + top
+        return ((crashed.map { [$0] } ?? []) + top, ownIndex.flatMap { ownFrame(frames[$0]) })
     }
 
     /// A frame's `File.swift:12`, when the crash log names a source file of the project's own for it.
     static func ownFrame(_ frame: [String: Any]) -> String? {
         guard let file = frame["sourceFile"] as? String, !file.hasPrefix("/<"), let line = frame["sourceLine"] as? Int else { return nil }
         return "\(ToolOutput.basename(file)):\(line)"
-    }
-
-    /// The crashed thread's first frame with a source file of its own: the test's line, below the runtime's frames.
-    public static func crashLocation(log: String) -> String? {
-        guard let newline = log.firstIndex(of: "\n"),
-              let report = parse(String(log[log.index(after: newline)...])) as? [String: Any],
-              let threads = report["threads"] as? [[String: Any]],
-              let faulting = report["faultingThread"] as? Int, threads.indices.contains(faulting)
-        else { return nil }
-        return (threads[faulting]["frames"] as? [[String: Any]] ?? []).lazy.compactMap(ownFrame).first
     }
 
     /// How many tests the summary counts as expected failures.
@@ -238,10 +235,9 @@ public struct ResultBundle: Sendable {
     static func crashSummary(in folder: URL) -> (summary: [String], location: String?)? {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         guard let log = names.sorted().first(where: { $0.hasSuffix(".ips") }),
-              let text = try? String(contentsOf: folder.appending(path: log), encoding: .utf8),
-              let summary = crashSummary(log: text)
+              let text = try? String(contentsOf: folder.appending(path: log), encoding: .utf8)
         else { return nil }
-        return (summary, crashLocation(log: text))
+        return crashReport(log: text)
     }
 }
 

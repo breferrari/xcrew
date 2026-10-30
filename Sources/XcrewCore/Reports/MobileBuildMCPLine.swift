@@ -134,6 +134,17 @@ enum MobileBuildMCPLine {
         return line.firstMatch(of: #/(\S+\.log) — Build Logs/#).map { String($0.1) }
     }
 
+    /// `Test Failures (4):`, the head of a failing run's list of failures, and where its count is written.
+    static func failureCount(in line: String) -> (range: Range<String.Index>, count: Int)? {
+        line.firstMatch(of: #/^Test Failures \((\d+)\):/#).flatMap { match in Int(match.1).map { (match.range, $0) } }
+    }
+
+    /// The Swift runtime's message for a trap, from an error the run lists (`App/Queue.swift:12: Fatal error: …`, the
+    /// xctest log's prefix or not): a fatal error, a failed precondition or a failed assertion.
+    static func runtimeError(_ message: String) -> String? {
+        message.firstMatch(of: #/\.swift:\d+: ((?:Fatal error|Precondition failed|Assertion failed): .*)$/#).map { String($0.1) }
+    }
+
     /// `Errors (3):`, the head of a failing build's error list, and where its count is written.
     static func errorCount(in line: String) -> (range: Range<String.Index>, count: Int)? {
         line.firstMatch(of: #/^Errors \((\d+)\):/#).flatMap { match in Int(match.1).map { (match.range, $0) } }

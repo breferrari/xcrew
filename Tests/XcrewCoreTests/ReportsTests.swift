@@ -286,6 +286,17 @@ func failingRunText(passing: Int) -> String {
         #expect(added.contains("  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API"))
     }
 
+    /// The Swift runtime's own words for a trap, as the run prints them under Errors, the xctest log's prefix or not:
+    /// a precondition or an assertion as much as a fatal error.
+    @Test func aCrashsRuntimeErrorIsReadFromTheRunsErrorsInEachOfSwiftsWords() async {
+        for said in ["Fatal error: Index out of range", "Precondition failed: the queue is empty", "Assertion failed: no session"] {
+            let text = Captured.text("mobileTestsCrashedAndSkipped").replacingOccurrences(of: "🧪 Test\n", with: "🧪 Test\n\nErrors (2):\n\n  ✗ App/Queue.swift:12: \(said)\n\n  ✗ 2026-10-30 18:11:11.785287+0100 xctest[29418:1065289] App/Queue.swift:12: \(said)\n")
+            let added = await FailureNotes.addingText(to: text, from: Self.crashedAndSkipped())
+            #expect(added.contains("      crashed: EXC_BREAKPOINT (SIGTRAP)\n      \(said)\n"), "\(added)")
+            #expect(added.components(separatedBy: "      \(said)").count == 2, "\(added)")
+        }
+    }
+
     @Test func aFailureTheServerLocatedIsNotLookedUp() async {
         // Every xcresulttool call would answer "not found"; the text comes back as it was.
         let text = Captured.text("mobileTestsFailed")

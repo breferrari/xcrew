@@ -60,29 +60,29 @@ public enum FailureNotes {
                 add(notes.unlisted)
                 if let blank { out.append(blank) }
             }
-            if let failing = line.failing, notes.repeated.contains(failing.test), noted.contains(failing.test) {
-                // A later run's failure of a repeated test: it and its location go, with the blank line before it.
-                if text.location(after: index) != nil { index += 1 }
-                if out.last?.isBlank == true { out.removeLast() }
-                dropped += 1
-                added = true
-                index += 1
+            if let failing = line.failing {
+                // A failure is its line and, when the text places it, the location line after it.
+                let span = text.location(after: index) == nil ? 1 : 2
+                if notes.repeated.contains(failing.test), noted.contains(failing.test) {
+                    // A later run's failure of a repeated test goes, with the blank line before it.
+                    if out.last?.isBlank == true { out.removeLast() }
+                    dropped += 1
+                    added = true
+                } else {
+                    out += lines[index..<index + span]
+                    if noted.insert(failing.test).inserted { add(notes.failures[failing.test] ?? []) }
+                }
+                index += span
                 continue
             }
             out.append(line)
-            if let failing = line.failing {
-                if text.location(after: index) != nil {
-                    index += 1
-                    out.append(lines[index])
-                }
-                if noted.insert(failing.test).inserted { add(notes.failures[failing.test] ?? []) }
-            } else if case let .skipped(test?) = line.kind {
+            if case let .skipped(test?) = line.kind {
                 add(notes.skipped[test] ?? [])
             }
             index += 1
         }
-        if dropped > 0, let heading = out.firstIndex(where: { $0.isHeading(.testFailures) }), let counted = out[heading].text.firstMatch(of: /Test Failures \((\d+)\)/), let count = Int(counted.1) {
-            out[heading] = MobileText.Line(out[heading].text.replacingCharacters(in: counted.range, with: "Test Failures (\(count - dropped))"))
+        if dropped > 0, let heading = out.firstIndex(where: { $0.isHeading(.testFailures) }), let counted = MobileBuildMCPLine.failureCount(in: out[heading].text) {
+            out[heading] = MobileText.Line(out[heading].text.replacingCharacters(in: counted.range, with: "Test Failures (\(counted.count - dropped)):"))
         }
         return added ? MobileText(lines: out) : nil
     }
@@ -108,7 +108,7 @@ public enum FailureNotes {
 
     /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `imagesFolder`, each failed
     /// test's images are kept there, and runs kept there too long are removed.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn imagesFolder: URL? = nil) async -> Added? {
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn imagesFolder: URL? = nil, repeated: Bool = false) async -> Added? {
         var order: [TestID] = []
         var located: Set<TestID> = []
         var crashed: Set<TestID> = []
@@ -128,12 +128,11 @@ public enum FailureNotes {
         }
         let isSkipping = text.skippedCount > 0 || !listedSkips.isEmpty
         // A repeated run's tests, from its test list, which skips read too: how many runs each failed.
-        let repetitions = order.isEmpty ? [] : ResultBundle.repetitions(listing: await bundle.tests()).filter { $0.failed > 0 }
+        let repetitions = repeated && !order.isEmpty ? ResultBundle.repetitions(listing: await bundle.tests()).filter { $0.failed > 0 } : []
         guard !lookups.isEmpty || isSkipping || !repetitions.isEmpty else { return nil }
-        // A Swift runtime error stops the process before XCTest records a message, so the run prints it under Errors.
-        let fatal = Array(Set(text.lines.compactMap { line in line.text.range(of: "Fatal error: ").map { String(line.text[$0.lowerBound...]) } })).sorted()
-        // With one crashed test, the run's runtime error is that test's.
-        let crashError = crashed.count == 1 ? fatal : []
+        // A Swift runtime error stops the process before XCTest records a message, so the run lists it under Errors, once
+        // plainly and once with the xctest log's prefix. With one crashed test, it's that test's.
+        let crashError = crashed.count == 1 ? Set(text.reportedErrors.compactMap { MobileBuildMCPLine.runtimeError($0.message) }).sorted() : []
 
         if let imagesFolder, !lookups.isEmpty { FailureImages.prune(in: imagesFolder) }
         var notes = Notes()
@@ -148,13 +147,12 @@ public enum FailureNotes {
                 let keepsImages = imaged.contains(test) ? imagesFolder : nil
                 group.addTask {
                     var added: [String] = []
-                    if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: test)) {
+                    let crash = isCrashed ? await bundle.crash(of: test) : nil
+                    // Where the bundle places the failure, or for a crash, the crash log's frame in the test's own code.
+                    if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: test)) ?? crash?.location {
                         added.append("    \(location)")
                     }
                     if isCrashed {
-                        let crash = await bundle.crash(of: test)
-                        // The crash log's frame in the test's own code, below the runtime's, is the test's line.
-                        if let location = crash?.location, !isLocated, !added.contains(where: { $0.hasPrefix("    /") }) { added.append("    \(location)") }
                         let summary = crash?.summary ?? [noCrashLog]
                         added += (Array(summary.prefix(1)) + crashError + summary.dropFirst()).map { "      \($0)" }
                     }
@@ -181,7 +179,7 @@ public enum FailureNotes {
             }
             return found
         }
-        for repeated in repetitions where repeated.runs > 1 {
+        for repeated in repetitions {
             let test = TestID(xcresultID: repeated.test)
             notes.repeated.insert(test)
             notes.failures[test, default: []].append("      failed \(repeated.failed) of \(repeated.runs) runs")

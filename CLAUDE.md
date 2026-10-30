@@ -37,6 +37,7 @@ mcs pack validate .
 - Match every tool under both registrations, `mcp__plugin_xcrew_<server>__<tool>` and `mcp__<server>__<tool>`, with a regular expression from `tools.ts`: a list of names only type-checks for the MCP servers connected on the machine that laid the types.
 - Tests call tools and commands through `hooks/mod/testing.ts` for the same reason.
 - Bookkeeping (clock, store, UI) is best-effort and never fails the tool call it wraps.
+- A note to Claude states facts and offers tools; it never prescribes how Claude works or reports. The only imperatives are routing across the three servers and harm guards. Read a new note for its mood in review: the ManifestTest's word list is a net, not a judge.
 
 ## Tests
 
