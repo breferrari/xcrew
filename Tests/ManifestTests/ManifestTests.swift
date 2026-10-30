@@ -487,9 +487,12 @@ import Testing
 
     @Test func listingPicturesArePinnedWhereCIChecksThemOut() throws {
         let pin = try assetsPin()
-        let checkouts = try text(".github/workflows/ci.yml").matches(of: /repository: breferrari\/xcrew-assets\n\s+ref: ([0-9a-f]+) # (v[\d.]+)/)
-        #expect(checkouts.count == 3, "ci.yml checks xcrew-assets out in \(checkouts.count) jobs")
-        #expect(checkouts.allSatisfy { String($0.1) == pin }, "ci.yml checks out another commit than the README's \(pin)")
+        // Every Swift test run reads them: CI's three jobs and the weekly canary's.
+        let workflows = [try text(".github/workflows/ci.yml"), try text(".github/workflows/canary.yml")]
+        let checkouts = workflows.flatMap { $0.matches(of: /repository: breferrari\/xcrew-assets\n\s+ref: ([0-9a-f]+) # (v[\d.]+)/) }
+        #expect(checkouts.count == 4, "the workflows check xcrew-assets out in \(checkouts.count) jobs")
+        #expect(checkouts.allSatisfy { String($0.1) == pin }, "a workflow checks out another commit than the README's \(pin)")
+        #expect(workflows[1].contains("XCREW_ASSETS: ${{ github.workspace }}/xcrew-assets"), "the canary's Swift tests don't read the checkout")
         #expect(!FileManager.default.fileExists(atPath: Self.repository.appending(path: "assets").path), "assets/ is back in the repository")
     }
 
@@ -698,6 +701,15 @@ import Testing
     @Test(arguments: ["scripts/stable-check.sh ", "scripts/saved-notice.sh ", "scripts/stable-follows.sh ", "scripts/registered-tools.sh "])
     func theCanaryRunsEachUpstreamCheck(_ script: String) throws {
         #expect(try text(".github/workflows/canary.yml").contains(script))
+    }
+
+    /// The canary fails on the same `xcode-ide` bridge tools the doctor flags in a config.
+    @Test func theCanaryAndTheDoctorNameTheSameBridgeTools() throws {
+        let pattern = try #require(try text("scripts/registered-tools.sh").firstMatch(of: /grep -E '(\^xcode_[^']+)'/)).1
+        let canary = try Regex(String(pattern))
+        for name in ["xcode_ide_call_tool", "xcode_ide_list_tools", "xcode_tools_bridge_status", "xcode_tools_XcodeWrite", "session_show_defaults", "build_sim"] {
+            #expect((name.firstMatch(of: canary) != nil) == ConfigRenderer.reachesXcodeIDE(["enabledWorkflows": [name]]), "\(name)")
+        }
     }
 
     /// The mod drops history no run has updated for as long as the shim keeps a build no checkout has run.

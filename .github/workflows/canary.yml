@@ -45,10 +45,17 @@ jobs:
           repository: breferrari/xcrew-testbed
           ref: 85e8c7bbea5f6157602f31cee53f02472bff8063 # v0.5.0
           path: xcrew-testbed
+      # The README's images, at the commit it pins, as in ci.yml.
+      - uses: actions/checkout@v5
+        with:
+          repository: breferrari/xcrew-assets
+          ref: 570b5f6f7a56c2689536e550f3a078856619b746 # v0.2.0
+          path: xcrew-assets
       - name: Swift tests
         run: swift test
         env:
           XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed
+          XCREW_ASSETS: ${{ github.workspace }}/xcrew-assets
       - name: Plugin validation and mod tests
         run: |
           claude plugin validate .
@@ -70,11 +77,11 @@ jobs:
           # Through the plugin's launcher, as Claude Code starts the server. The project pins no Xcode, so the server
           # starts unchanged: nothing of the launcher's on its standard error, and no launch record.
           ("$PWD/libexec/mobilebuildmcp-server" "$project" < /dev/null > /dev/null 2> "$log" &) ; sleep 5
-          grep -E "Registered [0-9]+ tools from workflows: .*sim-env" "$log" || { cat "$log"; exit 1; }
+          grep -F "Loaded project config" "$log" || { cat "$log"; exit 1; }
           if grep -F "mobilebuildmcp-server" "$log"; then echo "the launcher wrote to the server's standard error" >&2; exit 1; fi
           record="${XCREW_CACHE:-$HOME/Library/Caches/xcrew}/launches$(cd "$project" && pwd -P).launch"
           if [ -e "$record" ]; then echo "a launch record for a project with no pin: $(cat "$record")" >&2; exit 1; fi
-          scripts/registered-tools.sh "$project"
+          scripts/registered-tools.sh "$project" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       - name: The README's images still load
         run: scripts/readme-images.sh 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       - name: Sosumi answers
