@@ -11,6 +11,9 @@ struct Version: Comparable, CustomStringConvertible {
 
     var description: String { parts.map(String.init).joined(separator: ".") }
 
+    /// The first number, as the text gave it: nil when the text starts with none, so an unknown version isn't 0.
+    static func major(of text: String) -> Int? { Int(text.drop { !$0.isNumber }.prefix { $0.isNumber }) }
+
     static func < (lhs: Version, rhs: Version) -> Bool {
         let count = max(lhs.parts.count, rhs.parts.count)
         let left = lhs.parts + Array(repeating: 0, count: count - lhs.parts.count)

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The doctor no longer reports an error when the project's pinned Xcode isn't installed: it warns, naming both versions, and says when the build may fail (another major version, or a newer pin). It no longer reports an error for headless Xcode MCP on a Mac whose Xcodes all predate Xcode 27, and when Xcode 27 is installed but an older one is selected, it names the `xcode-select` command that turns headless Xcode MCP on. Its fix for a missing Xcode names `xcodes install` only when `xcodes` is installed, and Apple's download page otherwise.
 - When Claude builds or tests a project MobileBuildMCP has no scheme for yet, it's told to offer `/xcrew:setup`, once per conversation. The conversation's opening note says so too, now also when MobileBuildMCP saved a config of its own without one. The README now says that with mcs you run `/xcrew:setup` once after `mcs sync`.
 - MobileBuildMCP no longer offers its own route to the Xcode MCP (`xcode-ide`), which let Claude call `XcodeWrite` without Xcrew asking you first in a generated project. Claude can now set the simulator's status bar through MobileBuildMCP. `xcrew doctor` says when a config still has the old tool groups, and `/xcrew:setup` rewrites it.
 

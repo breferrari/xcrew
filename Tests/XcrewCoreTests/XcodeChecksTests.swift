@@ -7,7 +7,7 @@ import XcrewTestSupport
 @Suite struct XcodeChecksTests {
     /// A project on a Mac with Xcode 26.4 and Xcode 27.2 beta 3, 27.2 selected; this session's MobileBuildMCP serving it,
     /// started `server` ago (`ps`'s `etime`) unless nil; and what the launcher recorded, `launch`, `recorded` seconds ago.
-    func context(pin: String? = nil, workflow: String? = nil, running: String? = nil, launch: String? = nil, recorded: TimeInterval = 5, server: String? = "00:30", onlyOne: Bool = false) -> CheckContext {
+    func context(pin: String? = nil, workflow: String? = nil, running: String? = nil, launch: String? = nil, recorded: TimeInterval = 5, server: String? = "00:30", onlyOne: Bool = false, xcodesTool: Bool = false) -> CheckContext {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let apps = project.root.appending(path: "Applications")
         if onlyOne { FakeXcode.install(in: apps, "Xcode-27.2.0-Beta.3.app", version: "27.2", build: "27B5038j") } else { FakeXcode.installBoth(in: apps) }
@@ -15,7 +15,7 @@ import XcrewTestSupport
         if let workflow { project.write(workflow, to: ".github/workflows/ci.yml") }
         var responses = FakeSession.responses(serving: server == nil ? nil : project, age: server ?? "", programs: running.map { [202: "\(apps.path)/\($0)/Contents/MacOS/Xcode"] } ?? [:])
         responses["xcode-select -p"] = .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n")
-        let context = CheckContext.fake(FakeRunner(responses: responses), project: project, processID: FakeSession.doctor, applications: apps)
+        let context = CheckContext.fake(FakeRunner(installed: xcodesTool ? ["xcodes"] : [], responses: responses), project: project, processID: FakeSession.doctor, applications: apps)
         if let launch {
             let record = Xcodes.launchRecord(of: project, on: context.machine)
             try! FileManager.default.createDirectory(at: record.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -63,10 +63,31 @@ import XcrewTestSupport
 
     static let ciOn26_3 = "jobs:\n  test:\n    steps:\n      - uses: maxim-lobanov/setup-xcode@v1\n        with:\n          xcode-version: '26.3'\n"
 
-    @Test func aPinNoInstalledXcodeMatchesFailsWithTheInstall() async {
-        let result = await XcodePinCheck().run(context(pin: "25.0\n"))
-        #expect(result.status == .fail)
-        #expect(result.message == "the project pins Xcode 25.0 (.xcode-version), but no installed Xcode is 25.0, so MobileBuildMCP builds with Xcode 27.2: xcodes install 25.0")
+    /// Another major is another SDK and compiler, so a build may fail where CI's pass, but the Mac still builds: a warning.
+    @Test func aPinOfAnotherMajorWarnsThatTheBuildMayFail() async {
+        let result = await XcodePinCheck().run(context(pin: "25.0\n", xcodesTool: true))
+        #expect(result == .warn("builds use Xcode 27.2 while the project pins Xcode 25.0 (.xcode-version), and a build may fail with another major version's SDK: xcodes install 25.0"))
+    }
+
+    /// A minor or patch apart rarely changes a build; it matters for matching CI's diagnostics.
+    @Test func aPinOfTheSameMajorNoInstalledXcodeMatchesWarns() async {
+        let result = await XcodePinCheck().run(context(pin: "27.1\n", xcodesTool: true))
+        #expect(result == .warn("builds use Xcode 27.2 while the project pins Xcode 27.1 (.xcode-version); a minor or patch difference rarely matters except to match CI's diagnostics: optionally, xcodes install 27.1"))
+    }
+
+    /// An older toolchain can lack the pinned SDK's APIs, so a newer pin says the build may fail, as a warning.
+    @Test func aPinNewerThanTheBuildsXcodeWarnsThatTheBuildMayFail() async {
+        let result = await XcodePinCheck().run(context(pin: "27.3\n", xcodesTool: true))
+        #expect(result == .warn("builds use Xcode 27.2 while the project pins Xcode 27.3 (.xcode-version), and a build may fail where the code uses the newer SDK: xcodes install 27.3"))
+    }
+
+    /// `xcodes` isn't on every Mac: without it the fix is Apple's download page.
+    @Test func withoutXcodesTheInstallIsApplesDownloadPage() async {
+        let other = await XcodePinCheck().run(context(pin: "25.0\n"))
+        #expect(other.status == .warn)
+        #expect(other.message.hasSuffix(": install Xcode 25.0 from https://developer.apple.com/download/all/"))
+        let same = await XcodePinCheck().run(context(pin: "27.1\n"))
+        #expect(same.message.hasSuffix(": optionally, install Xcode 27.1 from https://developer.apple.com/download/all/"))
     }
 
     @Test func aPinTheServerStartedWithPasses() async {

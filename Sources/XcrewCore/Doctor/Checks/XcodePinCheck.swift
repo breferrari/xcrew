@@ -18,7 +18,19 @@ struct XcodePinCheck: Check {
             }
             return .warn("several Xcodes are installed and CI uses Xcode \(ci.version) (\(ci.file):\(ci.line)), but nothing pins one, so builds use \(using): pin CI's with echo \(ci.version) > \(Project.xcodePinFile)")
         case let .notInstalled(pin, file):
-            return .fail("the project pins Xcode \(pin) (\(file)), but no installed Xcode is \(pin), so MobileBuildMCP builds with \(using): xcodes install \(pin)")
+            let install = context.runner.which("xcodes") == nil ? "install Xcode \(pin) from https://developer.apple.com/download/all/" : "xcodes install \(pin)"
+            // Every mismatch is a warning: the Mac still builds, with another Xcode than the project expects.
+            guard let builds = xcodes.forBuilds else {
+                return .warn("the project pins Xcode \(pin) (\(file)), but no installed Xcode is \(pin), so MobileBuildMCP builds with \(using): \(install)")
+            }
+            let lead = "builds use \(builds.label) while the project pins Xcode \(pin) (\(file))"
+            if Version.major(of: pin) == nil || Version.major(of: pin) != Version.major(of: builds.version) {
+                return .warn("\(lead), and a build may fail with another major version's SDK: \(install)")
+            }
+            if Version(pin) > Version(builds.version) {
+                return .warn("\(lead), and a build may fail where the code uses the newer SDK: \(install)")
+            }
+            return .warn("\(lead); a minor or patch difference rarely matters except to match CI's diagnostics: optionally, \(install)")
         case let .waiting(install, _):
             return .skip("MobileBuildMCP isn't running for this project; it starts with \(install.label)")
         case let .applied(install, _):

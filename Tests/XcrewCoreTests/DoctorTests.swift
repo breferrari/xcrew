@@ -351,6 +351,50 @@ import XcrewTestSupport
         #expect(await ClaudeApprovedCheck().run(.fake()).status == .skip)
     }
 
+    /// Headless Xcode MCP came with Xcode 27: on a Mac whose newest Xcode is older, it's not there to turn on.
+    @Test func belowXcode27HeadlessXcodeMCPSkips() async {
+        let project = Project.temporary()
+        let apps = project.root.appending(path: "Applications")
+        FakeXcode.install(in: apps, "Xcode-26.6.app", version: "26.6", build: "17G100")
+        FakeXcode.install(in: apps, "Xcode-26.5.app", version: "26.5", build: "17F100")
+        let context = CheckContext.fake(project: project, applications: apps)
+        #expect(await HeadlessXcodeMCPCheck().run(context) == .skip("available with Xcode 27 or later"))
+        #expect(await ClaudeApprovedCheck().run(context) == .skip("available with Xcode 27 or later"))
+    }
+
+    /// An Xcode whose version can't be read could be 27 or later, so it doesn't make the Mac too old.
+    @Test func anXcodeOfUnknownVersionDoesntPredateHeadlessXcodeMCP() async {
+        let project = Project.temporary()
+        let apps = project.root.appending(path: "Applications")
+        FakeXcode.install(in: apps, "Xcode-26.6.app", version: "26.6", build: "17G100")
+        FakeXcode.install(in: apps, "Xcode-Next.app", version: "", build: nil)
+        #expect(await HeadlessXcodeMCPCheck().run(.fake(project: project, applications: apps)).status == .fail)
+    }
+
+    /// Selecting an older Xcode may be deliberate: the line names the switch rather than failing.
+    @Test func withXcode27InstalledButAnOlderSelectedTheSwitchIsNamed() async {
+        let project = Project.temporary()
+        let apps = project.root.appending(path: "Applications")
+        FakeXcode.installBoth(in: apps)
+        let runner = FakeRunner(responses: ["xcode-select -p": .init(status: 0, stdout: "\(apps.path)/Xcode-26.4.app/Contents/Developer\n")])
+        let context = CheckContext.fake(runner, project: project, applications: apps)
+        for result in [await HeadlessXcodeMCPCheck().run(context), await ClaudeApprovedCheck().run(context)] {
+            #expect(result.status == .skip)
+            #expect(result.message.hasPrefix("Xcode 27.2 is installed: `sudo xcode-select -s /"))
+            #expect(result.message.hasSuffix("/Applications/Xcode-27.2.0-Beta.3.app` turns on headless Xcode MCP"))
+        }
+    }
+
+    /// With Xcode 27 installed, a server that doesn't answer is a real problem.
+    @Test func withXcode27AnUnavailableXcodeMCPStillFails() async {
+        let project = Project.temporary()
+        let apps = project.root.appending(path: "Applications")
+        FakeXcode.installBoth(in: apps)
+        let context = CheckContext.fake(project: project, applications: apps)
+        #expect(await HeadlessXcodeMCPCheck().run(context) == .fail("xcrun mcp-server unavailable (needs Xcode 27 or later)"))
+        #expect(await ClaudeApprovedCheck().run(context) == .skip("xcrun mcp-server unavailable"))
+    }
+
     @Test func unsignedAgentsCheck() async {
         let on = FakeRunner(responses: ["defaults read com.apple.dt.Xcode IDEAllowUnauthenticatedAgents": .init(status: 0, stdout: "1\n")])
         #expect(await UnsignedAgentsCheck().run(.fake(on)).status == .warn)

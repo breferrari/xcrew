@@ -8,7 +8,9 @@ struct ClaudeApprovedCheck: Check {
 
     func run(_ context: CheckContext) async -> CheckResult {
         let status = await context.xcodeMCPStatus.value()
-        guard status.succeeded else { return .skip("xcrun mcp-server unavailable") }
+        guard status.succeeded else {
+            return await HeadlessXcodeMCPCheck.unavailable(context) ?? .skip("xcrun mcp-server unavailable")
+        }
         guard status.stdout.contains(Self.agentIdentifier) else {
             return .warn("not approved yet: have Claude call XcodeOpenWorkspace, then allow it in Xcode's dialog")
         }
