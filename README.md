@@ -119,11 +119,13 @@ After a failing run, the line above the prompt ends with `/xcrew failures`, or t
 
 #### In the chat
 
+You need only `/xcrew:setup`, once. Everything else runs on its own, or is here for when you want to look.
+
 **Setting up**
 
 | Command | What it does |
 | --- | --- |
-| `/xcrew:setup` | Writes MobileBuildMCP's per-project profiles from your schemes and installed simulators |
+| `/xcrew:setup` | Writes MobileBuildMCP's profiles to `.mobilebuildmcp/config.yaml`, kept out of git ([details](#configuration)) |
 
 **Around a run**
 
