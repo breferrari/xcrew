@@ -2,10 +2,6 @@ import type { Engine } from 'claude-code/testing'
 import type { On, ToolCallArgs, ToolCallResult } from 'claude-code'
 import type { Phase, Problem, Report } from './cli'
 
-/**
- * Calls a tool by its full name. The generated types know only the MCP servers connected when the
- * mod last loaded, which differs per machine, so the name stays untyped here.
- */
 /** The store as a plain map, so a test reads what the mod kept. */
 export function mapStore(on: On): Map<string, unknown> {
   const store = new Map<string, unknown>()
@@ -22,6 +18,10 @@ export function mapStore(on: On): Map<string, unknown> {
   return store
 }
 
+/**
+ * Calls a tool by its full name. The generated types know only the MCP servers connected when the
+ * mod last loaded, which differs per machine, so the name stays untyped here.
+ */
 export function callTool($: Engine, tool: string, args: Record<string, unknown> = {}): Promise<ToolCallResult> {
   return $.tool.call({ tool, ...args } as unknown as ToolCallArgs)
 }

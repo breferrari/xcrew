@@ -763,6 +763,19 @@ import Testing
         #expect(kept == shim)
     }
 
+    /// Every field `xcrew evidence` reads from the mod's ledger is one the ledger's types declare: a field renamed on one
+    /// side would make the command refuse the mod's JSON.
+    @Test func theEvidenceInputReadsTheLedgersFields() throws {
+        let json = #"{"ledger":[{"test":"T","red":{"scope":"s","at":1,"message":"m","bundle":"b"},"green":{"scope":"s","at":2},"flaky":{"failed":1,"runs":2}}],"times":[]}"#
+        let entry = try #require(try JSONDecoder().decode(EvidenceInput.self, from: Data(json.utf8)).ledger.first)
+        let labels = { (value: Any) in Mirror(reflecting: value).children.compactMap(\.label) }
+        let declared = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export type LedgerRun = \{([^}]*)\}[\s\S]*?export type LedgerEntry = (.*)/))
+        let types = String(declared.1) + String(declared.2)
+        for field in labels(entry) + labels(entry.red) + labels(try #require(entry.flaky)) {
+            #expect(types.contains("\(field):") || types.contains("\(field)?:"), "ledger.ts doesn't declare `\(field)`")
+        }
+    }
+
     /// A failed test's images are kept as long as the shim keeps a build no checkout has run.
     @Test func failureImagesAreKeptAsLongAsAnUnusedBuild() throws {
         let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)

@@ -93,6 +93,13 @@ import XcrewTestSupport
         #expect(text.block.contains("\"see build_sim_1.log and rules.yml, not Sources/App/Card.swift\""), "\(text.block)")
     }
 
+    /// A path in a `file://` URL is a path of this Mac too, and a physical device's id is 8 and 16 hex digits.
+    @Test func aFileURLsPathAndADevicesIDAreScrubbed() async throws {
+        let message = "see file:///Users/someone/Library/Developer/Xcode/DerivedData/App-abc/Logs/shot.png on 00008110-001A2B3C4D5E801E"
+        let text = try #require(await Self.pack(try Self.input([Self.entry("CardTests/testCard", message: message, green: false)])))
+        #expect(text.block.contains("\"see shot.png on <id>\""), "\(text.block)")
+    }
+
     @Test func aBranchWithNothingToSayGivesNoBlock() async throws {
         #expect(await Self.pack(try Self.input([])) == nil)
     }

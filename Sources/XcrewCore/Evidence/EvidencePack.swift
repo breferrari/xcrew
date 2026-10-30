@@ -144,9 +144,10 @@ public enum EvidencePack {
     static func scrubbed(_ text: String, roots: [String]) -> String {
         var text = text
         for root in Set(roots) where !root.isEmpty { text = text.replacingOccurrences(of: root + "/", with: "") }
-        // A path starts the text or follows what can't be part of a word, a URL or a relative path.
-        text = text.replacing(/(^|[^\w:\/.])~?\/(?:[^\s\/"'()\[\],;`]+\/)+([^\s\/"'()\[\],;`]+)/) { $0.output.1 + $0.output.2 }
-        return text.replacing(/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/, with: "<id>")
+        // A path starts the text, a `file://` URL, or follows what can't be part of a word, a web URL or a relative path.
+        text = text.replacing(/(^|file:\/\/|[^\w:\/.])~?\/(?:[^\s\/"'()\[\],;`]+\/)+([^\s\/"'()\[\],;`]+)/) { ($0.output.1 == "file://" ? "" : $0.output.1) + $0.output.2 }
+        // A simulator's UUID, and a physical device's id: 8 hex digits, then 16.
+        return text.replacing(/[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{16})/, with: "<id>")
     }
 
     /// `From the test run of 2026-10-30 14:24 UTC`, said to be older than the branch's last commit when it is.
