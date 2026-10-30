@@ -1,11 +1,12 @@
-import type { Failure } from './cli'
-import { isStale } from './command'
+import type { Failure, Head } from './cli'
+import { dayAndTime } from './format'
+import { isStale } from './timing'
 
 /**
  * The red-to-green ledger: for each test on a branch, the run where it first failed and the later run that passed it, as
  * the evidence a pull request's test plan names. It's kept in the store under the project's real root and its branch, or
- * its commit when HEAD is detached, so it outlives a session; a branch's ledger no run has written for as long as the
- * history is kept is dropped.
+ * its commit when HEAD is detached, so it outlives a session. What no run has written for as long as the history is
+ * kept is dropped: a test's entry, and a branch's whole ledger.
  */
 
 export const LEDGER_PREFIX = 'ledger.'
@@ -13,27 +14,26 @@ export const LEDGER_PREFIX = 'ledger.'
 /** A run in the ledger: its scope (`test_sim · App › AppTests`) and when it ended. */
 export type LedgerRun = { scope: string; at: number }
 
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string }; green?: LedgerRun }
+/**
+ * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, and when a run
+ * last wrote it.
+ */
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string }; failing: string; green?: LedgerRun; last: number }
 
 export type Ledger = { entries: LedgerEntry[]; updated: number }
 
-/** Where a checkout stands, as `xcrew project --branch` answers. */
-export type Head = { root: string; branch?: string; commit?: string }
+/** A finished test run, as the ledger reads it. `ranAll`: it ran every test its scope names, so its passes count. */
+export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; ranAll: boolean }
 
-/** What `xcrew project --branch` answered, when it named a root. */
-export function headOf(answer: unknown): Head | undefined {
-  const { root, branch, commit } = (answer ?? {}) as Record<string, unknown>
-  if (typeof root !== 'string' || root === '') return undefined
-  return { root, ...(typeof branch === 'string' ? { branch } : {}), ...(typeof commit === 'string' ? { commit } : {}) }
-}
-
-/** The checkout's name in the ledger's words: its branch, its commit, or nothing outside git. */
-export function headName(head: Head): string {
-  return head.branch ?? (head.commit ? `commit ${head.commit.slice(0, 12)}` : 'this folder')
+/** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
+function label(head: Head, isShort: boolean): string {
+  if (head.branch) return head.branch
+  if (head.commit) return `commit ${isShort ? head.commit.slice(0, 12) : head.commit}`
+  return isShort ? 'this folder' : ''
 }
 
 export function ledgerKey(head: Head): string {
-  return `${LEDGER_PREFIX}${head.root} @ ${head.branch ?? (head.commit ? `commit ${head.commit}` : '')}`
+  return `${LEDGER_PREFIX}${head.root} @ ${label(head, false)}`
 }
 
 /** A ledger as stored, or none: a value in another shape is ignored rather than trusted. */
@@ -51,22 +51,23 @@ export function covers(passed: string, failed: string): boolean {
 }
 
 /**
- * The ledger after a test run. A failing test enters red, or turns red again after a green, keeping its first red; a
- * passing run turns green each red test it covers. A compile error never enters: no later run passes it.
+ * The ledger after a test run.
+ * - A failing test enters red, or turns red again after a green, keeping its first red; either way it now fails in this
+ *   run's scope.
+ * - A run that ran every test of its scope turns green each red test it covers and didn't fail, a failing run
+ *   included: its other tests passed. A run that didn't get as far as tests (a build failure) turns nothing green.
+ * - An entry no run has written for as long as the history is kept is dropped.
  */
-export function afterTestRun(ledger: Ledger | undefined, run: LedgerRun & { ok: boolean; failures: readonly Failure[] }): Ledger {
-  const entries = [...(ledger?.entries ?? [])]
-  if (run.ok) {
-    for (const [index, entry] of entries.entries()) {
-      if (!entry.green && covers(run.scope, entry.red.scope)) entries[index] = { ...entry, green: { scope: run.scope, at: run.at } }
-    }
-  } else {
-    for (const failure of run.failures.filter(failure => failure.isTest)) {
-      const index = entries.findIndex(entry => entry.test === failure.title)
-      const earlier = entries[index]
-      if (!earlier) entries.push({ test: failure.title, red: { scope: run.scope, at: run.at, message: firstLine(failure.message) } })
-      else if (earlier.green) entries[index] = { test: earlier.test, red: earlier.red }
-    }
+export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
+  const failed = new Map(run.failures.filter(failure => failure.isTest).map(failure => [failure.title, failure]))
+  const testsRan = run.ok || failed.size > 0
+  const entries = (ledger?.entries ?? []).filter(entry => !isStale(entry.last, run.at)).map((entry): LedgerEntry => {
+    if (failed.has(entry.test)) return { test: entry.test, red: entry.red, failing: run.scope, last: run.at }
+    const passes = !entry.green && run.ranAll && testsRan && covers(run.scope, entry.failing)
+    return passes ? { ...entry, green: { scope: run.scope, at: run.at }, last: run.at } : entry
+  })
+  for (const [test, failure] of failed) {
+    if (!entries.some(entry => entry.test === test)) entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(failure.message) }, failing: run.scope, last: run.at })
   }
   return { entries, updated: run.at }
 }
@@ -76,27 +77,20 @@ export function staleLedgers(stored: Readonly<Record<string, unknown>>, now: num
   return Object.entries(stored).filter(([, value]) => isStale(ledgerOf(value)?.updated, now)).map(([key]) => key)
 }
 
+type GreenEntry = LedgerEntry & { green: LedgerRun }
+
 /** The ledger as Claude reads it for a test plan, and the person through `/xcrew ledger`. */
 export function ledgerText(ledger: Ledger | undefined, head: Head): string {
-  const name = headName(head)
+  const name = label(head, true)
   const entries = ledger?.entries ?? []
   if (entries.length === 0) return `No test has failed on ${name} yet.`
-  const green = entries.filter(entry => entry.green)
+  const green = entries.filter((entry): entry is GreenEntry => entry.green !== undefined)
   const red = entries.filter(entry => !entry.green)
-  const redPart = (entry: LedgerEntry) => `red ${when(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}`
+  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}`
   return [
-    ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${entry.test}: ${redPart(entry)}; green ${when(entry.green?.at ?? 0)} in ${entry.green?.scope ?? ''}`)] : []),
+    ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${entry.test}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
     ...(red.length > 0 ? [`Still red (${red.length}):`, ...red.map(entry => `- ${entry.test}: ${redPart(entry)}`)] : []),
   ].join('\n')
-}
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-/** A time on this Mac's clock, with its day: a branch's runs can span days. */
-function when(at: number): string {
-  const date = new Date(at)
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${MONTHS[date.getMonth()]} ${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 function count(tests: number): string {

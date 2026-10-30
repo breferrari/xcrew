@@ -137,3 +137,11 @@ export function generatedApps(command: string): (string | undefined)[] {
     return folder === '' || folder === '.' ? undefined : folder
   })
 }
+
+/**
+ * Whether a test tool runs every test its scope names: MobileBuildMCP's, whose selection the scope reads from its
+ * arguments, and the Xcode MCP's run of all tests. Its other test tools take a selection the scope doesn't read.
+ */
+export function runsEveryTestItNames(tool: XcodeTool): boolean {
+  return tool.server !== 'xcode' || /\ball\b/.test(wordsOf(tool.tool))
+}

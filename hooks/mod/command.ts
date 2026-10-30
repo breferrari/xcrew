@@ -1,5 +1,5 @@
 import { average, stopwatch } from './format'
-import { HISTORY, HISTORY_KEPT_MS } from './timing'
+import { HISTORY, isStale } from './timing'
 
 export const USAGE = [
   '/xcrew doctor   check this Mac and project, with the fix for anything wrong',
@@ -21,11 +21,6 @@ export function keptHistory(tools: string[], updated: Readonly<Record<string, un
     else sorted.kept.push(tool)
   }
   return sorted
-}
-
-/** A line dated more than `HISTORY_KEPT_MS` before `now`. An undated one isn't stale: it's dated when next seen. */
-export function isStale(updated: unknown, now: number): boolean {
-  return typeof updated === 'number' && now - updated > HISTORY_KEPT_MS
 }
 
 /** `/xcrew history`: each tool's usual duration, slowest first, from its stored runs. */

@@ -221,7 +221,12 @@ The mod gives Claude the ledger through a tool of its own, registered with `$.to
 
 A ledger is kept per branch, in `$.store`, under the project's real root and the branch `git symbolic-ref` names. With HEAD detached it is kept under the commit, which a later checkout of a branch never meets again: no attempt is made to carry it over.
 
-A pass turns a red green when it ran the test: the same tool, scheme and selection, or that tool and scheme's whole suite. The Xcode MCP's test tools take their selection in arguments the scope doesn't read. So two `RunSomeTests` runs of different tests share a scope, as they already do for the failures pane, and a pass of one turns the other's red green.
+A run turns a red green when it ran the test without failing it:
+- It must cover the scope where the test fails now: the same tool, scheme and selection, or that tool and scheme's whole suite.
+- It must have run every test its scope names. A run with `-skip-testing:` hasn't. Nor has an Xcode MCP test run other than its run of all tests: those tools take their selection in arguments the scope doesn't read, so two `RunSomeTests` runs of different tests would share a scope.
+- A failing run counts as well, for the reds it ran that aren't among its failures, as long as it got as far as running tests.
+
+A run whose report the CLI couldn't read is left out, since its outcome would be a guess. Writes happen after the run's result goes back to Claude, one after another, and reading the ledger waits for them.
 
 ## Toolchains
 

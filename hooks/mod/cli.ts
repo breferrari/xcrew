@@ -100,6 +100,16 @@ export function manifestEditOf(answer: unknown): { app: string; generate: string
   return typeof app === 'string' && typeof generate === 'string' && generate !== '' ? { app, generate } : undefined
 }
 
+/** Where a checkout stands, as `xcrew project --branch` answers: its real root, and its branch, or its commit when HEAD is detached. */
+export type Head = { root: string; branch?: string; commit?: string }
+
+/** What `xcrew project --branch` answered, when it named a root. */
+export function headOf(answer: unknown): Head | undefined {
+  const { root, branch, commit } = (answer ?? {}) as Record<string, unknown>
+  if (typeof root !== 'string' || root === '') return undefined
+  return { root, ...(typeof branch === 'string' ? { branch } : {}), ...(typeof commit === 'string' ? { commit } : {}) }
+}
+
 /** Why a CLI command couldn't run. */
 export function couldntRun(args: readonly string[], error: unknown): string {
   return `xcrew ${args.join(' ')} couldn't run: ${error instanceof Error ? error.message : String(error)}`

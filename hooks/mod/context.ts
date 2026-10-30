@@ -1,4 +1,4 @@
-import { namesTarget, type XcodeTool } from './tools'
+import { namesTarget, runsEveryTestItNames, type XcodeTool } from './tools'
 
 /**
  * What the next build will use, learned from what the servers answer: MobileBuildMCP's session
@@ -65,4 +65,14 @@ export function historyOf(tool: XcodeTool, input: Record<string, unknown>): stri
   const extraArgs = Array.isArray(input.extraArgs) ? (input.extraArgs as unknown[]) : []
   const tests = extraArgs.filter((arg): arg is string => typeof arg === 'string' && arg.startsWith('-only-testing:')).map(arg => arg.slice('-only-testing:'.length))
   return `${tool.tool}${scheme ? ` · ${scheme}` : ''}${tests.length > 0 ? ` › ${tests.join(', ')}` : ''}`
+}
+
+/**
+ * Whether a test run ran every test its scope names, so a pass in it is a pass of each: not one that skips some
+ * (`-skip-testing:`), nor an Xcode MCP run of some tests, whose selection the scope doesn't read; only its run of all.
+ */
+export function runsWholeScope(tool: XcodeTool, input: Record<string, unknown>): boolean {
+  const extraArgs = Array.isArray(input.extraArgs) ? (input.extraArgs as unknown[]) : []
+  if (extraArgs.some(arg => typeof arg === 'string' && arg.startsWith('-skip-testing:'))) return false
+  return runsEveryTestItNames(tool)
 }

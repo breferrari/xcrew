@@ -17,6 +17,11 @@ export const historyKey = (tool: string) => `${DURATIONS_PREFIX}${tool}`
 export const updatedKey = (tool: string) => `updated.${tool}`
 /** Two weeks, as long as the CLI keeps an unused build. */
 export const HISTORY_KEPT_MS = 14 * 24 * 60 * 60_000
+
+/** A record dated more than `HISTORY_KEPT_MS` before `now`. An undated one isn't stale: it's dated when next seen. */
+export function isStale(updated: unknown, now: number): boolean {
+  return typeof updated === 'number' && now - updated > HISTORY_KEPT_MS
+}
 /** The last test run's total per tool, for the next run's `testing 312 of 959`. */
 export const testsKey = (tool: string) => `tests.${tool}`
 /** Whether a tool has written a log before: those say they're preparing until this run's appears; `clean` writes none. */

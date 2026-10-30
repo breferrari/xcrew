@@ -119,6 +119,15 @@ import Testing
         }
     }
 
+    /// The hook answering the ledger tool matches the name Claude calls it by: `mcp__<plugin>__<name>`, from the plugin's
+    /// name and the name the mod registers. A rename of either would leave every call unanswered.
+    @Test func theLedgerToolsHookMatchesItsRegisteredName() throws {
+        let ledger = try text("hooks/mod/ledger.ts")
+        let plugin = try #require(try json(".claude-plugin/plugin.json")["name"] as? String)
+        let name = try #require(ledger.firstMatch(of: /export const LEDGER_TOOL = \{\n  name: '(\w+)'/)?.1)
+        #expect(ledger.contains("export const LEDGER_TOOL_NAME = 'mcp__\(plugin)__\(name)'"))
+    }
+
     /// The plugin's MCP servers, by name, as the manifest declares them.
     func servers() throws -> [String: [String: Any]] {
         try #require(try json(".claude-plugin/plugin.json")["mcpServers"] as? [String: [String: Any]])

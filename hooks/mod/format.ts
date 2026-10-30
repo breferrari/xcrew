@@ -47,3 +47,12 @@ export function remaining(elapsed: number, usual: number): { text: string; isOve
   const left = usual - elapsed
   return left >= 0 ? { text: `~${stopwatch(left)} left`, isOver: false } : { text: `${stopwatch(-left)} over`, isOver: true }
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** A time on this Mac's clock with its day, `Oct 30 14:02`: a record that spans days says which. */
+export function dayAndTime(at: number): string {
+  const date = new Date(at)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${MONTHS[date.getMonth()]} ${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}

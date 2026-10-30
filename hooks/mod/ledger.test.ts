@@ -14,7 +14,7 @@ const DAY_MS = 24 * 60 * 60_000
  * A project on `branch` (the CLI names it and the project's root), whose test runs report the next of `reports`. The
  * store starts with `stored`; registered tools are collected in `registered`.
  */
-function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown> } = {}) {
+function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; reportFails?: () => boolean } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 9, 30, 12, 0) })
   mock.store(on, options.stored ?? {})
   const registered: { name: string; isDeferred?: unknown }[] = []
@@ -30,6 +30,7 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   stubCli(on, {
     reports,
+    ...(options.reportFails ? { reportFails: options.reportFails } : {}),
     project: args => {
       if (!args.includes('--branch')) return { isGenerated: false }
       const branch = options.branch?.() ?? 'feat/ledger'
@@ -129,20 +130,86 @@ test('Claude reads the ledger through a tool registered behind ToolSearch, and /
   expect(shown.text).toContain(TEST)
 })
 
-test('without the CLI\'s answer the run goes on and nothing is written', async ($, on) => {
-  let answers = false
-  project(on, [FAILED], { branch: () => (answers ? 'feat/ledger' : new Error('timed out')) })
+test('when the CLI can\'t name the branch, the run goes on and the ledger says it can\'t be read', async ($, on) => {
+  project(on, [FAILED], { branch: () => new Error('timed out') })
   const ran = await run($)
   expect(ran.deny).toBeUndefined()
   expect(ran.text).toBe('the server\'s result')
-  answers = true
-  expect(await ledgerText($)).toBe('No test has failed on feat/ledger yet.')
+  expect(await ledgerText($)).toBe("The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out. Run `/xcrew doctor`.")
 })
 
-test('a day later the times say which day', async ($, on) => {
+
+test('two days later the times say which day, whatever the time zone', async ($, on) => {
   const { clock } = project(on, [FAILED, PASSED])
   await run($)
-  await clock.advance(DAY_MS)
+  await clock.advance(2 * DAY_MS)
   await run($)
-  expect(await ledgerText($)).toMatch(/red Oct 30 \d\d:\d\d .*; green Oct 31 \d\d:\d\d/)
+  const [, redDay, greenDay] = /red (\w{3} \d+) \d\d:\d\d .*; green (\w{3} \d+) \d\d:\d\d/.exec(await ledgerText($)) ?? []
+  expect(redDay).toBeDefined()
+  expect(greenDay).not.toBe(redDay)
+})
+
+test('a run whose report the CLI couldn\'t read is no evidence: it turns nothing green', async ($, on) => {
+  let fails = false
+  project(on, [FAILED, PASSED], { reportFails: () => fails })
+  await run($)
+  fails = true
+  await run($)
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}`)
+})
+
+test('a pass that skipped tests turns nothing green', async ($, on) => {
+  project(on, [FAILED, PASSED])
+  await run($)
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-skip-testing:AppTests/GreetingTests'] })
+  expect(await ledgerText($)).toContain('Still red (1)')
+})
+
+test('of the Xcode MCP\'s test tools, only its run of all tests turns a red green', async ($, on) => {
+  project(on, [FAILED, PASSED, FAILED, PASSED])
+  await callTool($, 'mcp__xcode__RunSomeTests')
+  await callTool($, 'mcp__xcode__RunSomeTests')
+  expect(await ledgerText($)).toContain('Still red (1)')
+  await callTool($, 'mcp__xcode__RunAllTests')
+  await callTool($, 'mcp__xcode__RunAllTests')
+  expect(await ledgerText($)).toContain('Red, then green')
+})
+
+test('a test that fails again elsewhere is green only once that scope passes it', async ($, on) => {
+  project(on, [FAILED, PASSED, FAILED, PASSED])
+  await run($, 'AppTests')
+  await run($, 'AppTests')
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'Other' })
+  // The first scope passes again; the test still fails in the other one.
+  await run($, 'AppTests')
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+})
+
+test('a failing run turns green the reds it ran without failing them', async ($, on) => {
+  const OTHER = 'GreetingTests/testBye'
+  const both: Partial<Report> = { ok: false, failures: [FAILED.failures?.[0] ?? { title: '', message: '' }, { title: OTHER, message: 'nope', isTest: true }] }
+  project(on, [both, { ok: false, failures: [{ title: OTHER, message: 'still nope', isTest: true }] }])
+  await run($)
+  await run($)
+  const text = await ledgerText($)
+  expect(text).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}`)
+  expect(text).toContain(`Still red (1):\n- ${OTHER}`)
+})
+
+test('two runs ending together each keep their entries', async ($, on) => {
+  project(on, [FAILED, { ok: false, failures: [{ title: 'Other/testOther', message: 'nope', isTest: true }] }])
+  await Promise.all([run($, 'AppTests'), run($, 'OtherTests')])
+  const text = await ledgerText($)
+  expect(text).toContain(TEST)
+  expect(text).toContain('Other/testOther')
+})
+
+test('a test no run has written for two weeks leaves the ledger, while the branch keeps it', async ($, on) => {
+  const { clock } = project(on, [FAILED, { ok: false, failures: [{ title: 'Other/testOther', message: 'nope', isTest: true }] }])
+  await run($, 'AppTests')
+  await clock.advance(15 * DAY_MS)
+  await run($, 'OtherTests')
+  const text = await ledgerText($)
+  expect(text).not.toContain(TEST)
+  expect(text).toContain('Other/testOther')
 })

@@ -2,16 +2,16 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
-import { COMMAND, historyText, isStale, keptHistory, USAGE } from './command'
-import { describe, historyOf, observe } from './context'
-import { afterTestRun, headOf, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers } from './ledger'
+import { answerOf, couldntRun, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
+import { COMMAND, historyText, keptHistory, USAGE } from './command'
+import { describe, historyOf, observe, runsWholeScope } from './context'
+import { afterTestRun, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
 import { describedForGenerated, REASON } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
 import { afterGenerate, editedNote, letThroughNote, marked, marksOf, refusal } from './regenerate'
-import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, withContext } from './timing'
+import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, isStale, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { buildsProject, FILE_EDITOR, kindOf, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
 
@@ -145,13 +145,15 @@ export const register: Register = on => {
 
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
     // It never throws: without the CLI it falls back to whether the server reported an error.
-    const outcome = reportOf(await answer($, reportArgs(parsed.server, kind, result.isError === true), 120_000, result.text ?? ''), result.isError === true)
+    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true), 120_000, result.text ?? '')
+    const outcome = reportOf(reported, result.isError === true)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     await quietly(() => $.store.set(historyKey(scope), [...earlier, elapsed].slice(-HISTORY)))
     await quietly(() => $.store.set(updatedKey(scope), ended))
     await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
-    if (kind === 'test') await quietly(() => recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures }))
+    // Only what the CLI read goes in the ledger: without it, the outcome is a guess no test plan should cite.
+    if (kind === 'test' && reported !== undefined) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: runsWholeScope(parsed, e as unknown as Record<string, unknown>) })
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
     const ending = endingOf(outcome, ended, elapsed, earlier)
     const summaryLine = outcomeLine(name, ending)
@@ -374,8 +376,16 @@ async function closeFailures($: EngineInterface): Promise<string> {
   return 'Closed the failures pane.'
 }
 
-/** Writes a finished test run into its branch's ledger, and drops the ledgers no run has written for as long as the history is kept. */
-async function recordLedger($: EngineInterface, run: Parameters<typeof afterTestRun>[1]): Promise<void> {
+/** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */
+let ledgerWrites: Promise<unknown> = Promise.resolve()
+
+/** Writes a finished test run into its branch's ledger, after the writes before it, without holding up the run's result. */
+function recordLedger($: EngineInterface, run: TestRun): void {
+  ledgerWrites = ledgerWrites.then(() => writeLedger($, run)).catch(() => undefined)
+}
+
+/** Writes a run into its branch's ledger, and drops the ledgers no run has written for as long as the history is kept. */
+async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   const head = headOf(await answer($, ['project', '--branch'], 10_000))
   if (!head) return
   const key = ledgerKey(head)
@@ -387,6 +397,7 @@ async function recordLedger($: EngineInterface, run: Parameters<typeof afterTest
 
 /** The ledger of the branch checked out now, as text. */
 async function ledgerNow($: EngineInterface): Promise<string> {
+  await ledgerWrites
   const head = headOf(await answer($, ['project', '--branch'], 10_000))
   if (!head) return LEDGER_UNAVAILABLE
   return ledgerText(ledgerOf(await $.store.get(ledgerKey(head))), head)
