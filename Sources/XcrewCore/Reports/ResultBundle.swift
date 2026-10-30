@@ -127,10 +127,10 @@ public struct ResultBundle: Sendable {
     }
 
     /// `: A, B and C`, or `: A, B, C, D, E and 2 more`; nothing without names.
-    static func listed(_ names: [String]) -> String {
+    static func listed(_ names: [String], separator: String = ", ") -> String {
         guard let last = names.last else { return "" }
-        if names.count > mostNamed { return ": " + names.prefix(mostNamed).joined(separator: ", ") + " and \(names.count - mostNamed) more" }
-        return names.count == 1 ? ": \(last)" : ": " + names.dropLast().joined(separator: ", ") + " and \(last)"
+        if names.count > mostNamed { return ": " + names.prefix(mostNamed).joined(separator: separator) + " and \(names.count - mostNamed) more" }
+        return names.count == 1 ? ": \(last)" : ": " + names.dropLast().joined(separator: separator) + " and \(last)"
     }
 
     // MARK: Asking xcresulttool

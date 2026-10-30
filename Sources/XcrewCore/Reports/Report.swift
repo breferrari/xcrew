@@ -23,9 +23,9 @@ public struct Report: Sendable, Equatable, Codable {
     /// The warnings in lines the branch changed, a few named; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
         guard !inChanged.isEmpty else { return nil }
-        let named = inChanged.prefix(ResultBundle.mostNamed).map { "\(ToolOutput.basename($0.path)):\($0.line) \($0.message)" }
-        let more = inChanged.count > ResultBundle.mostNamed ? " and \(inChanged.count - ResultBundle.mostNamed) more" : ""
-        return "xcrew: \(inChanged.count) of \(total) warnings are in lines this branch changed: \(named.joined(separator: "; "))\(more)."
+        // Messages carry commas, so a semicolon parts them.
+        let named = inChanged.map { "\(ToolOutput.basename($0.path)):\($0.line) \($0.message)" }
+        return "xcrew: \(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
     }
 
     static let noTestsNote =
@@ -96,11 +96,10 @@ public struct Report: Sendable, Equatable, Codable {
 
         // The warnings in lines this branch changed, named: those are Claude's to fix. Nothing is said about the rest, or
         // about warnings the change causes in lines it left alone.
-        if let project, !read.warnings.isEmpty, let changed = await ChangedLines.of(project, using: runner) {
-            let inChanged = read.warnings.filter { warning in
-                changed[ProjectLayout.canonicalCreating(URL(fileURLWithPath: warning.path))]?.contains { $0.contains(warning.line) } == true
-            }
-            if let note = warningsNote(inChanged, of: read.warnings.count) { notes.append(note) }
+        let warnings = read.warnings
+        if let project, !warnings.isEmpty, let changed = await ChangedLines.of(warnings.map(\.path), in: project, using: runner) {
+            let inChanged = warnings.filter { warning in changed[warning.path]?.contains { $0.contains(warning.line) } == true }
+            if let note = warningsNote(inChanged, of: warnings.count) { notes.append(note) }
         }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)

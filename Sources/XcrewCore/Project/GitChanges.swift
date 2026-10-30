@@ -10,10 +10,11 @@ public enum GitChanges {
         /// The changed files, absolute, as the file system spells the repository.
         public let files: [String]
         /// What the change was compared with: the merge base's commit, or `HEAD` for the working tree alone.
-        public let since: String
-        /// The repository's top folder, as the file system spells it, and the untracked files among `files`.
-        public let top: String
-        public let untracked: [String]
+        let since: String
+        /// The repository's top folder, as the file system spells it.
+        let top: String
+        /// The untracked files among `files`.
+        let untracked: [String]
     }
 
     public struct Failure: Error, CustomStringConvertible, Sendable {
@@ -56,9 +57,10 @@ public enum GitChanges {
         let untracked = await git(["ls-files", "-z", "--others", "--exclude-standard", "--full-name"])
         guard diff.succeeded, untracked.succeeded else { return .failure(Failure(description: "git couldn't list the changed files")) }
         let topPath = ProjectLayout.canonicalPath(topLevel)
+        let named = { (listed: String) in listed.split(separator: "\0").map { "\(topPath)/\($0)" } }
+        let untrackedFiles = named(untracked.stdout)
         var seen = Set<String>()
-        let files = (diff.stdout + untracked.stdout).split(separator: "\0").map { "\(topPath)/\($0)" }.filter { seen.insert($0).inserted }
-        let untrackedFiles = untracked.stdout.split(separator: "\0").map { "\(topPath)/\($0)" }
+        let files = (named(diff.stdout) + untrackedFiles).filter { seen.insert($0).inserted }
         return .success(Change(base: described, files: files, since: since, top: topPath, untracked: untrackedFiles))
     }
 }

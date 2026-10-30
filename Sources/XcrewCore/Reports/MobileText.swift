@@ -110,11 +110,10 @@ struct MobileText: Sendable {
         index + 1 < lines.count ? lines[index + 1].location : nil
     }
 
-    /// Each compiler warning that names a file and line, each place it fires.
-    var warnings: [ToolOutput.Warning] {
+    /// Each compiler warning, once for each place it fires, with that place when the next line gives one.
+    var warnings: [RepeatedWarnings.Warning] {
         lines.indices.compactMap { index in
-            guard let warning = lines[index].warning, let place = location(after: index), let line = Int(place.line) else { return nil }
-            return ToolOutput.Warning(message: warning.message, path: place.path, line: line)
+            lines[index].warning.map { RepeatedWarnings.Warning(message: $0.message, location: location(after: index).map { RepeatedWarnings.Location(path: $0.path, line: $0.line) }) }
         }
     }
 
@@ -240,9 +239,6 @@ struct MobileText: Sendable {
     /// A warning that fires in several places is listed once for each, its message and then its
     /// location; this lists it once, with how many times and every place, where it was first listed.
     func collapsingWarnings() -> MobileText? {
-        let warnings = lines.indices.compactMap { index in
-            lines[index].warning.map { RepeatedWarnings.Warning(message: $0.message, location: location(after: index).map { RepeatedWarnings.Location(path: $0.path, line: $0.line) }) }
-        }
         guard let groups = RepeatedWarnings.grouped(warnings) else { return nil }
         let repeated = Dictionary(uniqueKeysWithValues: groups.filter { $0.count > 1 }.map { ($0.message, $0) })
         var listed: Set<String> = []

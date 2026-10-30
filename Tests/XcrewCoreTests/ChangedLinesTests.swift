@@ -27,6 +27,22 @@ import XcrewTestSupport
         #expect(lines["/repo/Sources/A.swift"] == [4...5, 12...12])
         #expect(lines["/repo/Sources/B.swift"] == [1...3])
     }
+
+    /// With no context, a removed line reading `-- a` and an added one reading `++ b` print like a file's header; inside a
+    /// hunk they're its lines.
+    @Test func aLineThatLooksLikeAHeaderStaysInItsHunk() {
+        let diff = """
+            --- Sources/A.swift
+            +++ Sources/A.swift
+            @@ -1 +1 @@
+            --- old
+            +++ new
+            @@ -5,0 +6 @@
+            +x
+            """
+        let lines = ChangedLines.hunks(diff, top: "/repo")
+        #expect(lines == ["/repo/Sources/A.swift": [1...1, 6...6]])
+    }
 }
 
 /// The note on a build's warnings: those in lines the branch changed, named; never a claim about the rest.
@@ -36,11 +52,12 @@ import XcrewTestSupport
     /// A project whose branch changed `Sources/Warn/Warn.swift`'s line 5, and a git that says so.
     func changed(_ project: Project, diff: String = "+++ Sources/Warn/Warn.swift\n@@ -4,0 +5 @@\n", remote: Bool = true) -> FakeRunner {
         let git = { (arguments: String) in "git -C \(project.root.path) \(arguments)" }
+        let warned = "\(ProjectLayout.canonical(project.root))/Sources/Warn/Warn.swift"
         var responses: [String: CommandResult] = [
             git("rev-parse --show-toplevel"): .init(status: 0, stdout: "\(project.root.path)\n"),
             git("diff --name-only --no-renames --no-relative -z \(Self.base)"): .init(status: 0, stdout: "Sources/Warn/Warn.swift\u{0}"),
             git("ls-files -z --others --exclude-standard --full-name"): .init(status: 0),
-            git("-c core.quotePath=false diff -U0 --no-color --no-renames --no-relative --no-prefix \(Self.base)"): .init(status: 0, stdout: diff),
+            git("-c core.quotePath=false diff -U0 --no-color --no-renames --no-relative --no-prefix \(Self.base) -- \(warned)"): .init(status: 0, stdout: diff),
         ]
         if remote {
             responses[git("rev-parse --abbrev-ref origin/HEAD")] = .init(status: 0, stdout: "origin/main\n")
@@ -77,6 +94,16 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["Sources/Warn"])
         let report = await Report.make(kind: .test, output: ToolOutput(text: build(in: project), server: .mobileBuildMCP), home: Captured.home, runner: changed(project, remote: false), project: project)
         #expect(!report.notes.contains { $0.contains("lines this branch changed") })
+    }
+
+    /// MobileBuildMCP's JSON for a passing run lists its warnings with their places too.
+    @Test func aMobileBuildMCPJSONWarningInAChangedLineIsNamed() async {
+        let project = Project.temporary(containing: ["Sources/Warn"])
+        let json = Captured.text("mobileTestsPassedWithWarningsJSON").replacingOccurrences(of: "/Users/dev/Warn", with: ProjectLayout.canonical(project.root))
+        let report = await Report.make(kind: .test, output: ToolOutput(text: json, server: .mobileBuildMCP), home: Captured.home, runner: changed(project), project: project)
+        let note = report.notes.first { $0.contains("lines this branch changed") }
+        #expect(note?.contains("1 of 3 warnings") == true, "\(report.notes)")
+        #expect(note?.contains("Warn.swift:5") == true)
     }
 
     /// The Xcode MCP's build result carries its warnings too, with file and line.

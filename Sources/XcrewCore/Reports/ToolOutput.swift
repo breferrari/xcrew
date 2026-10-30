@@ -121,18 +121,32 @@ public struct ToolOutput: Sendable {
     }
 
     /// A compiler warning and the place it fires.
-    public struct Warning: Sendable, Equatable {
-        public let message: String
-        public let path: String
-        public let line: Int
+    struct Warning: Sendable, Equatable {
+        let message: String
+        let path: String
+        let line: Int
     }
 
     /// Each warning that names a file and line, from either server's build or test result.
-    public var warnings: [Warning] {
+    var warnings: [Warning] {
         switch shape {
         case let .xcodeMCPJSON(result): result.warnings
-        case let .mobileBuildMCPText(text): text.warnings
-        case .mobileBuildMCPJSON, .unrecognized: []
+        case let .mobileBuildMCPText(text): Self.located(text.warnings)
+        case let .mobileBuildMCPJSON(result): Self.located(Self.listed(result.data?.diagnostics?.warnings ?? []))
+        case .unrecognized: []
+        }
+    }
+
+    /// MobileBuildMCP's JSON warnings, each place read from its `/path:line`.
+    static func listed(_ warnings: [MobileBuildMCPResult.Warning]) -> [RepeatedWarnings.Warning] {
+        warnings.map { RepeatedWarnings.Warning(message: $0.message, location: $0.location.map(RepeatedWarnings.Location.init)) }
+    }
+
+    /// The warnings that name a file and line.
+    static func located(_ warnings: [RepeatedWarnings.Warning]) -> [Warning] {
+        warnings.compactMap { warning in
+            guard let place = warning.location, let line = place.line.flatMap({ Int($0) }) else { return nil }
+            return Warning(message: warning.message, path: place.path, line: line)
         }
     }
 
@@ -172,7 +186,7 @@ public struct ToolOutput: Sendable {
             return text.collapsingWarnings().map { ToolOutput($0, isError: isError) }
         case let .mobileBuildMCPJSON(result):
             guard let warnings = result.data?.diagnostics?.warnings,
-                  let groups = RepeatedWarnings.grouped(warnings.map { RepeatedWarnings.Warning(message: $0.message, location: $0.location.map(RepeatedWarnings.Location.init)) })
+                  let groups = RepeatedWarnings.grouped(Self.listed(warnings))
             else { return nil }
             return editingData { data in
                 guard var diagnostics = data["diagnostics"] as? [String: Any], let listed = diagnostics["warnings"] as? [[String: Any]], listed.count == warnings.count else { return false }
