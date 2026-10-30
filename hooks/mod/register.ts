@@ -124,10 +124,11 @@ export const register: Register = on => {
       const forwarded = forwardedTool(parsed, e as unknown as Record<string, unknown>)
       if (forwarded) lost(forwarded)
       else observe(parsed, result.text ?? '')
-      // An Xcode MCP call that failed may have lost its connection: the CLI says so. Not one MobileBuildMCP proxies, through
-      // a bridge of its own that reconnecting the plugin's server doesn't restart.
-      if (parsed.server !== 'xcode' || parsed.proxied || result.isError !== true) return result
-      const notes = notesOf(await answer($, ['note', '--server', 'xcode', '--error'], 10_000, result.text ?? ''))
+      // A call that failed may have a way around it, which the CLI names: an Xcode MCP call whose connection closed, or a
+      // MobileBuildMCP error with another route. Not an Xcode MCP tool MobileBuildMCP proxies, through a bridge of its own
+      // that reconnecting the plugin's server doesn't restart.
+      if (parsed.proxied || result.isError !== true) return result
+      const notes = notesOf(await answer($, ['note', '--server', parsed.server, '--error'], 10_000, result.text ?? ''))
       return notes.length > 0 ? withContext(result, ...notes) : result
     }
     const target = describe(parsed, e as unknown as Record<string, unknown>)

@@ -169,6 +169,8 @@ import Testing
             try text("context/routing.md"),
             SessionBriefing.setupOffer,
             SessionBriefing.deviceHubNote("Xcode 27.2"),
+            ToolErrorNotes.displays,
+            ToolErrorNotes.debuggerBackend,
             SessionBriefing.failoverNote(reason: "it isn't installed"),
             String(loop),
             Report.noTestsNote,

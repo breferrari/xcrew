@@ -19,7 +19,7 @@ struct NoteCommand: Command {
             throw UsageError(description: "note needs --server MobileBuildMCP or xcode")
         }
         let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
-        invocation.print(String(decoding: try JSONEncoder.sorted.encode(Answer(notes: ClosedConnection.notes(for: output))), as: UTF8.self))
+        invocation.print(String(decoding: try JSONEncoder.sorted.encode(Answer(notes: ClosedConnection.notes(for: output) + ToolErrorNotes.notes(for: output))), as: UTF8.self))
         return 0
     }
 }
