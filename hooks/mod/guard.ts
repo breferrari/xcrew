@@ -1,3 +1,5 @@
+import type { Generated } from './cli'
+
 /**
  * The words of the guard on edits to generated projects. A generator rewrites its project, its workspace and, for Tuist,
  * its `Derived` folder on every generate, so an edit there is lost. The person decides: the call is held while they're
@@ -5,7 +7,7 @@
  * Xcode project nothing is held: XcodeWrite is how a new file joins its target there.
  */
 
-export const REASON =
+const REASON =
   'xcrew: this project is generated (Tuist or XcodeGen), and XcodeWrite re-saves the whole generated project file. ' +
   'Create the file with the Write tool instead; the generator picks it up.'
 
@@ -26,7 +28,7 @@ export const XCODE_WRITE_QUESTION: Question = {
 }
 
 /** The question before an edit to a file a generator writes. */
-export function editQuestion(file: string, generated: { manifest: string; generate: string }): Question {
+export function editQuestion(file: string, generated: Generated): Question {
   return {
     question: `${file} is generated: the next \`${generated.generate}\` overwrites this edit. Edit it anyway, or edit ${generated.manifest} instead?`,
     header: 'Generated',
@@ -35,14 +37,18 @@ export function editQuestion(file: string, generated: { manifest: string; genera
 }
 
 /** Why an edit to a generated file was refused, with what the person typed when they answered in their own words. */
-export function editRefusal(file: string, generated: { manifest: string; generate: string }, said?: string): string {
+export function editRefusal(file: string, generated: Generated, said?: string): string {
   const reason = `xcrew: ${file} is generated from ${generated.manifest}, and the next \`${generated.generate}\` overwrites an edit to it. Edit ${generated.manifest} instead, then run \`${generated.generate}\`.`
-  return said ? `${reason} The person said: ${said}` : reason
+  return withSaid(reason, said)
 }
 
 /** XcodeWrite's refusal, with what the person typed when they answered in their own words. */
 export function xcodeWriteRefusal(said?: string): string {
-  return said ? `${REASON} The person said: ${said}` : REASON
+  return withSaid(REASON, said)
+}
+
+function withSaid(reason: string, said: string | undefined): string {
+  return said ? `${reason} The person said: ${said}` : reason
 }
 
 /**

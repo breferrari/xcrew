@@ -31,10 +31,10 @@ export function mayBeManifest(path: string): boolean {
 }
 
 /**
- * A path inside a folder a generator may write: a project or workspace bundle, or Tuist's `Derived` folder. In any case.
- * Only a first look, so most edits never start the CLI, which decides.
+ * A path inside a folder a generator may write: a project or workspace bundle, or Tuist's `Derived` folder, named as
+ * the CLI matches them. Only a first look, so most edits never start the CLI, which decides.
  */
-const GENERATED_PATH = /(?:^|\/)(?:[^/]+\.(?:xcodeproj|xcworkspace)|Derived)\//i
+const GENERATED_PATH = /(?:^|\/)(?:[^/]+\.(?:xcodeproj|xcworkspace)|Derived)\//
 
 export function mayBeGenerated(path: string): boolean {
   return GENERATED_PATH.test(path)

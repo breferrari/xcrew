@@ -234,9 +234,15 @@ An edit to a file a generator writes is lost on its next generate, so the mod as
 - **Tuist** (*Synthesized files*): it will "synthesize the content of those files and write them into the `Derived` directory". That directory is "relative to the directory containing the project that defines them", and the docs say to "add the `Derived` directory to the `.gitignore` file of your project". Tuist also writes the `.xcodeproj` and `.xcworkspace`.
 - **XcodeGen** (*ProjectSpec*): "Plists are created on disk on every generation of the project", at a target's `info` or `entitlements` path. The `.xcodeproj` is named by the spec's `name`.
 
-xcrew counts a bundle or a `Derived` folder as the generator's only with a manifest beside it, so a dependency's checked-in project isn't. XcodeGen's `info` and `entitlements` paths aren't counted yet: reading them needs the spec's target keys.
+What sits beside a bundle or a `Derived` folder decides whose it is, so each app in a repository is guarded and a dependency's checked-in project isn't:
+- An XcodeGen spec writes only the `.xcodeproj` its `name` names, so a workspace CocoaPods wrote beside it isn't XcodeGen's.
+- A Tuist manifest, by detection's rule (its ProjectDescription import below the root), writes the project, the workspace and `Derived`.
 
-`$.ui.ask`, per the engine's types (Claude Code 2.1.312), "Rejects when dismissed, and in a `-p` run (no one to ask)". Either way the mod refuses the call with the reason, as it did before it asked.
+A Write that creates a file is matched through its nearest existing folder, since `/var` is `/private/var` on disk.
+
+XcodeGen's `info` and `entitlements` paths aren't counted yet, because reading them needs the spec's target keys. The mod's first look matches bundle names as the CLI does, case and all. It reads the whole path, so a project checked out below a folder named `Derived` asks the CLI on every edit, which answers no.
+
+`$.ui.ask`, per the engine's types (Claude Code 2.1.312), "Rejects when dismissed, and in a `-p` run (no one to ask)". Either way the mod refuses the call with the reason, as it did before it asked. The types name no error that tells a dismissal from a failure to show the dialog, so any rejection refuses. A typed answer refuses too, carrying the person's words, rather than the mod reading their intent.
 
 ## Toolchains
 

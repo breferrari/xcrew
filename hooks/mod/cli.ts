@@ -111,7 +111,10 @@ export function headOf(answer: unknown): Head | undefined {
 }
 
 /** The manifest to edit instead of a generated file and the command that regenerates it, when `xcrew project --generated` named one. */
-export function generatedOf(answer: unknown): { manifest: string; generate: string } | undefined {
+/** A file a generator writes: the manifest to edit instead, and the command that regenerates it. */
+export type Generated = { manifest: string; generate: string }
+
+export function generatedOf(answer: unknown): Generated | undefined {
   const { manifest, generate } = (answer ?? {}) as { manifest?: unknown; generate?: unknown }
   return typeof manifest === 'string' && typeof generate === 'string' ? { manifest, generate } : undefined
 }

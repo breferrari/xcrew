@@ -618,6 +618,45 @@ import XcrewTestSupport
         #expect(found.generate == "tuist generate --no-open")
     }
 
+    /// A Write that creates a file inside a generated folder is an edit the next generate loses too, however the root is
+    /// spelled: `/var` here is `/private/var` on disk.
+    @Test func aNewFileInAGeneratedFolderIsGenerated() async throws {
+        let project = Project.temporary(containing: ["Tuist.swift", "Derived"])
+        project.write("import ProjectDescription\n", to: "Project.swift")
+        #expect(try await answer("Derived/InfoPlists/New-Info.plist", in: project).manifest == "Project.swift")
+    }
+
+    /// XcodeGen writes the project its spec names, and nothing else beside it: not a workspace CocoaPods wrote, nor another project.
+    @Test func xcodeGenWritesOnlyTheProjectItsSpecNames() async throws {
+        let project = Project.temporary(containing: ["App.xcodeproj", "App.xcworkspace", "Other.xcodeproj"])
+        project.write("name: App\n", to: "project.yml")
+        project.write("// !$*UTF8*$!\n", to: "App.xcodeproj/project.pbxproj")
+        project.write("<Workspace/>\n", to: "App.xcworkspace/contents.xcworkspacedata")
+        project.write("// !$*UTF8*$!\n", to: "Other.xcodeproj/project.pbxproj")
+        #expect(try await answer("App.xcodeproj/project.pbxproj", in: project).manifest == "project.yml")
+        #expect(try await answer("App.xcworkspace/contents.xcworkspacedata", in: project).manifest == nil)
+        #expect(try await answer("Other.xcodeproj/project.pbxproj", in: project).manifest == nil)
+    }
+
+    /// Each XcodeGen app's project is its own spec's, not only the nearest one's.
+    @Test func aSecondXcodeGenAppsProjectNamesItsOwnSpec() async throws {
+        let project = Project.temporary(containing: ["apps/a/A.xcodeproj", "apps/b/B.xcodeproj"])
+        project.write("name: A\n", to: "apps/a/project.yml")
+        project.write("name: B\n", to: "apps/b/project.yml")
+        project.write("// !$*UTF8*$!\n", to: "apps/b/B.xcodeproj/project.pbxproj")
+        let found = try await answer("apps/b/B.xcodeproj/project.pbxproj", in: project)
+        #expect(found.manifest == "apps/b/project.yml")
+        #expect(found.generate == "xcodegen generate --spec apps/b/project.yml")
+    }
+
+    /// Beside a checked-in project, a `Project.swift` that is a source file isn't a manifest: detection's rule decides.
+    @Test func aSourceFileNamedProjectSwiftBesideAProjectIsntItsManifest() async throws {
+        let project = Project.temporary(containing: ["Tuist.swift", "Modules/Legacy/Legacy.xcodeproj"])
+        project.write("struct Project {}\n", to: "Modules/Legacy/Project.swift")
+        project.write("// !$*UTF8*$!\n", to: "Modules/Legacy/Legacy.xcodeproj/project.pbxproj")
+        #expect(try await answer("Modules/Legacy/Legacy.xcodeproj/project.pbxproj", in: project).manifest == nil)
+    }
+
     /// A checked-in project of a dependency, or a folder that only shares Tuist's folder name, isn't Tuist's to write.
     @Test func aBundleOrDerivedFolderWithNoManifestBesideItIsntGenerated() async throws {
         let project = Project.temporary(containing: ["Tuist.swift", "Vendor/Lib.xcodeproj", "Docs/Derived"])

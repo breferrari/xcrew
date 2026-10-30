@@ -65,7 +65,9 @@ public struct ProjectLayout: Sendable {
     static let tuistDependencies = "\(tuistFolder)/Package.swift"
     /// Tuist's manifests whose names are also ordinary source-file names. At the root they count by name; below it, only
     /// when they import ProjectDescription, since Tuist may find its root by `.git` alone.
-    static let tuistManifests = ["Project.swift", "Workspace.swift"]
+    static let tuistProject = "Project.swift"
+    static let tuistWorkspace = "Workspace.swift"
+    static let tuistManifests = [tuistProject, tuistWorkspace]
     /// XcodeGen's spec, by the name it reads unless told another.
     static let xcodeGenSpec = "project.yml"
     static let xcodeGenMarkers = [xcodeGenSpec]
@@ -139,28 +141,43 @@ public struct ProjectLayout: Sendable {
     }
 
     /// The manifest to edit instead of `file`, as a path from the root, and the manifests whose generate writes it, when a
-    /// generator writes it: an edit to it is lost on the next generate. That's a project or workspace bundle with a manifest
-    /// beside it, XcodeGen's spec or Tuist's own, or Tuist's `Derived` folder beside a project manifest. A bundle with no
-    /// manifest beside it, such as a dependency's checked-in project, isn't the generator's.
+    /// generator writes it: an edit to it is lost on the next generate. What sits beside the bundle or folder decides:
+    /// XcodeGen's spec writes the project it names; a Tuist manifest, by detection's rule, writes the project, the
+    /// workspace and the `Derived` folder beside it. A bundle with neither, such as a dependency's checked-in project,
+    /// isn't a generator's. `nearest` stands for the project being generated at all.
     public func writer(of file: URL, nearest: Manifests) -> (manifests: Manifests, manifest: String)? {
         let rootPath = Self.canonical(root)
-        let path = Self.canonical(file)
+        let path = Self.canonicalCreating(file)
         guard path.hasPrefix(rootPath + "/") else { return nil }
         let components = path.dropFirst(rootPath.count + 1).split(separator: "/").map(String.init)
         guard let index = components.firstIndex(where: { Project.isXcodeContainer($0) || named($0, [Self.derivedFolder]) }) else { return nil }
+        let bundle = components[index]
         let folderPath = components[..<index].joined(separator: "/")
         let folder = folderPath.isEmpty ? root : root.appending(path: folderPath)
         let fromRoot = { (name: String) in folderPath.isEmpty ? name : "\(folderPath)/\(name)" }
-        switch nearest.generator {
-        case .xcodeGen:
-            guard Project.isXcodeContainer(components[index]), Self.canonical(folder) == Self.canonical(nearest.folder) else { return nil }
-            return (nearest, fromRoot(xcodeGenSpec(in: folder)))
-        case .tuist:
-            let bundle = components[index]
-            let candidates = bundle.hasSuffix(".xcworkspace") ? ["Workspace.swift", "Project.swift"] : ["Project.swift"]
-            guard let manifest = candidates.first(where: { FileManager.default.fileExists(atPath: folder.appending(path: $0).path) }) else { return nil }
-            return (tuistApp(holding: file) ?? nearest, fromRoot(manifest))
+        let beside = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        if let spec = beside.first(where: { named($0, Self.xcodeGenMarkers) }) {
+            let name = (try? String(contentsOf: folder.appending(path: spec), encoding: .utf8)).flatMap(XcodeGenSpec.projectName)
+            guard Project.isXcodeProject(bundle), name.map({ named(bundle, ["\($0)\(Project.containerExtensions[1])"]) }) ?? true else { return nil }
+            return (Manifests(generator: .xcodeGen, folder: folder, path: folderPath), fromRoot(spec))
         }
+        let candidates = Project.isXcodeWorkspace(bundle) ? [Self.tuistWorkspace, Self.tuistProject] : [Self.tuistProject]
+        let manifest = candidates.lazy.compactMap { candidate in beside.first { self.named($0, [candidate]) } }
+            .first { self.isTuistManifest(folder.appending(path: $0), countsByName: folderPath.isEmpty) }
+        guard let manifest else { return nil }
+        return (tuistApp(holding: file) ?? nearest, fromRoot(manifest))
+    }
+
+    /// `canonical` for a path that may not exist yet, as a Write creating a file gives it: the nearest folder that exists,
+    /// canonical, with the rest of the path after it.
+    static func canonicalCreating(_ url: URL) -> String {
+        var existing = url.standardizedFileURL
+        var rest: [String] = []
+        while !FileManager.default.fileExists(atPath: existing.path), existing.pathComponents.count > 1 {
+            rest.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        return ([canonical(existing)] + rest).joined(separator: "/")
     }
 
     /// The Tuist app `file` is part of: the nearest folder above it, up to the root, holding one of Tuist's markers. A

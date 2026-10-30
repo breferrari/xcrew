@@ -38,6 +38,11 @@ enum XcodeGenSpec {
         path.hasPrefix("/") ? URL(fileURLWithPath: path) : folder.appending(path: path)
     }
 
+    /// The project's name the spec gives at its top level, which names the `.xcodeproj` XcodeGen writes.
+    static func projectName(in spec: String) -> String? {
+        spec.split(whereSeparator: \.isNewline).first { $0.hasPrefix("name:") }.map { scalar(String($0.dropFirst("name:".count))) }.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     /// The entries of a spec's top-level `include` key: a path, a flow list, a flow mapping, or a block list of paths and
     /// mappings, written below the key or at its own indent. An entry that names a variable, which XcodeGen expands from
     /// the environment, is left out: xcrew can't know it at edit time.

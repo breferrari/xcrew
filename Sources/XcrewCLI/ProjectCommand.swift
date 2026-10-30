@@ -29,19 +29,22 @@ struct ProjectCommand: Command {
         var manifest: String?
     }
 
+    /// A file the mod names: absolute, as an edit tool gives it, or from the project's root.
+    static func file(_ argument: String, in project: Project) -> URL {
+        argument.hasPrefix("/") ? URL(fileURLWithPath: argument) : project.root.appending(path: argument)
+    }
+
     func run(_ invocation: Invocation) async throws -> Int32 {
         let project = invocation.context.project
         let layout = project.layout(.anywhereButHome)
         let nearest = layout.generator
         var answer = Answer(isGenerated: nearest != nil)
         if let manifest = invocation.arguments["manifest"], let nearest {
-            let file = manifest.hasPrefix("/") ? URL(fileURLWithPath: manifest) : project.root.appending(path: manifest)
-            let found = layout.command(after: file, nearest: nearest)
+            let found = layout.command(after: Self.file(manifest, in: project), nearest: nearest)
             (answer.generate, answer.app) = (found?.command, found?.manifests.path)
         }
         if let generated = invocation.arguments["generated"], let nearest {
-            let file = generated.hasPrefix("/") ? URL(fileURLWithPath: generated) : project.root.appending(path: generated)
-            if let writer = layout.writer(of: file, nearest: nearest) {
+            if let writer = layout.writer(of: Self.file(generated, in: project), nearest: nearest) {
                 (answer.manifest, answer.generate, answer.app) = (writer.manifest, writer.manifests.generateCommand, writer.manifests.path)
             }
         }

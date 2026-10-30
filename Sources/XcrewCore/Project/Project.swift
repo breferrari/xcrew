@@ -48,6 +48,14 @@ public struct Project: Sendable, Equatable {
         containerExtensions.contains { name.hasSuffix($0) }
     }
 
+    static func isXcodeWorkspace(_ name: String) -> Bool {
+        name.hasSuffix(containerExtensions[0])
+    }
+
+    static func isXcodeProject(_ name: String) -> Bool {
+        name.hasSuffix(containerExtensions[1])
+    }
+
     /// How far below the root session start searches this project.
     var searchDepth: Int { ProjectLayout.depth(of: self, reach: .repository) }
 

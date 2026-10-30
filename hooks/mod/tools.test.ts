@@ -119,12 +119,13 @@ test('the app each generate names is read from its own option or a cd before it,
   for (const [command, apps] of cases) expect([command, generatedApps(command)]).toEqual([command, apps])
 })
 
-test('a path inside a bundle or Derived folder may be generated, in any case; others are not asked about', () => {
+test('a path inside a bundle or Derived folder may be generated; others are not asked about', () => {
   // The bundles ProjectLayout counts as Xcode containers, and Tuist's Derived folder.
-  for (const path of ['/a/App.xcodeproj/project.pbxproj', '/a/App.xcworkspace/contents.xcworkspacedata', '/a/Derived/InfoPlists/App-Info.plist', '/a/ios/APP.XCODEPROJ/project.pbxproj']) {
+  for (const path of ['/a/App.xcodeproj/project.pbxproj', '/a/App.xcworkspace/contents.xcworkspacedata', '/a/Derived/InfoPlists/App-Info.plist']) {
     expect([path, mayBeGenerated(path)]).toEqual([path, true])
   }
-  for (const path of ['/a/App/ContentView.swift', '/a/Derivedness/x.swift', '/a/App.xcodeproj', '/a/Project.swift']) expect([path, mayBeGenerated(path)]).toEqual([path, false])
+  // The CLI matches bundle extensions as written, so another case isn't asked about.
+  for (const path of ['/a/App/ContentView.swift', '/a/Derivedness/x.swift', '/a/App.xcodeproj', '/a/Project.swift', '/a/ios/APP.XCODEPROJ/project.pbxproj']) expect([path, mayBeGenerated(path)]).toEqual([path, false])
 })
 
 test('a generated file is shown from its bundle or Derived folder on', () => {

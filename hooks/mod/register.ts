@@ -66,19 +66,20 @@ export const register: Register = on => {
     return result.deny === undefined ? withContext(result, letThroughNote(generates)) : result
   }).catch(async ($, e, next) => next(e))
   on('tool.call', { tool: FILE_EDITOR }, async ($, e, next) => {
+    const path = e.tool === 'Write' || e.tool === 'Edit' ? e.file_path : undefined
     // An edit to a file a generator writes waits for the person: the next generate would overwrite it.
-    if ((e.tool === 'Write' || e.tool === 'Edit') && mayBeGenerated(e.file_path)) {
-      const generated = generatedOf(await answer($, ['project', '--generated', e.file_path], 10_000))
+    if (path !== undefined && mayBeGenerated(path)) {
+      const generated = generatedOf(await answer($, ['project', '--generated', path], 10_000))
       if (generated) {
-        const shown = generatedPart(e.file_path)
+        const shown = generatedPart(path)
         const question = editQuestion(shown, generated)
         const decision = decided(question, await ask($, question))
         if (!decision.allows) return { deny: editRefusal(shown, generated, decision.said) }
       }
     }
     const result = await next(e)
-    if ((e.tool !== 'Write' && e.tool !== 'Edit') || result.deny !== undefined || result.isError || !mayBeManifest(e.file_path)) return result
-    const edit = manifestEditOf(await answer($, ['project', '--manifest', e.file_path], 10_000))
+    if (path === undefined || result.deny !== undefined || result.isError || !mayBeManifest(path)) return result
+    const edit = manifestEditOf(await answer($, ['project', '--manifest', path], 10_000))
     if (!edit) return result
     return (await markStale($, stale => marked(stale, edit))) ? withContext(result, editedNote(edit.generate)) : result
   }).catch(async ($, e, next) => next(e))
