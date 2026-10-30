@@ -49,8 +49,25 @@ public struct AffectedTests: Sendable, Equatable, Codable {
             owners.formUnion(found)
         }
         // Targets of the same name in two projects keep every dependency: dropping one could skip a test.
-        let targets = graphs.reduce(into: [String: ProjectGraph.Target]()) { all, graph in
+        var targets = graphs.reduce(into: [String: ProjectGraph.Target]()) { all, graph in
             all.merge(graph.targets) { first, second in ProjectGraph.Target(name: first.name, isTest: first.isTest || second.isTest, dependencies: first.dependencies.union(second.dependencies)) }
+        }
+        // A module links the one below it by its product, across projects, as a modular Tuist app does: a product no
+        // project here builds depends on something unread.
+        let products = graphs.reduce(into: [String: String]()) { all, graph in all.merge(graph.products) { first, _ in first } }
+        for graph in graphs {
+            for (target, linked) in graph.links {
+                for product in linked.sorted() {
+                    guard let producer = products[product] else { return everything("\(target) links \(product), which no project here builds") }
+                    if producer != target { targets[target]?.dependencies.insert(producer) }
+                }
+            }
+            for (target, names) in graph.external {
+                for name in names.sorted() {
+                    guard targets[name] != nil else { return everything("\(target) depends on \(name), which no project here builds") }
+                    targets[target]?.dependencies.insert(name)
+                }
+            }
         }
         // Every target that builds on an affected one is affected too, however far up.
         var affected = owners

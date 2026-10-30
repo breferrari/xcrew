@@ -4,7 +4,7 @@
 
 - Before Claude edits a file your Tuist or XcodeGen project generates (inside the `.xcodeproj` or `.xcworkspace`, or Tuist's `Derived` folder), Xcrew asks you, since the next generate overwrites the edit. Say no, and Claude is pointed at the manifest to edit instead and the generate command. `XcodeWrite` in a generated project now asks the same way instead of being refused outright.
 - Each conversation starts with a short card in Claude's context: how long builds and test runs usually take in this folder, the tests still failing on the branch, and, when a full test run is slow, the selections run before. It's built from what Xcrew already recorded, sent once per conversation, and kept to a few lines.
-- `xcrew affected` lists the tests your branch's changes can break, from the targets the project says own the changed files and every target that depends on them. Claude asks it, through a tool of the mod's, before running the whole suite, and runs only those tests. When a change touches something it can't read, such as the project file, a scheme, an `.xcconfig`, a package or a manifest, it says to run everything and names the file.
+- `xcrew affected` lists the tests your branch's changes can break, from the targets the project says own the changed files and every target that depends on them, across the projects of a modular app. Claude asks it, through a tool of the mod's, before running the whole suite, and runs only those tests. When a change touches something it can't read, such as the project file, a scheme, an `.xcconfig`, a package or a manifest, it says to run everything and names the file.
 
 ## 0.8.7 — 2026-10-30
 

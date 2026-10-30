@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: breferrari/xcrew-testbed
-          ref: 05b4388ab5bfcfa15a0b4abe0f7d441f4aa72cb6 # v0.1.0
+          ref: afa3cfd0bbe0fb073f19542f415744f5bcd37f1f # v0.2.0
           path: xcrew-testbed
       - name: Use the newest Xcode on the runner
         run: |
@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: breferrari/xcrew-testbed
-          ref: 05b4388ab5bfcfa15a0b4abe0f7d441f4aa72cb6 # v0.1.0
+          ref: afa3cfd0bbe0fb073f19542f415744f5bcd37f1f # v0.2.0
           path: xcrew-testbed
       - name: Use the oldest Xcode whose Swift is the one swift-tools-version names
         run: |

@@ -246,3 +246,38 @@ struct TestbedAffectedTests {
         #expect(affected.selections == ["AppTests"], "\(affected.runAll ?? "")")
     }
 }
+
+/// A modular Tuist app, one project per module, App on Feature on Core: a module links the one below by its product,
+/// across projects. A change selects the tests of its module and of every module above it.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedModularAffectedTests {
+    static let cases: [(changed: String, selections: [String])] = [
+        ("Modules/Core/Sources/Core.swift", ["AppTests", "CoreTests", "FeatureTests"]),
+        ("Modules/Feature/Sources/Feature.swift", ["AppTests", "FeatureTests"]),
+        ("Modules/App/Sources/App.swift", ["AppTests"]),
+    ]
+
+    @Test(arguments: cases.map(\.changed))
+    func aChangeSelectsItsModulesTestsAndEveryModuleAbove(_ changed: String) throws {
+        let root = try TestbedTests.copy("modular/tuist-modules")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let affected = AffectedTests.of(changed: [changed], in: Project(root: root))
+        #expect(affected.selections == Self.cases.first { $0.changed == changed }?.selections, "\(affected.runAll ?? "")")
+    }
+}
+
+/// No fixture holds a path of the Mac that made it: Tuist writes its own scheme with the absolute path it ran from.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedPrivacyTests {
+    @Test func noFixtureHoldsAnAbsolutePathOfTheMacThatMadeIt() throws {
+        var leaks: [String] = []
+        let enumerator = FileManager.default.enumerator(at: Testbed.root, includingPropertiesForKeys: [.isRegularFileKey])
+        while let file = enumerator?.nextObject() as? URL {
+            if file.pathComponents.contains(".git") { continue }
+            guard (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            if text.contains("/Users/") || text.contains("/home/") { leaks.append(file.path.replacing(Testbed.root.path, with: "")) }
+        }
+        #expect(leaks == [])
+    }
+}

@@ -140,3 +140,68 @@ import XcrewTestSupport
         #expect(AffectedTests.of(changed: ["A/Lib/Thing.swift"], in: project).selections == ["Checks"])
     }
 }
+
+/// A target that links a product no project here builds depends on something unread: everything runs.
+@Suite struct AffectedTestsUnreadProductTests {
+    @Test func linkingAProductNothingHereBuildsRunsEverything() {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("""
+            { "files": [ { "kind": "group", "name": "Products", "children": [ { "path": "<PRODUCTS>/Elsewhere.framework", "target-membership": [ { "build-phase": "App/frameworks" } ] } ] },
+                         { "kind": "folder", "path": "App", "target-membership": [ "App" ] } ],
+              "targets": [ { "name": "App", "id": "A", "product-type": "application" }, { "name": "AppTests", "id": "T", "product-type": "bundle.unit-test", "test-host-target": "App" } ] }
+            """, to: "App.xcodeproj/project.xcproj")
+        let affected = AffectedTests.of(changed: ["App/AppApp.swift"], in: project)
+        #expect(affected.selections == nil)
+        #expect(affected.runAll?.contains("Elsewhere.framework") == true)
+    }
+}
+
+/// A dependency entry can point into another project: a proxy whose container is that project's file. It resolves by
+/// the target it names, among the projects the workspace reads.
+@Suite struct AffectedTestsProxyTests {
+    /// A project in the classic format: `framework` with its folder and tests, depending on `dependency` in `../A`.
+    func pbxproj(_ name: String, dependency: String?) -> String {
+        let external = dependency.map { """
+            FD = { isa = PBXTargetDependency; name = \($0); targetProxy = FP; };
+            FP = { isa = PBXContainerItemProxy; containerPortal = AR; proxyType = 1; remoteGlobalIDString = X; remoteInfo = \($0); };
+            AR = { isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "../A/A.xcodeproj"; sourceTree = "<group>"; };
+            """ } ?? ""
+        return """
+            // !$*UTF8*$!
+            {
+                archiveVersion = 1;
+                objectVersion = 77;
+                rootObject = P;
+                objects = {
+                    P = { isa = PBXProject; mainGroup = G; targets = (T, TT); };
+                    G = { isa = PBXGroup; children = (F); sourceTree = "<group>"; };
+                    F = { isa = PBXFileSystemSynchronizedRootGroup; path = \(name); sourceTree = "<group>"; };
+                    T = { isa = PBXNativeTarget; name = \(name); productType = "com.apple.product-type.framework"; fileSystemSynchronizedGroups = (F); buildPhases = (); dependencies = (\(dependency == nil ? "" : "FD")); };
+                    TT = { isa = PBXNativeTarget; name = \(name)Tests; productType = "com.apple.product-type.bundle.unit-test"; buildPhases = (); dependencies = (LD); };
+                    LD = { isa = PBXTargetDependency; target = T; targetProxy = LP; };
+                    LP = { isa = PBXContainerItemProxy; containerPortal = P; proxyType = 1; remoteGlobalIDString = T; remoteInfo = \(name); };
+                    \(external)
+                };
+            }
+            """
+    }
+
+    func workspace(featureDependsOn dependency: String) -> Project {
+        let project = Project.temporary(containing: ["App.xcworkspace", "A/A.xcodeproj", "B/B.xcodeproj"])
+        project.write(#"<?xml version="1.0" encoding="UTF-8"?><Workspace version="1.0"><FileRef location="group:A/A.xcodeproj"/><FileRef location="group:B/B.xcodeproj"/></Workspace>"#, to: "App.xcworkspace/contents.xcworkspacedata")
+        project.write(pbxproj("Core", dependency: nil), to: "A/A.xcodeproj/project.pbxproj")
+        project.write(pbxproj("Feature", dependency: dependency), to: "B/B.xcodeproj/project.pbxproj")
+        return project
+    }
+
+    @Test func aDependencyIntoAnotherProjectIsFollowed() {
+        let affected = AffectedTests.of(changed: ["A/Core/Store.swift"], in: workspace(featureDependsOn: "Core"))
+        #expect(affected.selections == ["CoreTests", "FeatureTests"], "\(affected.runAll ?? "")")
+    }
+
+    @Test func aDependencyOnATargetNoProjectHereBuildsRunsEverything() {
+        let affected = AffectedTests.of(changed: ["A/Core/Store.swift"], in: workspace(featureDependsOn: "Missing"))
+        #expect(affected.selections == nil)
+        #expect(affected.runAll?.contains("Missing") == true)
+    }
+}

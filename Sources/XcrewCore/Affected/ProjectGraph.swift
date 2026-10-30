@@ -22,6 +22,13 @@ struct ProjectGraph: Sendable {
     /// Each file a target lists, by canonical path.
     var owners: [String: Set<String>] = [:]
     var folders: [Folder] = []
+    /// Each product a target here builds, by its file name: `Core.framework`.
+    var products: [String: String] = [:]
+    /// Products a target links that no target in this project builds, for the workspace to resolve across projects.
+    var links: [String: Set<String>] = [:]
+    /// Targets in other projects a target depends on, by name, through a proxy into that project, for the workspace to
+    /// resolve.
+    var external: [String: Set<String>] = [:]
     /// Something the reading didn't model: the selection can't be trusted.
     var unmodeled: String?
 
@@ -93,15 +100,22 @@ struct ProjectGraph: Sendable {
             guard let name = names[id] else { continue }
             if let product = (target["productReference"] as? String).flatMap({ objects[$0]?["path"] as? String }) { productOwners[(product as NSString).lastPathComponent] = name }
         }
+        graph.products = productOwners
         for (id, target) in natives {
             guard let name = names[id] else { continue }
             var dependencies = Set<String>()
             for dependency in target["dependencies"] as? [String] ?? [] {
-                guard let targetID = objects[dependency]?["target"] as? String, let dependedOn = names[targetID] else {
-                    graph.unmodeled = "\(name) depends on a target outside this project"
-                    continue
+                if let targetID = objects[dependency]?["target"] as? String, let dependedOn = names[targetID] {
+                    dependencies.insert(dependedOn)
+                } else if let proxy = (objects[dependency]?["targetProxy"] as? String).flatMap({ objects[$0] }),
+                          let portal = (proxy["containerPortal"] as? String).flatMap({ objects[$0] }),
+                          (portal["path"] as? String)?.hasSuffix(".xcodeproj") == true,
+                          let remote = proxy["remoteInfo"] as? String {
+                    // A proxy into another project's file: its target, by name, among the projects the workspace reads.
+                    graph.external[name, default: []].insert(remote)
+                } else {
+                    graph.unmodeled = "\(name) depends on a target the reading can't resolve"
                 }
-                dependencies.insert(dependedOn)
             }
             // A test bundle runs in its host app, named by the product its TEST_HOST setting points at.
             for host in testHosts(of: target, in: objects) {
@@ -115,7 +129,12 @@ struct ProjectGraph: Sendable {
                     for file in files {
                         // Linking another target's product depends on it, entry or not: Xcode finds it implicitly.
                         if objects[file]?["sourceTree"] as? String == "BUILT_PRODUCTS_DIR", let product = objects[file]?["path"] as? String {
-                            if let producer = productOwners[(product as NSString).lastPathComponent], producer != name { dependencies.insert(producer) }
+                            let productName = (product as NSString).lastPathComponent
+                            if let producer = productOwners[productName] {
+                                if producer != name { dependencies.insert(producer) }
+                            } else {
+                                graph.links[name, default: []].insert(productName)
+                            }
                             continue
                         }
                         guard let url = location(file) else { continue }
@@ -177,6 +196,7 @@ struct ProjectGraph: Sendable {
         let namesByID = Dictionary(targets.compactMap { target in (target["id"] as? String).flatMap { id in (target["name"] as? String).map { (id, $0) } } }, uniquingKeysWith: { first, _ in first })
         let names = Set(targets.compactMap { $0["name"] as? String })
         let producers = Dictionary(targets.compactMap { target in (target["product"] as? String).flatMap { product in (target["name"] as? String).map { ((product as NSString).lastPathComponent, $0) } } }, uniquingKeysWith: { first, _ in first })
+        graph.products = producers
         func targetName(_ reference: Any) -> String? {
             guard let text = reference as? String ?? (reference as? [String: Any]).flatMap({ $0["build-phase"] as? String ?? $0["target"] as? String }) else { return nil }
             let name = String(text.split(separator: "/").first ?? "")
@@ -199,7 +219,11 @@ struct ProjectGraph: Sendable {
                 if let path, path.hasPrefix("<") {
                     let product = (path as NSString).lastPathComponent
                     for member in (node["target-membership"] as? [Any] ?? []).compactMap(targetName) {
-                        if let producer = producers[product], producer != member { graph.targets[member]?.dependencies.insert(producer) }
+                        if let producer = producers[product] {
+                            if producer != member { graph.targets[member]?.dependencies.insert(producer) }
+                        } else {
+                            graph.links[member, default: []].insert(product)
+                        }
                     }
                     continue
                 }
