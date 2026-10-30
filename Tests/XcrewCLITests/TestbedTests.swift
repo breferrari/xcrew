@@ -614,7 +614,8 @@ struct TestbedAffectedSchemeTests {
         let answer = try await Self.answer(changed: ["Modules/Feature/Sources/Feature.swift"])
         let schemes = try #require(answer["schemes"] as? [[String: Any]], "\(answer)")
         #expect(schemes.map { $0["name"] as? String } == ["Feature", "App"])
-        #expect(schemes.map { $0["targets"] as? Int } == [1, 2])
+        #expect(schemes.map { $0["container"] as? String } == ["Modules/Feature/Feature.xcodeproj", "Modules/App/App.xcodeproj"])
+        #expect(schemes.map { $0["targets"] as? [String] } == [["FeatureTests"], ["AppTests", "AppUITests"]])
     }
 
     /// A change the reading can't place can break anything: no selection, so no scheme.

@@ -70,6 +70,20 @@ import Testing
         #expect(unquoted == [])
     }
 
+    /// `xcrew affected` writes the JSON the mod's `Affected` type reads: every key it writes, a scheme's too, is one the
+    /// type names, so a rename on one side can't leave the other reading nothing.
+    @Test func affectedsAnswerIsTheShapeTheModReads() throws {
+        let type = try #require(try text("hooks/mod/affected.ts").firstMatch(of: /export type Affected = \{(.+)\}\n/)).output.1
+        let scheme = TestSchemes.Scheme(name: "Feature", container: "Feature.xcodeproj", targets: ["FeatureTests"])
+        let answer = AffectedCommand.Answer(base: "origin/main", changed: ["a"], selections: ["FeatureTests"], runAll: "r", schemes: [scheme])
+        let keys = { (value: any Encodable) throws -> [String] in
+            try (JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as? [String: Any] ?? [:]).keys.sorted()
+        }
+        let schemeType = try #require(type.firstMatch(of: /schemes\?: \{([^}]+)\}/)).output.1
+        for key in try keys(answer) { #expect(type.contains("\(key)?:"), "the mod's Affected type doesn't read \(key)") }
+        for key in try keys(scheme) { #expect(schemeType.contains("\(key): "), "the mod's Affected type doesn't read a scheme's \(key)") }
+    }
+
     // MARK: MCP servers
 
     /// The failover note names only Xcode MCP tools the mod classifies, with the kind the note gives them.

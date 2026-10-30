@@ -22,7 +22,8 @@ public struct AffectedTests: Sendable, Equatable, Codable {
         let rootPath = ProjectLayout.canonical(project.root)
         let fromRoot = { (path: String) in path.hasPrefix(rootPath + "/") ? String(path.dropFirst(rootPath.count + 1)) : path }
         var graphs: [ProjectGraph] = []
-        for bundle in projects(in: project, layout: layout) {
+        let containers = layout.containers.map { project.root.appending(path: $0) }
+        for bundle in projects(in: containers) {
             do {
                 let graph = try ProjectGraph.read(bundle)
                 if let unmodeled = graph.unmodeled { return everything("\(fromRoot(ProjectLayout.canonical(bundle))): \(unmodeled)") }
@@ -82,7 +83,7 @@ public struct AffectedTests: Sendable, Equatable, Codable {
             }
         }
         let selections = affected.filter { targets[$0]?.isTest == true }.sorted()
-        let schemes = TestSchemes.testingOnly(Set(selections), in: layout.containers.map { project.root.appending(path: $0) })
+        let schemes = TestSchemes.testingOnly(Set(selections), in: containers, from: project.root)
         return AffectedTests(selections: selections, schemes: schemes.isEmpty ? nil : schemes)
     }
 
@@ -91,8 +92,7 @@ public struct AffectedTests: Sendable, Equatable, Codable {
     }
 
     /// The `.xcodeproj` bundles to read: the nearest project, or each one the nearest workspace refers to.
-    static func projects(in project: Project, layout: ProjectLayout) -> [URL] {
-        let containers = layout.containers.map { project.root.appending(path: $0) }
+    static func projects(in containers: [URL]) -> [URL] {
         let workspaces = containers.filter { Project.isXcodeWorkspace($0.lastPathComponent) }
         let referenced = workspaces.flatMap(TestSchemes.projects)
         let bundles = referenced + containers.filter { Project.isXcodeProject($0.lastPathComponent) }

@@ -22,16 +22,23 @@ export const AFFECTED_TOOL = {
 export const AFFECTED_TOOL_NAME = 'mcp__xcrew__affected'
 
 /** What `xcrew affected` answers. */
-export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null; schemes?: { name: string; targets: number }[] }
+export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null; schemes?: { name: string; container: string; targets: string[] }[] }
 
 export function affectedArgs(input: Record<string, unknown>): string[] {
   return ['affected', ...(typeof input.base === 'string' && input.base !== '' ? ['--base', input.base] : [])]
 }
 
-/** The shared schemes that test only the selected targets: one builds only what they test, `-only-testing:` on a wider scheme builds all it tests. */
-function schemesText(schemes: Affected['schemes']): string {
+/** The shared schemes that test only selected targets, each with its own, and the selected targets none of them tests. */
+function schemesText(schemes: Affected['schemes'], selections: readonly string[]): string {
   if (!Array.isArray(schemes) || schemes.length === 0) return ''
-  return ` Schemes that test only these targets: ${joined(schemes.map(scheme => `\`${scheme.name}\` (${scheme.targets} ${scheme.targets === 1 ? 'target' : 'targets'})`))}.`
+  const named = schemes.map(scheme => {
+    const twin = schemes.some(other => other !== scheme && other.name === scheme.name)
+    return `\`${scheme.name}\`${twin ? ` in ${scheme.container}` : ''} (${scheme.targets.join(', ')})`
+  })
+  const tested = new Set(schemes.flatMap(scheme => scheme.targets))
+  const untested = selections.filter(target => !tested.has(target))
+  const cover = untested.length === 0 ? 'Between them they test every selected target.' : `None of them tests ${joined(untested)}.`
+  return ` Schemes that test only selected targets: ${joined(named)}. ${cover}`
 }
 
 /** The answer as Claude reads it; without one from the CLI, the whole suite. */
@@ -48,6 +55,6 @@ export function affectedText(answer: unknown): string {
   return (
     `The changes can break these test targets: ${affected.selections.join(', ')} (${affected.selections.map(target => `-only-testing:${target}`).join(' ')}). ` +
     `They cover the targets that own or depend on the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}` +
-    schemesText(affected.schemes)
+    schemesText(affected.schemes, affected.selections)
   )
 }
