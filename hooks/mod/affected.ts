@@ -31,14 +31,14 @@ export function affectedText(answer: unknown): string {
   const affected = (answer ?? {}) as Affected
   const since = affected.base ? ` Compared with ${affected.base}.` : ''
   if (!Array.isArray(affected.selections)) {
-    return `Run the whole suite: ${affected.runAll ?? "xcrew couldn't say which tests the changes can break"}.${since}`
+    return `The changes can break any test, so the whole suite: ${affected.runAll ?? "xcrew couldn't say which tests the changes can break"}.${since}`
   }
   const changed = affected.changed?.length ?? 0
   if (affected.selections.length === 0) {
     return changed === 0 ? `Nothing has changed, so no tests are affected.${since}` : `No test target covers the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}`
   }
   return (
-    `Run these test targets: ${affected.selections.join(', ')} (${affected.selections.map(target => `-only-testing:${target}`).join(' ')}). ` +
+    `The changes can break these test targets: ${affected.selections.join(', ')} (${affected.selections.map(target => `-only-testing:${target}`).join(' ')}). ` +
     `They cover the targets that own or depend on the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}`
   )
 }

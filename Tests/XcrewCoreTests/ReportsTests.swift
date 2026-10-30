@@ -357,6 +357,7 @@ func failingRunText(passing: Int) -> String {
     @Test func aRunThatRanNoTestsTellsClaudeWhy() async {
         let report = await Self.report("mobileTestsNoneRan")
         #expect(report.notes == [Report.noTestsNote])
+        #expect(Report.noTestsNote == "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this.")
     }
 
     @Test func expectedFailuresReachClaudeAsANote() async {

@@ -36,21 +36,21 @@ test('Claude finds the affected tool behind ToolSearch, registered beside the le
 test('a selection names the test targets and the -only-testing arguments that run them, with the base', async ($, on) => {
   session(on, { base: 'origin/main, from 0123456789ab', changed: ['Core/Store.swift'], selections: ['AppTests', 'CoreTests'] })
   const text = await ask($)
-  expect(text).toContain('AppTests, CoreTests')
+  expect(text).toStartWith('The changes can break these test targets: AppTests, CoreTests')
   expect(text).toContain('-only-testing:AppTests -only-testing:CoreTests')
   expect(text).toContain('origin/main, from 0123456789ab')
 })
 
-test('when everything must run, it says so with the reason', async ($, on) => {
+test('when nothing narrower can be said, it names the whole suite with the reason', async ($, on) => {
   session(on, { base: 'origin/main, from 0123456789ab', changed: ['Package.resolved'], runAll: 'Package.resolved changes what the build does in a way this doesn\'t read' })
   const text = await ask($)
-  expect(text).toMatch(/^Run the whole suite/)
+  expect(text).toStartWith('The changes can break any test, so the whole suite: ')
   expect(text).toContain('Package.resolved changes what the build does')
 })
 
-test('when the CLI can\'t answer, the answer is to run everything', async ($, on) => {
+test('when the CLI can\'t answer, the answer is the whole suite', async ($, on) => {
   session(on, new Error('timed out'))
-  expect(await ask($)).toMatch(/^Run the whole suite/)
+  expect(await ask($)).toStartWith('The changes can break any test, so the whole suite: ')
 })
 
 test('a base Claude names is passed to the CLI', async ($, on) => {

@@ -38,7 +38,7 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     static let noTestsNote =
-        "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names."
+        "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this."
 
     /// The longest text read as a notice: far below the size at which Claude Code saves a result (docs/findings.md),
     /// with room for the saved JSON's schema the notice names.

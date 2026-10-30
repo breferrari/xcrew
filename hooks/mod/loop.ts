@@ -4,8 +4,8 @@ import { stopwatch } from './format'
 
 /**
  * The loop budget: a scope's whole suite run again and again in a short while, each run minutes long, where the tests a
- * change can break would do. Past it, the run's result sends Claude to the affected tests, once; a fast suite never
- * gets there, and the run itself always goes ahead.
+ * change can break would do. Past it, the run's result names the `affected` tool, once; a fast suite never gets there,
+ * and the run itself always goes ahead.
  */
 
 /** The last `LOOP_RUNS` full runs of one scope, all within `LOOP_WINDOW_MS`, adding up to `LOOP_TESTING_MS`, cross the budget. */

@@ -161,7 +161,7 @@ import XcrewTestSupport
         let listed = Self.booted.replacingOccurrences(of: #""udid":"C3","state":"Booted""#, with: #""udid":"C3","state":"Booting""#)
         let runner = FakeRunner(responses: Self.coreSimulatorRuns.merging(["xcrun simctl list devices booted --json": .init(status: 0, stdout: listed)]) { $1 })
         let text = await SessionBriefing(project: project, machine: CheckContext.fake(runner, project: project).machine).text(routing: "rules\n")
-        #expect(text?.contains("- **xcrew:** Simulators booted now: iPad Air 11-inch (M3) (iOS 26.4, C3, booting), iPhone 17 (iOS 27.2, A1). Reuse one rather than booting another.") == true)
+        #expect(text?.contains("- **xcrew:** Simulators booted now: iPad Air 11-inch (M3) (iOS 26.4, C3, booting), iPhone 17 (iOS 27.2, A1). One can be reused rather than booting another.") == true)
     }
 
     /// Only a running CoreSimulator service has simulators booted; `xcrun` without it starts one, or offers to install

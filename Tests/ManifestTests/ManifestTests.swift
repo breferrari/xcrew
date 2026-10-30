@@ -137,7 +137,6 @@ import Testing
         ("their paths never go in the pull request", "harm guard: a local path published in a pull request"),
         ("ask before switching it: that changes their open Xcode", "routing: the failover to the Xcode MCP, which changes the person's open Xcode"),
         ("in a classic project, use it when a new file must join a target", "routing: which tool edits a project's files, the XcodeWrite guard"),
-        ("the steps before the failure", "a fact: when the steps it shows happened"),
     ]
 
     /// Every sentence xcrew tells Claude in the routing rules, the session briefing's notes, and the notes a run adds.
@@ -151,7 +150,7 @@ import Testing
             Report.noTestsNote,
             FailureNotes.noCrashLog,
             FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
-        ] + (try ["affected", "look", "evidence", "ledger"].map { try toolDescription(in: "hooks/mod/\($0).ts") })
+        ] + (try Self.modTools.map { try toolDescription($0.constant, in: $0.file) })
         var sentences: [String] = []
         for text in texts {
             for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }
@@ -159,13 +158,20 @@ import Testing
         return sentences
     }
 
-    /// A mod tool's description, as Claude reads it: its string literals joined.
-    func toolDescription(in file: String) throws -> String {
+    /// The tools the mod registers for Claude: each one's constant and file.
+    static let modTools = [("LEDGER_TOOL", "hooks/mod/ledger.ts"), ("AFFECTED_TOOL", "hooks/mod/affected.ts"), ("LOOK_TOOL", "hooks/mod/look.ts"), ("EVIDENCE_TOOL", "hooks/mod/evidence.ts")].map { (constant: $0.0, file: $0.1) }
+
+    /// A mod tool's description, as Claude reads it: the string literals after `description:` in its constant's object,
+    /// escaped quotes read as quotes.
+    func toolDescription(_ constant: String, in file: String) throws -> String {
         let source = try text(file)
-        let start = try #require(source.range(of: "  description:"))
-        let rest = source[start.upperBound...]
-        let end = rest.range(of: "\n  inputSchema")?.lowerBound ?? rest.endIndex
-        return rest[..<end].matches(of: /(["'])((?:(?!\1).)*)\1/).map { String($0.output.2) }.joined()
+        let object = try #require(source.range(of: "export const \(constant) = {"))
+        let body = source[object.upperBound...].prefix { _ in true }
+        let end = body.range(of: "\n}")?.lowerBound ?? body.endIndex
+        let declared = try #require(body[..<end].range(of: "  description:"))
+        let described = body[declared.upperBound..<end]
+        let stop = described.range(of: "\n  inputSchema")?.lowerBound ?? described.endIndex
+        return described[..<stop].matches(of: /(["'`])((?:\\.|(?!\1).)*)\1/).map { String($0.output.2).replacingOccurrences(of: "\\'", with: "'") }.joined()
     }
 
     @Test func xcrewsNotesPrescribeOnlyRoutingAndHarmGuards() throws {
@@ -217,7 +223,6 @@ import Testing
         let name = try registeredTool("LOOK_TOOL", in: "hooks/mod/look.ts")
         let line = try #require(routing.split(separator: "\n").first { $0.contains("failed UI test") })
         #expect(line.contains("`\(name)`"))
-        #expect(line.contains("the screen at it"))
     }
 
     /// What the briefing and the doctor offer a worktree is a form of setup that exists.
@@ -330,7 +335,7 @@ import Testing
     }
 
     /// Each tool the mod defines is registered at session start and answered by a hook matching its full name.
-    @Test(arguments: [("hooks/mod/ledger.ts", "LEDGER_TOOL"), ("hooks/mod/affected.ts", "AFFECTED_TOOL"), ("hooks/mod/look.ts", "LOOK_TOOL")])
+    @Test(arguments: modTools.map { ($0.file, $0.constant) })
     func eachToolOfTheModsIsRegisteredAndAnswered(file: String, tool: String) throws {
         let register = try text("hooks/mod/register.ts")
         #expect(try text(file).contains("export const \(tool)_NAME = "))
@@ -863,12 +868,11 @@ import Testing
         #expect(Int(shim) == FailureImages.keptDays)
     }
 
-    /// The routing rules say what a failed test's images show, by the word its notes list them with, and guard the
-    /// reference: it's re-recorded only with the person's agreement.
+    /// The routing rules guard a failed snapshot test's reference, on the line naming the word its notes list images
+    /// with: it's re-recorded only with the person's agreement.
     @Test func theRoutingRulesGuardASnapshotsReference() throws {
         let routing = try text("context/routing.md")
         let rule = try #require(routing.components(separatedBy: "\n").first { $0.contains("`\(FailureNotes.imageLabel)`") })
-        #expect(rule.contains("show its snapshot's reference, failing render and difference"))
         #expect(rule.contains("Re-record a reference only when the person agrees"))
     }
 

@@ -84,7 +84,7 @@ public struct SessionBriefing: Sendable {
             let details = ["\(device.platform) \(device.runtimeVersion)", device.udid, device.state == "Booting" ? "booting" : nil].compactMap { $0 }
             return "\(device.name) (\(details.joined(separator: ", ")))"
         }
-        return "Simulators booted now: \(named.joined(separator: ", ")). Reuse one rather than booting another."
+        return "Simulators booted now: \(named.joined(separator: ", ")). One can be reused rather than booting another."
     }
 
     /// What Claude does while MobileBuildMCP can't serve: the Xcode MCP's build and test tools, what they lose, and the

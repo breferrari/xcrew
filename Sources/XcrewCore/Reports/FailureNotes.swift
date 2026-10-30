@@ -81,7 +81,7 @@ public enum FailureNotes {
     /// suite is named as the bundle names it, `()` and all, so its suite's `/` isn't read as a target's.
     static func lookLine(_ test: TestID, bundle: String) -> String {
         let named = test.shown.count(where: { $0 == "/" }) > 1 ? test.xcresultID : test.shown
-        return "      \(lookLabel) the steps before the failure and the screen at it, with the `look` tool or `xcrew look \(named) --bundle \(bundle)`"
+        return "      \(lookLabel) the steps leading to the failure and the screen at it, with the `look` tool or `xcrew look \(named) --bundle \(bundle)`"
     }
 
     /// The text with its notes, and each failed test's images, for the failures pane.
