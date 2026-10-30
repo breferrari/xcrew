@@ -24,6 +24,9 @@ public struct Report: Sendable, Equatable, Codable {
     public var isUnread: Bool?
     /// A test run's result bundle, which the ledger keeps for a test's first red run.
     public var bundle: String?
+    /// That another Xcode than the project's pin built, for a failure whose errors another SDK or toolchain gives: apart
+    /// from the notes, since the mod shows it once a session for each pin.
+    public var pinNote: String?
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
@@ -105,7 +108,10 @@ public struct Report: Sendable, Equatable, Codable {
         }()
         async let pinNote: String? = {
             // MobileBuildMCP builds with the Xcode the pin decides; the Xcode MCP, with whichever is open.
-            guard read.server == .mobileBuildMCP, let project, let machine, !read.summary.ok else { return nil }
+            // Only a failure whose errors another SDK or toolchain gives: a type error in a line just written isn't the pin's.
+            guard read.server == .mobileBuildMCP, let project, let machine, !read.summary.ok,
+                  read.failures.contains(where: { XcodePinCheck.mayBeTheToolchain("\($0.title): \($0.message)") })
+            else { return nil }
             return XcodePinCheck.failureNote(await XcodeSnapshot.take(of: project, on: machine), hasXcodes: machine.runner.which("xcodes") != nil)
         }()
         var final = read
@@ -147,7 +153,6 @@ public struct Report: Sendable, Equatable, Codable {
 
         // A run that failed because of the Mac says so first: its errors would read as the code's.
         if let why = await why { notes.insert(why, at: 0) }
-        if let pinNote = await pinNote { notes.append(pinNote) }
 
         // A failing test's target, from the run's test list, which skips and expected failures read too.
         let targets = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { ResultBundle.targets(listing: await bundle.tests()) } else { [TestID: String]() }
@@ -162,7 +167,8 @@ public struct Report: Sendable, Equatable, Codable {
             notes: notes,
             repeated: repeatedTests,
             isUnread: kind != .run && !final.isError && final.isNotTheServers ? true : nil,
-            bundle: bundle?.path
+            bundle: bundle?.path,
+            pinNote: await pinNote
         )
     }
 }

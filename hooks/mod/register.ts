@@ -2,7 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, type Failure, type Problem, type Ran } from './cli'
+import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
@@ -188,7 +188,7 @@ export const register: Register = on => {
     // It never throws: without the CLI it falls back to whether the server reported an error.
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated), 120_000, result.text ?? '')
-    const outcome = reportOf(reported, result.isError === true)
+    const outcome = withPinNamedOnce(reportOf(reported, result.isError === true))
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
@@ -298,8 +298,9 @@ export const register: Register = on => {
     const started = await next(e)
     await $.command.register(COMMAND)
     for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
-    // A cleared conversation is a new session: its warnings show again.
+    // A cleared conversation is a new session: its warnings show again, and the pin is named again.
     found = []
+    pinsNamed.clear()
     seenAt = {}
     void loadProblems($).catch(() => undefined)
     saveCard($)
@@ -569,6 +570,15 @@ let lastSavedCard: string | undefined
 const CARD_SAVE_MS = 15_000
 /** The calls whose result said no outcome, by `tool_use_id`, until a task notification names one: its tool's name. */
 const unreadCalls = new Map<string, string>()
+
+/** The pin notes Claude has read this session: each is named with the first failure it may explain, and not again. */
+const pinsNamed = new Set<string>()
+
+function withPinNamedOnce(outcome: Report): Report {
+  if (!outcome.pinNote || pinsNamed.has(outcome.pinNote)) return outcome
+  pinsNamed.add(outcome.pinNote)
+  return { ...outcome, notes: [...outcome.notes, outcome.pinNote] }
+}
 /** How many such calls are kept waiting for their notification. */
 const UNREAD_KEPT = 20
 /** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */
