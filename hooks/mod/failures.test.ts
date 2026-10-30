@@ -23,6 +23,10 @@ const XCODE_TESTS_FAILED: Partial<Report> = {
 const BUILD_FAILED: Partial<Report> = { ok: false, failures: [{ title: 'MacroProbe.swift:13', message: "cannot convert value of type 'String' to specified type 'Int'" }] }
 const TESTS_FAILED: Partial<Report> = { ok: false, failures: [{ title: 'PlainTests/testConcatenation', message: 'XCTAssertEqual failed', where: 'PlainTests.swift:5' }] }
 const PASSED: Partial<Report> = { ok: true, detail: '5 passed' }
+const CAUSE =
+  'xcrew: this build failed because of the Mac, not the code: a module in its DerivedData\'s module cache is corrupt ("malformed or corrupted precompiled file"). Remove ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used, then build again'
+const MAC_FAILED: Partial<Report> = { ...BUILD_FAILED, cause: CAUSE }
+const MAC_ONLY: Partial<Report> = { ok: false, failures: [], cause: CAUSE }
 
 /** Stands for the engine and the CLI: each call's report is the next of `reports`; records the panes opened. */
 function engine(on: On, reports: Partial<Report>[]) {
@@ -154,4 +158,59 @@ test('a passing run, or a failure with nothing to list, points nowhere', async (
   expect(await bandText($)).not.toContain('/xcrew failures')
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
   expect(await bandText($)).not.toContain('/xcrew failures')
+})
+
+test('a run the Mac failed opens its pane with the cause, ahead of its failures', async ($, on) => {
+  engine(on, [MAC_FAILED])
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  const ran = await runCommand($, 'xcrew', 'failures')
+
+  expect(ran.text).toBe("1 failure from build_sim, in the pane, after the Mac's cause.")
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const first = await ui.find({ type: 'Text' })
+  expect(first?.text).toBe(CAUSE)
+  expect(first?.props.color).toBe('warning')
+  expect((await ui.find({ type: 'Text', text: 'MacroProbe.swift:13' }))?.props.color).toBe('error')
+  await ui.unmount()
+})
+
+/** A build the Mac failed may list no compile error: its cause alone is what the pane holds, and the band points to it. */
+test('a cause with no failures listed still leaves the pane its cause', async ($, on) => {
+  engine(on, [MAC_ONLY])
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(await bandText($)).toEndWith(' · /xcrew failures')
+  expect((await runCommand($, 'xcrew', 'failures')).text).toBe("The Mac's cause from build_sim, in the pane.")
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: CAUSE }))?.props.color).toBe('warning')
+  await ui.unmount()
+})
+
+test("a passing run of the same tool clears the Mac's cause too", async ($, on) => {
+  const seen = engine(on, [MAC_ONLY, PASSED])
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect((await runCommand($, 'xcrew', 'failures')).text).toBe("The Mac's cause from build_sim, in the pane.")
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(seen.closed).toEqual(['xcrew-failures'])
+  expect((await runCommand($, 'xcrew', 'failures')).text).toBe('No failures in the last runs.')
+})
+
+/** The pane holds the last failing run: one the Mac failed replaces another scope's failures, as listed errors do. */
+test("a run the Mac failed takes the pane from another scope's failures", async ($, on) => {
+  engine(on, [TESTS_FAILED, MAC_ONLY])
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect((await runCommand($, 'xcrew', 'failures')).text).toBe("The Mac's cause from build_sim, in the pane.")
+})
+
+/** A failing run with neither a failure nor a cause has nothing to show, and leaves what the pane held. */
+test('a failure with nothing to list and no cause keeps the earlier list', async ($, on) => {
+  engine(on, [MAC_FAILED, { ok: false, failures: [] }])
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect((await runCommand($, 'xcrew', 'failures')).text).toBe("1 failure from build_sim, in the pane, after the Mac's cause.")
 })

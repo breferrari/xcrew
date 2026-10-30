@@ -36,6 +36,8 @@ export type Report = {
   backgroundTask?: string
   /** The outcome is a run log's last verdict alone, with no test's own result read. */
   isVerdictOnly?: boolean
+  /** Why the run failed when the cause is the Mac, with its fix: the note that leads `notes`, for the pane to open with. */
+  cause?: string
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */

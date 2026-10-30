@@ -33,6 +33,9 @@ public struct Report: Sendable, Equatable, Codable {
     public var backgroundTask: String?
     /// The outcome comes from a run log's last verdict alone, with no result or bundle read: no test's own result.
     public var isVerdictOnly: Bool?
+    /// Why the run failed when the cause is the Mac, with its fix (`Why`): the note that leads `notes`, apart, so the
+    /// failures pane can open with it.
+    public var cause: String?
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
@@ -221,7 +224,8 @@ public struct Report: Sendable, Equatable, Codable {
             bundle: bundle?.path,
             pinNote: await pinNote,
             pin: await pinNote == nil ? nil : project?.xcodePin.map { "\($0.version) (\($0.file))" },
-            backgroundTask: isUnread ? Self.backgroundTask(in: final.text) : nil
+            backgroundTask: isUnread ? Self.backgroundTask(in: final.text) : nil,
+            cause: await why
         )
     }
 }

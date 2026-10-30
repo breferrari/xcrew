@@ -365,7 +365,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
     await quietly(() => $.store.set(failedKey(key), outcome.ok ? [...earlierFailed] : add(earlierFailed)))
     await quietly(() => $.store.set(updatedKey(key), ended))
   }
-  await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
+  await quietly(() => recordRun($, scope, outcome.ok, outcome.failures, outcome.cause))
   // Only what the CLI read goes in the ledger: without it, or from a log's verdict alone, the outcome says no test's own.
   const readTests = kind === 'test' && isRead && !outcome.isVerdictOnly
   if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: run.ranAll, repeated: outcome.repeated ?? [], bundle: outcome.bundle })
@@ -741,9 +741,9 @@ async function dismissFailedRun($: EngineInterface): Promise<void> {
   await quietly(() => update($, runState, run => (run?.ended && !run.ended.ok ? null : run)))
 }
 
-async function recordRun($: EngineInterface, run: string, ok: boolean, items: Failure[]): Promise<void> {
+async function recordRun($: EngineInterface, run: string, ok: boolean, items: Failure[], cause?: string): Promise<void> {
   const list = await read($, failuresState)
-  const after = afterRun(list, run, ok, items)
+  const after = afterRun(list, run, ok, items, cause)
   if (after.list !== list) await update($, failuresState, () => after.list)
   if (after.closesPane) await $.ui.close({ id: FAILURES_PANE })
 }

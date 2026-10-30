@@ -125,7 +125,7 @@ import Testing
     /// Every field of a report the CLI writes is one the mod's type for it names: a field it doesn't name is one the mod
     /// never reads.
     @Test func theModsReportTypeNamesEachFieldTheCLIWrites() throws {
-        let report = Report(ok: false, detail: "d", durationMs: 1, tests: 1, failures: [], result: "r", notes: ["n"], repeated: [], isUnread: true, bundle: "/b.xcresult", pinNote: "p", pin: "26.5 (.xcode-version)")
+        let report = Report(ok: false, detail: "d", durationMs: 1, tests: 1, failures: [], result: "r", notes: ["n"], repeated: [], isUnread: true, bundle: "/b.xcresult", pinNote: "p", pin: "26.5 (.xcode-version)", cause: "c")
         let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any]).keys
         let type = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export type Report = \{([\s\S]*?)\n\}/)?.1)
         for key in keys { #expect(type.contains("  \(key)?:") || type.contains("  \(key):"), "cli.ts's Report doesn't name `\(key)`") }

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- When a build or test failed because of the Mac, as with a corrupt module cache or a missing simulator, the failures pane opens with that cause and its fix, as Claude read it, ahead of the failing tests and compile errors, and the line above the prompt points to the pane even when the run listed no errors.
 - `xcrew doctor` names a simulator `setup --worktree` made whose worktree is gone, or whose runtime the Mac has lost, with the `xcrun simctl delete` command that removes it; it deletes nothing, and judges only what setup recorded making, never a name. It also weighs the booted simulators against this Mac's memory, by two measures that disagree, and names them in the full doctor, off the line above the prompt, once the lower one passes three quarters of it.
 - A MobileBuildMCP build or test that names no scheme keeps its times under the scheme it built: the profile chosen during the session, and when Xcode started MobileBuildMCP, the scheme selected in Xcode, followed as it changes unless `disableXcodeAutoSync` is set. Runs of different profiles no longer share usual times, test counts or the loop budget.
 - A failing test run now gets xcrew's notes, as it was meant to: MobileBuildMCP's results open with a blank line, which kept xcrew from reading them as test runs. A run repeated with `-test-iterations` lists each test once with how many runs failed, with skip reasons from the result bundle, and a crash shows the Swift error and the test's line.

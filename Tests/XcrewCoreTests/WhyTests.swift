@@ -199,12 +199,13 @@ import XcrewTestSupport
 
     // MARK: In the report
 
-    /// A failed build's report carries the note for Claude.
+    /// A failed build's report carries the note for Claude, first, and apart for the failures pane to open with.
     @Test func aFailedBuildsReportCarriesTheNote() async {
         let runner = FakeRunner.simulators(["iPhone 17"])
         let project = Project.temporary()
         let report = await Report.make(kind: .build, output: ToolOutput(text: Self.missingSimulator, server: .mobileBuildMCP, isError: true), home: project.root.path, runner: runner, project: project)
-        #expect(report.notes.contains { $0.hasPrefix("xcrew: this build failed because of the Mac, not the code: no simulator here is named iPhone 1") })
+        #expect(report.cause?.hasPrefix("xcrew: this build failed because of the Mac, not the code: no simulator here is named iPhone 1") == true)
+        #expect(report.notes.first == report.cause)
     }
 
     /// A passing build is never explained.
@@ -213,6 +214,7 @@ import XcrewTestSupport
         let passed = try String(contentsOf: Bundle.module.url(forResource: "mobileBuildPassed", withExtension: "txt", subdirectory: "Fixtures/Reports")!, encoding: .utf8)
         let report = await Report.make(kind: .build, output: ToolOutput(text: passed, server: .mobileBuildMCP), home: "/Users/dev", runner: runner, project: .temporary())
         #expect(!report.notes.contains { $0.contains("because of the Mac") })
+        #expect(report.cause == nil)
     }
 }
 

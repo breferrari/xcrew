@@ -94,7 +94,7 @@ export function phaseStep(following: Following, found: { log?: string; phase?: s
 
 /** A finished run's ending, for the band and the outcome line. */
 export function endingOf(outcome: Report, at: number, elapsed: number, earlier: readonly number[]): NonNullable<BandRun['ended']> {
-  return { at, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: comparison(elapsed, earlier), hasFailures: !outcome.ok && outcome.failures.length > 0 }
+  return { at, elapsed, ok: outcome.ok, detail: outcome.detail, comparison: comparison(elapsed, earlier), hasFailures: !outcome.ok && (outcome.failures.length > 0 || outcome.cause !== undefined) }
 }
 
 /**

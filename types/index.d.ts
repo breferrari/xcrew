@@ -10,7 +10,7 @@ export type BandRun = {
   measuredFrom?: number
   /** What the run is doing now, read from its log: `compiling Utility · Formatter.swift`, `testing 312 of 959`. */
   phase?: string
-  /** `hasFailures`: the run left failures in the pane, which the band points to. */
+  /** `hasFailures`: the run left failures, or the Mac's cause, in the pane, which the band points to. */
   /**
    * `isUnread`: the result said no outcome, as a call moved to the background answers. `background`: how the call's background
    * task ended, as its notification said.
@@ -34,6 +34,8 @@ export type FailureList = {
    * attached, and `moreImages` how many more there are and where, as the CLI words it.
    */
   items: { title: string; message: string; where?: string; isTest?: boolean; images?: string[]; moreImages?: string; target?: string }[]
+  /** Why the run failed when the cause is the Mac, with its fix, as `xcrew why` words it: the pane opens with it. */
+  cause?: string
 }
 
 /** The most serious problem the band shows from `xcrew doctor`, and how many more there are. */

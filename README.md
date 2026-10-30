@@ -108,7 +108,7 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
 
 ### The last failures beside the chat
 
-After a failing run, the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw. It opens the failures pane, with every failing test and compile error of the last failing run.
+After a failing run, the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw. It opens the failures pane, with every failing test and compile error of the last failing run, led by the Mac's cause and its fix when `xcrew why` found one, as Claude read it.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew-assets/570b5f6f7a56c2689536e550f3a078856619b746/failures-pane-light.png">
@@ -132,7 +132,7 @@ You need only `/xcrew:setup`, once. Everything else runs on its own, or is here 
 
 | Command | What it does |
 | --- | --- |
-| `/xcrew failures` | Opens the failures pane, with every failing test and compile error of the last failing run. After a failing run the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw |
+| `/xcrew failures` | Opens the failures pane, with every failing test and compile error of the last failing run, led by the Mac's cause when `xcrew why` found one. After a failing run the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw |
 | `/xcrew close` | Closes the failures pane |
 | `/xcrew ledger` | The tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan |
 | `/xcrew evidence` | The branch's evidence for a pull request: the tests it took from red to green, with their failing run's images, those still red, the coverage and warnings of the lines it changed, and the usual run times, as a block to paste into the pull request. The images come after it, for you to attach or leave out; their paths never go in the block. Claude can offer you the same when it writes a pull request's body |
