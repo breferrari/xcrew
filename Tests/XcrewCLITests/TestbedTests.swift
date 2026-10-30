@@ -287,6 +287,6 @@ struct TestbedRepetitionTests {
     @Test func aRealRunsRepetitionsGiveEachTestItsVerdict() throws {
         let listing = try String(contentsOf: Testbed.root.appending(path: "captures/repetitions/tests.json"), encoding: .utf8)
         let found = ResultBundle.repetitions(listing: listing)
-        #expect(found.map { "\($0.test.shown) \($0.failed)/\($0.runs)" } == ["RepetitionTests/testFailsEveryOtherRun 2/5", "RepetitionTests/testFailsEveryRun 5/5", "RepetitionTests/testPassesEveryRun 0/5"])
+        #expect(found.map { "\($0.test) \($0.failed)/\($0.runs) \($0.verdict)" } == ["RepetitionTests/testFailsEveryOtherRun 2/5 flaky", "RepetitionTests/testFailsEveryRun 5/5 real", "RepetitionTests/testPassesEveryRun 0/5 passed"])
     }
 }

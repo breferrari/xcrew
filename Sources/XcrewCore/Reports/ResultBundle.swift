@@ -178,35 +178,55 @@ public struct ResultBundle: Sendable {
 }
 
 extension ResultBundle {
-    public struct Repeated: Sendable, Equatable {
-        public let test: TestID
+    /// A test that ran more than once: how many runs failed and passed, of how many, and what that says.
+    public struct Repeated: Sendable, Equatable, Codable {
+        public let test: String
         public let failed: Int
+        public let passed: Int
         public let runs: Int
+        public let verdict: Verdict
     }
 
-    /// Each test that ran more than once, with how many of its runs failed: a `Test Case` whose children include
-    /// `Repetition`s, in the listing's order.
+    /// Flaky when some runs failed and some passed, real when every run failed, passed when every run passed; none when
+    /// the runs say neither, as when they were skipped.
+    public enum Verdict: String, Sendable, Codable {
+        case flaky, real, passed, none
+    }
+
+    /// Each test that ran more than once, with its runs counted: a `Test Case` and every `Repetition` below it, under
+    /// each of its arguments for a parameterized Swift Testing test, in the listing's order.
     public static func repetitions(listing: String) -> [Repeated] {
         nodes(parse(listing)).compactMap { node in
             guard node["nodeType"] as? String == "Test Case", let id = node["nodeIdentifier"] as? String else { return nil }
-            let runs = (node["children"] as? [[String: Any]] ?? []).filter { $0["nodeType"] as? String == "Repetition" }
+            let runs = nodes(node["children"]).filter { $0["nodeType"] as? String == "Repetition" }
             guard runs.count > 1 else { return nil }
-            return Repeated(test: TestID(xcresultID: id), failed: runs.filter { $0["result"] as? String == "Failed" }.count, runs: runs.count)
+            let failed = runs.count { $0["result"] as? String == "Failed" }
+            let passed = runs.count { $0["result"] as? String == "Passed" }
+            let verdict: Verdict = failed > 0 && passed > 0 ? .flaky : failed == runs.count ? .real : passed == runs.count ? .passed : .none
+            return Repeated(test: TestID(xcresultID: id).shown, failed: failed, passed: passed, runs: runs.count, verdict: verdict)
         }
     }
 
-    /// Each repeated test's verdict, for Claude: flaky when some runs failed and some passed, a real failure when every
-    /// run failed. Nil when nothing ran more than once.
+    /// Each repeated test's verdict, for Claude: the flaky and the failing named, a few at most, and the rest counted.
+    /// Nil when nothing ran more than once.
     public static func repetitionsNote(_ repeated: [Repeated]) -> String? {
         guard let runs = repeated.first?.runs else { return nil }
-        let verdicts = repeated.map { test in
-            switch test.failed {
-            case 0: "\(test.test.shown) passed every run"
-            case test.runs: "\(test.test.shown) failed every run, a real failure"
-            default: "\(test.test.shown) is flaky, failing \(test.failed) of \(test.runs)"
-            }
+        let decisions = repeated.filter { $0.verdict == .flaky || $0.verdict == .real }
+        let named = decisions.prefix(mostNamed).map { test in
+            test.verdict == .flaky ? "\(test.test) is flaky, failing \(test.failed) of \(test.runs)" : "\(test.test) failed every run, a real failure"
         }
+        let unnamed = decisions.count > mostNamed ? ["and \(decisions.count - mostNamed) more flaky or failing"] : []
+        let passed = repeated.count { $0.verdict == .passed }
+        let undecided = repeated.count { $0.verdict == .none }
         let each = repeated.allSatisfy { $0.runs == runs } ? "across \(runs) runs each" : "across repeated runs"
-        return "xcrew: \(each): \(verdicts.joined(separator: "; "))."
+        let counted = [
+            passed > 0 ? "\(passed) \(decisions.isEmpty ? "" : "more ")passed every run" : nil,
+            undecided > 0 ? "\(undecided) gave no verdict, skipped or expected to fail" : nil,
+        ].compactMap { $0 }
+        let head = (named + unnamed).joined(separator: "; ")
+        return "xcrew: \(each): " + [head.isEmpty ? nil : head + ".", counted.isEmpty ? nil : counted.joined(separator: "; ") + "."].compactMap { $0 }.joined(separator: " ")
     }
+
+    /// For a run repeated whose result bundle couldn't be read, or held no repetitions.
+    static let noRepetitionsNote = "xcrew: this run repeated its tests, but its result bundle couldn't be read, so there's no verdict on which tests are flaky."
 }

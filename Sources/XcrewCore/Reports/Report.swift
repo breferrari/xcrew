@@ -18,13 +18,7 @@ public struct Report: Sendable, Equatable, Codable {
     /// Lines added beside the result for Claude.
     public var notes: [String]
     /// For a run repeated with `-test-iterations`: each repeated test, and how many of its runs failed.
-    public var repeated: [RepeatedTest]?
-
-    public struct RepeatedTest: Sendable, Equatable, Codable {
-        public let test: String
-        public let failed: Int
-        public let runs: Int
-    }
+    public var repeated: [ResultBundle.Repeated]?
 
     static let noTestsNote =
         "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names."
@@ -85,11 +79,11 @@ public struct Report: Sendable, Equatable, Codable {
             if let expected = ResultBundle.expectedFailuresNote(summary: summary, names: names) { notes.append(expected) }
         }
         // A run repeated with `-test-iterations` says, per test, whether it's flaky or failing for real.
-        var repeatedTests: [RepeatedTest]?
-        if repeated, let bundle {
-            let found = ResultBundle.repetitions(listing: await bundle.tests())
-            if let note = ResultBundle.repetitionsNote(found) { notes.append(note) }
-            repeatedTests = found.map { RepeatedTest(test: $0.test.shown, failed: $0.failed, runs: $0.runs) }
+        var repeatedTests: [ResultBundle.Repeated]?
+        if repeated {
+            let found = if let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
+            notes.append(ResultBundle.repetitionsNote(found) ?? ResultBundle.noRepetitionsNote)
+            repeatedTests = found
         }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)

@@ -763,12 +763,12 @@ extension FailureNotes {
 
     @Test func eachRepeatedTestCountsItsFailedRuns() {
         let found = ResultBundle.repetitions(listing: Self.listing)
-        #expect(found.map { "\($0.test.shown) \($0.failed)/\($0.runs)" } == ["RepetitionTests/testMixed 1/3", "RepetitionTests/testAlways 3/3", "RepetitionTests/testNever 0/3"])
+        #expect(found.map { "\($0.test) \($0.failed)/\($0.runs) \($0.verdict)" } == ["RepetitionTests/testMixed 1/3 flaky", "RepetitionTests/testAlways 3/3 real", "RepetitionTests/testNever 0/3 passed"])
     }
 
     @Test func theNoteGivesEachTestItsVerdict() {
         let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: Self.listing))
-        #expect(note == "xcrew: across 3 runs each: RepetitionTests/testMixed is flaky, failing 1 of 3; RepetitionTests/testAlways failed every run, a real failure; RepetitionTests/testNever passed every run.")
+        #expect(note == "xcrew: across 3 runs each: RepetitionTests/testMixed is flaky, failing 1 of 3; RepetitionTests/testAlways failed every run, a real failure. 1 more passed every run.")
     }
 
     @Test func aRunWithoutRepetitionsHasNoNote() {
@@ -791,7 +791,7 @@ extension FailureNotes {
     @Test func aRepeatedRunGivesEachTestItsVerdict() async {
         let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: runner(), repeated: true)
         #expect(report.notes.contains { $0.contains("RepetitionTests/testMixed is flaky, failing 1 of 3") })
-        #expect(report.repeated == [.init(test: "RepetitionTests/testMixed", failed: 1, runs: 3), .init(test: "RepetitionTests/testAlways", failed: 3, runs: 3), .init(test: "RepetitionTests/testNever", failed: 0, runs: 3)])
+        #expect(report.repeated?.map(\.verdict) == [.flaky, .real, .passed])
     }
 
     /// The list is asked for only when the run was repeated: every other test run keeps its one fewer call.
@@ -799,5 +799,49 @@ extension FailureNotes {
         let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: runner())
         #expect(report.repeated == nil)
         #expect(!report.notes.contains { $0.contains("flaky") })
+    }
+}
+
+/// What the first reading of repetitions got wrong.
+@Suite struct RepetitionEdgeTests {
+    func testCase(_ name: String, _ children: String) -> String {
+        #"{"nodeType":"Test Case","nodeIdentifier":"S/\#(name)()","name":"\#(name)()","result":"Failed","children":[\#(children)]}"#
+    }
+
+    func repetitions(_ results: [String]) -> String {
+        results.enumerated().map { #"{"nodeType":"Repetition","name":"Repetition \#($0.offset + 1)","result":"\#($0.element)"}"# }.joined(separator: ",")
+    }
+
+    func listing(_ cases: [String]) -> String {
+        #"{"testNodes":[{"nodeType":"Test Suite","name":"S","children":[\#(cases.joined(separator: ","))]}]}"#
+    }
+
+    /// A skipped run is no pass: a test skipped every run has no verdict, not "passed every run".
+    @Test func aSkippedRunIsNoPass() {
+        let found = ResultBundle.repetitions(listing: listing([testCase("testSkipped", repetitions(["Skipped", "Skipped", "Skipped"]))]))
+        #expect(found.map(\.verdict) == [.none])
+    }
+
+    /// A parameterized Swift Testing test holds its runs under each argument.
+    @Test func runsUnderEachArgumentCount() {
+        let arguments = #"{"nodeType":"Arguments","name":"1","children":[\#(repetitions(["Passed", "Failed"]))]},{"nodeType":"Arguments","name":"2","children":[\#(repetitions(["Passed", "Passed"]))]}"#
+        let found = ResultBundle.repetitions(listing: listing([testCase("testParameterized", arguments)]))
+        #expect(found.map { "\($0.failed)/\($0.runs) \($0.verdict)" } == ["1/4 flaky"])
+    }
+
+    /// The note names the tests that need a decision, and only a few of them: a whole target repeated mustn't flood it.
+    @Test func theNoteNamesAFewAndCountsTheRest() {
+        let cases = (1...8).map { testCase("testFlaky\($0)", repetitions(["Passed", "Failed"])) } + (1...30).map { testCase("testFine\($0)", repetitions(["Passed", "Passed"])) }
+        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: listing(cases))) ?? ""
+        #expect(note.contains("S/testFlaky5 is flaky") && !note.contains("S/testFlaky6"))
+        #expect(note.contains("and 3 more flaky or failing"))
+        #expect(note.contains("30 more passed every run"))
+        #expect(!note.contains("testFine"))
+    }
+
+    /// A run repeated whose bundle can't be read says it has no verdict, rather than nothing.
+    @Test func aRepeatedRunWithoutABundleSaysSo() async {
+        let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner(), repeated: true)
+        #expect(report.notes.contains { $0.contains("no verdict on which tests are flaky") })
     }
 }

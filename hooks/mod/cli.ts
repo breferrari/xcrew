@@ -9,6 +9,9 @@ import type { CliBuild, FailureList } from '../../types'
 /** One failing test or compile error, for the failure pane; the state contract declares its shape. */
 export type Failure = FailureList['items'][number]
 
+/** A repeated test as `xcrew report` counts it, with its verdict: the CLI decides flaky or real, the mod only keeps it. */
+export type Repetition = { test: string; failed: number; passed: number; runs: number; verdict: 'flaky' | 'real' | 'passed' | 'none' }
+
 /** What `xcrew report` makes of a finished build, test or run call. */
 export type Report = {
   ok: boolean
@@ -19,8 +22,8 @@ export type Report = {
   /** What Claude reads in place of the server's result; absent keeps the server's. */
   result?: string
   notes: string[]
-  /** For a run repeated with `-test-iterations`: each repeated test, and how many of its runs failed. */
-  repeated?: { test: string; failed: number; runs: number }[]
+  /** For a run repeated with `-test-iterations`: each repeated test's runs, and the verdict the CLI gives them. */
+  repeated?: Repetition[]
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */

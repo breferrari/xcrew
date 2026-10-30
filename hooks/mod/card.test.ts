@@ -147,5 +147,5 @@ test('a flaky red test is marked so on the card', async ($, on) => {
   const entries = [{ test: 'GreetingTests/testHello', red: { scope: 'test_sim', at: NOW - 60_000, message: 'failed' }, failing: 'test_sim', last: NOW - 60_000, flaky: { failed: 2, runs: 5 } }]
   const clock = session(on, { 'ledger./work/App @ feat/card': { entries, updated: NOW - 60_000 } })
   await start($, clock)
-  expect(await card($)).toContain('GreetingTests/testHello (flaky, 2 of 5 runs failed) (test_sim)')
+  expect(await card($)).toContain('GreetingTests/testHello (flaky: failed 2 of 5 runs) (test_sim)')
 })

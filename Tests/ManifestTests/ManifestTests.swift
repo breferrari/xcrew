@@ -150,6 +150,13 @@ import Testing
         #expect(!routing.contains("-retry-tests-on-failure") && !routing.contains("-run-tests-until-failure"))
     }
 
+    /// The CLI decides flaky or real; the mod reads each verdict by the names the CLI writes, and no other.
+    @Test func theModKnowsEveryVerdictTheCLIGives() throws {
+        let union = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /verdict: ('[^}]*?')\s*\}/)?.1)
+        let names = Set(union.matches(of: /'(\w+)'/).map { String($0.1) })
+        #expect(names == Set([ResultBundle.Verdict.flaky, .real, .passed, .none].map(\.rawValue)))
+    }
+
     /// Each tool the mod defines is registered at session start and answered by a hook matching its full name.
     @Test(arguments: [("hooks/mod/ledger.ts", "LEDGER_TOOL"), ("hooks/mod/affected.ts", "AFFECTED_TOOL")])
     func eachToolOfTheModsIsRegisteredAndAnswered(file: String, tool: String) throws {
