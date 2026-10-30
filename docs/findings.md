@@ -195,6 +195,8 @@ The images were 3.3 MB of a 5.4 MB install. Moving the plugin into a folder with
 
 A plugin with a top-level `bin/` doesn't install on claude.ai or in Cowork ("claude.ai and Cowork don't install a plugin that has this directory", plugin reference, *Standard layout*). xcrew needs a Mac with Xcode, so those apps aren't its reach, and its `bin/` stays.
 
+A byte ceiling on what an install copies ran in CI from 0.9.0 to 0.9.1. It was dropped on October 30, 2026, because it fired on ordinary growth in code and tests and caught nothing.
+
 ## Installs that follow a branch
 
 The marketplace reference says a git source's `ref` is "a branch or tag", and the plugin loading reference says an installed plugin's version comes from "the `version` field in the plugin's manifest" first, which `claude plugin update` compares to decide whether to update. On October 29, 2026 (Claude Code 2.1.312), with a throwaway `CLAUDE_CONFIG_DIR`, a local marketplace and a plugin served from a local bare repository by `url` source with `"ref": "stable"`: the install took 1.0.0; moving `stable` to a commit declaring 1.0.1 and running `claude plugin update` updated it to 1.0.1; moving `stable` again without changing the version left it "already at the latest version (1.0.1)". So installs follow `stable` from one release to the next and never between them. The weekly canary repeats this against the newest Claude Code (`scripts/stable-follows.sh`).

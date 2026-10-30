@@ -381,16 +381,6 @@ import Testing
         return script.matches(of: /^  ([a-z]+)\)$/.anchorsMatchLineEndings()).map { String($0.1) }
     }
 
-    /// The footprint's ceiling is a measured size rounded up to the next 100 KB, with the measurement and its date beside
-    /// it, so raising it is a line someone writes on purpose.
-    @Test func footprintCeilingIsAMeasuredSizeRoundedUp() throws {
-        let script = try text("scripts/distribution.sh")
-        let measured = try #require(script.firstMatch(of: /measured (\d+) bytes on (\d{4}-\d{2}-\d{2})/)).output
-        let ceiling = try #require(script.firstMatch(of: /ceiling=(\d+)/).flatMap { Int($0.output.1) })
-        let size = try #require(Int(measured.1))
-        #expect(ceiling % 100_000 == 0 && ceiling >= size && ceiling - size < 100_000, "\(ceiling) isn't \(size) rounded up to the next 100 KB")
-    }
-
     /// A release is proposed only after every channel passes, as CI checks its pull request: release.sh names each.
     @Test func marketplaceReleaseChecksEveryChannel() throws {
         let call = try #require(try text("scripts/release.sh").firstMatch(of: /scripts\/distribution\.sh ([a-z ]+)/)).1
@@ -401,7 +391,7 @@ import Testing
     /// of a file only one channel ships carries that channel's prefix.
     @Test func eachDistributionStepRunsItsChannelsTests() throws {
         let channels = distributionChannels()
-        #expect(channels == ["marketplace", "listing", "techpack", "footprint"])
+        #expect(channels == ["marketplace", "listing", "techpack"])
         let source = try text("Tests/ManifestTests/ManifestTests.swift")
         let tests = source.matches(of: /func (\w+)\(/).map { String($0.1) }
         for channel in channels {

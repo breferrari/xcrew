@@ -161,8 +161,6 @@ jobs:
         run: scripts/distribution.sh listing
       - name: Techpack manifest
         run: scripts/distribution.sh techpack
-      - name: Footprint
-        run: scripts/distribution.sh footprint
 
   shell:
     name: Shell scripts
