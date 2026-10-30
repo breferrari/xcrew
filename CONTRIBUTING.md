@@ -22,7 +22,7 @@ cd xcrew
 ```sh
 swift test                # CLI, core, shim and manifest-parity tests
 claude plugin test .      # the mod's tests, against Claude Code's own engine
-claude plugin validate .
+scripts/distribution.sh marketplace listing techpack   # every channel xcrew ships through
 mcs pack validate .       # when the mcs CLI is installed
 claude --plugin-dir .     # try your checkout in a real session
 scripts/typecheck.sh      # the mod's types; needs that session once
@@ -42,7 +42,7 @@ scripts/typecheck.sh      # the mod's types; needs that session once
 
 - **Titles say what to fix or what to build.** One imperative clause, no "because"; the explanation goes in the body. Start a pull request title with its kind: `fix:` for a defect or `feat:` for a new feature that users get, otherwise `ci:`, `docs:`, `test:` or `chore:`. Issue titles are imperative too, without the prefix.
 - **A pull request carries its release note.** The template's last section is one line for someone who has never opened this repository, saying what changed for them, or `none` for internal work. The same line goes under `## Unreleased` in `CHANGELOG.md`, placed by what a reader notices first rather than at the top or the end, so a release ships the changelog as it stands.
-- **A Markdown-only pull request skips the test jobs.** They report as skipped, which satisfies the required checks. `CHANGELOG.md`, skills and the session briefing (`context/`) count as code, since the tests read them.
+- **A Markdown-only pull request skips the test jobs.** They report as skipped, which satisfies the required checks. `CHANGELOG.md`, skills and the session briefing (`context/`) count as code, since the tests read them. The README is what the plugin directory lists, so a change to it runs the Distribution job, which checks every channel xcrew ships through.
 - **Numbers or it didn't happen.** A test plan says what ran and how it went, with counts and timings; a single green run of something flaky isn't evidence.
 - **Logic goes in Swift, not in the mod.** The mod hooks, draws and keeps state; anything that parses what the servers print as text, reads a file or runs a program is a Swift command the mod calls. [docs/architecture.md](docs/architecture.md) (*The mod's boundary*) has the line, and `ModBoundaryTests` holds it.
 - **Don't hard-wrap prose.** One paragraph is one line in markdown, PR bodies and commit bodies, because GitHub renders a single newline as a line break.

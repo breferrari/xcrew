@@ -254,7 +254,7 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: Self.repository.appending(path: ".mcp.json").path))
     }
 
-    @Test func pluginShipsTheThreeServers() async throws {
+    @Test func marketplacePluginShipsTheThreeServers() async throws {
         let servers = try servers()
         #expect(Set(servers.keys) == ["MobileBuildMCP", "xcode", "sosumi"])
 
@@ -275,13 +275,13 @@ import Testing
         "lspServers", "outputStyles", "workflows", "experimental",
     ]
 
-    @Test func theManifestUsesOnlyDocumentedFields() throws {
+    @Test func marketplaceManifestUsesOnlyDocumentedFields() throws {
         let fields = Set(try json(".claude-plugin/plugin.json").keys)
         #expect(fields.subtracting(Self.manifestFields).isEmpty, "undocumented: \(fields.subtracting(Self.manifestFields).sorted())")
     }
 
     /// What the directory's listing shows and links to.
-    @Test func theListingNamesXcrewAndLinksToItsOwnPages() throws {
+    @Test func listingNamesXcrewAndLinksToItsOwnPages() throws {
         let manifest = try json(".claude-plugin/plugin.json")
         #expect(manifest["displayName"] as? String == "Xcrew")
         #expect(manifest["documentationUrl"] as? String == "https://github.com/breferrari/xcrew#your-xcode-crew-inside-claude-code")
@@ -322,7 +322,7 @@ import Testing
         ("### Why `register.ts` holds every `$` call", "why-registerts-holds-every--call"),
         ("## SourceKit `No such module` errors", "sourcekit-no-such-module-errors"),
     ])
-    func anAnchorIsGitHubs(heading: String, id: String) {
+    func listingAnchorIsGitHubs(heading: String, id: String) {
         #expect(Self.anchor(of: heading) == id)
     }
 
@@ -340,7 +340,7 @@ import Testing
     }
 
     /// A link to a heading, in the same file or another of the repository's, goes nowhere unless the heading is there.
-    @Test func everyLinkToAHeadingLandsOnOne() throws {
+    @Test func listingLinksToHeadingsLandOnOne() throws {
         let files = try markdownFiles()
         #expect(files.contains("README.md") && files.contains("docs/architecture.md"))
         var checked = 0
@@ -357,7 +357,7 @@ import Testing
 
     /// The directory's listing links to the README's top and its privacy section.
     @Test(arguments: ["documentationUrl", "privacyPolicyUrl"])
-    func theListingsLinksLandOnREADMEHeadings(_ field: String) throws {
+    func listingLinksLandOnREADMEHeadings(_ field: String) throws {
         let link = try #require(try json(".claude-plugin/plugin.json")[field] as? String)
         let fragment = try #require(link.firstMatch(of: /^https:\/\/github\.com\/breferrari\/xcrew#(.+)$/)).1
         #expect(try anchors(in: "README.md").contains(String(fragment)), "\(link) names no README heading")
@@ -365,7 +365,7 @@ import Testing
 
     /// The directory reads a server started as a file of the plugin with plain arguments, not through a shell's `-c`.
     @Test(arguments: [("MobileBuildMCP", "libexec/mobilebuildmcp-server", ["${CLAUDE_PROJECT_DIR}"]), ("xcode", "libexec/xcode-mcp-server", nil)])
-    func aLocalServerStartsFromThePluginsScript(server: String, script: String, arguments: [String]?) throws {
+    func marketplaceLocalServerStartsFromThePluginsScript(server: String, script: String, arguments: [String]?) throws {
         let servers = try servers()
         let entry = try #require(servers[server])
         #expect(entry["command"] as? String == "${CLAUDE_PLUGIN_ROOT}/\(script)")
@@ -374,6 +374,34 @@ import Testing
     }
 
     // MARK: CI
+
+    /// The channels the Distribution job checks, one step each, as `scripts/distribution.sh` names them.
+    func distributionChannels() -> [String] {
+        let script = (try? text("scripts/distribution.sh")) ?? ""
+        return script.matches(of: /^  ([a-z]+)\)$/.anchorsMatchLineEndings()).map { String($0.1) }
+    }
+
+    /// Each Distribution step runs its channel's tests by their name's prefix, so each channel has some, and every test
+    /// of a file only one channel ships carries that channel's prefix.
+    @Test func eachDistributionStepRunsItsChannelsTests() throws {
+        let channels = distributionChannels()
+        #expect(channels == ["marketplace", "listing", "techpack"])
+        let source = try text("Tests/ManifestTests/ManifestTests.swift")
+        let tests = source.matches(of: /func (\w+)\(/).map { String($0.1) }
+        for channel in channels {
+            #expect(tests.contains { $0.hasPrefix(channel) }, "no \(channel)… test for the \(channel) step")
+        }
+        let workflow = try text(".github/workflows/ci.yml")
+        for channel in channels {
+            #expect(workflow.contains("scripts/distribution.sh \(channel)"), "ci.yml has no step for \(channel)")
+        }
+        // A test reading the techpack's own files is the techpack step's.
+        let bodies = source.split(separator: "\n    @Test").dropFirst()
+        for body in bodies where body.contains("text(\"techpack.yaml\")") || body.contains("\"mcs/") {
+            let name = body.firstMatch(of: /func (\w+)\(/).map { String($0.1) } ?? ""
+            #expect(name == "eachDistributionStepRunsItsChannelsTests" || name.hasPrefix("techpack"), "\(name) reads the techpack's files")
+        }
+    }
 
     /// The toolchain `Package.swift` promises is the one a CI job tests: the floor job picks Xcode by the Swift version
     /// it reports, read from `swift-tools-version`, never by an Xcode name that ages.
@@ -439,7 +467,7 @@ import Testing
     /// Each README picture shows in the reader's theme: a `<picture>` whose light and dark sources and dark fallback are
     /// this repository's files, by absolute URL, since the plugin directory's listing shows the README away from the
     /// repository. The light file is the dark one's `-light` twin from `assets/mockups.py --light`.
-    @Test func theREADMEsPicturesFollowTheReadersTheme() throws {
+    @Test func listingPicturesFollowTheReadersTheme() throws {
         let readme = try text("README.md")
         let raw = "https://raw.githubusercontent.com/breferrari/xcrew/main/"
         let pictures = readme.matches(of: /(?s)<picture>(.*?)<\/picture>/).map { String($0.1) }
@@ -481,7 +509,7 @@ import Testing
     }
 
     /// Privacy names every program the CLI starts: each one its source runs by name.
-    @Test func privacyNamesEveryProgramTheCLIStarts() throws {
+    @Test func listingPrivacyNamesEveryProgramTheCLIStarts() throws {
         let sources = try FileManager.default.subpathsOfDirectory(atPath: Self.repository.appending(path: "Sources").path).filter { $0.hasSuffix(".swift") }
         let programs = try Set(sources.flatMap { file in
             try text("Sources/\(file)").matches(of: /\.run\(\[?"([\w.-]+)"/).map { String($0.1) }
@@ -494,7 +522,7 @@ import Testing
     }
 
     /// Privacy names every event the mod hooks.
-    @Test func privacyNamesEveryEventTheModHooks() throws {
+    @Test func listingPrivacyNamesEveryEventTheModHooks() throws {
         let events = Set(try text("hooks/mod/register.ts").matches(of: /on\('([a-z.]+)'/).map { String($0.1) })
         #expect(events.contains("tool.call"))
         let hooks = try privacyRow("Hooks", of: "The mod")
@@ -522,7 +550,7 @@ import Testing
     ]
 
     /// Privacy names every value the mod keeps.
-    @Test func privacyNamesEveryValueTheModKeeps() throws {
+    @Test func listingPrivacyNamesEveryValueTheModKeeps() throws {
         let register = try text("hooks/mod/register.ts")
         let atoms = register.matches(of: /atom\(\{ plugin: 'xcrew', key: '(\w+)' \}/).map { String($0.1) }
         let modules = try ["timing", "ledger"].map { try text("hooks/mod/\($0).ts") }.joined()
@@ -536,14 +564,14 @@ import Testing
     }
 
     /// The README's doctor report lists the doctor's checks, in the order the doctor prints them.
-    @Test func theREADMEsDoctorReportListsEveryCheck() throws {
+    @Test func listingDoctorReportListsEveryCheck() throws {
         let report = try #require(try text("README.md").firstMatch(of: /(?s)```\n(ok    mobilebuildmcp\/version.*?)```/)).1
         let listed = report.split(separator: "\n").compactMap { $0.split(separator: " ", omittingEmptySubsequences: true).dropFirst().first.map(String.init) }
         #expect(listed == Doctor.checks.map(\.id))
     }
 
     /// The README names each of the CLI's commands in what it says of how Xcrew works.
-    @Test func howItWorksNamesEveryCommand() throws {
+    @Test func listingHowItWorksNamesEveryCommand() throws {
         let table = try readmeSection("## How it works")
         for command in CLI.commands {
             #expect(table.contains("`\(command.name)`") || table.contains("`xcrew \(command.name)"), "How it works doesn't name \(command.name)")
@@ -552,7 +580,7 @@ import Testing
 
     /// Nothing in the README or the contributing guide pipes a download into a shell.
     @Test(arguments: ["README.md", "CONTRIBUTING.md"])
-    func noDocumentRunsADownload(_ file: String) throws {
+    func listingRunsNoDownload(_ file: String) throws {
         #expect(try text(file).firstMatch(of: /(curl|wget)[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b/) == nil)
     }
 
@@ -650,7 +678,7 @@ import Testing
     /// pack has a newer version, with `mcs update` as the fix.
     static let coveredByMCS: Set = ["xcrew/up-to-date"]
 
-    @Test func everyDoctorCheckIsAnMCSCheck() async throws {
+    @Test func techpackHasEveryDoctorCheck() async throws {
         let techpack = try text("techpack.yaml")
         let listed = techpack.matches(of: /command: (mcs\/checks\/[\w.-]+\.sh)/).map { String($0.1) }
         let checks = Doctor.checks.filter { !Self.coveredByMCS.contains($0.id) }
@@ -670,19 +698,19 @@ import Testing
 
     /// mcs asks only for the workspace; the simulator defaults to the newest iPhone, `xcrew setup` finds
     /// the unit-test scheme, and `/xcrew:setup` finds the others instead of having them typed in.
-    @Test func mcsAsksOnlyForTheWorkspace() async throws {
+    @Test func techpackAsksOnlyForTheWorkspace() async throws {
         let keys = try text("techpack.yaml").matches(of: /- key: (\w+)/).map { String($0.1) }
         #expect(keys == ["PROJECT"])
         #expect(Set(keys).isSubset(of: Set(SetupCommand.mcsKeys.values)), "a prompt no setup option reads")
     }
 
     /// mcs offers the workspaces and projects it finds; xcrew must recognise the same ones.
-    @Test func mcsDetectsTheContainersXcrewDoes() throws {
+    @Test func techpackDetectsTheContainersXcrewDoes() throws {
         let patterns = try text("techpack.yaml").matches(of: /^\s+- "(\*\.xc\w+)"$/.anchorsMatchLineEndings()).map { String($0.1) }
         #expect(patterns == Project.containerExtensions.map { "*\($0)" })
     }
 
-    @Test func mcsConfiguresThroughTheCLI() async throws {
+    @Test func techpackConfiguresThroughTheCLI() async throws {
         let techpack = try text("techpack.yaml")
         #expect(techpack.contains("script: mcs/configure.sh"))
         #expect(try text("mcs/configure.sh").contains("bin/xcrew\" setup"))
@@ -691,26 +719,26 @@ import Testing
 
     // MARK: Plugin identity
 
-    @Test func oneVersionEverywhere() throws {
+    @Test func marketplaceVersionIsOneEverywhere() throws {
         let version = XcrewVersion.current
         #expect(try json(".claude-plugin/plugin.json")["version"] as? String == version)
         #expect(try text("CHANGELOG.md").contains("\n## \(version)"))
     }
 
     /// The shim states the first build's time; the measurements behind it are in docs/findings.md, *Toolchains*.
-    @Test func theShimAndTheREADMEAgreeOnTheFirstBuildTime() throws {
+    @Test func listingAgreesWithTheShimOnTheFirstBuildTime() throws {
         let range = try #require(try text("bin/xcrew").firstMatch(of: /building the CLI for this version \(once, (.+) s\)/)?.1)
         #expect(try text("README.md").contains("builds Xcrew's small Swift CLI, \(range) seconds, once per version"))
     }
 
     /// mcs loads the plugin in place from the pack's checkout, at the root, and refuses it unless plugin.json names it
     /// as `pluginAndMarketplaceAgree` requires.
-    @Test func mcsLoadsThePluginFromThePack() throws {
+    @Test func techpackLoadsThePluginFromThePack() throws {
         #expect(try text("techpack.yaml").contains("plugin: \"xcrew@pack\"\n"))
     }
 
     /// mcs reads a change under an `ignore:` entry as noise and never says an update is out for it.
-    @Test func mcsNoticesEveryChangeToWhatThePluginRuns() throws {
+    @Test func techpackNoticesEveryChangeToWhatThePluginRuns() throws {
         let ignored = try text("techpack.yaml").firstMatch(of: /\nignore:\n((?:\s+(?:-|#).*\n)+)/).map { String($0.1) } ?? ""
         let entries = ignored.matches(of: /- (\S+)/).map { String($0.1) }
         #expect(!entries.isEmpty)
@@ -734,12 +762,12 @@ import Testing
     }
 
     /// An mcs install runs the pack's checkout, so it follows the branch the marketplace installs only when added at it.
-    @Test func mcsInstallsFollowTheBranchTheMarketplaceDoes() throws {
+    @Test func techpackInstallsFollowTheBranchTheMarketplaceDoes() throws {
         let branch = try installedBranch()
         #expect(try text("README.md").contains("mcs pack add breferrari/xcrew --ref \(branch) && mcs sync"))
     }
 
-    @Test func pluginAndMarketplaceAgree() async throws {
+    @Test func marketplaceAndPluginAgree() async throws {
         #expect(try json(".claude-plugin/plugin.json")["name"] as? String == "xcrew")
         let plugins = try #require(try json(".claude-plugin/marketplace.json")["plugins"] as? [[String: Any]])
         #expect(plugins.map { $0["name"] as? String } == ["xcrew"])
@@ -747,7 +775,7 @@ import Testing
 
     /// Installs follow `stable`, which only the release workflow moves, to a tag it accepted: a relative source would
     /// install main's HEAD under the last release's version.
-    @Test func theMarketplaceInstallsTheStableBranch() throws {
+    @Test func marketplaceInstallsTheStableBranch() throws {
         let repository = try #require((try json(".claude-plugin/plugin.json")["repository"] as? String)?.replacing("https://github.com/", with: ""))
         let plugins = try #require(try json(".claude-plugin/marketplace.json")["plugins"] as? [[String: Any]])
         let source = plugins.first?["source"] as? [String: String]
@@ -774,7 +802,7 @@ import Testing
 
     /// Every place that reads or moves the branch installs follow names the one the marketplace does.
     @Test(arguments: [".github/workflows/release.yml", ".github/workflows/canary.yml", "scripts/release.sh"])
-    func everyPlaceNamesTheBranchInstallsFollow(_ file: String) throws {
+    func marketplaceBranchIsNamedWhereverItMoves(_ file: String) throws {
         let branch = try installedBranch()
         let text = try text(file)
         #expect(text.contains("refs/heads/\(branch)") || text.contains("...\(branch)"), "\(file)")
