@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A CI workflow that chooses its Xcode from `.xcode-version` now counts as CI using the pinned Xcode, so `xcrew xcode` and the doctor name it instead of saying CI names none.
 - A failing test run now gets xcrew's notes, as it was meant to: MobileBuildMCP's results open with a blank line, which kept xcrew from reading them as test runs. A run repeated with `-test-iterations` lists each test once with how many runs failed, with skip reasons from the result bundle, and a crash shows the Swift error and the test's line.
 - The project's pinned Xcode is named in a failure's notes only when the errors look like another SDK or toolchain's, such as a module another Swift compiled or an SDK it can't find, and at most once a session for each pin, never on a run that passed.
 - xcrew's notes to Claude now state facts and offer tools instead of prescribing steps. It still routes work across its servers and guards your work: DerivedData isn't deleted unless you ask, and a snapshot's reference is re-recorded only with your agreement.
