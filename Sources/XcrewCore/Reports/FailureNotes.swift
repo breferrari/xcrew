@@ -44,6 +44,8 @@ public enum FailureNotes {
         let lines = text.lines
         var out: [MobileText.Line] = []
         var noted: Set<TestID> = []
+        // Where each repeated test's first failure is placed: a later one there is another run's, one elsewhere its own.
+        var placed: [TestID: String] = [:]
         var added = false
         var dropped = 0
         // A note can span lines, a skip reason the test wrote over several; each is read as its own.
@@ -63,13 +65,15 @@ public enum FailureNotes {
             if let failing = line.failing {
                 // A failure is its line and, when the text places it, the location line after it.
                 let span = text.location(after: index) == nil ? 1 : 2
-                if notes.repeated.contains(failing.test), noted.contains(failing.test) {
+                let place = text.location(after: index).map { "\($0.path):\($0.line)" } ?? ""
+                if notes.repeated.contains(failing.test), let first = placed[failing.test], first == place {
                     // A later run's failure of a repeated test goes, with the blank line before it.
                     if out.last?.isBlank == true { out.removeLast() }
                     dropped += 1
                     added = true
                 } else {
                     out += lines[index..<index + span]
+                    if placed[failing.test] == nil { placed[failing.test] = place }
                     if noted.insert(failing.test).inserted { add(notes.failures[failing.test] ?? []) }
                 }
                 index += span
@@ -108,7 +112,7 @@ public enum FailureNotes {
 
     /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `imagesFolder`, each failed
     /// test's images are kept there, and runs kept there too long are removed.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn imagesFolder: URL? = nil, repeated: Bool = false) async -> Added? {
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn imagesFolder: URL? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = []) async -> Added? {
         var order: [TestID] = []
         var located: Set<TestID> = []
         var crashed: Set<TestID> = []
@@ -128,11 +132,11 @@ public enum FailureNotes {
         }
         let isSkipping = text.skippedCount > 0 || !listedSkips.isEmpty
         // A repeated run's tests, from its test list, which skips read too: how many runs each failed.
-        let repetitions = repeated && !order.isEmpty ? ResultBundle.repetitions(listing: await bundle.tests()).filter { $0.failed > 0 } : []
+        let repetitions = repeatedTests.filter { $0.failed > 0 }
         guard !lookups.isEmpty || isSkipping || !repetitions.isEmpty else { return nil }
         // A Swift runtime error stops the process before XCTest records a message, so the run lists it under Errors, once
         // plainly and once with the xctest log's prefix. With one crashed test, it's that test's.
-        let crashError = crashed.count == 1 ? Set(text.reportedErrors.compactMap { MobileBuildMCPLine.runtimeError($0.message) }).sorted() : []
+        let crashError = crashed.count == 1 ? text.reportedErrors.compactMap { MobileBuildMCPLine.runtimeError($0.message) }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } } : []
 
         if let imagesFolder, !lookups.isEmpty { FailureImages.prune(in: imagesFolder) }
         var notes = Notes()
@@ -154,7 +158,9 @@ public enum FailureNotes {
                     }
                     if isCrashed {
                         let summary = crash?.summary ?? [noCrashLog]
-                        added += (Array(summary.prefix(1)) + crashError + summary.dropFirst()).map { "      \($0)" }
+                        // The error goes under the exception's line, or heads the frames when the log names no exception.
+                        let headed = summary.first?.hasPrefix("crashed:") == true ? 1 : 0
+                        added += (Array(summary.prefix(headed)) + crashError + summary.dropFirst(headed)).map { "      \($0)" }
                     }
                     // One export for both: the test's images, and whether it kept a screen recording, as a UI test does.
                     let (attached, recorded) = if let keepsImages {

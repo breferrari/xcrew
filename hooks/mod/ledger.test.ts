@@ -129,6 +129,14 @@ test('a class of the same name in another target never ran a test whose target t
   expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
 })
 
+test('a test that fails again in another target takes the newest target the report names', async ($, on) => {
+  project(on, [FAILED_IN_TARGET, { ok: false, failures: [{ ...FAILED.failures![0]!, target: 'NewTests' }] }, PASSED])
+  await run($)
+  await run($)
+  await run($, 'NewTests')
+  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
+})
+
 test('a pass of the whole suite on the same tool and scheme turns a selection\'s red green', async ($, on) => {
   project(on, [FAILED, PASSED])
   await run($, 'AppTests')

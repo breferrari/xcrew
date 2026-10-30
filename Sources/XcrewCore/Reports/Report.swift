@@ -113,9 +113,11 @@ public struct Report: Sendable, Equatable, Codable {
         var images: [TestID: FailureImages] = [:]
         // A saved result stays saved unless it's compacted below: Claude Code saved it for its size, which the collapse alone may not cut enough.
         if let collapsed = read.collapsingWarnings() { (final, edited) = (collapsed, saved == nil) }
+        // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
+        let repetitions = if repeated, let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
         if let text = final.mobileText {
             if let bundle, text.isTestRun {
-                if let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images"), repeated: repeated) { (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images) }
+                if let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images"), repetitions: repetitions) { (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images) }
             } else if let cleaned = text.withoutExcerpts() {
                 (final, edited) = (ToolOutput(cleaned, isError: output.isError), true)
             }
@@ -133,9 +135,8 @@ public struct Report: Sendable, Equatable, Codable {
         // A run repeated with `-test-iterations` says, per test, whether it's flaky or failing for real.
         var repeatedTests: [ResultBundle.Repeated]?
         if repeated {
-            let found = if let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
-            notes.append(ResultBundle.repetitionsNote(found) ?? ResultBundle.noRepetitionsNote)
-            repeatedTests = found
+            notes.append(ResultBundle.repetitionsNote(repetitions) ?? ResultBundle.noRepetitionsNote)
+            repeatedTests = repetitions
         }
 
         // The warnings in lines this branch changed, named: those are Claude's to fix. Nothing is said about the rest, or

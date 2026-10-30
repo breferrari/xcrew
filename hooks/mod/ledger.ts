@@ -114,7 +114,7 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
   const entries = (ledger?.entries ?? []).filter(entry => !isStale(entry.last, run.at)).map((entry): LedgerEntry => {
     if (failing.has(entry.test)) {
       const flaky = flakyAfter(entry.test, entry.flaky)
-      const target = entry.target ?? failed.get(entry.test)?.target
+      const target = failed.get(entry.test)?.target ?? entry.target
       return { test: entry.test, red: entry.red, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) }
     }
     const cleared = !entry.flaky || repeated.get(entry.test)?.verdict === 'passed'

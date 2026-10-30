@@ -78,17 +78,18 @@ public struct ResultBundle: Sendable {
         }
     }
 
-    /// Each test's target in `xcresulttool get test-results tests` output: the test bundle it's filed under, a unit or UI
-    /// test bundle named as its target is.
+    /// Each failed test's target in `xcresulttool get test-results tests` output: the test bundle it's filed under, a unit
+    /// or UI test bundle named as its target is. A test of the same name failing in two bundles has none: the ledger would
+    /// trust a guess.
     public static func targets(listing: String) -> [TestID: String] {
-        var found: [TestID: String] = [:]
+        var found: [TestID: Set<String>] = [:]
         for bundle in nodes(parse(listing)) where (bundle["nodeType"] as? String)?.hasSuffix("test bundle") == true {
             guard let name = bundle["name"] as? String else { continue }
-            for node in nodes(bundle["children"]) where node["nodeType"] as? String == "Test Case" {
-                if let id = node["nodeIdentifier"] as? String { found[TestID(xcresultID: id)] = name }
+            for node in nodes(bundle["children"]) where node["nodeType"] as? String == "Test Case" && node["result"] as? String == "Failed" {
+                if let id = node["nodeIdentifier"] as? String { found[TestID(xcresultID: id), default: []].insert(name) }
             }
         }
-        return found
+        return found.compactMapValues { $0.count == 1 ? $0.first : nil }
     }
 
     /// Frames of the crashed thread shown when none has a source file: enough to reach the test's own code from the crash.
@@ -101,9 +102,9 @@ public struct ResultBundle: Sendable {
         crashReport(log: log)?.summary
     }
 
-    /// A crash log's summary, and the test's line: the crashed thread's first frame with a source file of its own, below
-    /// the runtime's frames.
-    static func crashReport(log: String) -> (summary: [String], location: String?)? {
+    /// A crash log's summary, and the test's line: the crashed thread's frame in `test` itself, or without one, its first
+    /// frame with a source file of its own, below the runtime's frames.
+    static func crashReport(log: String, test: TestID? = nil) -> (summary: [String], location: String?)? {
         guard let newline = log.firstIndex(of: "\n"),
               let report = parse(String(log[log.index(after: newline)...])) as? [String: Any],
               let threads = report["threads"] as? [[String: Any]],
@@ -113,7 +114,9 @@ public struct ResultBundle: Sendable {
         let images = report["usedImages"] as? [[String: Any]] ?? []
         let exception = report["exception"] as? [String: Any]
         let crashed = (exception?["type"] as? String).map { type in "crashed: \(type)\((exception?["signal"] as? String).map { " (\($0))" } ?? "")" }
-        let ownIndex = frames.firstIndex { ownFrame($0) != nil }
+        let named = test.map { "\($0.suite).\($0.name)(" }
+        let ownIndex = frames.firstIndex { frame in named.map { (frame["symbol"] as? String)?.contains($0) == true } == true && ownFrame(frame) != nil }
+            ?? frames.firstIndex { ownFrame($0) != nil }
         let own = ownIndex.map { min($0 + 1, mostFrames) } ?? topFrames
         let top = frames.prefix(own).map { frame in
             let index = frame["imageIndex"] as? Int ?? -1
@@ -228,16 +231,16 @@ public struct ResultBundle: Sendable {
 
     /// A crash's summary, from the crash log the result bundle attached to the test, and the test's line it names.
     public func crash(of test: TestID) async -> (summary: [String], location: String?)? {
-        await attachments(of: test, onlyFailures: true, Self.crashSummary(in:))
+        await attachments(of: test, onlyFailures: true) { Self.crashSummary(in: $0, test: test) }
     }
 
     /// A crash's summary, from the crash log among a test's exported attachments, and the test's line it names.
-    static func crashSummary(in folder: URL) -> (summary: [String], location: String?)? {
+    static func crashSummary(in folder: URL, test: TestID? = nil) -> (summary: [String], location: String?)? {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         guard let log = names.sorted().first(where: { $0.hasSuffix(".ips") }),
               let text = try? String(contentsOf: folder.appending(path: log), encoding: .utf8)
         else { return nil }
-        return crashReport(log: text)
+        return crashReport(log: text, test: test)
     }
 }
 
