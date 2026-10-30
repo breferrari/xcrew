@@ -9,6 +9,11 @@ public enum GitChanges {
         public let base: String
         /// The changed files, absolute, as the file system spells the repository.
         public let files: [String]
+        /// What the change was compared with: the merge base's commit, or `HEAD` for the working tree alone.
+        public let since: String
+        /// The repository's top folder, as the file system spells it, and the untracked files among `files`.
+        public let top: String
+        public let untracked: [String]
     }
 
     public struct Failure: Error, CustomStringConvertible, Sendable {
@@ -53,6 +58,7 @@ public enum GitChanges {
         let topPath = ProjectLayout.canonicalPath(topLevel)
         var seen = Set<String>()
         let files = (diff.stdout + untracked.stdout).split(separator: "\0").map { "\(topPath)/\($0)" }.filter { seen.insert($0).inserted }
-        return .success(Change(base: described, files: files))
+        let untrackedFiles = untracked.stdout.split(separator: "\0").map { "\(topPath)/\($0)" }
+        return .success(Change(base: described, files: files, since: since, top: topPath, untracked: untrackedFiles))
     }
 }

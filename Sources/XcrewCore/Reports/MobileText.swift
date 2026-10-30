@@ -110,6 +110,14 @@ struct MobileText: Sendable {
         index + 1 < lines.count ? lines[index + 1].location : nil
     }
 
+    /// Each compiler warning that names a file and line, each place it fires.
+    var warnings: [ToolOutput.Warning] {
+        lines.indices.compactMap { index in
+            guard let warning = lines[index].warning, let place = location(after: index), let line = Int(place.line) else { return nil }
+            return ToolOutput.Warning(message: warning.message, path: place.path, line: line)
+        }
+    }
+
     // MARK: Reading
 
     /// A failing run's counts, from its summary line.

@@ -301,6 +301,14 @@ Running a failing test again settles whether it's flaky. Read October 30, 2026:
 
 The mod knows a repeated run by `-test-iterations` in its `extraArgs`, and only then has the report read the bundle's test list. The test bed's `captures/repetitions` pins the reading: a real run's `xcresulttool` answer for three tests run five times each, passing every run, failing every run, and failing every other run, made on the Mac and replayed, so nothing nondeterministic runs in CI.
 
+## Warnings in changed lines
+
+A large project builds with hundreds of warnings, and a few new ones among them go unseen. The report names the warnings that fall in lines the branch changed since its merge base with the default branch, uncommitted and untracked files included: the change `xcrew affected` reads, through `GitChanges`. No state is kept. An edit that only moves a line doesn't make its warning look new, and the answer is right on a branch's first build.
+
+- **The lines:** `git diff -U0` (`git help diff`, read October 30, 2026: "Generate diffs with <n> lines of context") gives each hunk's header and nothing around it. The header follows the unified format, `@@ -l,s +l,s @@`: the new side's start and count, where a count of 0 adds no line and an omitted count means one. It's run with `--no-prefix`, `--no-renames`, `--no-relative` and `core.quotePath=false`, so each path comes back as written. An untracked file counts whole.
+- **The warnings:** MobileBuildMCP's `⚠` lines with the `/path:line` after each, read before repeats are collapsed, and the Xcode MCP's build entries whose `classification` is `warning`. A warning's path is compared as the file system spells it (`/private/var` for a temporary folder at `/var`), as the compiler writes it.
+- **Its gap:** a warning the change causes in a line it didn't touch, such as each call site of an API it newly deprecated, isn't named. The note says which warnings are in changed lines, and never that a change added no warnings.
+
 ## Toolchains
 
 On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The `macos-26` runner image (version 20261013.0424.1) carries Xcode 26.0.1 to 26.6, and Apple's [Xcode system requirements](https://developer.apple.com/xcode/system-requirements/) put Swift 6.2 in Xcode 26.0 and 26.0.1, 6.2.1 to 6.2.3 in 26.1 to 26.3, and 6.3 in 26.4.1 to 26.6. So CI's newest toolchain was Swift 6.3, older than the contributor's 6.4.2. Each Swift job now prints its toolchain, and a floor job builds and tests on the oldest Xcode whose Swift is the version `Package.swift`'s `swift-tools-version` names.

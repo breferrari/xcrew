@@ -120,6 +120,22 @@ public struct ToolOutput: Sendable {
         }
     }
 
+    /// A compiler warning and the place it fires.
+    public struct Warning: Sendable, Equatable {
+        public let message: String
+        public let path: String
+        public let line: Int
+    }
+
+    /// Each warning that names a file and line, from either server's build or test result.
+    public var warnings: [Warning] {
+        switch shape {
+        case let .xcodeMCPJSON(result): result.warnings
+        case let .mobileBuildMCPText(text): text.warnings
+        case .mobileBuildMCPJSON, .unrecognized: []
+        }
+    }
+
     /// MobileBuildMCP's text, when the output is in that shape.
     var mobileText: MobileText? {
         if case let .mobileBuildMCPText(text) = shape { return text }

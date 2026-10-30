@@ -20,6 +20,14 @@ public struct Report: Sendable, Equatable, Codable {
     /// For a run repeated with `-test-iterations`: each repeated test, and how many of its runs failed.
     public var repeated: [ResultBundle.Repeated]?
 
+    /// The warnings in lines the branch changed, a few named; nothing when there are none.
+    static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
+        guard !inChanged.isEmpty else { return nil }
+        let named = inChanged.prefix(ResultBundle.mostNamed).map { "\(ToolOutput.basename($0.path)):\($0.line) \($0.message)" }
+        let more = inChanged.count > ResultBundle.mostNamed ? " and \(inChanged.count - ResultBundle.mostNamed) more" : ""
+        return "xcrew: \(inChanged.count) of \(total) warnings are in lines this branch changed: \(named.joined(separator: "; "))\(more)."
+    }
+
     static let noTestsNote =
         "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter that matches nothing does this; check the target and class names."
 
@@ -49,7 +57,7 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// A result Claude Code saved to a file is read back from it.
-    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false) async -> Report {
+    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false, project: Project? = nil) async -> Report {
         let saved = savedPath(output.text)
         let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, server: output.server, isError: output.isError) } ?? output
         let isTest = kind == .test
@@ -84,6 +92,15 @@ public struct Report: Sendable, Equatable, Codable {
             let found = if let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
             notes.append(ResultBundle.repetitionsNote(found) ?? ResultBundle.noRepetitionsNote)
             repeatedTests = found
+        }
+
+        // The warnings in lines this branch changed, named: those are Claude's to fix. Nothing is said about the rest, or
+        // about warnings the change causes in lines it left alone.
+        if let project, !read.warnings.isEmpty, let changed = await ChangedLines.of(project, using: runner) {
+            let inChanged = read.warnings.filter { warning in
+                changed[ProjectLayout.canonicalCreating(URL(fileURLWithPath: warning.path))]?.contains { $0.contains(warning.line) } == true
+            }
+            if let note = warningsNote(inChanged, of: read.warnings.count) { notes.append(note) }
         }
 
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
