@@ -760,9 +760,9 @@ import Testing
     /// What Privacy says of each value the mod keeps: in Claude Code's store across sessions, by its key's prefix, and in
     /// the session's state, by its atom's key.
     static let keptValues = [
-        "durations": "each build, test and run's recent durations",
+        "durations": "each build, test and run's recent durations, by the repository it ran in",
+        "failed": "the failed runs' durations kept apart",
         "updated": "when each last ran",
-        "where": "the folder each last ran in",
         "tests": "how many tests each test run ran",
         "logs": "whether its server writes a log to follow",
         "ledger": "red-to-green ledger of tests",
