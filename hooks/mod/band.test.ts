@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
+import { historyKey, scopeKey, testsKey } from './timing'
 import { callTool, runCommand, stubCli } from './testing'
 import { segments } from './band'
 import * as captured from './fixtures'
@@ -111,7 +112,7 @@ test('where no surface draws bands, the plain status line carries the run', asyn
 
 test('a run far slower than usual shows it in the band', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on, { 'durations.build_sim': [10_000, 10_000, 10_000, 10_000, 10_000] })
+  mock.store(on, { [historyKey(scopeKey('', 'build_sim · App'))]: [10_000, 10_000, 10_000, 10_000, 10_000] })
   inTerminal(on)
   on('ui.status', () => ({ value: undefined }))
   on('tool.call', async () => {
@@ -119,7 +120,7 @@ test('a run far slower than usual shows it in the band', async ($, on) => {
     return { result: {}, text: 'ok' }
   })
 
-  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim', { scheme: 'App' })
 
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /^\(1\.5× its usual 0:10\)$/ }))?.props.color).toBe('#ec501d')
@@ -149,7 +150,7 @@ test('where the band draws, it carries the outcome alone, with no toast repeatin
 
 test('the band carries the phase after the time, in the theme\'s text colour', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on, { 'tests.test_sim': 959 })
+  mock.store(on, { [testsKey(scopeKey('', 'test_sim · App'))]: 959 })
   inTerminal(on)
   on('ui.status', () => ({ value: undefined }))
   stubCli(on, { phase: () => ({ log: '/logs/test_sim_1.log', phase: 'testing 1 of 959' }) })

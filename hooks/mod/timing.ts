@@ -12,9 +12,23 @@ import { comparison, estimate, stopwatch } from './format'
 /** How many earlier runs of each tool the average covers. */
 export const HISTORY = 10
 export const DURATIONS_PREFIX = 'durations.'
-export const historyKey = (tool: string) => `${DURATIONS_PREFIX}${tool}`
+/** A passing run's durations, by its scope's key: what the usual time is the average of. */
+export const historyKey = (key: string) => `${DURATIONS_PREFIX}${key}`
+/** A failed run's durations, kept apart: one that fails early would pull the usual time down. */
+export const FAILED_PREFIX = 'failed.'
+export const failedKey = (key: string) => `${FAILED_PREFIX}${key}`
 /** When a run last added to a tool's history. */
-export const updatedKey = (tool: string) => `updated.${tool}`
+export const updatedKey = (key: string) => `updated.${key}`
+
+/** What ends a key's root: a character no path holds. */
+const ROOT_END = '\u001f'
+/** A run scope's key: the root of the repository it ran in, as `xcrew project --branch` names it, then the scope. */
+export const scopeKey = (root: string, scope: string) => `${root}${ROOT_END}${scope}`
+/** A key's root and scope; none for one stored before keys held their root. */
+export function keyParts(key: string): { root: string; scope: string } | undefined {
+  const at = key.indexOf(ROOT_END)
+  return at < 0 ? undefined : { root: key.slice(0, at), scope: key.slice(at + ROOT_END.length) }
+}
 /** Two weeks, as long as the CLI keeps an unused build. */
 export const HISTORY_KEPT_MS = 14 * 24 * 60 * 60_000
 
@@ -23,9 +37,9 @@ export function isStale(updated: unknown, now: number): boolean {
   return typeof updated === 'number' && now - updated > HISTORY_KEPT_MS
 }
 /** The last test run's total per tool, for the next run's `testing 312 of 959`. */
-export const testsKey = (tool: string) => `tests.${tool}`
-/** The folder a scope last ran in: the store is the plugin's, across every project. */
-export const whereKey = (tool: string) => `where.${tool}`
+export const testsKey = (key: string) => `tests.${key}`
+/** Every prefix a scope's keys carry, `where.` an earlier version's, for dropping a scope whole. */
+export const SCOPE_PREFIXES = [DURATIONS_PREFIX, FAILED_PREFIX, 'updated.', 'tests.', 'where.']
 /** Whether a tool has written a log before: those say they're preparing until this run's appears; `clean` writes none. */
 export const logsKey = (tool: string) => `logs.${tool}`
 export const PREPARING = 'preparing'

@@ -39,7 +39,7 @@ function session(on: On, { surface = 'vscode' as 'vscode' | 'terminal', hold, re
   on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['as the engine draws it'] }))
   // The prompt enters as the hooks above left it.
   on('prompt.submit', (_, e) => ({ text: e.text, ...(e.context ? { context: e.context } : {}), origin: e.origin }))
-  const cli = stubCli(on, { reports: [UNREAD, ...reports], phase: () => ({ log: LOG, phase: 'testing' }), project: { isGenerated: false, root: '/work/App', branch: 'main' } })
+  const cli = stubCli(on, { reports: [UNREAD, ...reports], phase: () => ({ log: LOG, phase: 'testing' }), project: { isGenerated: false, root: '/work/App', branch: 'main', scheme: 'App' } })
   on('tool.call', async (_, e) => {
     // A test run the session holds stays live on the band until `hold` settles.
     if (hold && e.tool.endsWith('test_sim')) await hold
@@ -94,7 +94,8 @@ test("a backgrounded test run's notification is read as its result", async ($, o
   expect(entered.context).toContain('xcrew: a note on the run')
   // The run took from the call to the notification: 2:55, then a minute.
   expect(toasts.at(-1)?.startsWith('✗ test_sim · 3:55')).toBe(true)
-  expect(stored().filter(key => /^durations\./.test(key)).length).toBe(1)
+  // It failed: its time is kept apart from the usual one.
+  expect(stored().filter(key => /^failed\./.test(key)).length).toBe(1)
   expect(stored().filter(key => /^ledger\./.test(key)).length).toBe(1)
 })
 

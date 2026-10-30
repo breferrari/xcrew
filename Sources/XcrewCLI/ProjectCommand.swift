@@ -11,7 +11,7 @@ struct ProjectCommand: Command {
     let flags: Set<String> = ["setup", "profiles", "branch"]
     let valuedOptions: Set<String> = ["manifest", "generated", "hash"]
     let usage = [
-        "project [--setup] [--profiles] [--manifest <file>] [--generated <file>] [--branch] [--hash <file>]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --profiles the line offering setup while MobileBuildMCP has no scheme to build with, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, --branch the real root with the branch or commit checked out, and --hash <file>'s SHA-256, for telling an edit undone",
+        "project [--setup] [--profiles] [--manifest <file>] [--generated <file>] [--branch] [--hash <file>]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --profiles the line offering setup while MobileBuildMCP has no scheme to build with, and the scheme it builds with once it has, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, --branch the real root with the branch or commit checked out, and --hash <file>'s SHA-256, for telling an edit undone",
     ]
 
     struct Answer: Codable, Equatable {
@@ -20,6 +20,8 @@ struct ProjectCommand: Command {
         var containerProblem: String?
         /// With `--profiles`: the line offering setup, while MobileBuildMCP has no scheme to build with.
         var setup: String?
+        /// With `--profiles`: the scheme MobileBuildMCP builds with when a call names none.
+        var scheme: String?
         /// The command to run before the next build, when the file `--manifest` names is one the generator reads.
         var generate: String?
         /// The app that command regenerates, as the path of its manifests' folder from the root: empty for the root.
@@ -67,8 +69,12 @@ struct ProjectCommand: Command {
             case nil: break
             }
         }
-        if invocation.arguments.has("profiles"), !project.hasSchemeToBuild {
-            answer.setup = await SessionBriefing.setupOffer(for: project, using: invocation.context.runner)
+        if invocation.arguments.has("profiles") {
+            if project.hasSchemeToBuild {
+                answer.scheme = project.schemeToBuild
+            } else {
+                answer.setup = await SessionBriefing.setupOffer(for: project, using: invocation.context.runner)
+            }
         }
         if invocation.arguments.has("setup") {
             do {

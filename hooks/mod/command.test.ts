@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
+import { historyKey, scopeKey, updatedKey } from './timing'
 import { callTool, runCommand } from './testing'
 
 /** Stands for the engine: registers commands, and answers `bin/xcrew` with `outputs[subcommand]`. */
@@ -46,8 +47,8 @@ test('/xcrew doctor shows the doctor\'s report without a turn for Claude', async
 
 test('/xcrew history lists each tool\'s usual duration, slowest first', async ($, on) => {
   mock.store(on, {
-    'durations.build_sim': [60_000, 80_000],
-    'durations.RunAllTests': [300_000],
+    [historyKey(scopeKey('', 'build_sim'))]: [60_000, 80_000],
+    [historyKey(scopeKey('', 'RunAllTests'))]: [300_000],
     'other.key': 1,
   })
   engine(on)
@@ -64,10 +65,10 @@ test('/xcrew history drops a line no run has updated for two weeks', async ($, o
   const clock = mock.clock(on)
   const now = clock.now()
   mock.store(on, {
-    'durations.test_sim · › AppTests': [60_000],
-    'updated.test_sim · › AppTests': now - 15 * DAY,
-    'durations.test_sim › AppTests': [50_000],
-    'updated.test_sim › AppTests': now - DAY,
+    [historyKey(scopeKey('', 'test_sim · › AppTests'))]: [60_000],
+    [updatedKey(scopeKey('', 'test_sim · › AppTests'))]: now - 15 * DAY,
+    [historyKey(scopeKey('', 'test_sim › AppTests'))]: [50_000],
+    [updatedKey(scopeKey('', 'test_sim › AppTests'))]: now - DAY,
   })
   engine(on)
   await start($)
@@ -81,7 +82,7 @@ test('/xcrew history drops a line no run has updated for two weeks', async ($, o
 /** A month-old run says nothing about today's build: it mustn't count toward the usual time, or come back. */
 test('a run two weeks after its line was last updated starts the line afresh', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on, { 'durations.BuildProject': [600_000, 600_000], 'updated.BuildProject': clock.now() - 15 * DAY })
+  mock.store(on, { [historyKey(scopeKey('', 'BuildProject'))]: [600_000, 600_000], [updatedKey(scopeKey('', 'BuildProject'))]: clock.now() - 15 * DAY })
   engine(on)
   on('tool.call', async () => {
     await clock.advance(30_000)
@@ -95,7 +96,7 @@ test('a run two weeks after its line was last updated starts the line afresh', a
 
 test('/xcrew history keeps an undated line for two weeks from the first look', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on, { 'durations.build_sim': [60_000] })
+  mock.store(on, { [historyKey(scopeKey('', 'build_sim'))]: [60_000] })
   engine(on)
   await start($)
 
@@ -134,7 +135,7 @@ test('/xcrew alone lists what it can do', async ($, on) => {
 })
 
 test('/xcrew history names the scheme and tests each duration belongs to', async ($, on) => {
-  mock.store(on, { 'durations.test_sim · App › SmallTests': [45_000], 'durations.build_sim': [60_000] })
+  mock.store(on, { [historyKey(scopeKey('', 'test_sim · App › SmallTests'))]: [45_000], [historyKey(scopeKey('', 'build_sim'))]: [60_000] })
   engine(on)
   await start($)
 
@@ -143,6 +144,7 @@ test('/xcrew history names the scheme and tests each duration belongs to', async
   expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 1:00 · last 1:00 · 1 run  build_sim\navg 0:45 · last 0:45 · 1 run  test_sim · App › SmallTests')
 })
 
+/** The Xcode MCP's runs are kept whether or not the session has seen its scheme: a selection without one is named plainly. */
 test('/xcrew history names a test selection without a scheme plainly', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
@@ -155,9 +157,9 @@ test('/xcrew history names a test selection without a scheme plainly', async ($,
     return { result: {}, text: 'ok' }
   })
   await start($)
-  await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:SmallTests'] })
+  await callTool($, 'mcp__xcode__RunAllTests', { extraArgs: ['-only-testing:SmallTests'] })
 
   const ran = await runCommand($, 'xcrew', 'history')
 
-  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 0:45 · last 0:45 · 1 run  test_sim › SmallTests')
+  expect(ran.text).toBe('usual durations, over the last 10 runs of each tool\navg 0:45 · last 0:45 · 1 run  RunAllTests › SmallTests')
 })

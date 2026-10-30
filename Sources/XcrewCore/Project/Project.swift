@@ -22,6 +22,11 @@ public struct Project: Sendable, Equatable {
     public var hasMobileBuildMCPConfig: Bool { FileManager.default.fileExists(atPath: mobileBuildMCPConfig.path) }
     /// Whether MobileBuildMCP has a scheme to build this project with. MobileBuildMCP writes a config itself when Claude
     /// saves session defaults, so a config alone doesn't say setup ran.
+    /// The scheme MobileBuildMCP builds this project with when a call names none; nil without a config or one.
+    public var schemeToBuild: String? {
+        (try? String(contentsOf: mobileBuildMCPConfig, encoding: .utf8)).flatMap(ConfigRenderer.schemeToBuild)
+    }
+
     public var hasSchemeToBuild: Bool {
         guard let yaml = try? String(contentsOf: mobileBuildMCPConfig, encoding: .utf8) else { return false }
         return ConfigRenderer.hasSchemeToBuild(in: yaml)

@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import { historyKey, scopeKey, testsKey } from './timing'
 import { BUILT_BINARY, callTool, stubCli, type CliCall } from './testing'
 
 const MALFORMED =
@@ -8,8 +9,15 @@ const MALFORMED =
 type Seen = { toasts: string[]; statuses: (string | undefined)[]; cli: CliCall[] }
 
 /** Records what the mod shows and asks the CLI; `cli` is how the stand-in CLI answers. */
+/** A scope's key in these sessions, which have no repository root. */
+const at = (scope: string) => scopeKey('', scope)
+
+/**
+ * A session with `stored` in its store, whose CLI answers as `cli` says and, unless it says otherwise, names `App` as the
+ * profile's scheme. It has no repository root to name, so its history's keys have none.
+ */
 function watch(on: On, stored: Record<string, unknown> = {}, cli: Parameters<typeof stubCli>[1] = {}): Seen {
-  const seen: Seen = { toasts: [], statuses: [], cli: stubCli(on, cli) }
+  const seen: Seen = { toasts: [], statuses: [], cli: stubCli(on, { project: args => ({ isGenerated: false, ...(args.includes('--profiles') ? { scheme: 'App' } : {}) }), ...cli }) }
   mock.store(on, stored)
   on('ui.toast', (_, e) => {
     seen.toasts.push(e.text)
@@ -107,7 +115,7 @@ test('a finished run hands the server\'s text to the CLI, saying which server an
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.cli.filter(call => call.args[0] !== '--binary-path').map(({ args, stdin, program }) => ({ args, stdin, program }))).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED, program: BUILT_BINARY }])
+  expect(seen.cli.filter(call => call.args[0] !== '--binary-path' && call.args[0] !== 'project').map(({ args, stdin, program }) => ({ args, stdin, program }))).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED, program: BUILT_BINARY }])
 })
 
 test('a build failing on a killed macro plugin reaches Claude as the server reported it, with nothing retried', async ($, on) => {
@@ -215,7 +223,7 @@ test('later runs compare with the average of earlier ones', async ($, on) => {
 
 test('a run far slower than usual says how much slower', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, { 'durations.build_sim': [11_000, 11_000, 11_000, 11_000, 11_000] })
+  const seen = watch(on, { [historyKey(at('build_sim · App'))]: [11_000, 11_000, 11_000, 11_000, 11_000] })
   on('tool.call', async () => {
     await clock.advance(22_000)
     return { result: {}, text: 'ok' }
@@ -228,7 +236,7 @@ test('a run far slower than usual says how much slower', async ($, on) => {
 
 test('slowness is only called out once there are five earlier runs to judge by', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, { 'durations.BuildProject': [10_000, 10_000, 10_000, 10_000] })
+  const seen = watch(on, { [historyKey(at('BuildProject'))]: [10_000, 10_000, 10_000, 10_000] })
   on('tool.call', async () => {
     await clock.advance(30_000)
     return { result: {}, text: 'ok' }
@@ -259,7 +267,7 @@ const LOG = '/Users/dev/Library/Developer/MobileBuildMCP/workspaces/App-0000/log
 
 test('while a MobileBuildMCP run goes, the status line says what the CLI reads from its log', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, { 'tests.test_sim': 959 }, { phase: () => ({ log: LOG, phase: 'testing 2 of 959' }) })
+  const seen = watch(on, { [testsKey(at('test_sim · App'))]: 959 }, { phase: () => ({ log: LOG, phase: 'testing 2 of 959' }) })
   on('tool.call', async () => {
     await clock.advance(3_000)
     return { result: {}, text: 'ok' }
@@ -341,12 +349,12 @@ test('Xcode MCP runs ask for no phase: that server writes no log to follow', asy
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path')).toEqual(['report'])
+  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path' && command !== 'project')).toEqual(['report'])
 })
 
 test('where no band draws, the status line carries the gauge against the usual time', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, { 'durations.BuildProject': [36_000] })
+  const seen = watch(on, { [historyKey(at('BuildProject'))]: [36_000] })
   on('tool.call', async () => {
     await clock.advance(21_000)
     return { result: {}, text: 'ok' }
@@ -359,7 +367,7 @@ test('where no band draws, the status line carries the gauge against the usual t
 
 test('the usual time is kept per scheme, so a small module is not measured against the whole app', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, { 'durations.build_sim · Small': [10_000], 'durations.build_sim · Big': [600_000] })
+  const seen = watch(on, { [historyKey(at('build_sim · Small'))]: [10_000], [historyKey(at('build_sim · Big'))]: [600_000] })
   on('tool.call', async () => {
     await clock.advance(5_000)
     return { result: {}, text: 'ok' }
@@ -372,7 +380,7 @@ test('the usual time is kept per scheme, so a small module is not measured again
 
 test('a test run is also kept apart by the tests it selects', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, { 'durations.test_sim · App › SmallTests': [10_000], 'durations.test_sim · App': [600_000] })
+  const seen = watch(on, { [historyKey(at('test_sim · App › SmallTests'))]: [10_000], [historyKey(at('test_sim · App'))]: [600_000] })
   on('tool.call', async () => {
     await clock.advance(5_000)
     return { result: {}, text: 'ok' }
@@ -386,7 +394,7 @@ test('a test run is also kept apart by the tests it selects', async ($, on) => {
 test('a MobileBuildMCP run is measured from when its log appears, so a pre-build hook is not counted against its usual time', async ($, on) => {
   const clock = mock.clock(on)
   const disk = { hasLog: false }
-  const seen = watch(on, { 'durations.test_sim': [36_000], 'logs.test_sim': true }, { phase: () => (disk.hasLog ? { log: LOG, phase: 'testing · 2 done' } : {}) })
+  const seen = watch(on, { [historyKey(at('test_sim · App'))]: [36_000], 'logs.test_sim': true }, { phase: () => (disk.hasLog ? { log: LOG, phase: 'testing · 2 done' } : {}) })
   on('tool.call', async () => {
     await clock.advance(20_000)
     disk.hasLog = true
@@ -605,7 +613,7 @@ test('only the answers that name a scheme are read for one: a file that happens 
 
 test('a call the person denies leaves no trace: no time in the history, no outcome, no notification', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, { 'durations.build_sim': [90_000] })
+  const seen = watch(on, { [historyKey(at('build_sim · App'))]: [90_000] })
   const notifications: string[] = []
   on('ui.notify', (_, e) => {
     notifications.push(e.text)
@@ -670,7 +678,8 @@ test('the build is asked for again after 30 s, so a development checkout\'s rebu
   await callTool($, 'mcp__xcode__BuildProject')
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(2)
+  // Asked at the first call's start, for the repository's root, then for each report more than 30 s after the last.
+  expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(3)
 })
 
 test('when the shim names no build, the CLI runs through the shim', async ($, on) => {

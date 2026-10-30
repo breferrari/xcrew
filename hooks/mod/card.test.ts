@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import { historyKey, scopeKey, testsKey, updatedKey } from './timing'
 import { callTool, stubCli, type CliCall } from './testing'
 
 const NOW = Date.UTC(2026, 9, 30, 12, 0)
@@ -8,14 +9,13 @@ const NOW = Date.UTC(2026, 9, 30, 12, 0)
 /** What the mod gave the CLI to save, in this session. */
 let calls: CliCall[] = []
 
-/** What earlier sessions stored: durations, when each was last updated, test totals, and the folder each last ran in, by run scope. */
+/** What earlier sessions stored: durations, when each was last updated, and test totals, by run scope in `folder`'s repository. */
 function runs(scopes: Record<string, { runs: number[]; tests?: number }>, folder = '/work/App'): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(scopes).flatMap(([scope, { runs, tests }]) => [
-      [`durations.${scope}`, runs],
-      [`updated.${scope}`, NOW - 60_000],
-      [`where.${scope}`, folder],
-      ...(tests === undefined ? [] : [[`tests.${scope}`, tests]]),
+      [historyKey(scopeKey(folder, scope)), runs],
+      [updatedKey(scopeKey(folder, scope)), NOW - 60_000],
+      ...(tests === undefined ? [] : [[testsKey(scopeKey(folder, scope)), tests]]),
     ]),
   )
 }
@@ -158,7 +158,7 @@ test('the saved card carries its folder, its branch and the time of its data', a
 /** The card is dropped by its oldest line's age, as the mod dropped each line by its own. */
 test('the saved card carries the time of its oldest line too', async ($, on) => {
   const old = NOW - 5 * 24 * 60 * 60_000
-  const clock = session(on, { ...runs({ 'build_sim · App': { runs: [45_000] }, 'test_sim · App': { runs: [90_000] } }), 'updated.test_sim · App': old })
+  const clock = session(on, { ...runs({ 'build_sim · App': { runs: [45_000] }, 'test_sim · App': { runs: [90_000] } }), [updatedKey(scopeKey('/work/App', 'test_sim · App'))]: old })
   await start($, clock)
   expect(saved()).toMatchObject({ updated: NOW - 60_000, oldest: old })
 })

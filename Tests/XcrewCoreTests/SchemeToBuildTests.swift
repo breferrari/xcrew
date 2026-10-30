@@ -23,4 +23,12 @@ import Testing
     @Test func globalDefaultsWithoutASchemeDontBuild() {
         #expect(!ConfigRenderer.hasSchemeToBuild(in: "schemaVersion: 1\nsessionDefaults:\n  workspacePath: ./App.xcworkspace\nenabledWorkflows:\n  - simulator\n"))
     }
+
+    /// The scheme itself, by the same rule, for a run whose call names none: the history keeps the run under it.
+    @Test func theSchemeToBuildIsNamed() {
+        #expect(ConfigRenderer.schemeToBuild(in: "sessionDefaultsProfiles:\n  unit:\n    scheme: AppTests\nactiveSessionDefaultsProfile: unit\n") == "AppTests")
+        #expect(ConfigRenderer.schemeToBuild(in: "sessionDefaultsProfiles:\n  unit:\n    simulatorName: iPhone 17\n  app:\n    scheme: App\nactiveSessionDefaultsProfile: unit\n") == nil)
+        #expect(ConfigRenderer.schemeToBuild(in: "schemaVersion: 1\nsessionDefaults:\n  scheme: 'App Tests' # the app's\n  workspacePath: ./App.xcworkspace\n") == "App Tests")
+        #expect(ConfigRenderer.schemeToBuild(in: "schemaVersion: 1\nsessionDefaults:\n  workspacePath: ./App.xcworkspace\n") == nil)
+    }
 }

@@ -2,9 +2,9 @@ import type { Engine } from 'claude-code/testing'
 import type { On, ToolCallArgs, ToolCallResult } from 'claude-code'
 import type { Phase, Problem, Report } from './cli'
 
-/** The store as a plain map, so a test reads what the mod kept. */
-export function mapStore(on: On): Map<string, unknown> {
-  const store = new Map<string, unknown>()
+/** The store as a plain map, holding `stored` at first, so a test reads what the mod kept. */
+export function mapStore(on: On, stored: Record<string, unknown> = {}): Map<string, unknown> {
+  const store = new Map<string, unknown>(Object.entries(stored))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
   on('store.set', (_, e) => {
     store.set(e.key, e.value)
@@ -37,7 +37,7 @@ export function submitPrompt($: Engine, text: string) {
 }
 
 /** What `xcrew project` answers: with `--profiles`, the line offering setup when MobileBuildMCP has no scheme to build with; with `--manifest`, the command that regenerates the project when the file is a manifest. */
-type ProjectAnswer = { isGenerated: boolean; setup?: string; generate?: string; app?: string; root?: string; branch?: string; commit?: string; manifest?: string }
+type ProjectAnswer = { isGenerated: boolean; setup?: string; scheme?: string; generate?: string; app?: string; root?: string; branch?: string; commit?: string; manifest?: string }
 
 /** One call the mod made to the Swift CLI: its arguments, what it piped in, and the program when it wasn't the shim. */
 export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number }

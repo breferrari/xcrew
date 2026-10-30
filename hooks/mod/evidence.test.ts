@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Report } from './cli'
+import { historyKey, scopeKey, testsKey, updatedKey } from './timing'
 import { callTool, runCommand, stubCli, type CliCall } from './testing'
 
 const TOOL = 'mcp__xcrew__evidence'
@@ -14,13 +15,11 @@ function session(on: On, answer: string | Error | { stdout: string; stderr: stri
   mock.clock(on, { now: NOW })
   mock.store(on, {
     'ledger./work/App @ feat/evidence': options.ledger ?? { entries: [ENTRY], updated: NOW - 60_000 },
-    'durations.test_sim': [80_000, 80_000],
-    'updated.test_sim': NOW - 60_000,
-    'tests.test_sim': 312,
-    'where.test_sim': '/work/App',
-    'durations.build_sim': [30_000],
-    'updated.build_sim': NOW - 60_000,
-    'where.build_sim': '/work/Other',
+    [historyKey(scopeKey('/work/App', 'test_sim'))]: [80_000, 80_000],
+    [updatedKey(scopeKey('/work/App', 'test_sim'))]: NOW - 60_000,
+    [testsKey(scopeKey('/work/App', 'test_sim'))]: 312,
+    [historyKey(scopeKey('/work/Other', 'build_sim'))]: [30_000],
+    [updatedKey(scopeKey('/work/Other', 'build_sim'))]: NOW - 60_000,
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: '/work/App' }))

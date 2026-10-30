@@ -111,6 +111,12 @@ export function isGeneratedOf(answer: unknown): boolean {
   return (answer as { isGenerated?: boolean } | undefined)?.isGenerated === true
 }
 
+/** The scheme MobileBuildMCP builds with when a call names none, as `xcrew project --profiles` answers. */
+export function profileSchemeOf(answer: unknown): string | undefined {
+  const scheme = (answer as { scheme?: unknown } | undefined)?.scheme
+  return typeof scheme === 'string' && scheme !== '' ? scheme : undefined
+}
+
 /** The line offering setup, as `xcrew project --profiles` answers while MobileBuildMCP has no scheme to build with. */
 export function setupOfferOf(answer: unknown): string | undefined {
   const setup = (answer as { setup?: unknown } | undefined)?.setup
