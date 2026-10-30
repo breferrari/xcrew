@@ -115,7 +115,7 @@ After a failing run, the line above the prompt ends with `/xcrew failures`, or t
 
 ### Commands
 
-**In the chat**
+#### In the chat
 
 **Setting up**
 
@@ -141,7 +141,7 @@ After a failing run, the line above the prompt ends with `/xcrew failures`, or t
 
 The `/xcrew` commands answer without a turn for Claude.
 
-**The CLI**
+#### The CLI
 
 `xcrew` is the command-line tool the plugin ships. Claude, the mod and the skills run it, and in Claude Code you run it with `!`, as in `!xcrew affected`.
 
