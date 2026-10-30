@@ -73,8 +73,20 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["App.xcworkspace"])
         let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
         #expect(run.status == 0)
-        #expect(config(project).contains("workspacePath: '\(project.root.path)/App.xcworkspace'"))
+        #expect(config(project).contains("workspacePath: './App.xcworkspace'"))
         #expect(config(project).contains("simulatorName: 'iPhone 18'"))
+    }
+
+    /// MobileBuildMCP resolves the config's paths against its working directory, the project root, so a config copied
+    /// into another worktree builds that worktree's checkout (docs/findings.md, *MobileBuildMCP's config paths*).
+    @Test func pathsAreWrittenFromTheProjectRoot() async {
+        let project = Project.temporary(containing: ["ios/App.xcodeproj"])
+        project.write("schemaVersion: 1\nsessionDefaults:\n  derivedDataPath: \(project.root.path)/.mobilebuildmcp/DerivedData\n", to: ".mobilebuildmcp/config.yaml")
+        let run = await Run("setup", "--force", "--container", "\(project.root.path)/ios/App.xcodeproj", "--test-scheme", "AppTests", context: .fake(simulators, project: project))
+        #expect(run.status == 0)
+        #expect(config(project).contains("    projectPath: './ios/App.xcodeproj'\n"))
+        #expect(config(project).contains("    derivedDataPath: ./.mobilebuildmcp/DerivedData\n"))
+        #expect(!config(project).contains(project.root.path))
     }
 
     /// A profile stands alone in MobileBuildMCP, so the old config's session defaults that setup doesn't set itself go
@@ -87,9 +99,9 @@ import XcrewTestSupport
         let run = await Run("setup", "--force", "--test-scheme", "AppTests", "--app-scheme", "App", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
         #expect(run.status == 0)
         let carried = "    derivedDataPath: ./.mobilebuildmcp/DerivedData\n    suppressWarnings: false\n    platform: iOS\n    env:\n      APP_MODE: test\n"
-        #expect(config(project).contains("  unit:\n    workspacePath: '\(project.root.path)/App.xcworkspace'\n    scheme: 'AppTests'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n" + carried))
-        #expect(config(project).contains("  app:\n    workspacePath: '\(project.root.path)/App.xcworkspace'\n    scheme: 'App'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n" + carried))
-        #expect(!config(project).contains("./App.xcworkspace"))
+        #expect(config(project).contains("  unit:\n    workspacePath: './App.xcworkspace'\n    scheme: 'AppTests'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n" + carried))
+        #expect(config(project).contains("  app:\n    workspacePath: './App.xcworkspace'\n    scheme: 'App'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n" + carried))
+        #expect(!config(project).contains("sessionDefaults:\n"))
         #expect(run.text.contains("xcrew: carried derivedDataPath, env, platform, suppressWarnings from the old config into each profile"))
     }
 
@@ -111,7 +123,7 @@ import XcrewTestSupport
         project.write(Self.ownConfig, to: ".mobilebuildmcp/config.yaml")
         _ = await Run("setup", "--force", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
         let again = await Run("setup", "--test-scheme", "AppTests", "--app-scheme", "App", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
-        #expect(config(project).contains("  app:\n    workspacePath: '\(project.root.path)/App.xcworkspace'\n    scheme: 'App'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n    derivedDataPath: ./.mobilebuildmcp/DerivedData\n"))
+        #expect(config(project).contains("  app:\n    workspacePath: './App.xcworkspace'\n    scheme: 'App'\n    simulatorName: 'iPhone 18'\n    simulatorId: 'U18'\n    derivedDataPath: ./.mobilebuildmcp/DerivedData\n"))
         #expect(!again.text.contains("xcrew: carried"))
     }
 
@@ -120,7 +132,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["App.xcworkspace"])
         project.write("schemaVersion: 1\nsessionDefaultsProfiles:\n  mine:\n    scheme: App\n    derivedDataPath: ./DD\n    workspacePath: ./App.xcworkspace\nactiveSessionDefaultsProfile: mine\n", to: ".mobilebuildmcp/config.yaml")
         let run = await Run("setup", "--force", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
-        #expect(config(project).contains("sessionDefaults:\n  workspacePath: '\(project.root.path)/App.xcworkspace'\n  simulatorName: 'iPhone 18'\n  simulatorId: 'U18'\n  scheme: App\n  derivedDataPath: ./DD\n"))
+        #expect(config(project).contains("sessionDefaults:\n  workspacePath: './App.xcworkspace'\n  simulatorName: 'iPhone 18'\n  simulatorId: 'U18'\n  scheme: App\n  derivedDataPath: ./DD\n"))
         #expect(run.text.contains("xcrew: carried derivedDataPath, scheme from the old config into the session defaults"))
     }
 
@@ -201,14 +213,14 @@ import XcrewTestSupport
         let project = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj"])
         let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
         #expect(run.status == 0)
-        #expect(config(project).contains("projectPath: '\(project.root.path)/apps/ios/App.xcodeproj'"))
+        #expect(config(project).contains("projectPath: './apps/ios/App.xcodeproj'"))
     }
 
     @Test func aContainerAtTheRootWinsOverOneBelow() async {
         let project = Project.temporary(containing: [".git", "Root.xcodeproj", "apps/ios/App.xcworkspace"])
         let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
         #expect(run.status == 0)
-        #expect(config(project).contains("projectPath: '\(project.root.path)/Root.xcodeproj'"))
+        #expect(config(project).contains("projectPath: './Root.xcodeproj'"))
     }
 
     @Test func severalContainersBelowTheRootAreAQuestion() async {
@@ -260,7 +272,7 @@ import XcrewTestSupport
         let project = appProject(schemes: ["App": ["AppTests"]], targets: ["App": "application", "AppTests": "bundle.unit-test"])
         let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
         #expect(run.status == 0)
-        #expect(config(project).contains("  unit:\n    projectPath: '\(project.root.path)/App.xcodeproj'\n    scheme: 'App'"))
+        #expect(config(project).contains("  unit:\n    projectPath: './App.xcodeproj'\n    scheme: 'App'"))
         #expect(run.text.contains("xcrew: unit tests run with the App scheme (--test-scheme <name> picks another)"))
         #expect(config(project).hasSuffix("activeSessionDefaultsProfile: unit\n"))
     }

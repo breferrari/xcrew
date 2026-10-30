@@ -209,6 +209,21 @@ import XcrewTestSupport
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .pass)
     }
 
+    /// A relative path is the project root's, whatever folder the doctor runs from; an absolute one, as setup wrote up
+    /// to 0.9.0, still counts as it is, and isn't outdated for that alone.
+    @Test func containerPathsResolveFromTheProjectRoot() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        func config(_ path: String) -> String {
+            "schemaVersion: 1\nenabledWorkflows:\n  - simulator\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: '\(path)'\n    scheme: 'A'\nactiveSessionDefaultsProfile: unit\n"
+        }
+        for path in ["./A.xcworkspace", "A.xcworkspace", "\(project.root.path)/A.xcworkspace"] {
+            project.write(config(path), to: ".mobilebuildmcp/config.yaml")
+            #expect(await ProjectConfigCheck().run(.fake(project: project)) == .pass(".mobilebuildmcp/config.yaml"), "\(path)")
+        }
+        project.write(config("./Gone.xcworkspace"), to: ".mobilebuildmcp/config.yaml")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)).message.hasPrefix("the config points at Gone.xcworkspace"))
+    }
+
     /// Configs from 0.8.1 and earlier have a schemeless `unit` profile active.
     @Test func anActiveProfileWithoutASchemeWarns() async {
         let project = Project.temporary(containing: ["A.xcworkspace"])

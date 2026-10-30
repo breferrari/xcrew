@@ -14,12 +14,12 @@ public enum ConfigRenderer {
 
     public static func render(_ answers: ProfileAnswers, root: URL, simulatorIDs: [String: String] = [:], carried: CarriedDefaults = .init()) -> String {
         let pathKey = answers.container.hasSuffix(".xcodeproj") ? "projectPath" : "workspacePath"
-        let location = quoted(root.appending(path: answers.container).path)
+        let location = quoted(relative(answers.container, to: root))
 
         func profile(_ name: String, scheme: String, simulator: String, extra: [String] = []) -> [String] {
             ["  \(name):", "    \(pathKey): \(location)", "    scheme: \(quoted(scheme))", "    simulatorName: \(quoted(simulator))"]
                 + (simulatorIDs[simulator].map { ["    simulatorId: \(quoted($0))"] } ?? [])
-                + extra + carried.lines(for: name, indent: 4)
+                + extra + carried.relative(to: root).lines(for: name, indent: 4)
         }
 
         var lines = ["schemaVersion: 1", "enabledWorkflows:"] + workflows.map { "  - \($0)" }
@@ -39,7 +39,7 @@ public enum ConfigRenderer {
         } else {
             lines += ["sessionDefaults:", "  \(pathKey): \(location)", "  simulatorName: \(quoted(answers.testSimulator))"]
                 + (simulatorIDs[answers.testSimulator].map { ["  simulatorId: \(quoted($0))"] } ?? [])
-                + carried.lines(for: nil, indent: 2)
+                + carried.relative(to: root).lines(for: nil, indent: 2)
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -150,9 +150,25 @@ public enum ConfigRenderer {
         return Array(Set(found)).sorted()
     }
 
-    /// The workspace and project paths a config's profiles point at, each once.
-    public static func containerPaths(in yaml: String) -> [String] {
-        values(of: ["workspacePath:", "projectPath:"], in: yaml)
+    /// The workspace and project paths a config's profiles point at, each once, as MobileBuildMCP resolves them: from
+    /// the project root, its working directory, with `~` for the home folder (docs/findings.md, *MobileBuildMCP's config
+    /// paths*).
+    public static func containerPaths(in yaml: String, root: URL, home: URL) -> [String] {
+        values(of: ["workspacePath:", "projectPath:"], in: yaml).map { path in
+            if path.hasPrefix("/") { return path }
+            if path == "~" || path.hasPrefix("~/") { return home.appending(path: String(path.dropFirst(2))).path }
+            return root.appending(path: path).standardizedFileURL.path
+        }
+    }
+
+    /// A path as the config writes it: from the project root (`./App.xcworkspace`) when it's inside it, else as given.
+    static func relative(_ path: String, to root: URL) -> String {
+        guard path.hasPrefix("/") else { return path.hasPrefix("./") ? path : "./" + path }
+        // As given first, then as the file system spells both: a path that doesn't exist yet can't be resolved.
+        for (full, base) in [(path, root.path), (ProjectLayout.canonicalPath(path), ProjectLayout.canonicalPath(root.path))] where full.hasPrefix(base + "/") {
+            return "./" + full.dropFirst(base.count + 1)
+        }
+        return path
     }
 
     /// A YAML single-quoted scalar, so names with `: `, ` #` or quotes stay intact.

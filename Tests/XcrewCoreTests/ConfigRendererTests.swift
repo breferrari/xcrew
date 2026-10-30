@@ -18,14 +18,14 @@ import XcrewTestSupport
     @Test func onlyProfilesWithASchemeAreWritten() async {
         let yaml = ConfigRenderer.render(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 17", appScheme: "App"), root: root)
         #expect(!yaml.contains("  unit:"))
-        #expect(yaml.contains("  app:\n    projectPath: '/work/App/App.xcodeproj'\n    scheme: 'App'"))
+        #expect(yaml.contains("  app:\n    projectPath: './App.xcodeproj'\n    scheme: 'App'"))
         #expect(yaml.hasSuffix("activeSessionDefaultsProfile: app\n"))
     }
 
     @Test func aTestSchemeMakesUnitTheActiveProfile() async {
         let answers = ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17", appScheme: "App", testScheme: "App")
         let yaml = ConfigRenderer.render(answers, root: root)
-        #expect(yaml.contains("  unit:\n    workspacePath: '/work/App/App.xcworkspace'\n    scheme: 'App'\n    simulatorName: 'iPhone 17'"))
+        #expect(yaml.contains("  unit:\n    workspacePath: './App.xcworkspace'\n    scheme: 'App'\n    simulatorName: 'iPhone 17'"))
         #expect(yaml.hasSuffix("activeSessionDefaultsProfile: unit\n"))
     }
 
@@ -44,7 +44,7 @@ import XcrewTestSupport
     /// With no scheme yet, the container and simulator still reach MobileBuildMCP as its global defaults.
     @Test func withoutSchemesTheDefaultsAreGlobal() async {
         let yaml = ConfigRenderer.render(ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17"), root: root, simulatorIDs: ["iPhone 17": "AAAA"])
-        #expect(yaml.hasSuffix("sessionDefaults:\n  workspacePath: '/work/App/App.xcworkspace'\n  simulatorName: 'iPhone 17'\n  simulatorId: 'AAAA'\n"))
+        #expect(yaml.hasSuffix("sessionDefaults:\n  workspacePath: './App.xcworkspace'\n  simulatorName: 'iPhone 17'\n  simulatorId: 'AAAA'\n"))
         #expect(!yaml.contains("activeSessionDefaultsProfile"))
     }
 
@@ -70,13 +70,13 @@ import XcrewTestSupport
             appScheme: "App", bundleID: "com.example.app", uiTestScheme: "AppUITests"
         )
         let yaml = ConfigRenderer.render(answers, root: root)
-        #expect(yaml.contains("  ui:\n    workspacePath: '/work/App/App.xcworkspace'\n    scheme: 'AppUITests'\n    simulatorName: 'iPhone 17 Pro'"))
+        #expect(yaml.contains("  ui:\n    workspacePath: './App.xcworkspace'\n    scheme: 'AppUITests'\n    simulatorName: 'iPhone 17 Pro'"))
         #expect(yaml.contains("    scheme: 'App'\n    simulatorName: 'iPhone 17 Pro'\n    bundleId: 'com.example.app'"))
     }
 
     @Test func projectsUseProjectPath() async {
         let yaml = ConfigRenderer.render(ProfileAnswers(container: "./App.xcodeproj", testSimulator: "iPhone 17", appScheme: "App"), root: root)
-        #expect(yaml.contains("projectPath: '/work/App/App.xcodeproj'"))
+        #expect(yaml.contains("projectPath: './App.xcodeproj'"))
     }
 
     @Test func emptyAnswersCountAsMissing() async {

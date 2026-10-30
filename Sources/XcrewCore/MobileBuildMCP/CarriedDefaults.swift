@@ -82,6 +82,24 @@ public struct CarriedDefaults: Sendable, Equatable {
         return entries(for: profile).flatMap(\.lines).map { $0.isEmpty ? "" : pad + $0 }
     }
 
+    /// The keys MobileBuildMCP reads as paths, written from the project root when they're inside it.
+    static let pathKeys: Set<String> = ["derivedDataPath"]
+
+    /// These defaults with each path inside `root` written from it, so the config holds no path of this checkout.
+    func relative(to root: URL) -> CarriedDefaults {
+        func rewrite(_ entry: Entry) -> Entry {
+            guard Self.pathKeys.contains(entry.key), let first = entry.lines.first else { return entry }
+            let value = ConfigRenderer.unquoted(first.dropFirst(entry.key.count + 1).trimmingCharacters(in: .whitespaces))
+            guard value.hasPrefix("/") else { return entry }
+            let written = ConfigRenderer.relative(value, to: root)
+            return written == value ? entry : Entry(key: entry.key, lines: ["\(entry.key): \(written)"] + entry.lines.dropFirst())
+        }
+        var copy = self
+        copy.global = global.map(rewrite)
+        copy.profiles = profiles.mapValues { $0.map(rewrite) }
+        return copy
+    }
+
     /// The simulator a profile names, or with `profile` nil the global defaults' one.
     public func simulatorName(of profile: String?) -> String? {
         let entries = profile.map { profiles[$0] ?? [] } ?? global
