@@ -102,7 +102,8 @@ export const MCP_TOOL = /^mcp__(?:plugin_xcrew_)?(xcode|MobileBuildMCP)__(\w+)$/
 
 export type ToolKind = 'build' | 'test' | 'run'
 
-export type XcodeTool = { server: 'xcode' | 'MobileBuildMCP'; tool: string }
+/** A tool's server and name; `proxied` when MobileBuildMCP's bridge calls the Xcode MCP's tool for it. */
+export type XcodeTool = { server: 'xcode' | 'MobileBuildMCP'; tool: string; proxied?: true }
 
 /**
  * A tool call's server and tool. MobileBuildMCP's `xcode-ide` bridge registers each Xcode MCP tool again as
@@ -114,7 +115,7 @@ export function parseTool(name: string): XcodeTool | undefined {
   const [, server, tool] = match ?? []
   if (!server || !tool) return undefined
   const proxied = server === 'MobileBuildMCP' ? /^xcode_tools_(\w+)$/.exec(tool)?.[1] : undefined
-  return proxied ? { server: 'xcode', tool: proxied } : { server: server as XcodeTool['server'], tool }
+  return proxied ? { server: 'xcode', tool: proxied, proxied: true } : { server: server as XcodeTool['server'], tool }
 }
 
 /**

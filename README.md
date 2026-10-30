@@ -198,7 +198,6 @@ ok    mobilebuildmcp/config-loaded       loaded at its start
 ok    mobilebuildmcp/no-xcodebuild-left  no xcodebuild left running for this project
 ok    mobilebuildmcp/simulators          iPhone 17
 ok    xcode-mcp/headless-enabled         enabled
-ok    xcode-mcp/session-bridge           this session's Xcode MCP runs Xcode 27.2's bridge, the selected one
 ok    xcode-mcp/handshake                a new Xcode MCP bridge answers: xcode-tools 25464
 ok    xcode/pin                          Xcode 27.2, at /Applications/Xcode-27.2.app
 ok    xcode/ci                           CI uses Xcode 27.2 too

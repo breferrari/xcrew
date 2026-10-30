@@ -22,3 +22,13 @@ test('an Xcode MCP call that worked asks the CLI nothing', async ($, on) => {
   await callTool($, 'mcp__xcode__XcodeRead', { filePath: 'App/ContentView.swift' })
   expect(calls.filter(call => call.args[0] === 'note')).toEqual([])
 })
+
+/** MobileBuildMCP proxies an Xcode MCP tool through a bridge of its own, which reconnecting the plugin's server doesn't restart. */
+test('a proxied Xcode MCP tool whose connection closed asks the CLI nothing', async ($, on) => {
+  mock.store(on)
+  const calls = stubCli(on, { notes: () => [NOTE] })
+  on('tool.call', () => ({ result: {}, text: CLOSED, isError: true }))
+  const answered = await callTool($, 'mcp__MobileBuildMCP__xcode_tools_XcodeRead', { filePath: 'App/ContentView.swift' })
+  expect(answered.context ?? []).not.toContain(NOTE)
+  expect(calls.filter(call => call.args[0] === 'note')).toEqual([])
+})

@@ -22,4 +22,10 @@ import XcrewTestSupport
         #expect(!(await report(Self.closed, server: .mobileBuildMCP).notes.contains(Self.note)))
         #expect(!(await report(Self.closed, server: .xcode, isError: false).notes.contains(Self.note)))
     }
+
+    /// A failure that says "Connection closed" of its own, as a networking test's assertion does, isn't the Xcode MCP's.
+    @Test func aFailureThatMentionsAClosedConnectionHasNoNote() async {
+        let failed = #"Test failed: XCTAssertEqual failed: ("Connection closed by peer") is not equal to ("ok") at NetworkTests.swift:12"#
+        #expect(!(await report(failed, server: .xcode).notes.contains(Self.note)))
+    }
 }

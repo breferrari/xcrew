@@ -581,8 +581,6 @@ import XcrewTestSupport
     }
 }
 
-/// The handshake starts an Xcode MCP bridge of its own: the full doctor runs it, and the one the line above the prompt
-/// runs at session start and after prompts doesn't.
 /// `xcrew note`: the notes for an Xcode MCP tool's result that no build or test report reads.
 @Suite struct NoteCommandTests {
     @Test func aClosedConnectionHasItsNote() async {
@@ -592,6 +590,8 @@ import XcrewTestSupport
     }
 }
 
+/// The handshake starts an Xcode MCP bridge of its own: the full doctor runs it, and the one the line above the prompt
+/// runs at session start and after prompts doesn't.
 @Suite struct DoctorHandshakeTests {
     @Test func onlyTheFullDoctorRunsTheHandshake() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])

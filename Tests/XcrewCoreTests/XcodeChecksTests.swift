@@ -266,43 +266,6 @@ import XcrewTestSupport
     }
 }
 
-/// This session's Xcode MCP, `xcrun mcpbridge` under the session's Claude Code, runs the bridge of the Xcode selected
-/// when the session started: after a switch its calls fail until it's restarted.
-@Suite struct XcodeMCPBridgeCheckTests {
-    /// A Mac with Xcode 26.4 and Xcode 27.2 beta 3, 27.2 selected, and a bridge from `bridge` (an app's name) running as
-    /// `parent`'s child: 100 is this session's Claude Code.
-    func context(bridge: String?, parent: Int32 = 100) -> CheckContext {
-        let project = Project.temporary(containing: ["App.xcodeproj"])
-        let apps = project.root.appending(path: "Applications")
-        FakeXcode.installBoth(in: apps)
-        var responses = FakeSession.responses(serving: nil)
-        if let bridge {
-            let path = "\(apps.path)/\(bridge)/Contents/Developer/usr/bin/mcpbridge"
-            for key in ["ps -axo pid=,ppid=,etime=,command=", "ps -axo pid=,comm="] {
-                let line = key.contains("etime") ? "  400   \(parent)    00:10 \(path)" : "  400 \(path)"
-                responses[key] = .init(status: 0, stdout: (responses[key]?.stdout ?? "") + line + "\n")
-            }
-        }
-        responses["xcode-select -p"] = .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n")
-        return CheckContext.fake(FakeRunner(responses: responses), project: project, processID: FakeSession.doctor, applications: apps)
-    }
-
-    @Test func aBridgeOfAnotherXcodeThanTheSelectedFails() async {
-        let result = await XcodeMCPBridgeCheck().run(context(bridge: "Xcode-26.4.app"))
-        #expect(result == .fail("this session's Xcode MCP runs Xcode 26.4's bridge, but Xcode 27.2 is selected now, so its calls fail with \"Connection closed\": /mcp → Reconnect restarts it with Xcode 27.2"))
-    }
-
-    @Test func aBridgeOfTheSelectedXcodePasses() async {
-        #expect(await XcodeMCPBridgeCheck().run(context(bridge: "Xcode-27.2.0-Beta.3.app")) == .pass("this session's Xcode MCP runs Xcode 27.2's bridge, the selected one"))
-    }
-
-    /// No bridge here, or only another session's, says nothing of this one.
-    @Test func noBridgeOfThisSessionSkips() async {
-        #expect(await XcodeMCPBridgeCheck().run(context(bridge: nil)) == .skip("this session runs no Xcode MCP"))
-        #expect(await XcodeMCPBridgeCheck().run(context(bridge: "Xcode-26.4.app", parent: 1)) == .skip("this session runs no Xcode MCP"))
-    }
-}
-
 /// The handshake with a fresh `xcrun mcpbridge`: MCP's `initialize`, which the bridge answers without asking Xcode for
 /// approval, run only under a Claude Code session, whose agent Xcode already permits.
 @Suite struct XcodeMCPHandshakeCheckTests {
