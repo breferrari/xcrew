@@ -165,7 +165,9 @@ import Testing
     /// Every sentence xcrew tells Claude in the routing rules, the session briefing's notes, and the notes a run adds.
     func toldToClaude() throws -> [String] {
         let loop = try #require(try text("hooks/mod/loop.ts").firstMatch(of: /export function loopNote[\s\S]*?\n}/)).output
+        let setupFact = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const SETUP_FACT = '([^']*)'/)?.1)
         let texts = [
+            String(setupFact),
             try text("context/routing.md"),
             SessionBriefing.setupOffer,
             SessionBriefing.deviceHubNote("Xcode 27.2"),
@@ -774,6 +776,8 @@ import Testing
         "row": "each build or test result's row",
         "stale": "the generate command a manifest edit is waiting on",
         "setup": "whether a build or test has looked for a scheme to build with",
+        "form": "the setup form's choices and picks",
+        "wroteConfig": "whether Claude has yet to be told the form wrote a config",
     ]
 
     /// Privacy names every value the mod keeps.
@@ -984,6 +988,21 @@ import Testing
         let options = Set(line.matches(of: /--([\w-]+)/).map { String($0.1) })
         #expect(!options.isEmpty)
         #expect(options.isSubset(of: SetupCommand().valuedOptions.union(SetupCommand().flags)), "\(options.subtracting(SetupCommand().valuedOptions).sorted())")
+    }
+
+    /// The setup form builds `xcrew setup`'s options from its picks; one setup doesn't declare would be refused.
+    @Test func theSetupFormPassesOnlyOptionsSetupDeclares() throws {
+        let form = try text("hooks/mod/form.ts")
+        let options = Set(form.matches(of: /option\('([\w-]+)'/).map { String($0.1) } + form.matches(of: /'--([\w-]+)'/).map { String($0.1) })
+        #expect(options.count >= 10, "found too few options; the pattern no longer matches how the form builds them")
+        #expect(options.isSubset(of: SetupCommand().valuedOptions.union(SetupCommand().flags)), "\(options.subtracting(SetupCommand().valuedOptions.union(SetupCommand().flags)).sorted())")
+    }
+
+    /// The offer to set up names the form for the person, and `/xcrew`'s usage lists it, as the mod answers it.
+    @Test func theSetupOfferAndTheUsageNameTheForm() throws {
+        #expect(SessionBriefing.setupOffer.contains("`/xcrew setup`"))
+        #expect(try text("hooks/mod/command.ts").contains("'/xcrew setup "))
+        #expect(try text("hooks/mod/register.ts").contains("subcommand === 'setup'"))
     }
 
     /// The mod runs the CLI with options of its own; one a command doesn't declare would be refused, and the mod

@@ -653,7 +653,7 @@ import XcrewTestSupport
     /// The mod asks after a build whether setup can be offered, and says the briefing's own line when it can.
     @Test func profilesSaysSetupCanBeOfferedUntilASchemeCanBuild() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
-        #expect(await Run("project", "--profiles", context: .fake(project: project)).text == #"{"isGenerated":false,"setup":"MobileBuildMCP has no scheme to build this project with yet. `/xcrew:setup` writes its profiles once, from the project's schemes and simulators, and can be offered to the person."}"#)
+        #expect(await Run("project", "--profiles", context: .fake(project: project)).text == #"{"isGenerated":false,"setup":"MobileBuildMCP has no scheme to build this project with yet. `/xcrew:setup` writes its profiles once, from the project's schemes and simulators, and can be offered to the person, who can also pick them in the form `/xcrew setup` opens."}"#)
         project.write(ConfigRenderer.render(.init(container: "App.xcodeproj", testSimulator: "iPhone 17", testScheme: "AppTests"), root: project.root), to: ".mobilebuildmcp/config.yaml")
         // The scheme it builds with, for the mod's history when a call names none.
         #expect(await Run("project", "--profiles", context: .fake(project: project)).text == #"{"isGenerated":false,"scheme":"AppTests"}"#)

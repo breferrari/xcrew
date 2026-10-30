@@ -65,6 +65,8 @@ export function stubCli(
     project?: ProjectAnswer | ((args: readonly string[]) => ProjectAnswer | Promise<ProjectAnswer>)
     /** What `xcrew note` answers, for its arguments and what the mod pipes in. */
     notes?: (args: readonly string[], stdin: string | undefined) => string[]
+    /** What `xcrew setup --choices` answers as JSON, or what a plain `xcrew setup` prints, for its arguments. */
+    setup?: (args: readonly string[]) => unknown
     /** What `xcrew affected` answers, for its arguments. */
     affected?: (args: readonly string[]) => unknown
     /** The text `xcrew look` prints, for its arguments, or the Error it fails with. */
@@ -86,6 +88,7 @@ export function stubCli(
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
     // The commands that print text rather than JSON.
     const printing = new Map<string, () => string | Error | { stdout: string; stderr: string } | undefined>([['look', () => answers.look?.(args)], ['evidence', () => answers.evidence?.(e.init?.stdin)]])
+    if (args[0] === 'setup' && !args.includes('--choices')) printing.set('setup', () => String(answers.setup?.(args) ?? ''))
     const answered = args[0] === undefined ? undefined : printing.has(args[0]) ? (printing.get(args[0])?.() ?? '') : undefined
     if (answered instanceof Error) throw answered
     const printed = typeof answered === 'object' ? answered.stdout : answered
@@ -100,6 +103,7 @@ export function stubCli(
       : args[0] === 'doctor' ? (answers.problems ?? [])
       : args[0] === 'project' ? ((typeof answers.project === 'function' ? answers.project(args) : answers.project) ?? { isGenerated: false })
       : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
+      : args[0] === 'setup' ? (answers.setup?.(args) ?? null)
       : args[0] === 'note' ? { notes: answers.notes?.(args, e.init?.stdin) ?? [] }
       : null
     )

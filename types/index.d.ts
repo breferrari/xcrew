@@ -52,8 +52,27 @@ export type FullRun = { at: number; ms: number }
 /** Each scope's recent full-suite runs this session, for the loop budget. */
 export type FullRuns = Record<string, FullRun[]>
 
+/** What `xcrew setup --choices` gives: the containers, the shared schemes with what each does, the installed simulators, the
+ * starting picks, and the config there is. */
+export type SetupChoices = {
+  container?: string
+  containers: string[]
+  containerProblem?: string
+  schemes: { name: string; container: string; roles: ('app' | 'unit-tests' | 'ui-tests')[]; app?: string }[]
+  picks: { appScheme?: string; uiScheme?: string; testScheme?: string; bundleID?: string; testSimulator?: string }
+  simulators: { name: string; runtime: string; twoDisplays?: boolean }[]
+  config?: { owner: 'xcrew' | 'edited' | 'other'; scheme?: string; debuggerBackend?: string }
+  worktree?: boolean
+}
+
+/** What the person picked in the setup form, each passed to `xcrew setup` as its option. */
+export type SetupPicks = SetupChoices['picks'] & { container?: string; appSimulator?: string; debuggerBackend?: 'dap' | 'lldb-cli'; worktreeSimulator?: 'clone' | 'fresh' | 'share' }
+
+/** The setup form: its choices once read, or why they couldn't be, the picks, and what the last write said. */
+export type SetupForm = { choices: SetupChoices | null; picks: SetupPicks; unread?: string; isWriting?: boolean; written?: string[] }
+
 declare module 'claude-code' {
   interface PluginState {
-    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null; loop: FullRuns; setup: boolean }
+    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null; loop: FullRuns; setup: boolean; form: SetupForm | null; wroteConfig: boolean }
   }
 }

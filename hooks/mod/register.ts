@@ -1,6 +1,6 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, StaleProject } from '../../types'
+import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, SetupChoices, SetupForm, SetupPicks, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
@@ -11,6 +11,7 @@ import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAI
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
+import { drawsForm, type FormElements, formTree, NO_FORM, SETUP_FACT, setupArgs, startingPicks } from './form'
 import { afterFullRun, type Crossing, loopNote } from './loop'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
@@ -35,6 +36,12 @@ const rowState = atom({ plugin: 'xcrew', key: 'row' } as const, null as ResultRo
 const setupState = atom({ plugin: 'xcrew', key: 'setup' } as const, false as boolean)
 /** A manifest edit the project hasn't been generated since, for the session. */
 const staleState = atom({ plugin: 'xcrew', key: 'stale' } as const, null as StaleProject | null)
+/** The setup form's choices, picks and last write. */
+const formState = atom({ plugin: 'xcrew', key: 'form' } as const, null as SetupForm | null)
+/** The form wrote a config Claude hasn't been told of yet. */
+const wroteConfigState = atom({ plugin: 'xcrew', key: 'wroteConfig' } as const, false as boolean)
+/** The setup form's pane id: a literal here, so the loader can read the pane hook's matcher. */
+const SETUP_PANE = 'xcrew-setup'
 
 /**
  * xcrew's mod: the only file that touches `$` or registers a hook. The plugin directory reads `$`
@@ -298,6 +305,7 @@ export const register: Register = on => {
       await dismissFailedRun($)
       return { text: await openFailures($) }
     }
+    if (subcommand === 'setup') return { text: await openForm($) }
     if (subcommand === 'close') {
       await dismissFailedRun($)
       return { text: await closeFailures($) }
@@ -305,6 +313,11 @@ export const register: Register = on => {
     return { text: USAGE }
   }).catch(async ($, e, next) => ({ text: `/xcrew ${(e.args ?? '').trim()} couldn't answer: ${next.error?.message ?? 'it failed'}` }))
   on('ui.render', { component: 'Pane', requestId: FAILURES_PANE }, async ($, e) => paneTree($.ui.resolve(e), await read($, failuresState)))
+  on('ui.render', { component: 'Pane', requestId: SETUP_PANE }, async ($, e) => formTree($.ui.resolve(e) as unknown as FormElements, await read($, formState), {
+    pick: (key, value) => void pickInForm($, key, value).catch(() => undefined),
+    write: () => void writeFromForm($).catch(() => undefined),
+    close: () => void $.ui.close({ id: SETUP_PANE }).catch(() => undefined),
+  }))
   // The one unmatched session start hook: offers `/xcrew`, and looks for problems without holding the session up.
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -324,6 +337,10 @@ export const register: Register = on => {
   })
   // The one unmatched prompt hook: a problem fixed any way at all leaves the band by the next prompt. Never awaited.
   on('prompt.submit', async ($, e, next) => {
+    // A config the form wrote is told once: the session's MobileBuildMCP still runs on the old one.
+    let wrote = false
+    await quietly(() => update($, wroteConfigState, was => ((wrote = was), false)))
+    if (wrote) e = { ...e, context: [...(e.context ?? []), SETUP_FACT] }
     void (async () => {
       if (!drawsBand((await quietly(() => $.session.surfaces())) ?? [])) return
       if ((await $.clock.now()) - lastRead >= REREAD_EVERY_MS) await loadProblems($)
@@ -506,6 +523,53 @@ async function isGeneratedProject($: EngineInterface): Promise<boolean> {
 /** A CLI command's own text, or why it couldn't run. */
 function cliText($: EngineInterface, args: string[]): Promise<string> {
   return xcrew($, args, 120_000).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
+}
+
+/** Opens the setup form and reads its choices behind it; where nothing draws pickers, names the skill. */
+async function openForm($: EngineInterface): Promise<string> {
+  if (!drawsForm((await quietly(() => $.session.surfaces())) ?? [])) return NO_FORM
+  await update($, formState, () => ({ choices: null, picks: {} }))
+  await $.ui.open({ id: SETUP_PANE, title: 'xcrew setup' })
+  // The pane says it's reading meanwhile; the command's own line waits for the choices.
+  await readChoices($).catch(() => undefined)
+  return 'The setup form is open in a pane: pick, then Write config.'
+}
+
+/** Reads what setup offers, for `container` when the person picked one, and starts the picks from it. */
+async function readChoices($: EngineInterface, container?: string): Promise<void> {
+  const answered = await answer($, ['setup', '--choices', ...(container ? ['--container', container] : [])], 120_000)
+  const choices = answered !== null && typeof answered === 'object' && Array.isArray((answered as SetupChoices).containers) ? (answered as SetupChoices) : undefined
+  await update($, formState, form => (choices
+    ? { choices, picks: { ...startingPicks(choices), ...(container ? { container } : {}) } }
+    : { choices: null, picks: form?.picks ?? {}, unread: 'xcrew setup --choices couldn\'t answer: /xcrew:setup, the skill, sets xcrew up instead.' }))
+}
+
+/** The form keys whose picks are setup's options, and the pick each one sets. */
+const FORM_PICKS: Record<string, keyof SetupPicks> = { 'app-scheme': 'appScheme', 'ui-scheme': 'uiScheme', 'test-scheme': 'testScheme', 'bundle-id': 'bundleID', 'test-simulator': 'testSimulator', 'app-simulator': 'appSimulator', 'debugger-backend': 'debuggerBackend', 'worktree-simulator': 'worktreeSimulator' }
+
+async function pickInForm($: EngineInterface, key: string, value: string): Promise<void> {
+  if (key === 'container') {
+    await update($, formState, form => ({ choices: null, picks: { ...(form?.picks ?? {}), container: value } }))
+    return readChoices($, value)
+  }
+  const pick = FORM_PICKS[key]
+  if (!pick) return
+  await update($, formState, form => (form ? { ...form, picks: { ...form.picks, [pick]: value === '' ? undefined : value } as SetupPicks, written: undefined } : form))
+}
+
+/** Runs `xcrew setup` with the picks, shows what it said, and has Claude told once when it wrote the config. */
+async function writeFromForm($: EngineInterface): Promise<void> {
+  const form = await read($, formState)
+  if (!form?.choices || form.isWriting) return
+  await update($, formState, current => (current ? { ...current, isWriting: true, written: undefined } : current))
+  const said = await cliText($, setupArgs(form.choices, form.picks))
+  const wrote = said.includes('wrote .mobilebuildmcp/config.yaml')
+  await update($, formState, current => (current ? { ...current, isWriting: false, written: said.split('\n').filter(line => line.trim() !== '') } : current))
+  if (wrote) {
+    await quietly(() => update($, wroteConfigState, () => true))
+    sessionProfileSchemes = new Map()
+    void loadProblems($, true).catch(() => undefined)
+  }
 }
 
 /** A run has the band while it shows; the problems wait beneath it. */
