@@ -69,6 +69,24 @@ public enum ConfigRenderer {
         return (names, withScheme, values(of: ["activeSessionDefaultsProfile:"], in: yaml).first)
     }
 
+    /// Whether MobileBuildMCP has a scheme to build with: the active profile's, since a named profile stands alone, or
+    /// with none active, the global `sessionDefaults`' (docs/findings.md, *MobileBuildMCP's profiles*).
+    public static func hasSchemeToBuild(in yaml: String) -> Bool {
+        let profiles = profiles(in: yaml)
+        if let active = profiles.active { return profiles.withScheme.contains(active) }
+        var inDefaults = false
+        for raw in yaml.split(whereSeparator: \.isNewline) {
+            let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+            if !raw.hasPrefix(" ") {
+                inDefaults = trimmed == "sessionDefaults:"
+            } else if inDefaults, trimmed.hasPrefix("scheme:"), !trimmed.dropFirst("scheme:".count).trimmingCharacters(in: .whitespaces).isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
     /// The simulator IDs a config's profiles name, each once.
     public static func simulatorIDs(in yaml: String) -> [String] {
         values(of: ["simulatorId:"], in: yaml)

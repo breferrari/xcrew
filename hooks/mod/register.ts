@@ -2,7 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, generatedOf, hasProfilesOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
+import { answerOf, couldntRun, generatedOf, type Head, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_BLOCK, CARD_WAIT_MS, cardText } from './card'
@@ -16,7 +16,6 @@ import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from '
 import { afterGenerate, editedNote, letThroughNote, marked, marksOf, refusal } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, isStale, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, whereKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
-import { SETUP_NUDGE } from './setup'
 import { buildsProject, FILE_EDITOR, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
@@ -72,15 +71,18 @@ export const register: Register = on => {
     const result = await next(e)
     return result.deny === undefined ? withContext(result, letThroughNote(generates)) : result
   }).catch(async ($, e, next) => next(e))
-  // A build or test without a profile says once to offer setup; the line is bookkeeping, so the call's result stands.
+  // The session's first MobileBuildMCP build or test says to offer setup while there's no scheme to build with. The mark
+  // is set before the call, so calls started together ask once; the line is bookkeeping, so the call's result stands.
   on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const parsed = parseTool(e.tool)
-    if (parsed?.server !== 'MobileBuildMCP' || !buildsProject(parsed) || (await quietly(() => read($, setupState))) !== false) return next(e)
+    if (parsed?.server !== 'MobileBuildMCP' || !buildsProject(parsed)) return next(e)
+    let isFirst = false
+    await quietly(() => update($, setupState, looked => ((isFirst = !looked), true)))
+    if (!isFirst) return next(e)
     const result = await next(e)
     if (result.deny !== undefined) return result
-    await quietly(() => update($, setupState, () => true))
-    const hasProfiles = hasProfilesOf(await answer($, ['project', '--setup'], 10_000))
-    return hasProfiles ? result : withContext(result, SETUP_NUDGE)
+    const offer = setupOfferOf(await answer($, ['project', '--profiles'], 10_000))
+    return offer === undefined ? result : withContext(result, offer)
   }).catch(async ($, e, next) => next(e))
   on('tool.call', { tool: FILE_EDITOR }, async ($, e, next) => {
     const path = e.tool === 'Write' || e.tool === 'Edit' ? e.file_path : undefined

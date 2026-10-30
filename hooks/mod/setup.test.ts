@@ -2,12 +2,13 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On, ToolCallResult } from 'claude-code'
 import { callTool, stubCli, type CliCall } from './testing'
 
-const NUDGE = 'No MobileBuildMCP profile for this project yet: `/xcrew:setup` writes them once, from the project\'s schemes and simulators. Offer it to the person.'
+/** The CLI's line, whatever it says: the mod passes it on as given. */
+const NUDGE = 'offer setup, as the CLI words it'
 
-/** A project whose config has a profile with a scheme or not; beneath the mod, every tool answers. */
+/** A project whose config has a scheme to build with or not; beneath the mod, every tool answers. */
 function project(on: On, hasProfiles: boolean): CliCall[] {
   mock.store(on)
-  const calls = stubCli(on, { project: { isGenerated: false, hasProfiles } })
+  const calls = stubCli(on, { project: args => (args.includes('--profiles') && !hasProfiles ? { isGenerated: false, setup: NUDGE } : { isGenerated: false }) })
   on('tool.call', () => ({ result: {}, text: 'done' }))
   return calls
 }
@@ -34,5 +35,11 @@ test('the Xcode MCP\'s builds and MobileBuildMCP\'s reads ask nothing', async ($
   const calls = project(on, false)
   expect(contextOf(await callTool($, 'mcp__plugin_xcrew_xcode__BuildProject'))).not.toContain(NUDGE)
   expect(contextOf(await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__list_schemes'))).not.toContain(NUDGE)
-  expect(calls.filter(call => call.args.includes('--setup'))).toHaveLength(0)
+  expect(calls.filter(call => call.args.includes('--profiles'))).toHaveLength(0)
+})
+
+test('builds started together say it once', async ($, on) => {
+  project(on, false)
+  const results = await Promise.all([callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__build_sim'), callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')])
+  expect(results.filter(result => contextOf(result).includes(NUDGE))).toHaveLength(1)
 })

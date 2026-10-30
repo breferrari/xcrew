@@ -430,27 +430,28 @@ import XcrewTestSupport
 
     @Test func aTuistProjectWithoutItsWorkspaceSaysToGenerateIt() async {
         let project = Project.temporary(containing: [".git", "Tuist.swift", "Projects/Feature/Feature.xcodeproj"])
-        #expect(await Run("project", "--setup", context: .fake(project: project)).text == #"{"containerProblem":"no workspace beside the manifests in the project root yet: generate it first, or pass --container","hasProfiles":false,"isGenerated":true}"#)
+        #expect(await Run("project", "--setup", context: .fake(project: project)).text == #"{"containerProblem":"no workspace beside the manifests in the project root yet: generate it first, or pass --container","isGenerated":true}"#)
     }
 
     @Test func aClassicProjectNamesItsContainer() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         #expect(await Run("project", context: .fake(project: project)).text == #"{"isGenerated":false}"#)
-        #expect(await Run("project", "--setup", context: .fake(project: project)).text == #"{"container":"App.xcodeproj","hasProfiles":false,"isGenerated":false}"#)
+        #expect(await Run("project", "--setup", context: .fake(project: project)).text == #"{"container":"App.xcodeproj","isGenerated":false}"#)
     }
 
-    /// The mod asks after a build whether to say setup is still to run.
-    @Test func setupSaysWhetherAProfileNamesAScheme() async {
+    /// The mod asks after a build whether to offer setup, and says the briefing's own line when it should.
+    @Test func profilesSaysToOfferSetupUntilASchemeCanBuild() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
+        #expect(await Run("project", "--profiles", context: .fake(project: project)).text == #"{"isGenerated":false,"setup":"MobileBuildMCP has no scheme to build this project with yet: before the first build or test, offer `/xcrew:setup`, which writes its profiles once from the project's schemes and simulators."}"#)
         project.write(ConfigRenderer.render(.init(container: "App.xcodeproj", testSimulator: "iPhone 17", testScheme: "AppTests"), root: project.root), to: ".mobilebuildmcp/config.yaml")
-        #expect(await Run("project", "--setup", context: .fake(project: project)).text.contains(#""hasProfiles":true"#))
+        #expect(await Run("project", "--profiles", context: .fake(project: project)).text == #"{"isGenerated":false}"#)
     }
 
     /// Setup builds the container mcs resolved, so the answer the skill reads names the same one.
     @Test func anMCSAnswerIsTheContainerSetupWillBuild() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let text = await Run("project", "--setup", context: .fake(project: project, environment: ["MCS_RESOLVED_PROJECT": "Other.xcworkspace"])).text
-        #expect(text == #"{"container":"Other.xcworkspace","hasProfiles":false,"isGenerated":false}"#)
+        #expect(text == #"{"container":"Other.xcworkspace","isGenerated":false}"#)
     }
 
     /// A module's manifest sits deeper than detection walks: it counts by its import, under the folder Tuist's manifests are in.

@@ -608,7 +608,7 @@ import Testing
         "build": "which build of the CLI to run",
         "row": "each build or test result's row",
         "stale": "the generate command a manifest edit is waiting on",
-        "setup": "whether a build or test has looked for a MobileBuildMCP profile",
+        "setup": "whether a build or test has looked for a scheme to build with",
     ]
 
     /// Privacy names every value the mod keeps.

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- When Claude builds or tests a project that has no MobileBuildMCP profile yet, it's told to offer `/xcrew:setup`, once per conversation. The conversation's opening note says so too, now also when MobileBuildMCP saved a config of its own without a scheme.
+- When Claude builds or tests a project MobileBuildMCP has no scheme for yet, it's told to offer `/xcrew:setup`, once per conversation. The conversation's opening note says so too, now also when MobileBuildMCP saved a config of its own without one. The README now says that with mcs you run `/xcrew:setup` once after `mcs sync`.
 
 ## 0.9.0 — 2026-10-30
 

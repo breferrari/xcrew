@@ -30,6 +30,10 @@ public struct SessionBriefing: Sendable {
         project.xcodePin.map { "This project pins Xcode \($0.version) (`\($0.file)`). MobileBuildMCP starts with it when it's installed and xcrew's CLI is ready, and `xcrew doctor` says when it didn't. The Xcode MCP works through whichever Xcode is open, so open that one." }
     }
 
+    /// Said at the start, and by the mod with the session's first MobileBuildMCP build or test, while MobileBuildMCP has
+    /// no scheme to build with.
+    public static let setupOffer = "MobileBuildMCP has no scheme to build this project with yet: before the first build or test, offer `/xcrew:setup`, which writes its profiles once from the project's schemes and simulators."
+
     func profiles() -> String? {
         guard let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else { return nil }
         let profiles = ConfigRenderer.profiles(in: yaml)
@@ -72,8 +76,8 @@ public struct SessionBriefing: Sendable {
     /// Fast checks only: this runs before every session's first prompt.
     func gaps() -> [String] {
         var gaps: [String] = []
-        if !project.hasProfileWithScheme {
-            gaps.append("MobileBuildMCP has no profile with a scheme for this project yet: before the first build or test, offer `/xcrew:setup`.")
+        if !project.hasSchemeToBuild {
+            gaps.append(Self.setupOffer)
         }
         return gaps
     }

@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up xcrew for this iOS project — write MobileBuildMCP's config with the right workspace, schemes and simulators, then check the Mac. Use when the person runs /xcrew:setup, when a session starts with "no .mobilebuildmcp/config.yaml", or when they ask to change which scheme or simulator Claude builds and tests with.
+description: Set up xcrew for this iOS project — write MobileBuildMCP's config with the right workspace, schemes and simulators, then check the Mac. Use when the person runs /xcrew:setup, when Xcrew says MobileBuildMCP "has no scheme to build this project with yet", or when they ask to change which scheme or simulator Claude builds and tests with.
 ---
 
 # Set up xcrew in this project

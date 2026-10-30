@@ -3,22 +3,22 @@ import Foundation
 import XcrewCore
 
 /// What kind of project this is, as JSON: whether a generator writes it, for the mod's `XcodeWrite` guard, and
-/// with `--setup` the container setup would build and whether a profile names a scheme, for the setup skill and the mod. The guard runs it on every call, so only
+/// with `--setup` the container setup would build, for the setup skill, and with `--profiles` the line offering setup, for the mod. The guard runs it on every call, so only
 /// the skill pays for the container's search. The mod asks with `--manifest` after each edit to a manifest's name.
 struct ProjectCommand: Command {
     let name = "project"
-    let flags: Set<String> = ["setup", "branch"]
+    let flags: Set<String> = ["setup", "profiles", "branch"]
     let valuedOptions: Set<String> = ["manifest", "generated"]
     let usage = [
-        "project [--setup] [--manifest <file>] [--generated <file>] [--branch]   whether a generator writes this project, as JSON; --setup adds the container setup would use and whether a profile names a scheme, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, and --branch the real root with the branch or commit checked out",
+        "project [--setup] [--profiles] [--manifest <file>] [--generated <file>] [--branch]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --profiles the line offering setup while MobileBuildMCP has no scheme to build with, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, and --branch the real root with the branch or commit checked out",
     ]
 
     struct Answer: Codable, Equatable {
         let isGenerated: Bool
         var container: String?
         var containerProblem: String?
-        /// With `--setup`: whether a profile in the config names a scheme, so the mod knows whether setup is still to run.
-        var hasProfiles: Bool?
+        /// With `--profiles`: the line offering setup, while MobileBuildMCP has no scheme to build with.
+        var setup: String?
         /// The command to run before the next build, when the file `--manifest` names is one the generator reads.
         var generate: String?
         /// The app that command regenerates, as the path of its manifests' folder from the root: empty for the root.
@@ -58,8 +58,10 @@ struct ProjectCommand: Command {
             case nil: break
             }
         }
+        if invocation.arguments.has("profiles"), !project.hasSchemeToBuild {
+            answer.setup = SessionBriefing.setupOffer
+        }
         if invocation.arguments.has("setup") {
-            answer.hasProfiles = project.hasProfileWithScheme
             do {
                 answer.container = try SetupCommand.container(in: invocation.context)
             } catch {
