@@ -20,8 +20,8 @@ for channel in "$@"; do
     ;;
   footprint)
     # What an install copies: the plugin is the repository's root, so every tracked file. The ceiling is a size
-    # measured 1952002 bytes on 2026-10-30, rounded up to the next 100 KB; raise it on purpose, with a new measurement.
-    ceiling=2000000
+    # measured 2007008 bytes on 2026-10-30, rounded up to the next 100 KB; raise it on purpose, with a new measurement.
+    ceiling=2100000
     size=$(git ls-files -z | xargs -0 stat -f %z | awk '{ total += $1 } END { print total }')
     if [ "$size" -gt "$ceiling" ]; then
       echo "distribution.sh: an install copies $size bytes, over the footprint's ceiling of $ceiling" >&2
