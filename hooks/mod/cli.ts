@@ -121,6 +121,8 @@ export function setupOfferOf(answer: unknown): string | undefined {
 export function hashOf(answer: unknown): string | undefined {
   const { hash } = (answer ?? {}) as { hash?: unknown }
   return typeof hash === 'string' ? hash : undefined
+}
+
 /** The notes `xcrew note` has for a tool's result; none when it couldn't answer. */
 export function notesOf(answer: unknown): string[] {
   const { notes } = (answer ?? {}) as { notes?: unknown }
