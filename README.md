@@ -79,7 +79,6 @@ A line above the prompt follows every build and test:
 - **When it ends:** the outcome, compared with recent runs, and what failed.
 - **A long run** also sends a notification.
 - **Where the line can't draw**, such as VS Code, the status line counts and a toast reports the outcome.
-- **`/xcrew history`** lists each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped. It answers at once, without a turn for Claude, as every `/xcrew` command does.
 
 The [image at the top](#your-xcode-crew-inside-claude-code) shows all four states.
 
@@ -94,7 +93,6 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
 - **Flaky or real**: a test repeated with `-test-iterations` comes back with a verdict for each test. It's flaky when it failed some runs and passed others, and a real failure when it failed every run.
 - **Warnings in lines your branch changed**, named apart from the rest of a build's warnings.
 - **The changed lines a test run didn't run**, from its coverage, on a run with coverage on.
-- **`/xcrew ledger`** shows the tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan.
 - **A loop budget**: after the whole suite runs again and again in a short while, Claude is sent to the tests the change can break.
 - **Compile errors counted once.**
 - **Passing tests left out**, with the full list a file read away.
@@ -107,16 +105,41 @@ A MobileBuildMCP result for a failing run of a large suite runs to about 80,000 
 
 ### The last failures beside the chat
 
-After a failing run, the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw.
-
-- **`/xcrew failures`** opens the failures pane, with every failing test and compile error of the last failing run.
-- **`/xcrew close`** closes the failures pane.
+After a failing run, the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw. It opens the failures pane, with every failing test and compile error of the last failing run.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane-light.png">
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png">
   <img src="https://raw.githubusercontent.com/breferrari/xcrew/main/assets/failures-pane.png" alt="The failures pane beside the chat, listing each failing test with its file, line and message" width="100%">
 </picture>
+
+### Commands
+
+**Setting up**
+
+| Command | What it does |
+| --- | --- |
+| `/xcrew:setup` | Writes MobileBuildMCP's per-project profiles from your schemes and installed simulators |
+| `xcrew xcode-skills` | Copies the agent skills your Xcode ships into the project |
+
+**Around a run**
+
+| Command | What it does |
+| --- | --- |
+| `xcrew affected` | The tests your branch's changes can break |
+| `/xcrew failures` | Opens the failures pane, with every failing test and compile error of the last failing run. After a failing run the line above the prompt ends with `/xcrew failures`, or the toast does where that line can't draw |
+| `/xcrew close` | Closes the failures pane |
+| `/xcrew ledger` | The tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan |
+| `/xcrew history` | Each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped |
+
+**When something's off**
+
+| Command | What it does |
+| --- | --- |
+| `/xcrew doctor`, `xcrew doctor` | The doctor's report: in the chat, or in a terminal with the fix for anything wrong |
+| `xcrew xcode` | Which Xcode is which: those installed, the selected one, the project's pin, CI's, and the one open |
+
+Commands starting with `/` are typed in Claude Code, the rest in a terminal. The `/xcrew` commands answer at once, without a turn for Claude.
 
 ### The right server for each job
 
@@ -145,7 +168,7 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 ### Setup and doctor
 
 - **`/xcrew:setup`** writes MobileBuildMCP's per-project profiles from your schemes and installed simulators.
-- **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out. **`/xcrew doctor`** shows the same report in the chat.
+- **`xcrew doctor`** checks the Mac and the project, prints the fix for anything wrong, and says when a newer Xcrew is out.
 - **Anything wrong** shows in the line above the prompt: a failing check until it's fixed, however you fix it, and a warning for a short while. When setup or `mcs sync` changed the config after MobileBuildMCP started, the line asks you to restart Claude Code.
 - **`xcrew xcode`** says which Xcode is which: those installed, the selected one, the project's `.xcode-version` pin, CI's, and the one open. A pinned Xcode is the one MobileBuildMCP builds and tests with.
 - **`xcrew xcode-skills`** copies the agent skills your Xcode ships (SwiftUI, accessibility, device interaction) into the project. Run it again after an Xcode update.
