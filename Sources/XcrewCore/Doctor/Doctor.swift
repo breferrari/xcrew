@@ -6,6 +6,7 @@ public enum Doctor {
         LegacyBinaryCheck(),
         ProjectConfigCheck(),
         ConfigLoadedCheck(),
+        XcodebuildLeftRunningCheck(),
         SimulatorsCheck(),
         HeadlessXcodeMCPCheck(),
         XcodePinCheck(),

@@ -17,7 +17,7 @@ struct LockedBuildDatabase: MachineCause {
         guard !processes.isEmpty, lsof.succeeded || (lsof.status == 1 && lsof.stdout.isEmpty) else { return Self.unknown }
         let holders = Set(lsof.stdout.split(whereSeparator: \.isNewline).compactMap { Int32($0) })
         let derivedData = database.firstMatch(of: #/^(.+)/Build/Intermediates\.noindex/XCBuildData/build\.db$/#).map { ProjectLayout.canonicalPath(String($0.1)) }
-        let building = processes.filter(Self.isXcodebuild).first { process in
+        let building = processes.filter(\.isXcodebuild).first { process in
             holders.contains(process.id) || derivedData.map { Self.derivedData(of: process) == $0 } == true
         }
         if let building { return Self.held(by: building) }
@@ -25,13 +25,9 @@ struct LockedBuildDatabase: MachineCause {
         return Self.free
     }
 
-    static func isXcodebuild(_ process: ProcessList.Process) -> Bool {
-        process.program == "xcodebuild" || process.command.split(separator: " ").first?.hasSuffix("/xcodebuild") == true
-    }
-
-    /// The DerivedData an xcodebuild builds into, from its `-derivedDataPath`, spelled as the file system spells it.
+    /// The DerivedData an xcodebuild builds into, spelled as the file system spells it.
     static func derivedData(of process: ProcessList.Process) -> String? {
-        process.command.firstMatch(of: #/-derivedDataPath (.+?)(?= -[A-Za-z]|$)/#).map { ProjectLayout.canonicalPath(String($0.1)) }
+        process.derivedDataPath.map(ProjectLayout.canonicalPath)
     }
 
     /// When nothing holds the database any more.
@@ -42,23 +38,12 @@ struct LockedBuildDatabase: MachineCause {
 
     /// An xcodebuild holding the database: where it builds for, how long it has run, and how to stop it.
     static func held(by holder: ProcessList.Process) -> String {
-        let destination = holder.command.firstMatch(of: #/-destination (.+?)(?= -[A-Za-z]|$)/#).map { ", for \($0.1)" } ?? ""
-        return "an xcodebuild holds its build database (\"database is locked\"): pid \(holder.id)\(destination), running \(age(holder.elapsed)). A call stopped partway leaves its xcodebuild running; stopping it frees the database: kill \(holder.id)"
+        "an xcodebuild holds its build database (\"database is locked\"): \(holder.described). A call stopped partway leaves its xcodebuild running; stopping it frees the database: kill \(holder.id)"
     }
 
     /// Another process holding it, such as Xcode's build service: a build still going, not one to stop.
     static func heldElsewhere(by holder: ProcessList.Process) -> String {
         let name = holder.program.isEmpty ? "a process" : holder.program
-        return "\(name) holds its build database (\"database is locked\"): pid \(holder.id), running \(age(holder.elapsed)), a build still going, in Xcode or another session. The database is free once it ends."
-    }
-
-    /// `40 s`, `12 min`, `3 h`, `1 d 2 h`.
-    static func age(_ seconds: Int) -> String {
-        switch seconds {
-        case ..<60: "\(seconds) s"
-        case ..<3600: "\(seconds / 60) min"
-        case ..<86_400: "\(seconds / 3600) h"
-        default: "\(seconds / 86_400) d \(seconds % 86_400 / 3600) h"
-        }
+        return "\(name) holds its build database (\"database is locked\"): pid \(holder.id), running \(holder.age), a build still going, in Xcode or another session. The database is free once it ends."
     }
 }

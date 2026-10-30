@@ -66,6 +66,10 @@ supplementaryDoctorChecks:
     section: xcrew
     command: mcs/checks/mobilebuildmcp--config-loaded.sh
   - type: shellScript
+    name: No xcodebuild left running for this project
+    section: xcrew
+    command: mcs/checks/mobilebuildmcp--no-xcodebuild-left.sh
+  - type: shellScript
     name: Configured simulators exist
     section: xcrew
     command: mcs/checks/mobilebuildmcp--simulators.sh
