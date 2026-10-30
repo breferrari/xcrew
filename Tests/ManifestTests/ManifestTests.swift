@@ -169,8 +169,6 @@ import Testing
             try text("context/routing.md"),
             SessionBriefing.setupOffer,
             SessionBriefing.deviceHubNote("Xcode 27.2"),
-            ToolErrorNotes.displays,
-            ToolErrorNotes.debuggerBackend,
             SessionBriefing.failoverNote(reason: "it isn't installed"),
             String(loop),
             Report.noTestsNote,
@@ -184,7 +182,7 @@ import Testing
             LockedBuildDatabase.unknown,
             LockedBuildDatabase.held(by: ProcessList.Process(id: 42, parent: 1, elapsed: 90, command: "/x/xcodebuild build -destination platform=iOS Simulator,name=iPhone 17", program: "xcodebuild")),
             LockedBuildDatabase.heldElsewhere(by: ProcessList.Process(id: 43, parent: 1, elapsed: 40, command: "/x/SWBBuildService", program: "SWBBuildService")),
-        ] + (try Self.modTools.map { try toolDescription($0.constant, in: $0.file) })
+        ] + ToolErrorNotes.known.map(\.note) + (try Self.modTools.map { try toolDescription($0.constant, in: $0.file) })
         var sentences: [String] = []
         for text in texts {
             for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }

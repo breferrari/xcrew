@@ -180,7 +180,7 @@ public struct Report: Sendable, Equatable, Codable {
         }
         let summary = final.summary
 
-        var notes = ClosedConnection.notes(for: output)
+        var notes = ToolErrorNotes.notes(for: output)
         let tests = final.testTotal
         if isTest, tests == 0 { notes.append(noTestsNote) }
         if let bundle, let summary = await bundleSummary {
