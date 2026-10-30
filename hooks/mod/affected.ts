@@ -9,7 +9,7 @@ export const AFFECTED_TOOL = {
   name: 'affected',
   description:
     'Xcrew: which test targets the changes on this git branch can break, since its merge base with the default branch, uncommitted and untracked files included; with no remote, the uncommitted and untracked files alone. ' +
-    'Ask before running the whole test suite. It covers the targets that own or depend on the changed files, as the project declares them; when it says to run the whole suite, run it.',
+    'It covers the targets that own or depend on the changed files, as the project declares them; when it can\'t narrow the run, it says to run the whole suite, and why.',
   inputSchema: {
     type: 'object',
     properties: { base: { type: 'string', description: 'A branch or commit to compare with instead of the default branch.' } },

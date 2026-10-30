@@ -1,5 +1,9 @@
 # Architecture
 
+## What xcrew tells Claude
+
+xcrew routes work across its servers; it doesn't prescribe how Claude reports or works. Which server builds, tests, reads documentation or writes files, the failover when one can't serve, and the guard on generated projects are its rules, since making the three servers work together is the product. Beyond those, the only imperatives are harm guards: DerivedData isn't deleted unless the person asks, a snapshot's reference is re-recorded only with their agreement, and no local path goes into a pull request. Everything else, from the notes on a run to the tools Claude can ask, states a fact or offers what xcrew has. A ManifestTest flags the words of a rule in what xcrew tells Claude, outside an allowlist naming each routing line and harm guard with its reason.
+
 ## One implementation, three entry points
 
 All behaviour lives in a dependency-free Swift package. Everything else is a thin entry point that calls its CLI:

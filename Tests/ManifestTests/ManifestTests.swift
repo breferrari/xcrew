@@ -128,6 +128,53 @@ import Testing
         }
     }
 
+    /// xcrew routes work across its servers; it doesn't prescribe how Claude reports or works. So the words of a rule
+    /// ("always", "must", "never", "before", "after") appear in what it tells Claude only in the sentences named here,
+    /// each routing work across the servers or guarding the person's work against harm.
+    static let prescriptions: [(sentence: String, reason: String)] = [
+        ("never delete it unless the person asks", "harm guard: deleting DerivedData throws away the person's build state"),
+        ("If errors persist after `clean`, report what you saw instead", "harm guard: the DerivedData rule's alternative"),
+        ("their paths never go in the pull request", "harm guard: a local path published in a pull request"),
+        ("ask before switching it: that changes their open Xcode", "routing: the failover to the Xcode MCP, which changes the person's open Xcode"),
+        ("in a classic project, use it when a new file must join a target", "routing: which tool edits a project's files, the XcodeWrite guard"),
+        ("the steps before the failure", "a fact: when the steps it shows happened"),
+    ]
+
+    /// Every sentence xcrew tells Claude in the routing rules, the session briefing's notes, and the notes a run adds.
+    func toldToClaude() throws -> [String] {
+        let loop = try #require(try text("hooks/mod/loop.ts").firstMatch(of: /export function loopNote[\s\S]*?\n}/)).output
+        let texts = [
+            try text("context/routing.md"),
+            SessionBriefing.setupOffer,
+            SessionBriefing.failoverNote(reason: "it isn't installed"),
+            String(loop),
+            Report.noTestsNote,
+            FailureNotes.noCrashLog,
+            FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
+        ] + (try ["affected", "look", "evidence", "ledger"].map { try toolDescription(in: "hooks/mod/\($0).ts") })
+        var sentences: [String] = []
+        for text in texts {
+            for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }
+        }
+        return sentences
+    }
+
+    /// A mod tool's description, as Claude reads it: its string literals joined.
+    func toolDescription(in file: String) throws -> String {
+        let source = try text(file)
+        let start = try #require(source.range(of: "  description:"))
+        let rest = source[start.upperBound...]
+        let end = rest.range(of: "\n  inputSchema")?.lowerBound ?? rest.endIndex
+        return rest[..<end].matches(of: /(["'])((?:(?!\1).)*)\1/).map { String($0.output.2) }.joined()
+    }
+
+    @Test func xcrewsNotesPrescribeOnlyRoutingAndHarmGuards() throws {
+        let rule = /\b(?:[Aa]lways|[Mm]ust|[Nn]ever|[Bb]efore|[Aa]fter)\b/
+        for sentence in try toldToClaude() where sentence.contains(rule) {
+            #expect(Self.prescriptions.contains { sentence.contains($0.sentence) }, "prescribes: \(sentence)")
+        }
+    }
+
     /// A tool the mod registers: its name, read from `<constant> = {` in `file`, after checking its full name is the one
     /// Claude calls it by, `mcp__<plugin>__<name>`.
     func registeredTool(_ constant: String, in file: String) throws -> String {
@@ -163,14 +210,14 @@ import Testing
         for imperative in ["put its", "in the body as it is", "Before writing"] { #expect(!line.contains(imperative), "\(imperative)") }
     }
 
-    /// The routing rules send Claude to the look tool when a UI test fails, by the name it's registered under, before it
-    /// changes the test or the view; the hook answering it matches that name.
-    @Test func theRoutingRulesLookAtAFailedUITestFirst() throws {
+    /// The routing rules say what the look tool gives for a failed UI test, by the name it's registered under; the hook
+    /// answering it matches that name.
+    @Test func theRoutingRulesNameTheLookToolForAFailedUITest() throws {
         let routing = try text("context/routing.md")
         let name = try registeredTool("LOOK_TOOL", in: "hooks/mod/look.ts")
-        let line = try #require(routing.split(separator: "\n").first { $0.contains("UI test fails") })
+        let line = try #require(routing.split(separator: "\n").first { $0.contains("failed UI test") })
         #expect(line.contains("`\(name)`"))
-        #expect(line.contains("before changing"))
+        #expect(line.contains("the screen at it"))
     }
 
     /// What the briefing and the doctor offer a worktree is a form of setup that exists.
@@ -199,17 +246,15 @@ import Testing
         #expect(!routing.contains("-retry-tests-on-failure") && !routing.contains("-run-tests-until-failure"))
     }
 
-    /// The loop budget's note sends Claude to the affected tool as the routing rules do, with the same promise to run
-    /// the whole suite when it says so.
+    /// The loop budget's note names the affected tool as the routing rules do, and both name the `-only-testing:`
+    /// arguments it gives.
     @Test func theLoopNoteAndTheRoutingRulesAgreeOnTheAffectedTool() throws {
         let routing = try text("context/routing.md"), loop = try text("hooks/mod/loop.ts"), affected = try text("hooks/mod/affected.ts")
         let name = try #require(affected.firstMatch(of: /name: '([a-z-]+)'/)?.1)
         // The note names the tool by the constant; the routing rules by its name, behind ToolSearch.
         #expect(loop.contains(#"\`${AFFECTED_TOOL.name}\` tool (search for it)"#))
         #expect(routing.contains("`\(name)` tool (search for it)"))
-        let promise = "When it says to run the whole suite"
-        #expect(routing.contains(promise) && loop.contains(promise))
-        #expect(routing.contains("`-only-testing:`") && loop.contains("`-only-testing:`"))
+        #expect(routing.contains("`-only-testing:` arguments that run them") && loop.contains("`-only-testing:` arguments that run them"))
     }
 
     /// The MobileBuildMCP launcher reads the exit statuses the CLI's `xcode --developer-dir` and the shim's `--if-built`
@@ -259,12 +304,13 @@ import Testing
         #expect(look.matches(of: /-name [A-Za-z]/).count == ProjectLayout.dependencyFolders.count)
     }
 
-    /// The routing rules tell Claude how to turn coverage on, which the changed-line note needs, and what it costs, so
-    /// it stays off the edit-and-test loop.
-    @Test func theRoutingRulesTurnCoverageOnBeforeAPullRequest() throws {
+    /// The routing rules say how coverage is turned on, which the changed-line note needs, and what it costs, as a fact:
+    /// a project whose schemes gather coverage has it on already.
+    @Test func theRoutingRulesSayHowCoverageIsTurnedOn() throws {
         let routing = try text("context/routing.md")
         #expect(routing.contains("\"-enableCodeCoverage\", \"YES\""))
-        #expect(routing.contains("it slows the run"))
+        #expect(routing.contains("a scheme or test plan that gathers coverage"))
+        #expect(routing.contains("Coverage slows a run"))
     }
 
     /// The CLI decides flaky or real; the mod reads each verdict by the names the CLI writes, and no other.
@@ -817,12 +863,12 @@ import Testing
         #expect(Int(shim) == FailureImages.keptDays)
     }
 
-    /// The routing rules send Claude to a failed test's images by the word its notes list them with, to Read them before
-    /// changing anything, and never to re-record a reference without the person's agreement.
-    @Test func theRoutingRulesReadAFailedTestsImagesFirst() throws {
+    /// The routing rules say what a failed test's images show, by the word its notes list them with, and guard the
+    /// reference: it's re-recorded only with the person's agreement.
+    @Test func theRoutingRulesGuardASnapshotsReference() throws {
         let routing = try text("context/routing.md")
         let rule = try #require(routing.components(separatedBy: "\n").first { $0.contains("`\(FailureNotes.imageLabel)`") })
-        #expect(rule.contains("Read them before changing the code or the reference"))
+        #expect(rule.contains("show its snapshot's reference, failing render and difference"))
         #expect(rule.contains("Re-record a reference only when the person agrees"))
     }
 

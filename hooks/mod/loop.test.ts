@@ -46,7 +46,7 @@ test('the third full run in the window sends Claude to the affected tests, once'
   const notes = await fullRuns($, clock, 3, 10 * MINUTE)
   expect(notes.slice(0, 2)).toEqual([undefined, undefined])
   expect(notes[2]).toBe(
-    "xcrew: that's 3 full runs of `test_sim` in 20 min, with 3:30 of testing. Before the next one, ask the `affected` tool (search for it) which test targets this branch's changes can break, and run those with `-only-testing:`. When it says to run the whole suite, run it; and run the whole suite again before the pull request.",
+    "xcrew: that's 3 full runs of `test_sim` in 20 min, with 3:30 of testing. The `affected` tool (search for it) can narrow the next one to the test targets this branch's changes can break, with the `-only-testing:` arguments that run them.",
   )
 })
 
@@ -90,6 +90,6 @@ test('a run that ran no test, its build failing, does not count', async ($, on) 
 test('the Xcode MCP\'s full run counts too, and its note names the affected tool alone', async ($, on) => {
   const clock = project(on, 70_000)
   const notes = await fullRuns($, clock, 3, 10 * MINUTE, 'mcp__xcode__RunAllTests')
-  expect(notes[2]).toContain('ask the `affected` tool (search for it) which test targets')
+  expect(notes[2]).toContain('The `affected` tool (search for it) can narrow the next one')
   expect(notes[2]).not.toContain('-only-testing:')
 })

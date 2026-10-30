@@ -113,7 +113,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["App.xcodeproj"])
         project.write("schemaVersion: 1\nsessionDefaults:\n  workspacePath: ./App.xcodeproj\n", to: ".mobilebuildmcp/config.yaml")
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n")
-        #expect(text?.contains("- **xcrew:** MobileBuildMCP has no scheme to build this project with yet: before the first build or test, offer `/xcrew:setup`, which writes its profiles once from the project's schemes and simulators.") == true)
+        #expect(text?.contains("- **xcrew:** MobileBuildMCP has no scheme to build this project with yet. `/xcrew:setup` writes its profiles once, from the project's schemes and simulators, and can be offered to the person.") == true)
     }
 
     @Test func briefingWithAProfileThatNamesASchemeOffersNoSetup() async {

@@ -30,10 +30,9 @@ export function loopNote(scope: string, crossed: Crossing, selectsWithOnlyTestin
   const first = crossed.runs[0]
   const last = crossed.runs[crossed.runs.length - 1] ?? first
   const span = Math.round((last.at - first.at) / 60_000)
-  const select = selectsWithOnlyTesting ? 'run those with `-only-testing:`' : 'run only those'
+  const selecting = selectsWithOnlyTesting ? ', with the `-only-testing:` arguments that run them' : ''
   return (
     `xcrew: that's ${crossed.runs.length} full runs of \`${scope}\` in ${span} min, with ${stopwatch(crossed.testing)} of testing. ` +
-    `Before the next one, ask the \`${AFFECTED_TOOL.name}\` tool (search for it) which test targets this branch's changes can break, and ${select}. ` +
-    'When it says to run the whole suite, run it; and run the whole suite again before the pull request.'
+    `The \`${AFFECTED_TOOL.name}\` tool (search for it) can narrow the next one to the test targets this branch's changes can break${selecting}.`
   )
 }

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- xcrew's notes to Claude now state facts and offer tools instead of prescribing steps. It still routes work across its servers and guards your work: DerivedData isn't deleted unless you ask, and a snapshot's reference is re-recorded only with your agreement.
 - The red-to-green ledger turns a test green once any run that ran it passes, a run of its class or target after it failed under its own method filter included, and a test that failed every repeated run reads "failed every run" rather than "failed some of its repeated runs".
 - A pull request can carry the branch's evidence: the tests it took from red to green, with their failing run's images, the tests still red, the coverage and warnings of the lines it changed, and usual run times, as a block to paste. When Claude writes a pull request's body it can offer you the block, and adds it only if you want it; the images come after it, for you to attach or leave out, and no local path goes into the pull request. `/xcrew evidence` shows the same.
 - In a git worktree, such as one Claude Code's `--worktree` makes, `xcrew setup --worktree` writes the worktree's MobileBuildMCP config from the main checkout's, leaving out a DerivedData folder the main checkout uses so the two don't build into one. The session briefing and `xcrew doctor` name it in a worktree that has no config yet.
