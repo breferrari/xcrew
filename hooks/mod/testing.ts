@@ -6,6 +6,22 @@ import type { Phase, Problem, Report } from './cli'
  * Calls a tool by its full name. The generated types know only the MCP servers connected when the
  * mod last loaded, which differs per machine, so the name stays untyped here.
  */
+/** The store as a plain map, so a test reads what the mod kept. */
+export function mapStore(on: On): Map<string, unknown> {
+  const store = new Map<string, unknown>()
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...store.keys()] }))
+  on('store.delete', (_, e) => {
+    store.delete(e.key)
+    return { value: undefined }
+  })
+  return store
+}
+
 export function callTool($: Engine, tool: string, args: Record<string, unknown> = {}): Promise<ToolCallResult> {
   return $.tool.call({ tool, ...args } as unknown as ToolCallArgs)
 }

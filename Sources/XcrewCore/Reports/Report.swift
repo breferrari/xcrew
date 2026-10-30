@@ -25,12 +25,16 @@ public struct Report: Sendable, Equatable, Codable {
     /// A test run's result bundle, which the ledger keeps for a test's first red run.
     public var bundle: String?
 
-    /// The warnings in lines the branch changed, a few named; nothing when there are none.
+    /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
+        warningsSentence(inChanged, of: total).map { "xcrew: " + $0 }
+    }
+
+    static func warningsSentence(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
         guard !inChanged.isEmpty else { return nil }
         // Messages carry commas, so a semicolon parts them.
         let named = inChanged.map { "\(ToolOutput.basename($0.path ?? "")):\($0.line ?? 0) \($0.message)" }
-        return "xcrew: \(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
+        return "\(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
     }
 
     static let noTestsNote =
@@ -81,22 +85,17 @@ public struct Report: Sendable, Equatable, Codable {
         // What the branch changed is listed once, by whichever asks first, meanwhile: for the warnings that name a
         // place, and for a test run with coverage.
         let warnings = read.warnings
-        let warned = warnings.compactMap(\.path)
         let change = Once { () async -> GitChanges.Change? in
             guard let project, case let .success(change) = await GitChanges.since(nil, in: project, using: runner) else { return nil }
             return change
         }
-        async let changed: [String: [ClosedRange<Int>]]? = {
-            guard let project, !warned.isEmpty, let listed = await change.value() else { return nil }
-            return await ChangedLines.of(warned, in: listed, project: project, using: runner)
+        async let inChanged: [ToolOutput.Warning]? = {
+            guard let project, warnings.contains(where: { $0.path != nil }), let listed = await change.value() else { return nil }
+            return await ChangedLines.warnings(warnings, in: listed, project: project, using: runner)
         }()
         async let coverage: ChangedLineCoverage? = {
             guard let project, let bundle else { return nil }
-            return await ChangedLineCoverage.within(ChangedLineCoverage.budget) {
-                let covered = await bundle.coveredFiles()
-                guard !covered.isEmpty, let listed = await change.value() else { return nil }
-                return await ChangedLineCoverage.of(covered, in: listed, bundle: bundle, project: project, using: runner)
-            }
+            return await ChangedLineCoverage.of(bundle, change: { await change.value() }, project: project, using: runner)
         }()
         async let why: String? = {
             guard let project, !read.summary.ok else { return nil }
@@ -139,13 +138,7 @@ public struct Report: Sendable, Equatable, Codable {
 
         // The warnings in lines this branch changed, named: those are Claude's to fix. Nothing is said about the rest, or
         // about warnings the change causes in lines it left alone.
-        if let changed = await changed {
-            let inChanged = warnings.filter { warning in
-                guard let path = warning.path, let line = warning.line else { return false }
-                return changed[path]?.contains { $0.contains(line) } == true
-            }
-            if let note = warningsNote(inChanged, of: warnings.count) { notes.append(note) }
-        }
+        if let inChanged = await inChanged, let note = warningsNote(inChanged, of: warnings.count) { notes.append(note) }
 
         if let note = await coverage?.note { notes.append(note) }
 

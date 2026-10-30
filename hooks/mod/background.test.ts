@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { callTool, stubCli } from './testing'
+import { callTool, mapStore, stubCli } from './testing'
 
 const BUILD = 'mcp__MobileBuildMCP__build_sim'
 
@@ -13,18 +13,7 @@ const BUILD = 'mcp__MobileBuildMCP__build_sim'
 function session(on: On, { surface = 'vscode' as 'vscode' | 'terminal', hold }: { surface?: 'vscode' | 'terminal'; hold?: Promise<void> } = {}) {
   const toasts: string[] = []
   const clock = mock.clock(on)
-  // The store as a plain map, so the test reads what the mod kept.
-  const store = new Map<string, unknown>()
-  on('store.get', (_, e) => ({ value: store.get(e.key) }))
-  on('store.set', (_, e) => {
-    store.set(e.key, e.value)
-    return { value: undefined }
-  })
-  on('store.keys', () => ({ value: [...store.keys()] }))
-  on('store.delete', (_, e) => {
-    store.delete(e.key)
-    return { value: undefined }
-  })
+  const store = mapStore(on)
   const stored = () => [...store.keys()]
   on('session.surfaces', () => ({ value: [surface] }))
   on('ui.toast', (_, e) => {

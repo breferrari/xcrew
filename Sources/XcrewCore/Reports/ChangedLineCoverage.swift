@@ -113,9 +113,22 @@ struct ChangedLineCoverage: Sendable, Equatable {
         return runs.map { $0.count == 1 ? "\($0.lowerBound)" : "\($0.lowerBound)-\($0.upperBound)" }
     }
 
-    /// What Claude reads: how many changed lines ran, those that didn't, a few named, and the changed files the
-    /// coverage doesn't hold. Nothing when no changed line can run and every changed file is held.
-    var note: String? {
+    /// What a test run's coverage says of the lines a branch changed, within `budget`: nothing when the run gathered no
+    /// coverage. The change is asked for only once there's coverage to read it against.
+    static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
+        await within(budget) {
+            let covered = await bundle.coveredFiles()
+            guard !covered.isEmpty, let listed = await change() else { return nil }
+            return await of(covered, in: listed, bundle: bundle, project: project, using: runner)
+        }
+    }
+
+    /// What Claude reads: the sentence, marked as xcrew's.
+    var note: String? { sentence.map { "xcrew: " + $0 } }
+
+    /// How many changed lines ran, those that didn't, a few named, and the changed files the coverage doesn't hold.
+    /// Nothing when no changed line can run and every changed file is held.
+    var sentence: String? {
         let total = ran + notRun.reduce(0) { $0 + $1.lines.count }
         var sentences: [String] = []
         if total > 0 {
@@ -127,6 +140,6 @@ struct ChangedLineCoverage: Sendable, Equatable {
             let files = outside.count == 1 ? "1 changed file isn't" : "\(outside.count) changed files aren't"
             sentences.append("\(files) in this run's coverage\(ResultBundle.listed(outside.map(ToolOutput.basename))).")
         }
-        return sentences.isEmpty ? nil : "xcrew: " + sentences.joined(separator: " ")
+        return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }
 }

@@ -88,8 +88,7 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
     if (entries.some(entry => entry.test === test)) continue
     const flaky = flakyAfter(test)
     const message = failed.get(test)?.message ?? 'failed some of its repeated runs'
-    // The run's result bundle, for the evidence pack's images: a test's first red is the one kept.
-    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(message), ...(run.bundle ? { bundle: run.bundle } : {}) }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}) })
+    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(message), bundle: run.bundle }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}) })
   }
   return { entries, updated: run.at }
 }

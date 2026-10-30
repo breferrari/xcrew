@@ -15,7 +15,7 @@ struct EvidenceCommand: Command {
             throw UsageError(description: "evidence reads the mod's ledger and run times as JSON on stdin")
         }
         let context = invocation.context
-        guard let pack = await EvidencePack.make(input, project: context.project, machine: context.machine) else {
+        guard let pack = await EvidencePack.make(input, project: context.project, machine: context.machine, open: { ResultBundle(path: $0, runner: context.runner) }) else {
             invocation.print(Self.nothing)
             return 0
         }

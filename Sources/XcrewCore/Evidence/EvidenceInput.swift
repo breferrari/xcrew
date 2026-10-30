@@ -20,7 +20,6 @@ public struct EvidenceInput: Sendable, Decodable {
     public struct Entry: Sendable, Decodable {
         public let test: String
         public let red: Run
-        public let failing: String
         public let green: Run?
         public let flaky: Flaky?
     }

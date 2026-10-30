@@ -21,8 +21,8 @@ import XcrewTestSupport
         return try JSONDecoder().decode(EvidenceInput.self, from: Data(#"{"ledger":[\#(entries.joined(separator: ","))],"times":[\#(listed)]}"#.utf8))
     }
 
-    static func pack(_ input: EvidenceInput, project: Project = .temporary(), bundle: @escaping @Sendable (String) -> ResultBundle = { ResultBundle(path: $0, runner: FakeRunner()) }) async -> EvidencePack.Text? {
-        await EvidencePack.make(input, project: project, machine: CheckContext.fake(project: project).machine, bundle: bundle)
+    static func pack(_ input: EvidenceInput, project: Project = .temporary(), open: @escaping @Sendable (String) -> ResultBundle = { ResultBundle(path: $0, runner: FakeRunner()) }) async -> EvidencePack.Text? {
+        await EvidencePack.make(input, project: project, machine: CheckContext.fake(project: project).machine, open: open)
     }
 
     @Test func testsTakenFromRedToGreenAndThoseStillRedAreListed() async throws {
@@ -84,6 +84,13 @@ import XcrewTestSupport
         let text = try #require(await Self.pack(try Self.input([Self.entry("CardTests/testCard", message: message, green: false)]), project: project))
         #expect(text.block.contains("\"XCTAssertEqual failed at Tests/CardTests.swift:12 on <id>, see x.log\""), "\(text.block)")
         for leak in ["/Users/", "/private/", "DerivedData", project.root.path, "0A1B2C3D"] { #expect(!text.block.contains(leak), "\(leak)") }
+    }
+
+    /// Any absolute or home path, not only those under a known folder, is cut to its file's name.
+    @Test func everyPathOutsideTheProjectIsCutToItsFileName() async throws {
+        let message = "see ~/Library/Developer/MobileBuildMCP/workspaces/App-1/logs/build_sim_1.log and /usr/local/lib/tool/rules.yml, not Sources/App/Card.swift"
+        let text = try #require(await Self.pack(try Self.input([Self.entry("CardTests/testCard", message: message, green: false)])))
+        #expect(text.block.contains("\"see build_sim_1.log and rules.yml, not Sources/App/Card.swift\""), "\(text.block)")
     }
 
     @Test func aBranchWithNothingToSayGivesNoBlock() async throws {

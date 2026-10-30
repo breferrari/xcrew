@@ -206,7 +206,7 @@ export const register: Register = on => {
     await quietly(async () => $.store.set(whereKey(scope), await $.session.cwd()))
     await quietly(() => recordRun($, scope, outcome.ok, outcome.failures))
     // Only what the CLI read goes in the ledger: without it, the outcome is a guess no test plan should cite.
-    if (kind === 'test' && reported !== undefined) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: runsWholeScope(parsed, e as unknown as Record<string, unknown>), repeated: outcome.repeated ?? [], ...(outcome.bundle ? { bundle: outcome.bundle } : {}) })
+    if (kind === 'test' && reported !== undefined) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: runsWholeScope(parsed, e as unknown as Record<string, unknown>), repeated: outcome.repeated ?? [], bundle: outcome.bundle })
     if (outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(scope), outcome.tests))
     saveCard($)
     const ending = endingOf(outcome, ended, elapsed, earlier)

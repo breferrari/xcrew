@@ -17,6 +17,16 @@ public enum BuildLog {
         }
     }
 
+    /// Each `warning:` a compiler wrote with its place, once each: `<file>:<line>[:<column>]: warning: <message>`, the file
+    /// perhaps holding spaces, as `errors(in:)` reads an error's.
+    static func warnings(in log: String) -> [ToolOutput.Warning] {
+        var seen = Set<ToolOutput.Warning>()
+        return log.split(separator: "\n").compactMap { line -> ToolOutput.Warning? in
+            guard line.contains("warning: "), let located = line.firstMatch(of: #/^(.+?):(\d+)(?::\d+)?: warning: (.*)$/#) else { return nil }
+            return ToolOutput.Warning(message: String(located.3), path: String(located.1), line: Int(located.2))
+        }.filter { seen.insert($0).inserted }
+    }
+
     /// The log's start, which holds xcodebuild's command line: a clean build's log runs to tens of megabytes.
     static let head = 64 * 1024
 

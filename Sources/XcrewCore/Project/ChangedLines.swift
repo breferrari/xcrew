@@ -4,6 +4,16 @@ import Foundation
 /// as `git diff -U0` gives them: a warning in one of them is in code the change touched (docs/findings.md, *Warnings
 /// in changed lines*).
 enum ChangedLines {
+    /// The warnings in lines the change holds: those are the branch's to fix. Nothing when git can't diff the change.
+    static func warnings(_ warnings: [ToolOutput.Warning], in change: GitChanges.Change, project: Project, using runner: any CommandRunning) async -> [ToolOutput.Warning]? {
+        let warned = warnings.compactMap(\.path)
+        guard !warned.isEmpty, let changed = await of(warned, in: change, project: project, using: runner) else { return nil }
+        return warnings.filter { warning in
+            guard let path = warning.path, let line = warning.line else { return false }
+            return changed[path]?.contains { $0.contains(line) } == true
+        }
+    }
+
     /// The changed lines of each of `paths` the change holds, by the path as given; an untracked file counts whole.
     /// Nothing when git can't diff the change.
     static func of(_ paths: some Sequence<String>, in change: GitChanges.Change, project: Project, using runner: any CommandRunning) async -> [String: [ClosedRange<Int>]]? {
