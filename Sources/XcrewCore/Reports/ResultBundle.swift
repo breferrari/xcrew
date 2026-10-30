@@ -216,6 +216,12 @@ public struct ResultBundle: Sendable {
         Self.parse(await xccov(["--file-list", "--json"])) as? [String] ?? []
     }
 
+    /// Each target's files and how many of its lines ran, as `xccov view --report --json` gives them; empty when it can't.
+    func coverageReport() async -> String {
+        let ran = await runner.run(["xcrun", "xccov", "view", "--report", "--json", path], stdin: nil, timeout: .seconds(15))
+        return ran.succeeded ? ran.stdout : ""
+    }
+
     /// One file's line counts, as `xccov` gives them.
     func coverage(of file: String) async -> String {
         await xccov(["--file", file, "--json"])

@@ -349,6 +349,33 @@ struct TestbedCoverageTests {
     }
 }
 
+/// The field fixture's run under `-only-testing:FeatureTests/ProbeTests/testPasses`, replayed from what xccov answered:
+/// its report names `FeatureTests.xctest` a test bundle, so a branch that changed `ProbeTests.swift` beside
+/// `Greeting.swift` has only `Greeting.swift`'s lines counted, and the test file isn't named.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedFieldCoverageTests {
+    static let bundle = "/field/Run.xcresult"
+
+    @Test func aTestBundlesFilesAreLeftOutOfARealRun() async throws {
+        let root = try TestbedTests.copy("field")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let captured = { (file: String) in
+            try String(contentsOf: Testbed.root.appending(path: "captures/field/\(file)"), encoding: .utf8)
+                .replacingOccurrences(of: "\\/testbed\\/field", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
+        }
+        let greeting = "Modules/Feature/Sources/Greeting.swift"
+        var responses = FakeRunner.branch(at: root, changed: [greeting, "Modules/Feature/Tests/ProbeTests.swift"], diffed: ["\(ProjectLayout.canonical(root))/\(greeting)"], diff: "+++ \(greeting)\n@@ -0,0 +1,12 @@\n")
+        responses.merge([
+            "xcrun xccov view --archive --file-list --json \(Self.bundle)": .init(status: 0, stdout: try captured("coverage.files.json")),
+            "xcrun xccov view --archive --file \(root.path)/\(greeting) --json \(Self.bundle)": .init(status: 0, stdout: try captured("coverage.Greeting.json")),
+            "xcrun xccov view --report --json \(Self.bundle)": .init(status: 0, stdout: try captured("coverage.report.json")),
+        ]) { _, new in new }
+        let output = #"{"schema":"mobilebuildmcp.output.test-result","didError":false,"data":{"summary":{"status":"SUCCEEDED","counts":{"passed":1,"failed":0,"skipped":0}},"artifacts":{"xcresultPath":"\#(Self.bundle)"}}}"#
+        let report = await Report.make(kind: .test, output: ToolOutput(text: output, server: .mobileBuildMCP), home: "/home", runner: FakeRunner(responses: responses), project: Project(root: root))
+        #expect(report.notes.contains("xcrew: 4 of 5 changed lines that can run ran in this test run. Not run: Greeting.swift:12."), "\(report.notes)")
+    }
+}
+
 /// The test bed's captures of builds that failed because of the Mac, replayed through `xcrew why`: the result
 /// MobileBuildMCP gave, and the build log it named. They hold what a real failure says, not how many errors it gave:
 /// a corrupt cache doesn't fail the same way twice.

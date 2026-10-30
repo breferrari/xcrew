@@ -10,12 +10,31 @@ struct ChangedLineCoverage: Sendable, Equatable {
         let lines: [Int]
     }
 
+    /// A target none of whose lines the run ran, as when a filter left its tests out, and how many changed files it has.
+    struct Unreached: Sendable, Equatable {
+        let target: String
+        let files: Int
+    }
+
+    /// A target in a run's coverage report: its name with its product's extension, how many of its lines ran, and its
+    /// files by path.
+    struct Target: Sendable, Equatable {
+        let name: String
+        let covered: Int
+        let files: [String]
+
+        /// A test bundle's files are the tests themselves, not code a test runs.
+        var isTests: Bool { name.hasSuffix(".xctest") }
+    }
+
     /// How many changed lines that can run ran.
     var ran = 0
     /// The changed lines that can run but didn't, by file.
     var notRun: [Missed] = []
     /// Changed files of a kind the coverage holds that it doesn't hold.
     var outside: [String] = []
+    /// The targets with changed files that the run didn't reach.
+    var unreached: [Unreached] = []
 
     /// How many files' line counts are asked of `xccov` at once.
     static let atOnce = 4
@@ -40,10 +59,15 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// The changed-line coverage of a run whose archive holds `covered`: only its files named like a changed file are
     /// resolved, since an app's archive can list thousands. Nothing when the change is empty, or when git can't diff it
     /// or xccov can't give a file's counts, which would make a count up.
-    static func of(_ covered: [String], in change: GitChanges.Change, bundle: ResultBundle, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
+    /// With the run's `targets`, a test bundle's files are left out, and a target none of whose lines ran is said once
+    /// rather than its changed lines one by one.
+    static func of(_ covered: [String], in change: GitChanges.Change, targets: [Target] = [], bundle: ResultBundle, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
         guard !change.files.isEmpty else { return nil }
         let names = Set(change.files.map { ToolOutput.basename($0).lowercased() })
-        let candidates = covered.filter { names.contains(ToolOutput.basename($0).lowercased()) }
+        let changedFiles = Set(change.files.map(ProjectLayout.canonicalPath))
+        let unreachedTargets = targets.filter { !$0.isTests && $0.covered == 0 }
+        let leftOut = Set((targets.filter(\.isTests) + unreachedTargets).flatMap(\.files).map(ProjectLayout.canonicalPath))
+        let candidates = covered.filter { names.contains(ToolOutput.basename($0).lowercased()) && !leftOut.contains(ProjectLayout.canonicalPath($0)) }
         guard let listed = await ChangedLines.of(candidates, in: change, project: project, using: runner) else { return nil }
         let changed = oneSpellingEach(listed)
         var counts: [String: [Int: Bool]?] = [:]
@@ -62,7 +86,11 @@ struct ChangedLineCoverage: Sendable, Equatable {
             let missed = changedLines.filter { !$0.value }.keys.sorted()
             if !missed.isEmpty { found.notRun.append(Missed(path: path, lines: missed)) }
         }
-        let held = Set(candidates.map(ProjectLayout.canonicalPath))
+        found.unreached = unreachedTargets.compactMap { target in
+            let files = Set(target.files.map(ProjectLayout.canonicalPath)).intersection(changedFiles).count
+            return files > 0 ? Unreached(target: URL(filePath: target.name).deletingPathExtension().lastPathComponent, files: files) : nil
+        }
+        let held = Set(candidates.map(ProjectLayout.canonicalPath)).union(leftOut)
         let kinds = Set(covered.map(kind))
         let root = ProjectLayout.canonical(project.root) + "/"
         found.outside = change.files.filter { file in
@@ -104,6 +132,15 @@ struct ChangedLineCoverage: Sendable, Equatable {
         return lines
     }
 
+    /// The targets in `xccov view --report --json`; empty when the answer isn't that shape.
+    static func targets(_ json: String) -> [Target] {
+        guard let report = ResultBundle.parse(json) as? [String: Any], let targets = report["targets"] as? [[String: Any]] else { return [] }
+        return targets.compactMap { target in
+            guard let name = target["name"] as? String, let covered = target["coveredLines"] as? Int else { return nil }
+            return Target(name: name, covered: covered, files: (target["files"] as? [[String: Any]] ?? []).compactMap { $0["path"] as? String })
+        }
+    }
+
     /// Line numbers as runs: `6-8`, `10`.
     static func ranges(_ lines: [Int]) -> [String] {
         var runs: [ClosedRange<Int>] = []
@@ -117,17 +154,18 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// coverage. The change is asked for only once there's coverage to read it against.
     static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
         await within(budget) {
+            async let report = bundle.coverageReport()
             let covered = await bundle.coveredFiles()
             guard !covered.isEmpty, let listed = await change() else { return nil }
-            return await of(covered, in: listed, bundle: bundle, project: project, using: runner)
+            return await of(covered, in: listed, targets: targets(await report), bundle: bundle, project: project, using: runner)
         }
     }
 
     /// What Claude reads: the sentence, marked as xcrew's.
     var note: String? { sentence.map { "xcrew: " + $0 } }
 
-    /// How many changed lines ran, those that didn't, a few named, and the changed files the coverage doesn't hold.
-    /// Nothing when no changed line can run and every changed file is held.
+    /// How many changed lines ran, those that didn't, a few named, the targets with changed files the run didn't reach,
+    /// and the changed files the coverage doesn't hold. Nothing when none of that has anything to say.
     var sentence: String? {
         let total = ran + notRun.reduce(0) { $0 + $1.lines.count }
         var sentences: [String] = []
@@ -135,6 +173,12 @@ struct ChangedLineCoverage: Sendable, Equatable {
             let counted = ran == total ? (total == 1 ? "the 1 changed line that can run" : "all \(total) changed lines that can run") : "\(ran) of \(total) changed lines that can run"
             let named = notRun.flatMap { file in Self.ranges(file.lines).map { "\(ToolOutput.basename(file.path)):\($0)" } }
             sentences.append("\(counted) ran in this test run." + (named.isEmpty ? "" : " Not run\(ResultBundle.listed(named))."))
+        }
+        if !unreached.isEmpty {
+            let files = unreached.reduce(0) { $0 + $1.files }
+            let names = unreached.map(\.target)
+            let named = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " or " + names[names.count - 1]
+            sentences.append("this test run ran nothing in \(named), where \(files == 1 ? "1 changed file is" : "\(files) changed files are").")
         }
         if !outside.isEmpty {
             let files = outside.count == 1 ? "1 changed file isn't" : "\(outside.count) changed files aren't"
