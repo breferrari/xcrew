@@ -69,6 +69,8 @@ public struct ProjectLayout: Sendable {
     /// XcodeGen's spec, by the name it reads unless told another.
     static let xcodeGenSpec = "project.yml"
     static let xcodeGenMarkers = [xcodeGenSpec]
+    /// Where Tuist writes the files it synthesizes, beside the project that declares them.
+    static let derivedFolder = "Derived"
     /// Below the root a package is more often a tool or a server than an app, so it counts at the root only.
     static let packageMarkers = ["Package.swift"]
     /// Folders that hold other projects' code, never this one's manifests.
@@ -119,10 +121,7 @@ public struct ProjectLayout: Sendable {
     public func command(after file: URL, nearest: Manifests) -> (manifests: Manifests, command: String)? {
         let path = Self.canonical(file)
         if nearest.generator == .xcodeGen {
-            // The spec as detection found it, in whatever case the volume allows.
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: nearest.folder.path)) ?? []
-            let spec = nearest.folder.appending(path: names.first { named($0, Self.xcodeGenMarkers) } ?? Self.xcodeGenSpec)
-            return XcodeGenSpec.reads(path, for: spec) ? (nearest, nearest.generateCommand) : nil
+            return XcodeGenSpec.reads(path, for: nearest.folder.appending(path: xcodeGenSpec(in: nearest.folder))) ? (nearest, nearest.generateCommand) : nil
         }
         let manifests = tuistApp(holding: file) ?? nearest
         let folder = Self.canonical(manifests.folder) + "/"
@@ -132,6 +131,36 @@ public struct ProjectLayout: Sendable {
         let isBeside = !relative.contains("/")
         let isInTuistFolder = !isBeside && named(String(relative.prefix { $0 != "/" }), [Self.tuistFolder])
         return isInTuistFolder || isTuistManifest(file, countsByName: isBeside) ? (manifests, manifests.generateCommand) : nil
+    }
+
+    /// The spec's name in `folder` as detection found it, in whatever case the volume allows.
+    func xcodeGenSpec(in folder: URL) -> String {
+        ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).first { named($0, Self.xcodeGenMarkers) } ?? Self.xcodeGenSpec
+    }
+
+    /// The manifest to edit instead of `file`, as a path from the root, and the manifests whose generate writes it, when a
+    /// generator writes it: an edit to it is lost on the next generate. That's a project or workspace bundle with a manifest
+    /// beside it, XcodeGen's spec or Tuist's own, or Tuist's `Derived` folder beside a project manifest. A bundle with no
+    /// manifest beside it, such as a dependency's checked-in project, isn't the generator's.
+    public func writer(of file: URL, nearest: Manifests) -> (manifests: Manifests, manifest: String)? {
+        let rootPath = Self.canonical(root)
+        let path = Self.canonical(file)
+        guard path.hasPrefix(rootPath + "/") else { return nil }
+        let components = path.dropFirst(rootPath.count + 1).split(separator: "/").map(String.init)
+        guard let index = components.firstIndex(where: { Project.isXcodeContainer($0) || named($0, [Self.derivedFolder]) }) else { return nil }
+        let folderPath = components[..<index].joined(separator: "/")
+        let folder = folderPath.isEmpty ? root : root.appending(path: folderPath)
+        let fromRoot = { (name: String) in folderPath.isEmpty ? name : "\(folderPath)/\(name)" }
+        switch nearest.generator {
+        case .xcodeGen:
+            guard Project.isXcodeContainer(components[index]), Self.canonical(folder) == Self.canonical(nearest.folder) else { return nil }
+            return (nearest, fromRoot(xcodeGenSpec(in: folder)))
+        case .tuist:
+            let bundle = components[index]
+            let candidates = bundle.hasSuffix(".xcworkspace") ? ["Workspace.swift", "Project.swift"] : ["Project.swift"]
+            guard let manifest = candidates.first(where: { FileManager.default.fileExists(atPath: folder.appending(path: $0).path) }) else { return nil }
+            return (tuistApp(holding: file) ?? nearest, fromRoot(manifest))
+        }
     }
 
     /// The Tuist app `file` is part of: the nearest folder above it, up to the root, holding one of Tuist's markers. A

@@ -129,6 +129,33 @@ struct TestbedTests {
         #expect(answer.generate == Self.edits.first { $0.file == file }?.generate)
     }
 
+    /// Files a generator writes, and the manifest to edit instead; none for a file no generator writes, the source-file
+    /// trap's project included.
+    static let generatedFiles: [(file: String, manifest: String?)] = [
+        ("forms/tuist/App.xcodeproj/project.pbxproj", "Project.swift"),
+        ("forms/tuist/App.xcworkspace/contents.xcworkspacedata", "Project.swift"),
+        ("forms/tuist/Derived/InfoPlists/App-Info.plist", "Project.swift"),
+        ("forms/tuist/App/ContentView.swift", nil),
+        ("forms/tuist-ios/ios/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme", "ios/Project.swift"),
+        ("forms/xcodegen/App.xcodeproj/project.pbxproj", "project.yml"),
+        ("forms/xcodegen-ios/ios/App.xcodeproj/project.pbxproj", "ios/project.yml"),
+        ("forms/xcodegen-ios/ios/App/ContentView.swift", nil),
+        ("forms/classic/App.xcodeproj/project.pbxproj", nil),
+        ("adversarial/project-swift-trap/App.xcodeproj/project.pbxproj", nil),
+    ]
+
+    @Test(arguments: generatedFiles.map(\.file))
+    func aFileAGeneratorWritesNamesTheManifestToEdit(_ file: String) async throws {
+        let fixture = file.split(separator: "/").prefix(2).joined(separator: "/")
+        let root = try Self.copy(fixture)
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let edited = root.appending(path: String(file.dropFirst(fixture.count + 1)))
+        #expect(FileManager.default.fileExists(atPath: edited.path), "the test bed has no \(file)")
+        let context = CheckContext.fake(project: Project(root: root, home: root.appending(path: "home")))
+        let answer = try JSONDecoder().decode(ProjectCommand.Answer.self, from: Data(await Run("project", "--generated", edited.path, context: context).text.utf8))
+        #expect(answer.manifest == Self.generatedFiles.first { $0.file == file }?.manifest)
+    }
+
     /// The forms hold one app, so they differ only where a form must: its generator, and where the project sits.
     @Test func theFormsDifferOnlyInTheirGeneratorAndPlace() throws {
         let built = try Self.names.filter { !$0.hasPrefix("tuist-ungenerated") }.map { name in

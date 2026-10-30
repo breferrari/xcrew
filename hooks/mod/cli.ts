@@ -110,6 +110,12 @@ export function headOf(answer: unknown): Head | undefined {
   return { root, ...(typeof branch === 'string' ? { branch } : {}), ...(typeof commit === 'string' ? { commit } : {}) }
 }
 
+/** The manifest to edit instead of a generated file and the command that regenerates it, when `xcrew project --generated` named one. */
+export function generatedOf(answer: unknown): { manifest: string; generate: string } | undefined {
+  const { manifest, generate } = (answer ?? {}) as { manifest?: unknown; generate?: unknown }
+  return typeof manifest === 'string' && typeof generate === 'string' ? { manifest, generate } : undefined
+}
+
 /** Why a CLI command couldn't run. */
 export function couldntRun(args: readonly string[], error: unknown): string {
   return `xcrew ${args.join(' ')} couldn't run: ${error instanceof Error ? error.message : String(error)}`

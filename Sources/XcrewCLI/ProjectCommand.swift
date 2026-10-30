@@ -8,9 +8,9 @@ import XcrewCore
 struct ProjectCommand: Command {
     let name = "project"
     let flags: Set<String> = ["setup", "branch"]
-    let valuedOptions: Set<String> = ["manifest"]
+    let valuedOptions: Set<String> = ["manifest", "generated"]
     let usage = [
-        "project [--setup] [--manifest <file>] [--branch]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, and --branch the real root with the branch or commit checked out",
+        "project [--setup] [--manifest <file>] [--generated <file>] [--branch]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, and --branch the real root with the branch or commit checked out",
     ]
 
     struct Answer: Codable, Equatable {
@@ -25,6 +25,8 @@ struct ProjectCommand: Command {
         var root: String?
         var branch: String?
         var commit: String?
+        /// With `--generated`: the manifest to edit instead of the file, when a generator writes it, from the root.
+        var manifest: String?
     }
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -36,6 +38,12 @@ struct ProjectCommand: Command {
             let file = manifest.hasPrefix("/") ? URL(fileURLWithPath: manifest) : project.root.appending(path: manifest)
             let found = layout.command(after: file, nearest: nearest)
             (answer.generate, answer.app) = (found?.command, found?.manifests.path)
+        }
+        if let generated = invocation.arguments["generated"], let nearest {
+            let file = generated.hasPrefix("/") ? URL(fileURLWithPath: generated) : project.root.appending(path: generated)
+            if let writer = layout.writer(of: file, nearest: nearest) {
+                (answer.manifest, answer.generate, answer.app) = (writer.manifest, writer.manifests.generateCommand, writer.manifests.path)
+            }
         }
         if invocation.arguments.has("branch") {
             answer.root = project.canonicalRoot

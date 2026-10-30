@@ -2,18 +2,18 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, FailureList, ResultRow, StaleProject } from '../../types'
 import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
+import { answerOf, couldntRun, generatedOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, phaseArgs, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, shimPath, type Failure, type Problem, type Ran } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { describe, historyOf, observe, runsWholeScope } from './context'
 import { afterTestRun, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { average } from './format'
-import { describedForGenerated, REASON } from './guard'
+import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
 import { afterGenerate, editedNote, letThroughNote, marked, marksOf, refusal } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, type Following, historyKey, HISTORY, isStale, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
-import { buildsProject, FILE_EDITOR, kindOf, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
+import { buildsProject, FILE_EDITOR, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, runsGenerate, runsSetup } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -40,7 +40,11 @@ const staleState = atom({ plugin: 'xcrew', key: 'stale' } as const, null as Stal
 export const register: Register = on => {
   // The two tool.call hooks fail open, as the engine would without a handler; it's stated so validate reads it, and so
   // a later change can't turn either into a refusal by accident. Nothing below them throws today.
-  on('tool.call', { tool: PROJECT_REWRITER }, async ($, e, next) => ((await isGeneratedProject($)) ? { deny: REASON } : next(e))).catch(async ($, e, next) => next(e))
+  on('tool.call', { tool: PROJECT_REWRITER }, async ($, e, next) => {
+    if (!(await isGeneratedProject($))) return next(e)
+    const decision = decided(XCODE_WRITE_QUESTION, await ask($, XCODE_WRITE_QUESTION))
+    return decision.allows ? next(e) : { deny: xcodeWriteRefusal(decision.said) }
+  }).catch(async ($, e, next) => next(e))
   on('tool.describe', { tool: PROJECT_REWRITER }, async ($, e, next) => {
     const described = await next(e)
     return (await isGeneratedProject($)) ? { ...described, description: describedForGenerated(described.description) } : described
@@ -62,6 +66,16 @@ export const register: Register = on => {
     return result.deny === undefined ? withContext(result, letThroughNote(generates)) : result
   }).catch(async ($, e, next) => next(e))
   on('tool.call', { tool: FILE_EDITOR }, async ($, e, next) => {
+    // An edit to a file a generator writes waits for the person: the next generate would overwrite it.
+    if ((e.tool === 'Write' || e.tool === 'Edit') && mayBeGenerated(e.file_path)) {
+      const generated = generatedOf(await answer($, ['project', '--generated', e.file_path], 10_000))
+      if (generated) {
+        const shown = generatedPart(e.file_path)
+        const question = editQuestion(shown, generated)
+        const decision = decided(question, await ask($, question))
+        if (!decision.allows) return { deny: editRefusal(shown, generated, decision.said) }
+      }
+    }
     const result = await next(e)
     if ((e.tool !== 'Write' && e.tool !== 'Edit') || result.deny !== undefined || result.isError || !mayBeManifest(e.file_path)) return result
     const edit = manifestEditOf(await answer($, ['project', '--manifest', e.file_path], 10_000))
@@ -242,6 +256,11 @@ export const register: Register = on => {
 /** Changes the marks of a stale project; false when the state couldn't be written. */
 function markStale($: EngineInterface, change: (stale: StaleProject | null) => StaleProject | null): Promise<boolean> {
   return quietly(() => update($, staleState, change).then(() => true)).then(Boolean)
+}
+
+/** The person's answer to `question`, or nothing when there's nobody to ask: a run without a person, or a dismissed dialog. */
+function ask($: EngineInterface, question: Question): Promise<string | undefined> {
+  return quietly(() => $.ui.ask(question.question, { options: [...question.options], header: question.header }))
 }
 
 /** Starts a program of the CLI's: the mod's one process. */

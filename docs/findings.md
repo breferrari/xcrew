@@ -228,6 +228,16 @@ A run turns a red green when it ran the test without failing it:
 
 A run whose report the CLI couldn't read is left out, since its outcome would be a guess. Writes happen after the run's result goes back to Claude, one after another, and reading the ledger waits for them.
 
+## What a generator writes
+
+An edit to a file a generator writes is lost on its next generate, so the mod asks the person before one runs. Read October 30, 2026:
+- **Tuist** (*Synthesized files*): it will "synthesize the content of those files and write them into the `Derived` directory". That directory is "relative to the directory containing the project that defines them", and the docs say to "add the `Derived` directory to the `.gitignore` file of your project". Tuist also writes the `.xcodeproj` and `.xcworkspace`.
+- **XcodeGen** (*ProjectSpec*): "Plists are created on disk on every generation of the project", at a target's `info` or `entitlements` path. The `.xcodeproj` is named by the spec's `name`.
+
+xcrew counts a bundle or a `Derived` folder as the generator's only with a manifest beside it, so a dependency's checked-in project isn't. XcodeGen's `info` and `entitlements` paths aren't counted yet: reading them needs the spec's target keys.
+
+`$.ui.ask`, per the engine's types (Claude Code 2.1.312), "Rejects when dismissed, and in a `-p` run (no one to ask)". Either way the mod refuses the call with the reason, as it did before it asked.
+
 ## Toolchains
 
 On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The `macos-26` runner image (version 20261013.0424.1) carries Xcode 26.0.1 to 26.6, and Apple's [Xcode system requirements](https://developer.apple.com/xcode/system-requirements/) put Swift 6.2 in Xcode 26.0 and 26.0.1, 6.2.1 to 6.2.3 in 26.1 to 26.3, and 6.3 in 26.4.1 to 26.6. So CI's newest toolchain was Swift 6.3, older than the contributor's 6.4.2. Each Swift job now prints its toolchain, and a floor job builds and tests on the oldest Xcode whose Swift is the version `Package.swift`'s `swift-tools-version` names.

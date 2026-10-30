@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { buildsProject, generatedApps, kindOf, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
+import { buildsProject, generatedApps, generatedPart, kindOf, mayBeGenerated, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
 
 const kind = (name: string) => {
   const tool = parseTool(name)
@@ -117,4 +117,17 @@ test('the app each generate names is read from its own option or a cd before it,
     ['echo nothing', []],
   ]
   for (const [command, apps] of cases) expect([command, generatedApps(command)]).toEqual([command, apps])
+})
+
+test('a path inside a bundle or Derived folder may be generated, in any case; others are not asked about', () => {
+  // The bundles ProjectLayout counts as Xcode containers, and Tuist's Derived folder.
+  for (const path of ['/a/App.xcodeproj/project.pbxproj', '/a/App.xcworkspace/contents.xcworkspacedata', '/a/Derived/InfoPlists/App-Info.plist', '/a/ios/APP.XCODEPROJ/project.pbxproj']) {
+    expect([path, mayBeGenerated(path)]).toEqual([path, true])
+  }
+  for (const path of ['/a/App/ContentView.swift', '/a/Derivedness/x.swift', '/a/App.xcodeproj', '/a/Project.swift']) expect([path, mayBeGenerated(path)]).toEqual([path, false])
+})
+
+test('a generated file is shown from its bundle or Derived folder on', () => {
+  expect(generatedPart('/work/App/ios/App.xcodeproj/project.pbxproj')).toBe('App.xcodeproj/project.pbxproj')
+  expect(generatedPart('/work/App/Derived/InfoPlists/App-Info.plist')).toBe('Derived/InfoPlists/App-Info.plist')
 })

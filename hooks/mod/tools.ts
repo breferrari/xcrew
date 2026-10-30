@@ -30,6 +30,16 @@ export function mayBeManifest(path: string): boolean {
   return MANIFEST_NAME.test(path)
 }
 
+/**
+ * A path inside a folder a generator may write: a project or workspace bundle, or Tuist's `Derived` folder. In any case.
+ * Only a first look, so most edits never start the CLI, which decides.
+ */
+const GENERATED_PATH = /(?:^|\/)(?:[^/]+\.(?:xcodeproj|xcworkspace)|Derived)\//i
+
+export function mayBeGenerated(path: string): boolean {
+  return GENERATED_PATH.test(path)
+}
+
 /** `tuist generate`, or `xcodegen` with its default `generate` or none, by any path to the program, which it captures. */
 const GENERATE_COMMAND = /(?:^|[\s;&|(])["']?(?:[^\s"']*\/)?(?:(tuist)["']?\s+generate|(xcodegen)["']?(?:\s+generate)?(?!\s+[a-z]))(?=[\s;&|)]|$)/g
 
@@ -144,4 +154,10 @@ export function generatedApps(command: string): (string | undefined)[] {
  */
 export function runsEveryTestItNames(tool: XcodeTool): boolean {
   return tool.server !== 'xcode' || /\ball\b/.test(wordsOf(tool.tool))
+}
+
+/** A generated file's path from its bundle or `Derived` folder on, as the person reads it: `App.xcodeproj/project.pbxproj`. */
+export function generatedPart(path: string): string {
+  const match = GENERATED_PATH.exec(path)
+  return match ? path.slice(match.index + (match[0].startsWith('/') ? 1 : 0)) : path
 }

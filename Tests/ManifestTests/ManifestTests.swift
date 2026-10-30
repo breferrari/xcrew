@@ -119,6 +119,15 @@ import Testing
         }
     }
 
+    /// The mod asks about an edit inside each bundle the CLI counts as an Xcode container, and inside Tuist's `Derived`
+    /// folder, as the mod's tests feed its name filter.
+    @Test func theModAsksAboutEveryFolderAGeneratorWrites() throws {
+        let tests = try text("hooks/mod/tools.test.ts")
+        for folder in Project.containerExtensions.map({ "App\($0)" }) + [ProjectLayout.derivedFolder] {
+            #expect(tests.contains("'/a/\(folder)/"), "\(folder)")
+        }
+    }
+
     /// The hook answering the ledger tool matches the name Claude calls it by: `mcp__<plugin>__<name>`, from the plugin's
     /// name and the name the mod registers. A rename of either would leave every call unanswered.
     @Test func theLedgerToolsHookMatchesItsRegisteredName() throws {

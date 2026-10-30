@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import XcrewCLI
 import XcrewCore
 import XcrewTestSupport
 
@@ -598,5 +599,32 @@ import XcrewTestSupport
         let project = Project.temporary()
         let text = await Run("project", "--branch", context: .fake(project: project)).text
         #expect(text == #"{"isGenerated":false,"root":"\#(await realPath(project))"}"#)
+    }
+}
+
+/// What a generator writes, which an edit loses on the next generate: a project or workspace with a manifest beside it,
+/// and Tuist's `Derived` folder beside a project manifest.
+@Suite struct GeneratedFileTests {
+    func answer(_ file: String, in project: Project) async throws -> ProjectCommand.Answer {
+        try JSONDecoder().decode(ProjectCommand.Answer.self, from: Data(await Run("project", "--generated", project.root.appending(path: file).path, context: .fake(project: project)).text.utf8))
+    }
+
+    @Test func aModulesProjectNamesItsOwnManifestAndTheAppsGenerate() async throws {
+        let project = Project.temporary(containing: ["Tuist.swift", "Projects/Feature/Feature.xcodeproj"])
+        project.write("import ProjectDescription\n", to: "Projects/Feature/Project.swift")
+        project.write("// !$*UTF8*$!\n", to: "Projects/Feature/Feature.xcodeproj/project.pbxproj")
+        let found = try await answer("Projects/Feature/Feature.xcodeproj/project.pbxproj", in: project)
+        #expect(found.manifest == "Projects/Feature/Project.swift")
+        #expect(found.generate == "tuist generate --no-open")
+    }
+
+    /// A checked-in project of a dependency, or a folder that only shares Tuist's folder name, isn't Tuist's to write.
+    @Test func aBundleOrDerivedFolderWithNoManifestBesideItIsntGenerated() async throws {
+        let project = Project.temporary(containing: ["Tuist.swift", "Vendor/Lib.xcodeproj", "Docs/Derived"])
+        project.write("// !$*UTF8*$!\n", to: "Vendor/Lib.xcodeproj/project.pbxproj")
+        project.write("notes\n", to: "Docs/Derived/notes.md")
+        for file in ["Vendor/Lib.xcodeproj/project.pbxproj", "Docs/Derived/notes.md"] {
+            #expect(try await answer(file, in: project).manifest == nil, "\(file)")
+        }
     }
 }
