@@ -35,6 +35,22 @@ import XcrewTestSupport
         #expect(text?.contains("- **xcrew:** MobileBuildMCP profiles here: `unit` (active), `app`. Switch with `session_use_defaults_profile`.") == true)
     }
 
+    /// MobileBuildMCP writes a config of its own when Claude saves session defaults: one without a profile naming a
+    /// scheme still asks for setup.
+    @Test func briefingOffersSetupWhileNoProfileNamesAScheme() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("schemaVersion: 1\nsessionDefaults:\n  workspacePath: ./App.xcodeproj\n", to: ".mobilebuildmcp/config.yaml")
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n")
+        #expect(text?.contains("- **xcrew:** MobileBuildMCP has no profile with a scheme for this project yet: before the first build or test, offer `/xcrew:setup`.") == true)
+    }
+
+    @Test func briefingWithAProfileThatNamesASchemeOffersNoSetup() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write(ConfigRenderer.render(.init(container: "App.xcodeproj", testSimulator: "iPhone 17", testScheme: "AppTests"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n")
+        #expect(text?.contains("/xcrew:setup") == false)
+    }
+
     /// A project that pins its Xcode says so, and that the Xcode MCP works through the open one, which no pin changes.
     @Test func briefingNamesThePinnedXcode() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])

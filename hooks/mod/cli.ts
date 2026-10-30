@@ -99,6 +99,11 @@ export function isGeneratedOf(answer: unknown): boolean {
   return (answer as { isGenerated?: boolean } | undefined)?.isGenerated === true
 }
 
+/** Whether a profile in the project's MobileBuildMCP config names a scheme, as `xcrew project --setup` answers; true when the CLI can't say, which keeps the setup line quiet. */
+export function hasProfilesOf(answer: unknown): boolean {
+  return (answer as { hasProfiles?: boolean } | undefined)?.hasProfiles !== false
+}
+
 /** The app an edit changed and the command that regenerates it, when the file `xcrew project --manifest` was asked about is a manifest. */
 export function manifestEditOf(answer: unknown): { app: string; generate: string } | undefined {
   const { app, generate } = (answer ?? {}) as { app?: unknown; generate?: unknown }

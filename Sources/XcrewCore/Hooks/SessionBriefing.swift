@@ -72,8 +72,8 @@ public struct SessionBriefing: Sendable {
     /// Fast checks only: this runs before every session's first prompt.
     func gaps() -> [String] {
         var gaps: [String] = []
-        if !project.hasMobileBuildMCPConfig {
-            gaps.append("This project has no `.mobilebuildmcp/config.yaml`, so MobileBuildMCP has no profiles: offer `/xcrew:setup` before the first build or test.")
+        if !project.hasProfileWithScheme {
+            gaps.append("MobileBuildMCP has no profile with a scheme for this project yet: before the first build or test, offer `/xcrew:setup`.")
         }
         return gaps
     }

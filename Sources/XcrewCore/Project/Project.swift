@@ -18,8 +18,14 @@ public struct Project: Sendable, Equatable {
     }
 
     public var mobileBuildMCPConfig: URL { root.appending(path: ".mobilebuildmcp/config.yaml") }
-    /// Whether MobileBuildMCP has its per-project config; the doctor and the session briefing both ask.
+    /// Whether MobileBuildMCP has its per-project config.
     public var hasMobileBuildMCPConfig: Bool { FileManager.default.fileExists(atPath: mobileBuildMCPConfig.path) }
+    /// Whether a profile in that config names a scheme, so a build or test has something to run. MobileBuildMCP writes
+    /// a config itself when Claude saves session defaults, so a config alone doesn't say setup ran.
+    public var hasProfileWithScheme: Bool {
+        guard let yaml = try? String(contentsOf: mobileBuildMCPConfig, encoding: .utf8) else { return false }
+        return !ConfigRenderer.profiles(in: yaml).withScheme.isEmpty
+    }
     /// Whether mcs configured xcrew here: `xcrew` is in `.claude/.mcs-project`'s `configuredPacks`.
     public var isConfiguredByMCS: Bool {
         struct State: Decodable { let configuredPacks: [String]? }

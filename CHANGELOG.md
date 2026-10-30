@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- When Claude builds or tests a project that has no MobileBuildMCP profile yet, it's told to offer `/xcrew:setup`, once per conversation. The conversation's opening note says so too, now also when MobileBuildMCP saved a config of its own without a scheme.
+
 ## 0.9.0 — 2026-10-30
 
 - When Claude runs the whole test suite again and again in a short while, the run that makes it a habit tells Claude to run only the tests the change can break, and the whole suite again before the pull request. A fast suite never hears it.

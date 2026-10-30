@@ -47,6 +47,6 @@ export type FullRuns = Record<string, FullRun[]>
 
 declare module 'claude-code' {
   interface PluginState {
-    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null; loop: FullRuns }
+    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null; loop: FullRuns; setup: boolean }
   }
 }
