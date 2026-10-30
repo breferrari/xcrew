@@ -9,7 +9,7 @@ export const AFFECTED_TOOL = {
   name: 'affected',
   description:
     'Xcrew: which test targets the changes on this git branch can break, since its merge base with the default branch, uncommitted and untracked files included; with no remote, the uncommitted and untracked files alone. ' +
-    'It covers the targets that own or depend on the changed files, as the project declares them; when it can\'t narrow the run, it says to run the whole suite, and why.',
+    'It covers the targets that own or depend on the changed files, as the project declares them; when it can\'t narrow the run, it says so, and why.',
   inputSchema: {
     type: 'object',
     properties: { base: { type: 'string', description: 'A branch or commit to compare with instead of the default branch.' } },
@@ -31,7 +31,7 @@ export function affectedText(answer: unknown): string {
   const affected = (answer ?? {}) as Affected
   const since = affected.base ? ` Compared with ${affected.base}.` : ''
   if (!Array.isArray(affected.selections)) {
-    return `The changes can break any test, so the whole suite: ${affected.runAll ?? "xcrew couldn't say which tests the changes can break"}.${since}`
+    return affected.runAll ? `No narrower selection: ${affected.runAll}; the whole suite covers the changes.${since}` : `xcrew couldn't say which tests the changes can break; the whole suite covers them.${since}`
   }
   const changed = affected.changed?.length ?? 0
   if (affected.selections.length === 0) {

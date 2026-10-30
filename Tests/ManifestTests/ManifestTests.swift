@@ -150,6 +150,10 @@ import Testing
             Report.noTestsNote,
             FailureNotes.noCrashLog,
             FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
+            ResultBundle.noRepetitionsNote,
+            ResultBundle.repetitionsNote([.init(test: "S/t", failed: 2, passed: 3, runs: 5, verdict: .flaky), .init(test: "S/u", failed: 5, passed: 0, runs: 5, verdict: .real)]) ?? "",
+            ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":5,"expectedFailures":1}"#, names: ["S/t()"]) ?? "",
+            Report.warningsNote([ToolOutput.Warning(message: "unused", path: "/a/A.swift", line: 3)], of: 2) ?? "",
         ] + (try Self.modTools.map { try toolDescription($0.constant, in: $0.file) })
         var sentences: [String] = []
         for text in texts {
@@ -158,15 +162,26 @@ import Testing
         return sentences
     }
 
-    /// The tools the mod registers for Claude: each one's constant and file.
-    static let modTools = [("LEDGER_TOOL", "hooks/mod/ledger.ts"), ("AFFECTED_TOOL", "hooks/mod/affected.ts"), ("LOOK_TOOL", "hooks/mod/look.ts"), ("EVIDENCE_TOOL", "hooks/mod/evidence.ts")].map { (constant: $0.0, file: $0.1) }
+    /// The tools the mod registers for Claude at session start, as `register.ts` lists them: each one's constant, and the
+    /// file `register.ts` imports it from.
+    static var modTools: [(constant: String, file: String)] {
+        get throws {
+            let register = try String(contentsOf: repository.appending(path: "hooks/mod/register.ts"), encoding: .utf8)
+            let listed = try #require(register.firstMatch(of: /for \(const tool of \[([^\]]*)\]\) await quietly\(\(\) => \$\.tool\.register\(tool\)\)/)?.1)
+            return try listed.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.map { constant in
+                let imported = try #require(register.split(separator: "\n").first { $0.hasPrefix("import {") && $0.contains(" \(constant),") || $0.hasPrefix("import {") && $0.contains(" \(constant) }") })
+                let module = try #require(imported.firstMatch(of: /from '\.\/([\w-]+)'/)?.1)
+                return (constant, "hooks/mod/\(module).ts")
+            }
+        }
+    }
 
     /// A mod tool's description, as Claude reads it: the string literals after `description:` in its constant's object,
     /// escaped quotes read as quotes.
     func toolDescription(_ constant: String, in file: String) throws -> String {
         let source = try text(file)
         let object = try #require(source.range(of: "export const \(constant) = {"))
-        let body = source[object.upperBound...].prefix { _ in true }
+        let body = source[object.upperBound...]
         let end = body.range(of: "\n}")?.lowerBound ?? body.endIndex
         let declared = try #require(body[..<end].range(of: "  description:"))
         let described = body[declared.upperBound..<end]
@@ -176,9 +191,14 @@ import Testing
 
     @Test func xcrewsNotesPrescribeOnlyRoutingAndHarmGuards() throws {
         let rule = /\b(?:[Aa]lways|[Mm]ust|[Nn]ever|[Bb]efore|[Aa]fter)\b/
-        for sentence in try toldToClaude() where sentence.contains(rule) {
-            #expect(Self.prescriptions.contains { sentence.contains($0.sentence) }, "prescribes: \(sentence)")
+        let sentences = try toldToClaude()
+        for sentence in sentences {
+            // An allowed phrase is taken out first, so it can't carry a rule of its own in with it.
+            let rest = Self.prescriptions.reduce(sentence) { $0.replacingOccurrences(of: $1.sentence, with: "") }
+            #expect(!rest.contains(rule), "prescribes: \(sentence)")
         }
+        // An entry no sentence holds any more is one a rewrite dropped: a harm guard lost, or a stale exception.
+        for allowed in Self.prescriptions { #expect(sentences.contains { $0.contains(allowed.sentence) }, "no longer said: \(allowed.sentence)") }
     }
 
     /// A tool the mod registers: its name, read from `<constant> = {` in `file`, after checking its full name is the one
@@ -259,7 +279,8 @@ import Testing
         // The note names the tool by the constant; the routing rules by its name, behind ToolSearch.
         #expect(loop.contains(#"\`${AFFECTED_TOOL.name}\` tool (search for it)"#))
         #expect(routing.contains("`\(name)` tool (search for it)"))
-        #expect(routing.contains("`-only-testing:` arguments that run them") && loop.contains("`-only-testing:` arguments that run them"))
+        // The note's backticks are escaped in its template literal.
+        #expect(routing.contains("`-only-testing:` arguments that run them") && loop.replacingOccurrences(of: "\\`", with: "`").contains("`-only-testing:` arguments that run them"))
     }
 
     /// The MobileBuildMCP launcher reads the exit statuses the CLI's `xcode --developer-dir` and the shim's `--if-built`
@@ -335,7 +356,7 @@ import Testing
     }
 
     /// Each tool the mod defines is registered at session start and answered by a hook matching its full name.
-    @Test(arguments: modTools.map { ($0.file, $0.constant) })
+    @Test(arguments: try! modTools.map { ($0.file, $0.constant) })
     func eachToolOfTheModsIsRegisteredAndAnswered(file: String, tool: String) throws {
         let register = try text("hooks/mod/register.ts")
         #expect(try text(file).contains("export const \(tool)_NAME = "))

@@ -90,6 +90,7 @@ test('a run that ran no test, its build failing, does not count', async ($, on) 
 test('the Xcode MCP\'s full run counts too, and its note names the affected tool alone', async ($, on) => {
   const clock = project(on, 70_000)
   const notes = await fullRuns($, clock, 3, 10 * MINUTE, 'mcp__xcode__RunAllTests')
-  expect(notes[2]).toContain('The `affected` tool (search for it) can narrow the next one')
+  expect(notes[2]).toContain('The `affected` tool (search for it) names the test targets this branch\'s changes can break.')
+  expect(notes[2]).not.toContain('can narrow')
   expect(notes[2]).not.toContain('-only-testing:')
 })

@@ -30,9 +30,10 @@ export function loopNote(scope: string, crossed: Crossing, selectsWithOnlyTestin
   const first = crossed.runs[0]
   const last = crossed.runs[crossed.runs.length - 1] ?? first
   const span = Math.round((last.at - first.at) / 60_000)
-  const selecting = selectsWithOnlyTesting ? ', with the `-only-testing:` arguments that run them' : ''
-  return (
-    `xcrew: that's ${crossed.runs.length} full runs of \`${scope}\` in ${span} min, with ${stopwatch(crossed.testing)} of testing. ` +
-    `The \`${AFFECTED_TOOL.name}\` tool (search for it) can narrow the next one to the test targets this branch's changes can break${selecting}.`
-  )
+  // Only MobileBuildMCP's tests take a selection, through `-only-testing:`; the Xcode MCP's run is the whole suite.
+  const tool = `The \`${AFFECTED_TOOL.name}\` tool (search for it)`
+  const said = selectsWithOnlyTesting
+    ? `${tool} can narrow the next one to the test targets this branch's changes can break, with the \`-only-testing:\` arguments that run them.`
+    : `${tool} names the test targets this branch's changes can break.`
+  return `xcrew: that's ${crossed.runs.length} full runs of \`${scope}\` in ${span} min, with ${stopwatch(crossed.testing)} of testing. ${said}`
 }

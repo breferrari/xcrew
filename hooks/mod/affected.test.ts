@@ -44,13 +44,14 @@ test('a selection names the test targets and the -only-testing arguments that ru
 test('when nothing narrower can be said, it names the whole suite with the reason', async ($, on) => {
   session(on, { base: 'origin/main, from 0123456789ab', changed: ['Package.resolved'], runAll: 'Package.resolved changes what the build does in a way this doesn\'t read' })
   const text = await ask($)
-  expect(text).toStartWith('The changes can break any test, so the whole suite: ')
+  expect(text).toStartWith('No narrower selection: Package.resolved changes what the build does')
+  expect(text).toContain('the whole suite covers the changes')
   expect(text).toContain('Package.resolved changes what the build does')
 })
 
 test('when the CLI can\'t answer, the answer is the whole suite', async ($, on) => {
   session(on, new Error('timed out'))
-  expect(await ask($)).toStartWith('The changes can break any test, so the whole suite: ')
+  expect(await ask($)).toStartWith("xcrew couldn't say which tests the changes can break; the whole suite covers them.")
 })
 
 test('a base Claude names is passed to the CLI', async ($, on) => {
