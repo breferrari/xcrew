@@ -14,7 +14,7 @@ test("an Xcode MCP call whose connection closed carries the CLI's note", async (
   expect(calls.filter(call => call.args[0] === 'note').map(call => call.args)).toEqual([['note', '--server', 'xcode', '--error']])
 })
 
-/** A call that worked, or another server's, asks nothing. */
+/** A call that worked asks nothing. */
 test('an Xcode MCP call that worked asks the CLI nothing', async ($, on) => {
   mock.store(on)
   const calls = stubCli(on)

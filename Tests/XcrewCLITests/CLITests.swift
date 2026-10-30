@@ -77,6 +77,17 @@ import XcrewTestSupport
         #expect(config(project).contains("simulatorName: 'iPhone 18'"))
     }
 
+    /// MobileBuildMCP's DAP backend runs no LLDB commands such as `expr`; setup writes the CLI backend when asked, and keeps
+    /// one the config has when it writes again, `--force` included (docs/findings.md, *MobileBuildMCP errors with a way
+    /// around them*).
+    @Test func theDebuggerBackendIsWrittenWhenAskedAndKeptAfter() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        _ = await Run("setup", "--app-scheme", "App", "--debugger-backend", "lldb-cli", context: .fake(simulators, project: project))
+        #expect(config(project).contains("\ndebuggerBackend: lldb-cli\n"))
+        _ = await Run("setup", "--force", "--app-scheme", "App", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        #expect(config(project).contains("\ndebuggerBackend: lldb-cli\n"))
+    }
+
     /// MobileBuildMCP resolves the config's paths against its working directory, the project root, so a config copied
     /// into another worktree builds that worktree's checkout (docs/findings.md, *MobileBuildMCP's config paths*).
     @Test func pathsAreWrittenFromTheProjectRoot() async {

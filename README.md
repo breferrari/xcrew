@@ -232,7 +232,7 @@ ok    xcrew/up-to-date                   0.8.9, the latest release
 
 ### Configuration
 
-- **Profiles:** `.mobilebuildmcp/config.yaml` holds `unit` for the scheme that runs your unit tests, which setup finds itself, plus `app` and `ui` for your app and UI-test schemes: `/xcrew:setup` picks those from your schemes and asks you to confirm, and `xcrew setup` takes them as `--app-scheme` and `--ui-scheme`. Each has its scheme and simulator, so it can build as soon as it's active.
+- **Profiles:** `.mobilebuildmcp/config.yaml` holds `unit` for the scheme that runs your unit tests, which setup finds itself, plus `app` and `ui` for your app and UI-test schemes: `/xcrew:setup` picks those from your schemes and asks you to confirm, and `xcrew setup` takes them as `--app-scheme` and `--ui-scheme`. Each has its scheme and simulator, so it can build as soon as it's active. `--debugger-backend lldb-cli` writes MobileBuildMCP's CLI debugger backend, which runs LLDB commands such as `expr`, and later runs of setup keep it.
   - Rerun `/xcrew:setup` to change them.
   - A config Xcrew didn't write is left alone, unless you tell `/xcrew:setup` to replace it, which keeps a backup.
   - Its paths are written from the project root, so a copy in another worktree builds that worktree. It still names this Mac's simulators by ID, and MobileBuildMCP may keep DerivedData beside it, so setup keeps `.mobilebuildmcp/` out of git through `.git/info/exclude`.

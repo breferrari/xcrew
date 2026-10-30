@@ -24,7 +24,7 @@ public enum ConfigRenderer {
 
         var lines = ["schemaVersion: 1", "enabledWorkflows:"] + workflows.map { "  - \($0)" }
         lines += ["customWorkflows:", "  sim-env:"] + simEnvTools.map { "    - \($0)" }
-        lines += ["sentryDisabled: true", "showTestTiming: true"]
+        lines += ["sentryDisabled: true", "showTestTiming: true"] + (answers.debuggerBackend.map { ["debuggerBackend: \($0)"] } ?? [])
         // In the order the active one is chosen: the first written is active.
         let bundle = answers.bundleID.map { ["    bundleId: \(quoted($0))"] } ?? []
         let written = answers.profileNames.map { name in
@@ -137,6 +137,12 @@ public enum ConfigRenderer {
     }
 
     /// The simulator names a config's profiles reference, each once.
+    /// The debugger backend a config sets at its top level, which setup keeps when it writes the config again.
+    public static func debuggerBackend(in yaml: String) -> String? {
+        yaml.split(whereSeparator: \.isNewline).first { $0.hasPrefix("debuggerBackend:") }
+            .map { unquoted($0.dropFirst("debuggerBackend:".count).trimmingCharacters(in: .whitespaces)) }
+    }
+
     public static func simulatorNames(in yaml: String) -> [String] {
         values(of: ["simulatorName:"], in: yaml)
     }

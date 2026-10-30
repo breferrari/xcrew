@@ -628,7 +628,7 @@ struct TestbedAffectedSchemeTests {
 /// Captures K and N, as MobileBuildMCP answered them: `xcrew note` gives each its way around.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
 struct TestbedToolErrorNoteTests {
-    @Test(arguments: [("two-display", "`xcrun simctl io <udid> screenshot --display=<id> <file>`"), ("lldb-expr", "`debuggerBackend: lldb-cli`")])
+    @Test(arguments: [("two-display", "`xcrun simctl io <udid> screenshot --display=<id> <file>`"), ("lldb-expr", "`xcrew setup --debugger-backend lldb-cli`")])
     func aCapturedErrorGetsItsNote(_ capture: String, names: String) async throws {
         let text = try String(contentsOf: Testbed.root.appending(path: "captures/field/\(capture).txt"), encoding: .utf8)
         let answer = await Run("note", "--server", "MobileBuildMCP", "--error", stdin: text).text

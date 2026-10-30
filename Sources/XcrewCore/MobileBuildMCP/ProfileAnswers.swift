@@ -11,6 +11,8 @@ public struct ProfileAnswers: Sendable, Equatable {
     public var bundleID: String?
     public var uiTestScheme: String?
     public var testScheme: String?
+    /// MobileBuildMCP's debugger backend, `dap` or `lldb-cli`, written at the config's top level when set.
+    public var debuggerBackend: String?
 
     public init(
         container: String,

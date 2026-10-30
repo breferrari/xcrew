@@ -17,11 +17,12 @@ struct SetupCommand: Command {
     ]
 
     let name = "setup"
-    var valuedOptions: Set<String> { Set(Self.mcsKeys.keys) }
+    var valuedOptions: Set<String> { Set(Self.mcsKeys.keys).union(["debugger-backend"]) }
     let flags: Set<String> = ["force", "worktree"]
     let usage = [
         "setup [--container NAME] [--test-simulator NAME] [--app-simulator NAME]",
-        "      [--app-scheme NAME] [--bundle-id ID] [--ui-scheme NAME] [--test-scheme NAME] [--force]",
+        "      [--app-scheme NAME] [--bundle-id ID] [--ui-scheme NAME] [--test-scheme NAME]",
+        "      [--debugger-backend dap|lldb-cli] [--force]",
         "      write .mobilebuildmcp/config.yaml; simulators default to the newest iPhone installed,",
         "      and the test scheme to the shared scheme that runs unit tests",
         "setup --worktree [--force]   in a linked git worktree, write its config from the main checkout's",
@@ -73,6 +74,8 @@ struct SetupCommand: Command {
             uiTestScheme: answer("ui-scheme"),
             testScheme: answer("test-scheme")
         )
+        answers.debuggerBackend = invocation.arguments["debugger-backend"]
+            ?? (try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)).flatMap(ConfigRenderer.debuggerBackend(in:))
         // Said only once the config is written, since a kept config ignores them.
         var notes: [String] = []
         if answers.testScheme == nil {
