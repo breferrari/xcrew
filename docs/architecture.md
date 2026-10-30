@@ -104,6 +104,14 @@ Reading a few named fields of a JSON answer is fine: **context** learns the sche
 
 `ModBoundaryTests` in `Tests/ManifestTests` fails on any of these. When a change seems to need one, the logic belongs in a Swift command the mod calls through `cli.ts`, tested with Swift Testing against captured output in `Tests/XcrewCoreTests/Fixtures`.
 
+### What the mod adds, and how
+
+- One visible thing per surface, hidden when idle, and quiet by default: nothing interrupts unless it's worth it.
+- It degrades per surface: a terminal-only element has a fallback in Desktop and VS Code, and nothing draws under `claude -p`.
+- Bookkeeping is best-effort and never fails a tool call.
+- No token cost goes unstated: anything that adds text to Claude's context says how much.
+- Parsing a server's output is tested against captured real outputs, and falls back to the server's own display when it doesn't match.
+
 ## Extending
 
 | To add | Write | Then |
