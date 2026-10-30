@@ -15,6 +15,7 @@ public enum CLI {
         XcodeSkillsCommand(),
         XcodeCommand(),
         WhyCommand(),
+        SpaceCommand(),
         LookCommand(),
         HookCommand(),
     ]

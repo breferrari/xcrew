@@ -1,0 +1,395 @@
+{
+ "action": "report",
+ "deletionHappened": false,
+ "appRoot": "~/Library/Developer/MobileBuildMCP",
+ "workspacesDir": "~/Library/Developer/MobileBuildMCP/workspaces",
+ "selectedScope": {
+  "type": "all"
+ },
+ "totals": {
+  "bytes": 85082639,
+  "fileCount": 2094,
+  "directoryCount": 1065
+ },
+ "families": [
+  {
+   "family": "kit",
+   "workspaceKeys": [
+    "kit-0a1b2c3d4e5f"
+   ],
+   "bytes": 81520997
+  },
+  {
+   "family": "field",
+   "workspaceKeys": [
+    "field-05686ffe76ea",
+    "field-09f4495eb86d"
+   ],
+   "bytes": 3561629
+  },
+  {
+   "family": "app",
+   "workspaceKeys": [
+    "app-7f5863af5761"
+   ],
+   "bytes": 13
+  }
+ ],
+ "workspaces": [
+  {
+   "workspaceKey": "kit-0a1b2c3d4e5f",
+   "path": "~/Library/Developer/MobileBuildMCP/workspaces/kit-0a1b2c3d4e5f",
+   "recognized": true,
+   "family": "kit",
+   "hash": "0a1b2c3d4e5f",
+   "totals": {
+    "bytes": 81520997,
+    "fileCount": 1993,
+    "directoryCount": 992
+   },
+   "classes": {
+    "derivedData": {
+     "storageClass": "derivedData",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/kit-0a1b2c3d4e5f/DerivedData",
+     "exists": true,
+     "bytes": 77912189,
+     "fileCount": 1968,
+     "directoryCount": 986,
+     "latestMtimeMs": 1793344120084.711,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "logs": {
+     "storageClass": "logs",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/kit-0a1b2c3d4e5f/logs",
+     "exists": true,
+     "bytes": 3608795,
+     "fileCount": 24,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793345284866.9373,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "resultBundles": {
+     "storageClass": "resultBundles",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/kit-0a1b2c3d4e5f/result-bundles",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793344104499.8088,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "testProducts": {
+     "storageClass": "testProducts",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/kit-0a1b2c3d4e5f/test-products",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793344104499.9841,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "stateTransients": {
+     "storageClass": "stateTransients",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/kit-0a1b2c3d4e5f/state",
+     "exists": true,
+     "bytes": 13,
+     "fileCount": 1,
+     "directoryCount": 2,
+     "latestMtimeMs": 1793344104500.2466,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "locks": {
+     "storageClass": "locks",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/kit-0a1b2c3d4e5f/locks",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793344104501.201,
+     "scanComplete": true,
+     "cleanupEligible": false,
+     "warnings": []
+    }
+   },
+   "warnings": []
+  },
+  {
+   "workspaceKey": "field-05686ffe76ea",
+   "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea",
+   "recognized": true,
+   "family": "field",
+   "hash": "05686ffe76ea",
+   "totals": {
+    "bytes": 3256082,
+    "fileCount": 95,
+    "directoryCount": 60
+   },
+   "classes": {
+    "derivedData": {
+     "storageClass": "derivedData",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/DerivedData",
+     "exists": false,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 0,
+     "latestMtimeMs": null,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "logs": {
+     "storageClass": "logs",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/logs",
+     "exists": true,
+     "bytes": 639299,
+     "fileCount": 4,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793380503436.1392,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "resultBundles": {
+     "storageClass": "resultBundles",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/result-bundles",
+     "exists": true,
+     "bytes": 290958,
+     "fileCount": 41,
+     "directoryCount": 3,
+     "latestMtimeMs": 1793380491120.2583,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "testProducts": {
+     "storageClass": "testProducts",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/test-products",
+     "exists": true,
+     "bytes": 2325812,
+     "fileCount": 49,
+     "directoryCount": 53,
+     "latestMtimeMs": 1793380491024.334,
+     "scanComplete": false,
+     "cleanupEligible": true,
+     "warnings": [
+      "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/test-products/test_sim_2026-10-30T17-14-33-183Z_pid34663_52c0ffd8.xctestproducts/Tests/0/Debug-iphonesimulator: symbolic link skipped"
+     ]
+    },
+    "stateTransients": {
+     "storageClass": "stateTransients",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/state",
+     "exists": true,
+     "bytes": 13,
+     "fileCount": 1,
+     "directoryCount": 2,
+     "latestMtimeMs": 1793380472240.0928,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "locks": {
+     "storageClass": "locks",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/locks",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793380472278.9973,
+     "scanComplete": true,
+     "cleanupEligible": false,
+     "warnings": []
+    }
+   },
+   "warnings": [
+    "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/test-products/test_sim_2026-10-30T17-14-33-183Z_pid34663_52c0ffd8.xctestproducts/Tests/0/Debug-iphonesimulator: symbolic link skipped"
+   ]
+  },
+  {
+   "workspaceKey": "field-09f4495eb86d",
+   "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-09f4495eb86d",
+   "recognized": true,
+   "family": "field",
+   "hash": "09f4495eb86d",
+   "totals": {
+    "bytes": 305547,
+    "fileCount": 5,
+    "directoryCount": 7
+   },
+   "classes": {
+    "derivedData": {
+     "storageClass": "derivedData",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-09f4495eb86d/DerivedData",
+     "exists": false,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 0,
+     "latestMtimeMs": null,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "logs": {
+     "storageClass": "logs",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-09f4495eb86d/logs",
+     "exists": true,
+     "bytes": 305534,
+     "fileCount": 4,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793388851754.4294,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "resultBundles": {
+     "storageClass": "resultBundles",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-09f4495eb86d/result-bundles",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793388830731.6616,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "testProducts": {
+     "storageClass": "testProducts",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-09f4495eb86d/test-products",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793388830731.933,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "stateTransients": {
+     "storageClass": "stateTransients",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-09f4495eb86d/state",
+     "exists": true,
+     "bytes": 13,
+     "fileCount": 1,
+     "directoryCount": 3,
+     "latestMtimeMs": 1793388851756.7373,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "locks": {
+     "storageClass": "locks",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/field-09f4495eb86d/locks",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793388830733.2705,
+     "scanComplete": true,
+     "cleanupEligible": false,
+     "warnings": []
+    }
+   },
+   "warnings": []
+  },
+  {
+   "workspaceKey": "app-7f5863af5761",
+   "path": "~/Library/Developer/MobileBuildMCP/workspaces/app-7f5863af5761",
+   "recognized": true,
+   "family": "app",
+   "hash": "7f5863af5761",
+   "totals": {
+    "bytes": 13,
+    "fileCount": 1,
+    "directoryCount": 6
+   },
+   "classes": {
+    "derivedData": {
+     "storageClass": "derivedData",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/app-7f5863af5761/DerivedData",
+     "exists": false,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 0,
+     "latestMtimeMs": null,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "logs": {
+     "storageClass": "logs",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/app-7f5863af5761/logs",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793294015149.354,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "resultBundles": {
+     "storageClass": "resultBundles",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/app-7f5863af5761/result-bundles",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793294015149.5386,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "testProducts": {
+     "storageClass": "testProducts",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/app-7f5863af5761/test-products",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793294015149.7131,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "stateTransients": {
+     "storageClass": "stateTransients",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/app-7f5863af5761/state",
+     "exists": true,
+     "bytes": 13,
+     "fileCount": 1,
+     "directoryCount": 2,
+     "latestMtimeMs": 1793294015149.9856,
+     "scanComplete": true,
+     "cleanupEligible": true,
+     "warnings": []
+    },
+    "locks": {
+     "storageClass": "locks",
+     "path": "~/Library/Developer/MobileBuildMCP/workspaces/app-7f5863af5761/locks",
+     "exists": true,
+     "bytes": 0,
+     "fileCount": 0,
+     "directoryCount": 1,
+     "latestMtimeMs": 1793294015150.503,
+     "scanComplete": true,
+     "cleanupEligible": false,
+     "warnings": []
+    }
+   },
+   "warnings": []
+  }
+ ],
+ "warnings": [
+  "~/Library/Developer/MobileBuildMCP/workspaces/field-05686ffe76ea/test-products/test_sim_2026-10-30T17-14-33-183Z_pid34663_52c0ffd8.xctestproducts/Tests/0/Debug-iphonesimulator: symbolic link skipped"
+ ]
+}

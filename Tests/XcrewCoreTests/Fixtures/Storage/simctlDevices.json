@@ -1,0 +1,67 @@
+{
+ "devices": {
+  "com.apple.CoreSimulator.SimRuntime.iOS-27-0": [
+   {
+    "availabilityError": "runtime profile not found using \u201cSystem\u201d match policy",
+    "dataPath": "/Users/dev/Library/Developer/CoreSimulator/Devices/00000000-0000-0000-0000-000000000004/data",
+    "dataPathSize": 18337792,
+    "logPath": "/Users/dev/Library/Logs/CoreSimulator/00000000-0000-0000-0000-000000000004",
+    "udid": "00000000-0000-0000-0000-000000000004",
+    "isAvailable": false,
+    "logPathSize": 0,
+    "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+    "state": "Shutdown",
+    "name": "iPhone 17 Pro"
+   }
+  ],
+  "com.apple.CoreSimulator.SimRuntime.iOS-27-2": [
+   {
+    "dataPath": "/Users/dev/Library/Developer/CoreSimulator/Devices/00000000-0000-0000-0000-000000000005/data",
+    "dataPathSize": 18337792,
+    "logPath": "/Users/dev/Library/Logs/CoreSimulator/00000000-0000-0000-0000-000000000005",
+    "udid": "00000000-0000-0000-0000-000000000005",
+    "lastUsedAt": "2026-10-30T19:36:18Z",
+    "isAvailable": true,
+    "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro",
+    "state": "Shutdown",
+    "name": "iPhone 18 Pro"
+   },
+   {
+    "dataPath": "/Users/dev/Library/Developer/CoreSimulator/Devices/00000000-0000-0000-0000-000000000006/data",
+    "dataPathSize": 18337792,
+    "logPath": "/Users/dev/Library/Logs/CoreSimulator/00000000-0000-0000-0000-000000000006",
+    "udid": "00000000-0000-0000-0000-000000000006",
+    "isAvailable": true,
+    "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro-Max",
+    "state": "Shutdown",
+    "name": "iPhone 18 Pro Max"
+   }
+  ],
+  "com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4": [
+   {
+    "dataPath": "/Users/dev/Library/Developer/CoreSimulator/Devices/00000000-0000-0000-0000-000000000007/data",
+    "dataPathSize": 2279063552,
+    "logPath": "/Users/dev/Library/Logs/CoreSimulator/00000000-0000-0000-0000-000000000007",
+    "udid": "00000000-0000-0000-0000-000000000007",
+    "lastUsedAt": "2026-10-29T17:07:46Z",
+    "isAvailable": true,
+    "logPathSize": 245760,
+    "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-Duo",
+    "state": "Shutdown",
+    "name": "iPhone Duo"
+   }
+  ],
+  "com.apple.CoreSimulator.SimRuntime.iOS-27-1": [
+   {
+    "dataPath": "/Users/dev/Library/Developer/CoreSimulator/Devices/00000000-0000-0000-0000-000000000008/data",
+    "dataPathSize": 18337792,
+    "logPath": "/Users/dev/Library/Logs/CoreSimulator/00000000-0000-0000-0000-000000000008",
+    "udid": "00000000-0000-0000-0000-000000000008",
+    "isAvailable": true,
+    "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-Duo",
+    "state": "Shutdown",
+    "name": "iPhone Duo"
+   }
+  ]
+ }
+}

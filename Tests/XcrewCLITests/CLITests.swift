@@ -1019,3 +1019,18 @@ import XcrewTestSupport
         #expect((answer["runAll"] as? String)?.contains("--independent") == true)
     }
 }
+
+/// `xcrew space` prints each part, or with `--json` the same as JSON; a tool that doesn't answer is said not to.
+@Suite struct SpaceCommandTests {
+    @Test func eachPartIsPrintedAndAToolThatDoesntAnswerIsSaidNotTo() async {
+        let run = await Run("space")
+        #expect(run.status == 0)
+        #expect(run.text.contains("MobileBuildMCP\n  not read: `mobilebuildmcp purge --report` didn't answer"), "\(run.text)")
+    }
+
+    @Test func theJSONIsTheSameReport() async throws {
+        let text = await Run("space", "--json").text
+        let report = try JSONDecoder().decode(SpaceReport.self, from: Data(text.utf8))
+        #expect(report.parts.first?.title == "MobileBuildMCP")
+    }
+}

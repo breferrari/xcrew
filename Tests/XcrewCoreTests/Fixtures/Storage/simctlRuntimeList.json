@@ -1,0 +1,60 @@
+{
+ "00000000-0000-0000-0000-000000000001": {
+  "build": "24B91016s",
+  "deletable": true,
+  "identifier": "00000000-0000-0000-0000-000000000001",
+  "kind": "Patchable Cryptex Disk Image",
+  "mountPath": "/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.91016.19.yeXax8",
+  "parentMountPath": "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/246a2ca14728178a0982606799e2019b401aeace.asset/AssetData",
+  "path": "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/246a2ca14728178a0982606799e2019b401aeace.asset/AssetData",
+  "platformIdentifier": "com.apple.platform.iphonesimulator",
+  "runtimeBundlePath": "/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.91016.19.yeXax8/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 27.2.simruntime",
+  "runtimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4",
+  "signatureState": "Unknown",
+  "sizeBytes": 8338867041,
+  "state": "Ready",
+  "supportedArchitectures": [
+   "arm64"
+  ],
+  "version": "27.2"
+ },
+ "00000000-0000-0000-0000-000000000002": {
+  "build": "24A94425",
+  "deletable": true,
+  "identifier": "00000000-0000-0000-0000-000000000002",
+  "kind": "Patchable Cryptex Disk Image",
+  "mountPath": "/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.1.94425.0.65M293",
+  "parentMountPath": "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/1d40f14271d1b0588751a983be44d71887c32527.asset/AssetData",
+  "path": "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/1d40f14271d1b0588751a983be44d71887c32527.asset/AssetData",
+  "platformIdentifier": "com.apple.platform.iphonesimulator",
+  "runtimeBundlePath": "/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.1.94425.0.65M293/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 27.1.simruntime",
+  "runtimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-27-1",
+  "signatureState": "Unknown",
+  "sizeBytes": 7874743137,
+  "state": "Ready",
+  "supportedArchitectures": [
+   "arm64"
+  ],
+  "version": "27.1"
+ },
+ "00000000-0000-0000-0000-000000000003": {
+  "build": "24B8117",
+  "deletable": true,
+  "identifier": "00000000-0000-0000-0000-000000000003",
+  "kind": "Patchable Cryptex Disk Image",
+  "lastUsedAt": "2026-10-30T19:35:16Z",
+  "mountPath": "/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.RJV09h",
+  "parentMountPath": "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/7a0695c167683c7fbc650e5913eca65d628b525d.asset/AssetData",
+  "path": "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/7a0695c167683c7fbc650e5913eca65d628b525d.asset/AssetData",
+  "platformIdentifier": "com.apple.platform.iphonesimulator",
+  "runtimeBundlePath": "/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.RJV09h/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 27.2.simruntime",
+  "runtimeIdentifier": "com.apple.CoreSimulator.SimRuntime.iOS-27-2",
+  "signatureState": "Unknown",
+  "sizeBytes": 8315434484,
+  "state": "Ready",
+  "supportedArchitectures": [
+   "arm64"
+  ],
+  "version": "27.2"
+ }
+}
