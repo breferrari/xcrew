@@ -665,6 +665,13 @@ import Testing
         #expect(named.isSubset(of: Set(ConfigRenderer.simEnvTools)), "\(named.subtracting(ConfigRenderer.simEnvTools).sorted())")
     }
 
+    /// The reference skill names the tool groups setup enables, so Claude isn't sent to one that's off.
+    @Test func referenceSkillNamesTheEnabledToolGroups() throws {
+        let line = try #require(try text("skills/reference/SKILL.md").split(separator: "\n").first { $0.hasPrefix("- Enabled tool groups:") })
+        let named = line.prefix { $0 != "." }.matches(of: /`([a-z-]+)`/).map { String($0.1) }
+        #expect(named == ConfigRenderer.workflows)
+    }
+
     /// Every run of the Swift tests in CI (both Swift jobs, and the canary's) checks the test bed out, at one commit,
     /// named in full: a tag can move, and there a missing checkout fails `ciHasTheTestBed`.
     @Test func everySwiftTestRunPinsTheSameTestBed() throws {

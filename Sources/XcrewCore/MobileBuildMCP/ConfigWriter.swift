@@ -23,13 +23,7 @@ public enum ConfigWriter {
         let config = project.mobileBuildMCPConfig
         let existing = try? Data(contentsOf: config)
         let marker = try? Data(contentsOf: project.managedMarker)
-
-        let kept: Outcome? = switch (existing, marker) {
-        case (nil, _): nil
-        case (_, nil): .keptUnmanaged
-        // Markers from before the fingerprint were empty: still xcrew's, still updated.
-        case (let content?, let fingerprint?): fingerprint.isEmpty || fingerprint == Self.fingerprint(content) ? nil : .keptEdited
-        }
+        let kept = keeping(project)
         if let kept, !force { return kept }
 
         var backup: URL?
@@ -45,6 +39,15 @@ public enum ConfigWriter {
         try content.write(to: config, options: .atomic)
         try Self.fingerprint(content).write(to: project.managedMarker, options: .atomic)
         return .written(backup: backup)
+    }
+
+    /// What setup does with the project's config without `force`: keeps one xcrew didn't write or one edited since, or
+    /// (nil) writes it. The doctor asks too, so its fix says `--force` where setup alone would keep the config.
+    public static func keeping(_ project: Project) -> Outcome? {
+        guard let content = try? Data(contentsOf: project.mobileBuildMCPConfig) else { return nil }
+        guard let fingerprint = try? Data(contentsOf: project.managedMarker) else { return .keptUnmanaged }
+        // Markers from before the fingerprint were empty: still xcrew's, still updated.
+        return fingerprint.isEmpty || fingerprint == Self.fingerprint(content) ? nil : .keptEdited
     }
 
     /// What the marker holds: a hash of the config exactly as xcrew wrote it.

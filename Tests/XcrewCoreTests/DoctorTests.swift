@@ -160,7 +160,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["A.xcworkspace"])
         project.write(Self.config(groups: Self.groupsOf090.replacingOccurrences(of: "  - xcode-ide\n", with: ""), in: project), to: ".mobilebuildmcp/config.yaml")
         project.write("", to: ".mobilebuildmcp/.xcrew-managed")
-        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("an earlier Xcrew wrote this config, with other tool groups: /xcrew:setup rewrites it"))
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("the config Xcrew wrote has other tool groups than setup writes now: /xcrew:setup rewrites it"))
     }
 
     /// `xcode-ide` is a second route to the Xcode MCP that skips the mod's XcodeWrite guard, in any config.
@@ -172,6 +172,34 @@ import XcrewTestSupport
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn(xcrews))
         try? FileManager.default.removeItem(at: project.managedMarker)
         #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn(xcrews + " (xcrew setup --force replaces a config xcrew didn't write)"))
+    }
+
+    /// MobileBuildMCP rewrites the config when Claude saves defaults with `persist`, after which setup keeps it: the fix
+    /// says `--force`, since setup alone would leave it.
+    @Test func aConfigEditedSinceXcrewWroteItNeedsForce() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        project.write(Self.config(groups: Self.groupsOf090, in: project), to: ".mobilebuildmcp/config.yaml")
+        project.write("0000", to: ".mobilebuildmcp/.xcrew-managed")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, which skips Xcrew's XcodeWrite guard: /xcrew:setup rewrites it (xcrew setup --force replaces it, as it changed after Xcrew wrote it)"))
+    }
+
+    /// YAML says a list several ways, and the guard is skipped whichever one names `xcode-ide`; it's said first, since the
+    /// warnings before it could hide it for good.
+    @Test func xcodeIDEInAnyListFormIsFoundBeforeTheProfiles() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        for groups in ["enabledWorkflows: [simulator, xcode-ide]\n", "enabledWorkflows:\n  - 'xcode-ide'  # bridge\n", "customWorkflows:\n  mine:\n    - xcode_ide_call_tool\n"] {
+            project.write("schemaVersion: 1\n" + groups, to: ".mobilebuildmcp/config.yaml")
+            #expect(await ProjectConfigCheck().run(.fake(project: project)).message.hasPrefix("the config enables xcode-ide"), "\(groups)")
+        }
+    }
+
+    /// MobileBuildMCP writes the config back in its own style: the same groups, laid out differently, are up to date.
+    @Test func theSameToolGroupsInAnotherLayoutAreCurrent() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        let groups = "enabledWorkflows:\n    - \"debugging\"\n    - simulator\n    - ui-automation\n    - sim-env\ncustomWorkflows:\n    sim-env:\n        - toggle_connect_hardware_keyboard\n        - erase_sims\n        - set_sim_appearance\n        - set_sim_location\n        - reset_sim_location\n        - sim_statusbar\n        - toggle_software_keyboard\n"
+        project.write(Self.config(groups: groups, in: project), to: ".mobilebuildmcp/config.yaml")
+        project.write("", to: ".mobilebuildmcp/.xcrew-managed")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .pass)
     }
 
     /// A config of the person's own with other groups is theirs to choose, short of `xcode-ide`.
