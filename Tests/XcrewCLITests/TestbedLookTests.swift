@@ -243,14 +243,21 @@ struct TestbedLookTests {
         }
     }
 
-    /// What Claude reads after a failed `test_sim` run: under each failed UI test, a line sending it to `look`.
+    /// What Claude reads after a failed `test_sim` run: under each failed UI test, a line sending it to `look` on this
+    /// run's bundle, told from the attachments the notes export anyway, with no other `xcresulttool` call.
     @Test func aFailedUITestsNotesPointToLook() async throws {
         try await Self.inFolder { root in
             let text = try Self.capture("", "test_sim.txt")
-            let added = try #require(await FailureNotes.adding(to: MobileText(text), from: try Self.bundle("mobilebuildmcp", root: root), keepingImagesIn: root.appending(path: "images"))).text.text
-            let pointers = added.components(separatedBy: "\n").filter { $0.hasPrefix("      look: ") }
+            let export: @Sendable () -> URL = {
+                let folder = root.appending(path: "export-\(UUID().uuidString)")
+                try? FileManager.default.copyItem(at: Self.captures.appending(path: "mobilebuildmcp"), to: folder)
+                return folder
+            }
+            let bundle = ResultBundle(path: "/runs/UITests.xcresult", runner: FakeRunner(), exportFolder: export)
+            let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: root.appending(path: "images"))).text.text
+            let pointers = added.components(separatedBy: "\n").filter { $0.hasPrefix("      \(FailureNotes.lookLabel) ") }
             #expect(pointers == ["testFailsAfterTaps", "testMissingElement", "testPlanA", "testRenamedLabel"].map {
-                "      look: the steps before the failure and the screen at it, with the `look` tool or `xcrew look UITests/\($0)`"
+                "      look: the steps before the failure and the screen at it, with the `look` tool or `xcrew look UITests/\($0) --bundle /runs/UITests.xcresult`"
             }, "\(added)")
         }
     }
@@ -261,6 +268,6 @@ struct TestbedLookTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let text = try String(contentsOf: TestbedSnapshotTests.captures.appending(path: "test_sim.txt"), encoding: .utf8)
         let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: root.appending(path: "images"))).text.text
-        #expect(!added.contains("look: "), "\(added)")
+        #expect(!added.contains("\(FailureNotes.lookLabel) "), "\(added)")
     }
 }

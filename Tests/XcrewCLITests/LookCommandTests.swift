@@ -48,6 +48,13 @@ import XcrewTestSupport
         #expect(!run.text.contains("screen") && !run.text.contains("on screen"), "\(run.text)")
     }
 
+    /// A test in a nested suite is named as the result bundle names it, `()` and all, so its suite's `/` isn't taken
+    /// for a target's.
+    @Test func aTestNamedAsTheBundleNamesItIsFoundAsIs() async {
+        let run = await Run("look", "Outer/Inner/testX()", "--bundle", "/runs/Run.xcresult", context: context([Self.steps("Outer/Inner/testX"): Self.activities(recorded: false)]))
+        #expect(run.text.hasPrefix("xcrew look: Outer/Inner/testX, in Run.xcresult\n"), "\(run.text)")
+    }
+
     /// When `xcresulttool` gives no answer, `look` says it couldn't read the bundle, never that nothing failed.
     @Test func aBundleThatCantBeReadIsSaidSo() async {
         let all = await Run("look", "--bundle", "/runs/Run.xcresult", context: context())

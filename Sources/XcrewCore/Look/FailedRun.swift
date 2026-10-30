@@ -21,7 +21,7 @@ struct FailedRun: Sendable, Equatable {
     let attachments: [Attachment]
 
     /// Whether the run kept a screen recording, as a UI test's failed run does.
-    var hasRecording: Bool { attachments.contains { $0.name.hasSuffix(FailureScreen.recordingSuffix) } }
+    var hasRecording: Bool { attachments.contains { FailureScreen.isRecording($0.name) } }
 
     /// The steps shown before the failing one.
     static let mostSteps = 4

@@ -12,11 +12,17 @@ struct FailureScreen: Sendable, Equatable {
     /// How XCTest names a recording, as exported and as suggested (docs/findings.md).
     static let recordingSuffix = ".mp4"
 
+    /// Whether an attachment's name, as the activities or the export's manifest give it, is a screen recording's: the
+    /// one rule `look` and the failure notes tell a UI test's run by.
+    static func isRecording(_ name: String) -> Bool {
+        name.hasSuffix(recordingSuffix)
+    }
+
     /// The screen at `run`'s failure, from the latest of its own recordings in an export, whose files `files` names by
     /// attachment id; kept in `<run folder>/<suite>/<test>/`, numbered when the test failed more than once on one device
     /// and configuration. Nil when the run kept no recording, or it couldn't be read.
     static func keep(of test: TestID, run: FailedRun, number: Int? = nil, files: [String: URL], in runFolder: URL) async -> FailureScreen? {
-        let recordings = run.attachments.filter { $0.name.hasSuffix(recordingSuffix) && $0.at <= run.failedAt }
+        let recordings = run.attachments.filter { isRecording($0.name) && $0.at <= run.failedAt }
         guard let recording = recordings.max(by: { $0.at < $1.at }), let file = files[recording.id], isMovie(file) else { return nil }
         let destination = run.keptFile("screen at failure", extension: "png", number: number, of: test, in: runFolder)
         // A frame stays on screen until the next, and the recording until it stops: the gap is from the recording's end.
