@@ -223,3 +223,26 @@ enum Testbed {
         #expect(Testbed.isCheckedOut, "XCREW_TESTBED names no test bed: \(Testbed.root.path)")
     }
 }
+
+/// Each form ties files to targets its own way: file references, synchronized folders, the JSON format, and what Tuist
+/// and XcodeGen write. A change to the app or its tests selects `AppTests` in all of them.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedAffectedTests {
+    static let cases: [(fixture: String, changed: String)] = [
+        ("forms/classic", "App/ContentView.swift"), ("forms/classic", "AppTests/GreetingTests.swift"),
+        ("forms/classic-ios", "ios/App/ContentView.swift"),
+        ("forms/folders", "App/ContentView.swift"), ("forms/folders-ios", "ios/AppTests/GreetingTests.swift"),
+        ("forms/json", "App/ContentView.swift"), ("forms/json-ios", "ios/AppTests/GreetingTests.swift"),
+        ("forms/tuist", "App/ContentView.swift"), ("forms/tuist-ios", "ios/AppTests/GreetingTests.swift"),
+        ("forms/xcodegen", "App/ContentView.swift"), ("forms/xcodegen-ios", "ios/AppTests/GreetingTests.swift"),
+    ]
+
+    @Test(arguments: cases.map { "\($0.fixture)/\($0.changed)" })
+    func aChangeToTheAppOrItsTestsSelectsAppTests(_ path: String) throws {
+        let fixture = path.split(separator: "/").prefix(2).joined(separator: "/")
+        let root = try TestbedTests.copy(fixture)
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let affected = AffectedTests.of(changed: [String(path.dropFirst(fixture.count + 1))], in: Project(root: root))
+        #expect(affected.selections == ["AppTests"], "\(affected.runAll ?? "")")
+    }
+}

@@ -274,6 +274,11 @@ public struct ProjectLayout: Sendable {
 
     /// One spelling per folder: symlinks, the `/System/Volumes/Data` firmlink and, on a case-insensitive volume,
     /// letter case all resolve to the same path (docs/findings.md).
+    /// `canonical` for a path, for code outside the module.
+    public static func canonicalPath(_ path: String) -> String {
+        canonical(URL(fileURLWithPath: path))
+    }
+
     static func canonical(_ url: URL) -> String {
         let resolved = url.resolvingSymlinksInPath()
         return (try? resolved.resourceValues(forKeys: [.canonicalPathKey]).canonicalPath) ?? resolved.path

@@ -259,6 +259,26 @@ Whether a subagent's or a `--bare` session's first message fires `prompt.context
 
 The store is the plugin's, across every project, and a run scope (`test_sim · App`) doesn't name one. So each run records the session's folder (`$.session.cwd()`), and the card shows only scopes last run in this folder. Scopes from before that record stay out until they run again. The card is capped in lines and characters, with longer lists counted as "+N more".
 
+## Affected tests
+
+`xcrew affected` reads which target owns each changed file, and which targets depend on which, from the project file. Saying "skip this" wrongly lets broken code look green, so whatever the reading doesn't model runs everything, with the reason named.
+
+- **The JSON format** (`project.xcproj`): the keys come from Apple's `xcode-project-format` package (its *Schema Overview* and its `Schema` sources, read October 30, 2026):
+  - a file's and a folder's `target-membership`;
+  - a folder's `membership-exceptions`, each with a `target` and `inclusions` or `exclusions`;
+  - a target's `dependencies` and `test-host-target`.
+
+  In the overview's words, "Groups do not participate in targets", while a folder's discovered content "is implicitly added to the folder's targets". The test bed's files carry trailing commas, so they're read with `JSONSerialization`'s `.json5Allowed`.
+- **`project.pbxproj`** is undocumented. It's read as an OpenStep property list through `PropertyListDecoder`, whose docs don't name the formats it reads; the test bed's classic forms pin that it reads this one. `PropertyListSerialization` would take a format pointer, which strict memory safety refuses. Files join targets through PBXBuildFile and build phases, with paths resolved through groups and `sourceTree`. Folders join through PBXFileSystemSynchronizedRootGroup, a test bundle's host through the product its `TEST_HOST` names.
+- **Running everything:**
+  - a change inside a project or workspace bundle (the project file, schemes);
+  - an `.xcconfig`, `.xctestplan`, `Package.swift` or `Package.resolved`;
+  - a manifest the generator reads;
+  - a file no target owns, or one an exception set moves;
+  - a dependency on a target outside the project;
+  - a project file that can't be read.
+- **Dependents count at any depth.** A change to a framework selects the tests of every target that builds on it, however far up.
+
 ## Toolchains
 
 On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac accepted a task-group closure that captured a local `Mutex`. CI's Swift job, on the newest Xcode of the `macos-26` runner, rejected it as a `sending` closure that risks a data race. The two compilers don't agree on every concurrency check, so a change that builds locally can still fail CI, and CI's answer is the one that counts. The `macos-26` runner image (version 20261013.0424.1) carries Xcode 26.0.1 to 26.6, and Apple's [Xcode system requirements](https://developer.apple.com/xcode/system-requirements/) put Swift 6.2 in Xcode 26.0 and 26.0.1, 6.2.1 to 6.2.3 in 26.1 to 26.3, and 6.3 in 26.4.1 to 26.6. So CI's newest toolchain was Swift 6.3, older than the contributor's 6.4.2. Each Swift job now prints its toolchain, and a floor job builds and tests on the oldest Xcode whose Swift is the version `Package.swift`'s `swift-tools-version` names.

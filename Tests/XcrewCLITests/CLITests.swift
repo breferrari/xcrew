@@ -667,3 +667,74 @@ import XcrewTestSupport
         }
     }
 }
+
+/// `xcrew affected`: the changes since the merge base with the remote's default branch, uncommitted and untracked
+/// files included, and the tests they can break. The answer names the base it used.
+@Suite struct AffectedCommandTests {
+    func project() -> Project {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("""
+            { "files": [ { "kind": "folder", "path": "App", "target-membership": [ "App" ] }, { "kind": "folder", "path": "AppTests", "target-membership": [ "AppTests" ] } ],
+              "targets": [ { "name": "App", "id": "A", "product-type": "application" }, { "name": "AppTests", "id": "T", "product-type": "bundle.unit-test", "test-host-target": "App" } ] }
+            """, to: "App.xcodeproj/project.xcproj")
+        return project
+    }
+
+    func git(_ project: Project, _ answers: [String: CommandResult]) -> FakeRunner {
+        FakeRunner(responses: Dictionary(uniqueKeysWithValues: answers.map { ("git -C \(project.root.path) \($0.key)", $0.value) }))
+    }
+
+    func run(_ project: Project, _ runner: FakeRunner, base: String? = nil) async throws -> [String: Any] {
+        let context = CheckContext.fake(runner, project: project)
+        let text = if let base { await Run("affected", "--base", base, context: context).text } else { await Run("affected", context: context).text }
+        return try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any], "\(text)")
+    }
+
+    @Test func changesSinceTheMergeBaseWithTheDefaultBranchSelectTheirTests() async throws {
+        let project = project()
+        let runner = git(project, [
+            "rev-parse --show-toplevel": .init(status: 0, stdout: "\(project.root.path)\n"),
+            "rev-parse --abbrev-ref origin/HEAD": .init(status: 0, stdout: "origin/main\n"),
+            "merge-base HEAD origin/main": .init(status: 0, stdout: "0123456789abcdef0123456789abcdef01234567\n"),
+            "diff --name-only 0123456789abcdef0123456789abcdef01234567": .init(status: 0, stdout: "App/ContentView.swift\n"),
+            "ls-files --others --exclude-standard --full-name": .init(status: 0, stdout: "AppTests/NewTests.swift\n"),
+        ])
+        let answer = try await run(project, runner)
+        #expect(answer["base"] as? String == "origin/main, from 0123456789ab")
+        #expect(answer["changed"] as? [String] == ["App/ContentView.swift", "AppTests/NewTests.swift"])
+        #expect(answer["selections"] as? [String] == ["AppTests"])
+    }
+
+    @Test func withoutARemoteTheWorkingTreeIsTheChange() async throws {
+        let project = project()
+        let runner = git(project, [
+            "rev-parse --show-toplevel": .init(status: 0, stdout: "\(project.root.path)\n"),
+            "rev-parse --abbrev-ref origin/HEAD": .init(status: 128),
+            "diff --name-only HEAD": .init(status: 0, stdout: "App/ContentView.swift\n"),
+            "ls-files --others --exclude-standard --full-name": .init(status: 0),
+        ])
+        let answer = try await run(project, runner)
+        #expect(answer["base"] as? String == "the working tree, since there is no remote default branch")
+        #expect(answer["selections"] as? [String] == ["AppTests"])
+    }
+
+    @Test func aBaseNamedOnTheCommandLineIsUsed() async throws {
+        let project = project()
+        let runner = git(project, [
+            "rev-parse --show-toplevel": .init(status: 0, stdout: "\(project.root.path)\n"),
+            "merge-base HEAD release/2.0": .init(status: 0, stdout: "fedcba9876543210fedcba9876543210fedcba98\n"),
+            "diff --name-only fedcba9876543210fedcba9876543210fedcba98": .init(status: 0, stdout: "README.md\n"),
+            "ls-files --others --exclude-standard --full-name": .init(status: 0),
+        ])
+        let answer = try await run(project, runner, base: "release/2.0")
+        #expect(answer["base"] as? String == "release/2.0, from fedcba987654")
+        #expect(answer["selections"] == nil)
+        #expect((answer["runAll"] as? String)?.contains("README.md") == true)
+    }
+
+    @Test func outsideGitEverythingRuns() async throws {
+        let answer = try await run(project(), FakeRunner())
+        #expect(answer["selections"] == nil)
+        #expect((answer["runAll"] as? String)?.contains("git") == true)
+    }
+}
