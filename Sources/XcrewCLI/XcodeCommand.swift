@@ -39,12 +39,14 @@ struct XcodeCommand: Command {
         case let .notInstalled(pin, file):
             invocation.print("pinned: Xcode \(pin) (\(file)), not installed")
             invocation.print("builds: \(builds)")
-        case let .applied(install):
-            invocation.print("pinned: \(install.label) (\(xcodes.pin?.file ?? Project.xcodePinFile)), installed at \(install.path)")
+        case let .waiting(install, file):
+            invocation.print("pinned: \(install.label) (\(file)), installed at \(install.path)")
+            invocation.print("builds: \(install.label), when MobileBuildMCP starts")
+        case let .applied(install, file):
+            invocation.print("pinned: \(install.label) (\(file)), installed at \(install.path)")
             invocation.print("builds: \(builds)")
-        case let .notApplied(pin, file, _):
-            let match = Xcodes.matching(pin, in: xcodes.installed)
-            invocation.print("pinned: Xcode \(pin) (\(file)), \(match.map { "installed at \($0.path)" } ?? "not installed")")
+        case let .notApplied(install, file, _):
+            invocation.print("pinned: \(install.label) (\(file)), installed at \(install.path)")
             invocation.print("builds: \(builds), since MobileBuildMCP started without the pin")
         }
         let named = xcodes.ci.map { "Xcode \($0.version) (\($0.file):\($0.line))" }

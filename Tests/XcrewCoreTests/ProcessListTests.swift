@@ -14,7 +14,7 @@ import Testing
         #expect(me.elapsed >= 0)
         #expect(!me.program.isEmpty && !me.program.contains("/"))
         #expect(list.ancestors(of: id).first?.id == getppid())
-        let folders = await ConfigLoadedCheck.folders(of: [me], using: runner)
+        let folders = await ProcessList.folders(of: [me], using: runner)
         #expect(folders[id] == ProjectLayout.canonical(URL(fileURLWithPath: FileManager.default.currentDirectoryPath)))
     }
 

@@ -16,6 +16,8 @@ public enum Xcodes {
         case noMatch
         /// `timed out <seconds>`: the CLI didn't answer within the launcher's limit.
         case timedOut(String)
+        /// `failed <status>`: the CLI exited with another status.
+        case failed(String)
 
         /// Why the server started without the pin, in the doctor's words; nothing when it started with it.
         public var reason: String? {
@@ -24,6 +26,7 @@ public enum Xcodes {
             case .notBuilt: "the xcrew CLI wasn't built yet; it is once the session has started"
             case .noMatch: "no installed Xcode was the pinned one when it started"
             case let .timedOut(seconds): "the xcrew CLI took longer than \(seconds) s"
+            case let .failed(status): "the xcrew CLI failed, with status \(status)"
             }
         }
     }
@@ -49,7 +52,7 @@ public enum Xcodes {
         guard let pin = project.xcodePin else { return .none }
         let listed = applications(on: machine).compactMap(install)
         if let match = matching(pin.version, in: listed) { return .installed(match) }
-        return (await spotlight(on: machine)).compactMap(install).first { Version($0.version) == Version(pin.version) }.map(Pinned.installed) ?? .notInstalled
+        return matching(pin.version, in: (await spotlight(on: machine)).compactMap(install)).map(Pinned.installed) ?? .notInstalled
     }
 
     static func applications(on machine: Machine) -> [URL] {
@@ -81,9 +84,13 @@ public enum Xcodes {
         return XcodeInstall(path: app.path, version: version, build: build ?? "")
     }
 
-    /// The installed Xcode a pin names, by its version: a beta's `b<n>` and trailing zeros aside.
+    /// The installed Xcode a pin names, by its version's numbers. A beta and a release share them (a beta's version reads
+    /// plain `27.2`), so a pin with a beta's `b<n>` prefers an app named as a beta, one without prefers another, and
+    /// among equals the first by path, wherever the list came from.
     public static func matching(_ pin: String, in installed: [XcodeInstall]) -> XcodeInstall? {
-        installed.first { Version($0.version) == Version(pin) }
+        let wantsBeta = pin.drop { $0.isNumber || $0 == "." }.lowercased().hasPrefix("b")
+        let isBeta = { (install: XcodeInstall) in URL(fileURLWithPath: install.path).lastPathComponent.localizedCaseInsensitiveContains("beta") }
+        return installed.filter { Version($0.version) == Version(pin) }.sorted { (isBeta($0) != wantsBeta ? 1 : 0, $0.path) < (isBeta($1) != wantsBeta ? 1 : 0, $1.path) }.first
     }
 
     /// The Xcode builds use when nothing overrides it: the one `DEVELOPER_DIR` names, else `xcode-select`'s.
@@ -96,11 +103,11 @@ public enum Xcodes {
         return developer.flatMap(app(holding:)).flatMap(install)
     }
 
-    /// Each Xcode open: the Xcode MCP works through it.
-    public static func running(on machine: Machine) async -> [XcodeInstall] {
-        let suffix = ".app/Contents/MacOS/Xcode"
-        return await ProcessList.programs(using: machine.runner).values.sorted().filter { $0.hasSuffix(suffix) }
-            .compactMap { install(at: URL(fileURLWithPath: String($0.dropLast(suffix.count - ".app".count)))) }
+    /// Each Xcode open, from the process list: the Xcode MCP works through it.
+    static func running(in list: ProcessList) -> [XcodeInstall] {
+        let suffix = "/Contents/MacOS/Xcode"
+        return list.processes.map(\.programPath).filter { $0.hasSuffix(".app" + suffix) }.sorted()
+            .compactMap { install(at: URL(fileURLWithPath: String($0.dropLast(suffix.count)))) }
     }
 
     /// The app a developer folder is in: `/Applications/Xcode.app` for `/Applications/Xcode.app/Contents/Developer`.
@@ -110,17 +117,31 @@ public enum Xcodes {
         return URL(fileURLWithPath: NSString.path(withComponents: Array(parts[...index])))
     }
 
-    /// Where the launcher records it: xcrew's cache, below `launches` at the project's real path, as `bin/xcrew` keeps
-    /// its keys below `roots`.
+    /// Where the launcher records it: xcrew's cache, below `launches` at the project's real path with a `.launch` suffix, as
+    /// `bin/xcrew` keeps its keys below `roots`, so a project inside another has a record beside the other's folder.
     static func launchRecord(of project: Project, on machine: Machine) -> URL {
-        URL(fileURLWithPath: machine.cacheFolder.path + "/launches" + project.canonicalRoot)
+        URL(fileURLWithPath: machine.cacheFolder.path + "/launches" + project.canonicalRoot + ".launch")
     }
 
     /// The launcher's last record for the project.
     public static func launch(of project: Project, on machine: Machine) -> Launch? {
-        guard let text = try? String(contentsOf: launchRecord(of: project, on: machine), encoding: .utf8), let line = GitHead.firstLine(text) else { return nil }
+        lastLaunch(of: project, on: machine)?.launch
+    }
+
+    /// The record and when it was written: one older than the server running is an earlier start's.
+    static func lastLaunch(of project: Project, on machine: Machine) -> (launch: Launch, written: Date)? {
+        let record = launchRecord(of: project, on: machine)
+        guard let text = try? String(contentsOf: record, encoding: .utf8), let line = GitHead.firstLine(text),
+              let written = (try? FileManager.default.attributesOfItem(atPath: record.path))?[.modificationDate] as? Date,
+              let launch = parse(line)
+        else { return nil }
+        return (launch, written)
+    }
+
+    static func parse(_ line: String) -> Launch? {
         if line.hasPrefix("applied ") { return .applied(String(line.dropFirst("applied ".count))) }
         if line.hasPrefix("timed out ") { return .timedOut(String(line.dropFirst("timed out ".count))) }
+        if line.hasPrefix("failed ") { return .failed(String(line.dropFirst("failed ".count))) }
         return ["not built": Launch.notBuilt, "no match": .noMatch][line]
     }
 }

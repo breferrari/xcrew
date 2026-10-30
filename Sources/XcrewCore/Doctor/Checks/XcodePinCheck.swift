@@ -9,16 +9,22 @@ struct XcodePinCheck: Check {
     func run(_ context: CheckContext) async -> CheckResult {
         let xcodes = await context.xcodes.value()
         let using = xcodes.forBuilds?.label ?? "the selected Xcode"
+        let pinned = xcodes.pin?.version ?? ""
         switch xcodes.pinState {
         case .none:
-            guard xcodes.installed.count > 1, let ci = xcodes.ci.first else { return .pass("no pin, and nothing to choose between") }
+            let builds = xcodes.forBuilds?.version
+            guard xcodes.installed.count > 1, let ci = xcodes.ci.first, !xcodes.ci.contains(where: { named in builds.map { CIXcodes.covers(named.version, $0) } == true }) else {
+                return .pass("no pin, and nothing to choose between")
+            }
             return .warn("several Xcodes are installed and CI uses Xcode \(ci.version) (\(ci.file):\(ci.line)), but nothing pins one, so builds use \(using): pin CI's with echo \(ci.version) > \(Project.xcodePinFile)")
         case let .notInstalled(pin, file):
             return .fail("the project pins Xcode \(pin) (\(file)), but no installed Xcode is \(pin), so MobileBuildMCP builds with \(using): xcodes install \(pin)")
-        case let .applied(install):
+        case let .waiting(install, _):
+            return .skip("MobileBuildMCP isn't running for this project; it starts with \(install.label)")
+        case let .applied(install, _):
             return .pass("\(install.label), at \(install.path)")
-        case let .notApplied(pin, file, why):
-            return .warn("the project pins Xcode \(pin) (\(file)), but MobileBuildMCP started without it (\(why)), so it builds with \(using): restart Claude Code")
+        case let .notApplied(_, file, why):
+            return .warn("the project pins Xcode \(pinned) (\(file)), but MobileBuildMCP started without it (\(why)), so it builds with \(using): restart Claude Code")
         }
     }
 }

@@ -220,7 +220,7 @@ import XcrewTestSupport
         #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)).status == .pass)
     }
 
-    static let server = "/opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/node-runtime /opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/build/cli.js mcp"
+    static let server = FakeSession.server
 
     func runner(ps: String, comm: String, cwd: [Int32], project: Project) -> FakeRunner {
         var responses: [String: CommandResult] = [

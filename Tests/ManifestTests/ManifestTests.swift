@@ -179,7 +179,7 @@ import Testing
     @Test func theLauncherRecordsWhatTheDoctorReads() throws {
         let launcher = try text("libexec/mobilebuildmcp-server"), shim = try text("bin/xcrew")
         let cache = #"${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}"#
-        #expect(shim.contains("cache=\(cache)\n") && launcher.contains("record=\"\(cache)/launches$(pwd -P)\""))
+        #expect(shim.contains("cache=\(cache)\n") && launcher.contains("record=\"\(cache)/launches$(pwd -P).launch\""))
         let home = URL(fileURLWithPath: "/Users/someone")
         #expect(Machine(environment: [:], home: home, runner: SystemCommandRunner()).cacheFolder.path == "/Users/someone/Library/Caches/xcrew")
 
@@ -187,11 +187,11 @@ import Testing
         let project = Project(root: folder.appending(path: "project"))
         try FileManager.default.createDirectory(at: project.root, withIntermediateDirectories: true)
         let machine = Machine(environment: ["XCREW_CACHE": folder.appending(path: "cache").path], home: folder, runner: SystemCommandRunner())
-        #expect(Xcodes.launchRecord(of: project, on: machine).path == folder.appending(path: "cache").path + "/launches" + project.canonicalRoot)
-        let written: [(String, Xcodes.Launch)] = [("applied $developer", .applied("/Apps/X.app/Contents/Developer")), ("no match", .noMatch), ("not built", .notBuilt), ("timed out $PIN_SECONDS", .timedOut("2"))]
+        #expect(Xcodes.launchRecord(of: project, on: machine).path == folder.appending(path: "cache").path + "/launches" + project.canonicalRoot + ".launch")
+        let written: [(String, Xcodes.Launch)] = [("applied $developer", .applied("/Apps/X.app/Contents/Developer")), ("no match", .noMatch), ("not built", .notBuilt), ("timed out $PIN_SECONDS", .timedOut("2")), ("failed $status", .failed("1"))]
         for (outcome, launch) in written {
             #expect(launcher.contains("outcome=\"\(outcome)\""), "\(outcome)")
-            let line = outcome.replacingOccurrences(of: "$developer", with: "/Apps/X.app/Contents/Developer").replacingOccurrences(of: "$PIN_SECONDS", with: "2")
+            let line = outcome.replacingOccurrences(of: "$developer", with: "/Apps/X.app/Contents/Developer").replacingOccurrences(of: "$PIN_SECONDS", with: "2").replacingOccurrences(of: "$status", with: "1")
             let record = Xcodes.launchRecord(of: project, on: machine)
             try FileManager.default.createDirectory(at: record.deletingLastPathComponent(), withIntermediateDirectories: true)
             try "\(line)\n".write(to: record, atomically: true, encoding: .utf8)

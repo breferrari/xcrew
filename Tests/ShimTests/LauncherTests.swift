@@ -34,10 +34,10 @@ import Testing
 
     /// What the fake server printed, how long the launcher took to start it, and what the launcher printed to standard
     /// error, which Claude Code logs for a server.
-    func start() async throws -> (output: String, seconds: Double, errors: String) {
+    func start(in folder: URL? = nil) async throws -> (output: String, seconds: Double, errors: String) {
         let process = Process()
         process.executableURL = plugin.appending(path: "libexec/mobilebuildmcp-server")
-        process.arguments = [project.path]
+        process.arguments = [(folder ?? project).path]
         process.environment = ["PATH": "\(base.appending(path: "fakemcp").path):/usr/bin:/bin", "HOME": base.path, "XCREW_CACHE": cache.path]
         process.standardInput = FileHandle.nullDevice
         let output = Pipe(), errors = Pipe()
@@ -55,9 +55,10 @@ import Testing
         try await ShimTests.physicalPath(project)
     }
 
-    /// The launcher's record for the project: below `launches`, at its real path.
-    func recordPath() async throws -> String {
-        cache.path + "/launches" + (try await real())
+    /// The launcher's record for the project: below `launches`, at its real path, with a suffix, so a project inside
+    /// another has a record of its own beside the folder of the other's.
+    func recordPath(of folder: URL? = nil) async throws -> String {
+        cache.path + "/launches" + (try await ShimTests.physicalPath(folder ?? project)) + ".launch"
     }
 
     func record() async throws -> String? {
@@ -102,6 +103,27 @@ import Testing
         #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
         #expect(!FileManager.default.fileExists(atPath: base.appending(path: "asked").path))
         #expect(try await record() == nil)
+    }
+
+    /// A CLI that fails isn't one that took too long: the doctor names what happened.
+    @Test func aCLIThatFailsIsRecordedAsFailing() async throws {
+        try pin()
+        try xcrew("exit 1")
+        #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
+        #expect(try await record() == "failed 1\n")
+    }
+
+    /// A project inside another, each started in its turn, keeps a record of its own.
+    @Test func aProjectInsideAnotherHasItsOwnRecord() async throws {
+        try pin()
+        try xcrew("echo /Apps/Xcode-26.4.app/Contents/Developer")
+        _ = try await start()
+        let inner = project.appending(path: "ios")
+        try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+        try "26.4\n".write(to: inner.appending(path: ".xcode-version"), atomically: true, encoding: .utf8)
+        _ = try await start(in: inner)
+        #expect(try String(contentsOfFile: try await recordPath(of: inner), encoding: .utf8) == "applied /Apps/Xcode-26.4.app/Contents/Developer\n")
+        #expect(try await record() == "applied /Apps/Xcode-26.4.app/Contents/Developer\n")
     }
 
     /// A pin inside a dependency or a hidden folder is a vendored project's, not this one's: the CLI isn't asked.

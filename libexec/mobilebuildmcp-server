@@ -10,7 +10,7 @@ PIN_SECONDS=2
 
 plugin=$(cd -P "$(dirname "$0")/.." && pwd)
 cd "$1" || exit
-record="${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}/launches$(pwd -P)"
+record="${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}/launches$(pwd -P).launch"
 # A quick look, looser than the CLI's (Xcodes.pin): the root, then three levels down, past dependencies and hidden
 # folders, whose pins are other projects'. A pin found here that the CLI doesn't count costs one short call.
 if [ -f .xcode-version ] || [ -n "$(find . -maxdepth 3 -type d \( -name '.?*' -o -name node_modules -o -name Pods -o -name Carthage -o -name DerivedData -o -name build \) -prune -o -name .xcode-version -print -quit 2> /dev/null)" ]; then
@@ -25,13 +25,15 @@ if [ -f .xcode-version ] || [ -n "$(find . -maxdepth 3 -type d \( -name '.?*' -o
     { kill "$timer" && wait "$timer"; } 2> /dev/null
     developer=$(head -n 1 "$answer")
     rm -f "$answer"
-    # The statuses are the CLI's (XcodeCommand) and the shim's; the record holds facts, which the doctor words.
+    # The statuses are the CLI's (XcodeCommand), the shim's, and 143 for the CLI the timer stopped; the record holds
+    # facts, which the doctor words.
     case $status in
         0) export DEVELOPER_DIR="$developer"; outcome="applied $developer" ;;
         3) outcome= ;;
         4) outcome="no match" ;;
         75) outcome="not built" ;;
-        *) outcome="timed out $PIN_SECONDS" ;;
+        143) outcome="timed out $PIN_SECONDS" ;;
+        *) outcome="failed $status" ;;
     esac
 fi
 if [ -n "${outcome:-}" ]; then

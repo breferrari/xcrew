@@ -10,6 +10,8 @@ struct ProcessList: Sendable {
         let command: String
         /// The file name of the program it runs, from `ps`'s `comm`: `claude` even in a folder with a space in its name.
         var program: String = ""
+        /// The program's whole path, from `comm`.
+        var programPath: String = ""
     }
 
     let processes: [Process]
@@ -35,11 +37,12 @@ struct ProcessList: Sendable {
     }
 
     init(ps: String, comm: String = "") {
-        let programs = Self.programs(in: comm).mapValues { String($0.split(separator: "/").last ?? "") }
+        let programs = Self.programs(in: comm)
         processes = ps.split(whereSeparator: \.isNewline).compactMap { line in
             let fields = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
             guard fields.count == 4, let id = Int32(fields[0]), let parent = Int32(fields[1]), let elapsed = Self.seconds(String(fields[2])) else { return nil }
-            return Process(id: id, parent: parent, elapsed: elapsed, command: String(fields[3]), program: programs[id] ?? "")
+            let path = programs[id] ?? ""
+            return Process(id: id, parent: parent, elapsed: elapsed, command: String(fields[3]), program: String(path.split(separator: "/").last ?? ""), programPath: path)
         }
         byID = Dictionary(processes.map { ($0.id, $0) }) { first, _ in first }
     }

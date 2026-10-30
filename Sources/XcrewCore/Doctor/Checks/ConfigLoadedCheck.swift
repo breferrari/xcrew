@@ -13,30 +13,15 @@ struct ConfigLoadedCheck: Check {
         guard let written = try? FileManager.default.attributesOfItem(atPath: context.project.managedMarker.path)[.modificationDate] as? Date else {
             return .skip("no config xcrew wrote")
         }
-        let (session, candidates) = await ProcessList.load(using: context.runner).mobileBuildMCPServers(forSessionOf: context.machine.processID)
-        let root = ProjectLayout.canonical(context.project.root)
-        let folders = await Self.folders(of: candidates, using: context.runner)
-        guard let server = candidates.filter({ folders[$0.id] == root }).max(by: { $0.elapsed < $1.elapsed }) else {
+        let list = await ProcessList.load(using: context.runner)
+        guard let (server, isSessions) = await list.mobileBuildMCPServer(serving: context.project, forSessionOf: context.machine.processID, using: context.runner) else {
             return .skip("MobileBuildMCP isn't running for this project")
         }
         guard written > Date(timeIntervalSinceNow: -TimeInterval(server.elapsed)) else {
             return .pass("loaded at its start")
         }
-        return .warn(session == nil
+        return .warn(!isSessions
             ? "a MobileBuildMCP serving this project started before the config changed: restart its Claude Code session to load it"
             : "the config changed after this session's MobileBuildMCP started: restart Claude Code to load it")
-    }
-
-    /// Each process's working folder, from one `lsof` for all of them: a `p` line names the process, its `n` line the folder.
-    static func folders(of processes: [ProcessList.Process], using runner: any CommandRunning) async -> [Int32: String] {
-        guard !processes.isEmpty else { return [:] }
-        let ids = processes.map { String($0.id) }.joined(separator: ",")
-        var folders: [Int32: String] = [:]
-        var current: Int32?
-        for line in await runner.run("lsof", "-a", "-p", ids, "-d", "cwd", "-Fn").stdout.split(whereSeparator: \.isNewline) {
-            if line.hasPrefix("p") { current = Int32(line.dropFirst()) }
-            if line.hasPrefix("n"), let id = current { folders[id] = ProjectLayout.canonical(URL(fileURLWithPath: String(line.dropFirst()))) }
-        }
-        return folders
     }
 }

@@ -5,25 +5,60 @@ import XcrewTestSupport
 
 /// The doctor on which Xcode a session builds with: the project's pin, CI's, and the Xcode the Xcode MCP works through.
 @Suite struct XcodeChecksTests {
-    /// A project on a Mac with Xcode 26.4 and Xcode 27.2 beta 3, 27.2 selected, and what the MobileBuildMCP launcher
-    /// last recorded, `launch`, when given.
-    func context(pin: String? = nil, workflow: String? = nil, running: String? = nil, launch: String? = nil, onlyOne: Bool = false) -> CheckContext {
+    /// A project on a Mac with Xcode 26.4 and Xcode 27.2 beta 3, 27.2 selected; this session's MobileBuildMCP serving it,
+    /// started `server` ago (`ps`'s `etime`) unless nil; and what the launcher recorded, `launch`, `recorded` seconds ago.
+    func context(pin: String? = nil, workflow: String? = nil, running: String? = nil, launch: String? = nil, recorded: TimeInterval = 5, server: String? = "00:30", onlyOne: Bool = false) -> CheckContext {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let apps = project.root.appending(path: "Applications")
         if onlyOne { FakeXcode.install(in: apps, "Xcode-27.2.0-Beta.3.app", version: "27.2", build: "27B5038j") } else { FakeXcode.installBoth(in: apps) }
         if let pin { project.write(pin, to: ".xcode-version") }
         if let workflow { project.write(workflow, to: ".github/workflows/ci.yml") }
-        let processes = running.map { "  202 \(apps.path)/\($0)/Contents/MacOS/Xcode\n" } ?? ""
-        let context = CheckContext.fake(FakeRunner(responses: [
-            "xcode-select -p": .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n"),
-            "ps -axo pid=,comm=": .init(status: 0, stdout: "  101 /usr/sbin/cfprefsd\n\(processes)"),
-        ]), project: project, applications: apps)
+        var responses = FakeSession.responses(serving: server == nil ? nil : project, age: server ?? "", programs: running.map { [202: "\(apps.path)/\($0)/Contents/MacOS/Xcode"] } ?? [:])
+        responses["xcode-select -p"] = .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n")
+        let context = CheckContext.fake(FakeRunner(responses: responses), project: project, processID: FakeSession.doctor, applications: apps)
         if let launch {
             let record = Xcodes.launchRecord(of: project, on: context.machine)
             try! FileManager.default.createDirectory(at: record.deletingLastPathComponent(), withIntermediateDirectories: true)
             try! launch.replacingOccurrences(of: "APPS", with: apps.path).write(to: record, atomically: true, encoding: .utf8)
+            try! FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -recorded)], ofItemAtPath: record.path)
         }
         return context
+    }
+
+    /// No MobileBuildMCP serves the project, as from a terminal before a session: nothing has had the pin to apply.
+    @Test func withoutAServerThePinWaitsForItsStart() async {
+        let result = await XcodePinCheck().run(context(pin: "26.4\n", server: nil))
+        #expect(result == .skip("MobileBuildMCP isn't running for this project; it starts with Xcode 26.4"))
+    }
+
+    /// A record older than the running server is an earlier start's: this one started without the pin.
+    @Test func aRecordOlderThanTheServerIsAnEarlierStarts() async {
+        let result = await XcodePinCheck().run(context(pin: "26.4\n", launch: "applied APPS/Xcode-26.4.app/Contents/Developer\n", recorded: 3_600))
+        #expect(result.status == .warn)
+        #expect(result.message.contains("started without it (it started before the pin applied)"))
+    }
+
+    @Test func aCLIThatFailedIsSaidToHaveFailed() async {
+        let result = await XcodePinCheck().run(context(pin: "26.4\n", launch: "failed 1\n"))
+        #expect(result.message.contains("started without it (the xcrew CLI failed, with status 1)"))
+    }
+
+    /// A CI matrix over several Xcodes is fine when the project's is among them.
+    @Test func aCIMatrixWithTheProjectsXcodePasses() async {
+        let matrix = "jobs:\n  test:\n    strategy:\n      matrix:\n        include:\n          - xcode-version: '26.4'\n          - xcode-version: '27.2'\n"
+        #expect(await XcodeCICheck().run(context(pin: "26.4\n", workflow: matrix)).status == .pass)
+    }
+
+    /// setup-xcode reads `26` as the newest 26.x: a partial version covers the project's.
+    @Test func aPartialCIVersionCoversTheProjects() async {
+        let partial = "jobs:\n  test:\n    steps:\n      - uses: maxim-lobanov/setup-xcode@v1\n        with:\n          xcode-version: '26'\n"
+        #expect(await XcodeCICheck().run(context(pin: "26.4\n", workflow: partial)).status == .pass)
+    }
+
+    /// Without a pin, CI already on the Xcode builds use has nothing to ask for.
+    @Test func withoutAPinCIOnTheBuildsXcodeAsksNothing() async {
+        let on27 = "jobs:\n  test:\n    steps:\n      - uses: maxim-lobanov/setup-xcode@v1\n        with:\n          xcode-version: '27.2'\n"
+        #expect(await XcodePinCheck().run(context(workflow: on27)).status == .pass)
     }
 
     static let ciOn26_3 = "jobs:\n  test:\n    steps:\n      - uses: maxim-lobanov/setup-xcode@v1\n        with:\n          xcode-version: '26.3'\n"

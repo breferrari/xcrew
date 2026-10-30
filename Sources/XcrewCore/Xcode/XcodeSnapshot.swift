@@ -2,43 +2,59 @@ import Foundation
 
 /// One look at the Mac's Xcodes for a project, taken once per doctor run and shared by its checks and `xcrew xcode`.
 public struct XcodeSnapshot: Sendable {
-    /// What the project's pin comes to: none, none installed, or an install the server started with, or without and why.
+    /// What the project's pin comes to, with the install it names and its file.
     public enum PinState: Sendable, Equatable {
         case none
         case notInstalled(pin: String, file: String)
-        case applied(XcodeInstall)
-        case notApplied(pin: String, file: String, why: String)
+        /// No MobileBuildMCP serves the project yet; it starts with the pin.
+        case waiting(XcodeInstall, file: String)
+        case applied(XcodeInstall, file: String)
+        case notApplied(XcodeInstall, file: String, why: String)
     }
 
     public let installed: [XcodeInstall]
     public let selected: XcodeInstall?
     public let open: [XcodeInstall]
     public let pin: (version: String, file: String)?
+    /// The launcher's record of how the server running started; nil when no record is as new as it.
     public let launch: Xcodes.Launch?
+    /// Whether a MobileBuildMCP serves the project now.
+    public let isServing: Bool
     public let ci: [CIXcodes.Named]
+
+    /// How much older than the server's start its record may be: `ps` gives the server's age in whole seconds.
+    static let ageSlack: TimeInterval = 1
 
     public static func take(of project: Project, on machine: Machine) async -> XcodeSnapshot {
         async let installed = Xcodes.installed(on: machine)
         async let selected = Xcodes.selected(on: machine)
-        async let open = Xcodes.running(on: machine)
-        return XcodeSnapshot(installed: await installed, selected: await selected, open: await open, pin: project.xcodePin, launch: Xcodes.launch(of: project, on: machine), ci: CIXcodes.named(in: project))
+        let list = await ProcessList.load(using: machine.runner)
+        let server = await list.mobileBuildMCPServer(serving: project, forSessionOf: machine.processID, using: machine.runner)?.server
+        // The launcher writes its record and then becomes the server, so the server's record is no older than its start.
+        let started = server.map { Date(timeIntervalSinceNow: -TimeInterval($0.elapsed) - ageSlack) }
+        let launch = Xcodes.lastLaunch(of: project, on: machine).flatMap { record in started.flatMap { record.written >= $0 ? record.launch : nil } }
+        return XcodeSnapshot(installed: await installed, selected: await selected, open: Xcodes.running(in: list), pin: project.xcodePin, launch: launch, isServing: server != nil, ci: CIXcodes.named(in: project))
     }
 
-    /// The Xcode MobileBuildMCP builds with: the one its server started with, else the selected one.
+    /// The Xcode MobileBuildMCP builds with: the pinned one when its server started with it or hasn't started yet, else
+    /// the selected one.
     public var forBuilds: XcodeInstall? {
-        if case let .applied(developer) = launch, let install = Xcodes.app(holding: developer).flatMap(Xcodes.install) { return install }
-        return selected
+        switch pinState {
+        case let .applied(install, _), let .waiting(install, _): install
+        case .none, .notInstalled, .notApplied: selected
+        }
     }
 
     public var pinState: PinState {
         guard let pin else { return .none }
         guard let match = Xcodes.matching(pin.version, in: installed) else { return .notInstalled(pin: pin.version, file: pin.file) }
-        let why = switch launch {
-        case let .applied(developer):
-            Xcodes.app(holding: developer).map(ProjectLayout.canonical) == ProjectLayout.canonicalPath(match.path) ? nil : "it started with another Xcode"
-        case let .some(other): other.reason
-        case nil: "no record of its start, so it started before the pin applied"
+        guard isServing else { return .waiting(match, file: pin.file) }
+        switch launch {
+        case let .applied(developer) where Xcodes.app(holding: developer).map(ProjectLayout.canonical) == ProjectLayout.canonicalPath(match.path):
+            return .applied(match, file: pin.file)
+        case .applied: return .notApplied(match, file: pin.file, why: "it started with another Xcode")
+        case let .some(other): return .notApplied(match, file: pin.file, why: other.reason ?? "")
+        case nil: return .notApplied(match, file: pin.file, why: "it started before the pin applied")
         }
-        return why.map { .notApplied(pin: pin.version, file: pin.file, why: $0) } ?? .applied(match)
     }
 }

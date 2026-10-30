@@ -11,6 +11,28 @@ extension ProcessList {
         return (session, servers)
     }
 
+    /// The MobileBuildMCP server serving `project`: this session's, under the Claude Code process that runs `id`; from a
+    /// terminal, the oldest under any Claude Code. Whether it's the session's, and nothing when none serves the project.
+    func mobileBuildMCPServer(serving project: Project, forSessionOf id: Int32, using runner: any CommandRunning) async -> (server: Process, isSessions: Bool)? {
+        let (session, candidates) = mobileBuildMCPServers(forSessionOf: id)
+        let root = ProjectLayout.canonical(project.root)
+        let folders = await Self.folders(of: candidates, using: runner)
+        return candidates.filter { folders[$0.id] == root }.max { $0.elapsed < $1.elapsed }.map { ($0, session != nil) }
+    }
+
+    /// Each process's working folder, from one `lsof` for all of them: a `p` line names the process, its `n` line the folder.
+    static func folders(of processes: [Process], using runner: any CommandRunning) async -> [Int32: String] {
+        guard !processes.isEmpty else { return [:] }
+        let ids = processes.map { String($0.id) }.joined(separator: ",")
+        var folders: [Int32: String] = [:]
+        var current: Int32?
+        for line in await runner.run("lsof", "-a", "-p", ids, "-d", "cwd", "-Fn").stdout.split(whereSeparator: \.isNewline) {
+            if line.hasPrefix("p") { current = Int32(line.dropFirst()) }
+            if line.hasPrefix("n"), let id = current { folders[id] = ProjectLayout.canonical(URL(fileURLWithPath: String(line.dropFirst()))) }
+        }
+        return folders
+    }
+
     /// MobileBuildMCP's MCP server, as its Homebrew install runs it, whatever flags follow `mcp`.
     static func isMobileBuildMCPServer(_ process: Process) -> Bool {
         process.command.contains("/mobilebuildmcp/") && process.command.contains("build/cli.js mcp")

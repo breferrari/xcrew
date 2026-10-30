@@ -47,6 +47,35 @@ import XcrewTestSupport
         #expect(Xcodes.matching("25.0", in: installed) == nil)
     }
 
+    /// A beta and a release of one version both match a pin by its number. A pin without a beta's `b<n>` takes the
+    /// release, one with it the beta, the same way wherever the pin is looked up.
+    @Test func aPinTellsABetaFromARelease() async {
+        let apps = Self.applications()
+        FakeXcode.install(in: apps, "Xcode-27.2.app", version: "27.2", build: "27C100")
+        let installed = await Xcodes.installed(on: machine(apps))
+        let name = { (install: XcodeInstall?) in install.map { URL(fileURLWithPath: $0.path).lastPathComponent } }
+        #expect(name(Xcodes.matching("27.2", in: installed)) == "Xcode-27.2.app")
+        #expect(name(Xcodes.matching("27.2b3", in: installed)) == "Xcode-27.2.0-Beta.3.app")
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("27.2\n", to: ".xcode-version")
+        guard case let .installed(pinned) = await Xcodes.pinned(in: project, on: machine(apps)) else { Issue.record("no install for 27.2"); return }
+        #expect(name(pinned) == "Xcode-27.2.app")
+    }
+
+    /// A version in a YAML comment is an old setup's, not CI's.
+    @Test func aCommentedLineNamesNoXcode() {
+        let project = Project.temporary()
+        project.write("""
+            steps:
+              # - run: sudo xcode-select -s /Applications/Xcode_15.4.app
+              - uses: maxim-lobanov/setup-xcode@v1
+                with:
+                  # xcode-version: '15.4'
+                  xcode-version: '26.4' # the team's
+            """, to: ".github/workflows/ci.yml")
+        #expect(CIXcodes.named(in: project).map(\.version) == ["26.4"])
+    }
+
     @Test func thePinIsTheFileBesideTheProjectOrItsContainer() {
         let root = Project.temporary(containing: ["ios/App.xcworkspace"])
         #expect(root.xcodePin == nil)
@@ -91,7 +120,7 @@ import XcrewTestSupport
 
     @Test func theRunningXcodeIsTheAppAroundItsProcess() async {
         let apps = Self.applications()
-        let runner = FakeRunner(responses: ["ps -axo pid=,comm=": .init(status: 0, stdout: "  101 /usr/sbin/cfprefsd\n  202 \(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/MacOS/Xcode\n  303 /System/Applications/Mail.app/Contents/MacOS/Mail\n")])
-        #expect(await Xcodes.running(on: machine(apps, runner: runner)).map(\.version) == ["27.2"])
+        let runner = FakeRunner(responses: FakeSession.responses(serving: nil, programs: [101: "/usr/sbin/cfprefsd", 202: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/MacOS/Xcode", 303: "/System/Applications/Mail.app/Contents/MacOS/Mail"]))
+        #expect(Xcodes.running(in: await ProcessList.load(using: runner)).map(\.version) == ["27.2"])
     }
 }
