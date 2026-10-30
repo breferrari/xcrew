@@ -14,7 +14,7 @@ export const CARD_MAX_LINES = 10
 export const CARD_MAX_CHARACTERS = 800
 /** A full run at least this long is worth a selection instead. */
 export const SLOW_FULL_RUN_MS = 2 * 60_000
-export const DURATIONS_SHOWN = 5
+const DURATIONS_SHOWN = 5
 const SELECTIONS_SHOWN = 3
 /** The red line's names stop here, so its count of the rest is never cut off. */
 const RED_LINE_MAX = 360
@@ -22,13 +22,13 @@ const RED_LINE_MAX = 360
 /** A run scope's stored history: its durations, and its test total when it's a test run. */
 export type ScopeHistory = { scope: string; runs: readonly number[]; tests?: number }
 
-/** A run scope's usual time, as the card and the evidence pack word it: `test_sim: usually 1m 20s, 312 tests`. */
-export function durationLine(scope: string, usual: number, tests?: number): string {
-  return `${scope}: usually ${stopwatch(usual)}${tests === undefined ? '' : `, ${tests} tests`}`
+/** The usual times of the scopes shown, longest first, as the card and the evidence pack word them: `test_sim: usually 1:20, 312 tests`. */
+export function durationLines(history: readonly ScopeHistory[]): string[] {
+  return timedScopes(history).slice(0, DURATIONS_SHOWN).map(({ scope, usual, tests }) => `${scope}: usually ${stopwatch(usual)}${tests === undefined ? '' : `, ${tests} tests`}`)
 }
 
 /** The scopes with runs, longest usual time first, each with its usual time. */
-export function timedScopes(history: readonly ScopeHistory[]): (ScopeHistory & { usual: number })[] {
+function timedScopes(history: readonly ScopeHistory[]): (ScopeHistory & { usual: number })[] {
   return history.filter(entry => entry.runs.length > 0).map(entry => ({ ...entry, usual: average(entry.runs) })).sort((a, b) => b.usual - a.usual)
 }
 
@@ -36,7 +36,7 @@ export function timedScopes(history: readonly ScopeHistory[]): (ScopeHistory & {
 export function cardText(history: readonly ScopeHistory[], red: readonly LedgerEntry[], branch: string): string | undefined {
   const timed = timedScopes(history)
   if (timed.length === 0 && red.length === 0) return undefined
-  const durations = timed.slice(0, DURATIONS_SHOWN).map(({ scope, usual, tests }) => `- ${durationLine(scope, usual, tests)}`)
+  const durations = durationLines(history).map(line => `- ${line}`)
   const slow = timed.find(entry => isWholeScope(entry.scope) && entry.tests !== undefined && entry.usual >= SLOW_FULL_RUN_MS)
   const selections = slow ? timed.filter(entry => entry.scope !== slow.scope && covers(slow.scope, entry.scope)) : []
   // The red tests come first: when the card is cut, what's still failing matters more than how long runs take.

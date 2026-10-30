@@ -405,7 +405,7 @@ async function isGeneratedProject($: EngineInterface): Promise<boolean> {
   return isGeneratedOf(await answer($, ['project'], 10_000))
 }
 
-/** A CLI command's own text, for `/xcrew doctor`, or why it couldn't run. */
+/** A CLI command's own text, or why it couldn't run. */
 function cliText($: EngineInterface, args: string[], stdin?: string): Promise<string> {
   return xcrew($, args, 120_000, stdin).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
 }
@@ -439,13 +439,24 @@ function saveCard($: EngineInterface): void {
     .catch(() => undefined)
 }
 
-/** The card as the CLI keeps it: its folder and branch, the time of its newest data, and its text, if it has any. */
-async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
+/**
+ * What the mod knows of this folder and branch, still fresh: the run scopes last run in this folder, and the branch's
+ * ledger entries, read once the ledger's pending writes have landed. The card and the evidence read the same.
+ */
+async function branchState($: EngineInterface) {
+  await ledgerWrites
   const [folder, now] = await Promise.all([$.session.cwd(), $.clock.now()])
   const scopes = (await storedHistory($)).filter(entry => entry.where === folder && !isStale(entry.updated, now))
   const { head, ledger } = await branchLedger($)
+  const entries = ledger && !isStale(ledger.updated, now) ? ledger.entries.filter(entry => !isStale(entry.last, now)) : []
+  return { folder, now, head, scopes, entries }
+}
+
+/** The card as the CLI keeps it: its folder and branch, the time of its newest data, and its text, if it has any. */
+async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
+  const { folder, now, head, scopes, entries } = await branchState($)
   if (!head) return undefined
-  const red = ledger && !isStale(ledger.updated, now) ? ledger.entries.filter(entry => !entry.green && !isStale(entry.last, now)) : []
+  const red = entries.filter(entry => !entry.green)
   const text = cardText(scopes, red, label(head, true))
   const times = [...scopes.map(entry => entry.updated), ...red.map(entry => entry.last)].filter((time): time is number => typeof time === 'number')
   const [updated, oldest] = times.length > 0 ? [Math.max(...times), Math.min(...times)] : [now, now]
@@ -454,10 +465,7 @@ async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
 
 /** The evidence for this branch, as the CLI words it from the ledger and the run times of the scopes last run in this folder. */
 async function evidenceNow($: EngineInterface): Promise<string> {
-  const [folder, now] = await Promise.all([$.session.cwd(), $.clock.now()])
-  const scopes = (await storedHistory($)).filter(entry => entry.where === folder && !isStale(entry.updated, now))
-  const { ledger } = await branchLedger($)
-  const entries = ledger && !isStale(ledger.updated, now) ? ledger.entries.filter(entry => !isStale(entry.last, now)) : []
+  const { entries, scopes } = await branchState($)
   return cliText($, ['evidence'], evidenceInput(entries, scopes))
 }
 

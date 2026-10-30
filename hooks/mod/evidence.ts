@@ -1,4 +1,4 @@
-import { DURATIONS_SHOWN, durationLine, timedScopes, type ScopeHistory } from './card'
+import { durationLines, type ScopeHistory } from './card'
 import type { LedgerEntry } from './ledger'
 
 /**
@@ -18,6 +18,5 @@ export const EVIDENCE_TOOL_NAME = 'mcp__xcrew__evidence'
 
 /** What `xcrew evidence` reads on stdin: the branch's ledger, and the run times of the scopes last run in this folder. */
 export function evidenceInput(entries: readonly LedgerEntry[], scopes: readonly ScopeHistory[]): string {
-  const times = timedScopes(scopes).slice(0, DURATIONS_SHOWN).map(({ scope, usual, tests }) => durationLine(scope, usual, tests))
-  return JSON.stringify({ ledger: entries, times })
+  return JSON.stringify({ ledger: entries, times: durationLines(scopes) })
 }

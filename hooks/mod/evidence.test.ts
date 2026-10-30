@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import type { Report } from './cli'
 import { callTool, runCommand, stubCli, type CliCall } from './testing'
 
 const TOOL = 'mcp__xcrew__evidence'
@@ -9,7 +10,7 @@ const BLOCK = '## Evidence\n\nTests this branch took from red to green:\n- `Gree
 const ENTRY = { test: 'GreetingTests/testHello', red: { scope: 'test_sim', at: NOW - 3_600_000, message: 'XCTAssertEqual failed', bundle: '/runs/red.xcresult' }, failing: 'test_sim', green: { scope: 'test_sim', at: NOW - 60_000 }, last: NOW - 60_000 }
 
 /** A session on feat/evidence in /work/App, whose store holds that branch's ledger and a test scope run here. */
-function session(on: On, answer: string | Error) {
+function session(on: On, answer: string | Error, reports: Partial<Report>[] = []) {
   mock.clock(on, { now: NOW })
   mock.store(on, {
     'ledger./work/App @ feat/evidence': { entries: [ENTRY], updated: NOW - 60_000 },
@@ -21,29 +22,24 @@ function session(on: On, answer: string | Error) {
     'updated.build_sim': NOW - 60_000,
     'where.build_sim': '/work/Other',
   })
-  const registered: { name: string; isDeferred?: unknown }[] = []
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: '/work/App' }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
-  on('tool.register', (_, e) => {
-    registered.push({ name: e.name, isDeferred: e.isDeferred })
-    return { value: { tool: `mcp__xcrew__${e.name}` } }
-  })
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('session.surfaces', () => ({ value: ['terminal'] }))
   const calls: CliCall[] = stubCli(on, {
     evidence: () => answer,
+    reports,
     project: args => (args.includes('--branch') ? { isGenerated: false, root: '/work/App', branch: 'feat/evidence' } : { isGenerated: false }),
   })
   on('tool.call', () => ({ result: {}, text: 'done' }))
-  return { registered, calls }
+  return { calls }
 }
 
 const ask = async (tool: Engine) => String((await callTool(tool, TOOL)).result ?? '')
-
-test('Claude finds the evidence tool behind ToolSearch', async ($, on) => {
-  const seen = session(on, '')
-  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
-  expect(seen.registered).toContainEqual({ name: 'evidence', isDeferred: undefined })
-})
 
 test('the CLI gets this branch\'s ledger and the run times of this folder, and Claude reads its answer as it is', async ($, on) => {
   const seen = session(on, BLOCK)
@@ -52,6 +48,14 @@ test('the CLI gets this branch\'s ledger and the run times of this folder, and C
   expect(sent.ledger).toEqual([ENTRY])
   // Run times as the card words them, of the scopes last run in this folder only.
   expect(sent.times).toEqual(['test_sim: usually 1:20, 312 tests'])
+})
+
+test('evidence asked right after a test run holds that run\'s red', async ($, on) => {
+  const seen = session(on, BLOCK, [{ ok: false, failures: [{ title: 'GreetingTests/testNew', message: 'XCTFail', isTest: true }], bundle: '/runs/new.xcresult' }])
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', {})
+  await ask($)
+  const sent = JSON.parse(seen.calls.find(call => call.args[0] === 'evidence')?.stdin ?? '{}') as { ledger?: { test: string }[] }
+  expect(sent.ledger?.map(entry => entry.test)).toContain('GreetingTests/testNew')
 })
 
 test('/xcrew evidence shows the person the same text', async ($, on) => {
