@@ -69,19 +69,42 @@ import XcrewTestSupport
         #expect(result == .warn("builds use Xcode 27.2 while the project pins Xcode 25.0 (.xcode-version), and a build may fail with another major version's SDK: xcodes install 25.0"))
     }
 
-    /// A failed build or test in a project whose pin isn't the Xcode building says it may be the cause; a pass says
-    /// nothing, nor a failure built with the pinned Xcode.
+    func pinNote(_ context: CheckContext, fixture: String, server: Server = .mobileBuildMCP, kind: Report.Kind = .build, isError: Bool = true) async throws -> String? {
+        let text = try String(contentsOf: try #require(Bundle.module.url(forResource: fixture, withExtension: "txt", subdirectory: "Fixtures/Reports")), encoding: .utf8)
+        let report = await Report.make(kind: kind, output: ToolOutput(text: text, server: server, isError: isError), home: "/home", runner: context.runner, project: context.project, machine: context.machine)
+        return report.notes.first { $0.contains("(.xcode-version)") }
+    }
+
+    /// A failed MobileBuildMCP build or test in a project whose pin isn't the Xcode building says it may be the cause,
+    /// in the check's own words and with its fix; a pass says nothing, nor a failure built with the pinned Xcode.
     @Test func aFailureWithAnotherXcodeThanThePinSaysItMayBeTheCause() async throws {
-        let fixtures = { (name: String) in try String(contentsOf: Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures/Reports")!, encoding: .utf8) }
-        let line = "xcrew: builds use Xcode 27.2 and the project pins 25.0 (.xcode-version): a different SDK may be the cause."
         let mismatched = context(pin: "25.0\n")
-        let failed = await Report.make(kind: .build, output: ToolOutput(text: try fixtures("mobileBuildFailed"), server: .mobileBuildMCP, isError: true), home: "/home", runner: mismatched.runner, project: mismatched.project, machine: mismatched.machine)
-        #expect(failed.notes.contains(line))
-        let passed = await Report.make(kind: .build, output: ToolOutput(text: try fixtures("mobileBuildPassed"), server: .mobileBuildMCP), home: "/home", runner: mismatched.runner, project: mismatched.project, machine: mismatched.machine)
-        #expect(!passed.notes.contains { $0.contains("(.xcode-version)") })
-        let matched = context(pin: "27.2\n", server: nil)
-        let alike = await Report.make(kind: .build, output: ToolOutput(text: try fixtures("mobileBuildFailed"), server: .mobileBuildMCP, isError: true), home: "/home", runner: matched.runner, project: matched.project, machine: matched.machine)
-        #expect(!alike.notes.contains { $0.contains("(.xcode-version)") })
+        #expect(try await pinNote(mismatched, fixture: "mobileBuildFailed") == "xcrew: builds use Xcode 27.2 while the project pins Xcode 25.0 (.xcode-version): a different SDK may be the cause. To build with the pin, install Xcode 25.0 from https://developer.apple.com/download/all/")
+        #expect(try await pinNote(mismatched, fixture: "mobileBuildPassed", isError: false) == nil)
+        #expect(try await pinNote(context(pin: "27.2\n", server: nil), fixture: "mobileBuildFailed") == nil)
+    }
+
+    /// A run builds first unless it only launches, and fails the same way.
+    @Test func aFailedRunGetsTheNoteToo() async throws {
+        #expect(try await pinNote(context(pin: "25.0\n"), fixture: "mobileBuildFailed", kind: .run) != nil)
+    }
+
+    /// The Xcode MCP builds with whichever Xcode is open, which isn't what the pin decides.
+    @Test func anXcodeMCPFailureGetsNoNote() async throws {
+        #expect(try await pinNote(context(pin: "25.0\n"), fixture: "xcodeBuildFailed", server: .xcode) == nil)
+    }
+
+    /// The pin is installed but MobileBuildMCP started without it: the note says so, and the fix is a restart.
+    @Test func aServerStartedWithoutThePinSaysToRestart() async throws {
+        let note = try await pinNote(context(pin: "26.4\n", launch: "timed out 30\n"), fixture: "mobileBuildFailed")
+        #expect(note == "xcrew: MobileBuildMCP started without the project's pin, Xcode 26.4 (.xcode-version), so it builds with Xcode 27.2: a different SDK may be the cause. Restart Claude Code to build with the pin.")
+    }
+
+    /// Which Xcode builds is the person's choice: a pin no installed Xcode matches stays off the line above the prompt,
+    /// but a pin the server failed to start with is a fault with a fix, and shows there.
+    @Test func onlyAPinTheServerFailedToApplyShowsAtThePrompt() async {
+        #expect(await XcodePinCheck().run(context(pin: "25.0\n")).isOffThePrompt)
+        #expect(!(await XcodePinCheck().run(context(pin: "26.4\n", launch: "timed out 30\n")).isOffThePrompt))
     }
 
     /// A minor or patch apart rarely changes a build; it matters for matching CI's diagnostics.

@@ -90,8 +90,9 @@ public struct Report: Sendable, Equatable, Codable {
             return await Why.note(for: read, home: home, project: project, runner: runner)
         }()
         async let pinNote: String? = {
-            guard kind != .run, let project, let machine, !read.summary.ok else { return nil }
-            return XcodePinCheck.failureNote(await XcodeSnapshot.take(of: project, on: machine))
+            // MobileBuildMCP builds with the Xcode the pin decides; the Xcode MCP, with whichever is open.
+            guard read.server == .mobileBuildMCP, let project, let machine, !read.summary.ok else { return nil }
+            return XcodePinCheck.failureNote(await XcodeSnapshot.take(of: project, on: machine), hasXcodes: machine.runner.which("xcodes") != nil)
         }()
         var final = read
         var edited = false

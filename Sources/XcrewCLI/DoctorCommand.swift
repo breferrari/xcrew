@@ -33,11 +33,11 @@ struct DoctorCommand: Command {
         // The mod shows these on the band; outside an Apple project every project check would fail.
         let onlyProblems = invocation.arguments.has("problems")
         if onlyProblems, !invocation.context.project.isApplePlatformProject { return 0 }
-        // It runs at session start and after prompts, so it leaves out checks that call the network, and those the line
-        // above the prompt doesn't show.
-        let checks = Doctor.checks.filter { !onlyProblems || (!$0.reachesNetwork && $0.showsAtThePrompt) }
+        // It runs at session start and after prompts, so it leaves out checks that call the network, and the results the
+        // line above the prompt doesn't show.
+        let checks = Doctor.checks.filter { !onlyProblems || !$0.reachesNetwork }
         let ran = await Doctor.run(checks, in: invocation.context)
-        let entries = onlyProblems ? Doctor.problems(ran) : ran
+        let entries = onlyProblems ? Doctor.problems(ran).filter { !$0.result.isOffThePrompt } : ran
         if invocation.arguments.has("json") {
             let lines = entries.map { JSONLine(status: $0.result.status.tag.lowercased(), id: $0.check.id, message: $0.result.message) }
             invocation.print(String(decoding: try JSONEncoder.sorted.encode(lines), as: UTF8.self))
