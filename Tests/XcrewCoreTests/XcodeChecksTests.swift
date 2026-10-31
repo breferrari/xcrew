@@ -90,12 +90,16 @@ import XcrewTestSupport
     }
 
     /// A failed MobileBuildMCP build or test in a project whose pin isn't the Xcode building says it may be the cause,
-    /// in the check's own words and with its fix; a pass says nothing, nor a failure built with the pinned Xcode.
+    /// in the check's own words and with its fix; a failure built with the pinned Xcode says nothing.
     @Test func aFailureWithAnotherXcodeThanThePinSaysItMayBeTheCause() async throws {
         let mismatched = context(pin: "25.0\n")
         #expect(try await pinNote(mismatched) == "xcrew: builds use Xcode 27.2 while the project pins Xcode 25.0 (.xcode-version): a different SDK may be the cause. To build with the pin, install Xcode 25.0 from https://developer.apple.com/download/all/")
-        #expect(try await pinNote(mismatched, text: Self.fixture("mobileBuildPassed"), isError: false) == nil)
         #expect(try await pinNote(context(pin: "27.2\n", server: nil)) == nil)
+    }
+
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aPassWithAnotherXcodeThanThePinSaysNothing() async throws {
+        #expect(try await pinNote(context(pin: "25.0\n"), text: Raw.text("build_sim"), isError: false) == nil)
     }
 
     /// The pin is named only where another SDK or toolchain may be the cause: a type error in a line just written, a

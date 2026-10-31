@@ -26,13 +26,23 @@ import XcrewTestSupport
 
     /// No real result either server gave reads as unread: the test for a handle is that the text has nothing of the
     /// server's own, not that it says no outcome, so a passing text result or a format change stays a result.
-    @Test(arguments: ["mobileBuildPassed", "mobileBuildFailed", "mobileTestsPassed", "mobileTestsPassedWithWarnings", "mobileTestsPassedWithWarningsJSON", "mobileTestsFailed", "mobileTestsFailedUnlocated", "mobileTestsNoneRan", "mobileTestsCrashedAndSkipped", "mobileTestsBuildFailed", "xcodeBuildPassed", "xcodeBuildFailed", "xcodeTestsPassed", "xcodeTestsFailed", "xcodeTestsBuildFailed"])
+    @Test(arguments: ["mobileBuildFailed", "mobileTestsPassedWithWarnings", "mobileTestsFailed", "mobileTestsFailedUnlocated", "mobileTestsCrashedAndSkipped", "mobileTestsBuildFailed", "xcodeBuildPassed", "xcodeBuildFailed", "xcodeTestsPassed", "xcodeTestsFailed", "xcodeTestsBuildFailed"])
     func noCapturedResultIsUnread(_ name: String) async throws {
         let url = try #require(Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures/Reports"))
         let text = try String(contentsOf: url, encoding: .utf8)
         let server: Server = name.hasPrefix("mobile") ? .mobileBuildMCP : .xcode
         for kind in [Report.Kind.build, .test] {
             #expect(await report(text, server: server, kind: kind).isUnread == nil, "\(name) as \(kind)")
+        }
+    }
+
+    /// Nor does a real MobileBuildMCP result, as text or as its JSON.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"), arguments: ["build_sim", "swift-testing", "serial", "shapes", "profile", "empty-filter"])
+    func noRawResultIsUnread(_ name: String) async {
+        for text in [Raw.text(name), Raw.json(name)] {
+            for kind in [Report.Kind.build, .test] {
+                #expect(await report(text, server: .mobileBuildMCP, kind: kind).isUnread == nil, "\(name) as \(kind)")
+            }
         }
     }
 

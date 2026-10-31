@@ -121,14 +121,19 @@ import XcrewTestSupport
         #expect(!report.notes.contains { $0.contains("lines this branch changed") })
     }
 
-    /// MobileBuildMCP's JSON for a passing run lists its warnings with their places too.
-    @Test func aMobileBuildMCPJSONWarningInAChangedLineIsNamed() async {
-        let project = Project.temporary(containing: ["Sources/Warn"])
-        let json = Captured.text("mobileTestsPassedWithWarningsJSON").replacingOccurrences(of: "/Users/dev/Warn", with: ProjectLayout.canonical(project.root))
-        let report = await Report.make(kind: .test, output: ToolOutput(text: json, server: .mobileBuildMCP), home: Captured.home, runner: changed(project), project: project)
+    /// MobileBuildMCP's JSON for a passing build lists its warnings with their places too: the real build's, in a
+    /// project whose branch changed `Kit/Kit.swift`'s line 9.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aMobileBuildMCPJSONWarningInAChangedLineIsNamed() async {
+        let project = Project.temporary(containing: ["Kit"])
+        let root = ProjectLayout.canonical(project.root)
+        let json = Raw.json("build_sim").replacingOccurrences(of: "/testbed/concurrency", with: root)
+        let runner = FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Kit/Kit.swift"], diffed: ["\(root)/Kit/Kit.swift"], diff: "+++ Kit/Kit.swift\n@@ -8,0 +9 @@\n"))
+        let report = await Report.make(kind: .build, output: ToolOutput(text: json, server: .mobileBuildMCP), home: Captured.home, runner: runner, project: project)
         let note = report.notes.first { $0.contains("lines this branch changed") }
-        #expect(note?.contains("1 of 3 warnings") == true, "\(report.notes)")
-        #expect(note?.contains("Warn.swift:5") == true)
+        #expect(note?.contains("1 of 7 warnings") == true, "\(report.notes)")
+        #expect(note?.contains("Kit.swift:9") == true)
+        #expect(note?.contains("Kit.swift:1") == false)
     }
 
     /// A warning the build lists twice at one place is one warning; one without a place still counts in the total.

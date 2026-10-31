@@ -13,12 +13,12 @@ import Testing
 
     func check(_ executable: String) async throws -> (status: Int32, errors: String, notice: String) {
         let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-notice-\(UUID().uuidString)")
-        let fixture = "Tests/XcrewCoreTests/Fixtures/Reports/mobileTestsPassed.txt"
-        for folder in ["scripts", "bin", "Tests/XcrewCoreTests/Fixtures/Reports"] {
+        // A stand-in for the test bed's capture: the stand-in xcrew never reads what was saved.
+        for folder in ["scripts", "bin", "testbed/captures/raw"] {
             try FileManager.default.createDirectory(at: root.appending(path: folder), withIntermediateDirectories: true)
         }
         try FileManager.default.copyItem(at: repository.appending(path: "scripts/saved-notice.sh"), to: root.appending(path: "scripts/saved-notice.sh"))
-        try FileManager.default.copyItem(at: repository.appending(path: fixture), to: root.appending(path: fixture))
+        try #"{"structuredContent":{"schema":"mobilebuildmcp.output.test-result"}}"#.write(to: root.appending(path: "testbed/captures/raw/serial.json"), atomically: true, encoding: .utf8)
         let xcrew = root.appending(path: "bin/xcrew")
         try """
         #!/bin/sh
@@ -29,6 +29,7 @@ import Testing
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = [root.appending(path: "scripts/saved-notice.sh").path, root.appending(path: "claude").path]
+        process.environment = ProcessInfo.processInfo.environment.merging(["XCREW_TESTBED": root.appending(path: "testbed").path]) { _, new in new }
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         let errors = Pipe()

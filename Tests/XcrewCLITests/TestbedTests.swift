@@ -208,14 +208,6 @@ struct TestbedTests {
     }
 }
 
-/// Where the test bed is checked out: `XCREW_TESTBED`, else a clone beside this repository's.
-enum Testbed {
-    static let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    static let root = ProcessInfo.processInfo.environment["XCREW_TESTBED"].map { URL(fileURLWithPath: $0) }
-        ?? repository.deletingLastPathComponent().appending(path: "xcrew-testbed")
-    static var isCheckedOut: Bool { FileManager.default.fileExists(atPath: root.appending(path: "forms").path) }
-}
-
 /// CI runs the test bed's suite or fails: a missing checkout there is a broken workflow, not a Mac without the clone.
 @Suite struct TestbedCheckoutTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["CI"] == "true"))

@@ -5,6 +5,7 @@ import { historyKey, scopeKey, testsKey } from './timing'
 import { callTool, runCommand, stubCli } from './testing'
 import { segments } from './band'
 import * as captured from './fixtures'
+import { replays } from './replays'
 
 const BAND = {
   plugin: 'xcrew',
@@ -37,7 +38,7 @@ test('while a run is going the band shows it in colour, and the plain status lin
     const time = await ui.find({ type: 'Text', text: /^0:41$/ })
     drawn = { dot: dot?.props.color, tool: tool?.props.weight, time: time?.text }
     await ui.unmount()
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: replays['swift-testing'].text }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
@@ -140,7 +141,7 @@ test('where the band draws, it carries the outcome alone, with no toast repeatin
   })
   on('tool.call', async () => {
     await clock.advance(5_000)
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: replays['swift-testing'].text }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
@@ -160,7 +161,7 @@ test('the band carries the phase after the time, in the theme\'s text colour', a
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
     phase = (await ui.find({ type: 'Text', text: /^testing 1 of 959$/ }))?.props.color
     await ui.unmount()
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: replays['swift-testing'].text }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
@@ -200,7 +201,7 @@ test('a separator and its value are drawn as one text, so a narrow terminal cuts
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
     joined = (await ui.find({ type: 'Text', text: ' · 0:41' }))?.text
     await ui.unmount()
-    return { result: {}, text: captured.mobileTestsPassed.text }
+    return { result: {}, text: replays['swift-testing'].text }
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')

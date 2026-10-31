@@ -1,14 +1,16 @@
 #!/bin/sh
 # Fails when the installed Claude Code words the notice for a result it saved to a file so that xcrew
 # no longer reads the result back: the notice is built from the executable's own template.
-# scripts/saved-notice.sh <Claude Code's executable>
+# scripts/saved-notice.sh <Claude Code's executable>   the test bed is XCREW_TESTBED, else the clone beside this repository
 set -eu
 cd "$(dirname "$0")/.."
+testbed=${XCREW_TESTBED:-../xcrew-testbed}
 folder=$(mktemp -d)
 # Laid out as Claude Code saves one: <config>/projects/<project>/<session>/tool-results/<file>.
 saved="$folder/projects/-work-App/session/tool-results/mcp-test_sim-1.txt"
 mkdir -p "$(dirname "$saved")"
-cp Tests/XcrewCoreTests/Fixtures/Reports/mobileTestsPassed.txt "$saved"
+# A real test run's JSON, which lists each test, as MobileBuildMCP returns it beside its text: the test bed's serial run.
+plutil -extract structuredContent json -o "$saved" "$testbed/captures/raw/serial.json"
 # The first `${…}` is the saved file, the rest its format. Exits 2 when the words are there but no template.
 status=0
 notice=$(SAVED="$saved" perl -0777 -ne '

@@ -22,13 +22,11 @@ enum Captured {
 
 @Suite struct SummaryTests {
     @Test func mobileBuildMCPTestRunsGiveCountsOrTheFirstFailingTest() {
-        #expect(Captured.output("mobileTestsPassed").summary == .init(ok: true, detail: "3 passed"))
         #expect(Captured.output("mobileTestsFailed", isError: true).summary == .init(ok: false, detail: "1 of 3 failed · PlainTests/testConcatenation"))
         #expect(Captured.output("mobileTestsBuildFailed", isError: true).summary == .init(ok: false, detail: "build failed, tests didn't run"))
     }
 
     @Test func mobileBuildMCPBuildsGiveTheFirstErrorWithItsFileAndLine() {
-        #expect(Captured.output("mobileBuildPassed").summary == .init(ok: true))
         #expect(Captured.output("mobileBuildFailed", isError: true).summary == .init(ok: false, detail: "MacroProbe.swift:13 cannot convert value of type 'String' to specified type 'Int'"))
     }
 
@@ -77,12 +75,7 @@ enum Captured {
         #expect(detail.hasSuffix("…"))
     }
 
-    @Test func aTestRunThatRanNoTestsIsNotASuccess() {
-        #expect(Captured.output("mobileTestsNoneRan").summary == .init(ok: false, detail: "no tests ran"))
-    }
-
     @Test func eachServerReportsHowLongTheRunItselfTook() {
-        #expect(Captured.output("mobileTestsPassed").reportedDuration == 14_544)
         #expect(Captured.output("mobileTestsFailed").reportedDuration == 12_300)
         #expect(Captured.output("mobileBuildFailed").reportedDuration == 3_200)
         #expect(Captured.output("xcodeBuildPassed").reportedDuration == 3_857)
@@ -91,10 +84,8 @@ enum Captured {
     }
 
     @Test func aTestRunSaysHowManyTestsItRan() {
-        #expect(Captured.output("mobileTestsPassed").testTotal == 3)
         #expect(Captured.output("mobileTestsFailed").testTotal == 3)
         #expect(Captured.output("xcodeTestsPassed").testTotal == 5)
-        #expect(Captured.output("mobileBuildPassed").testTotal == nil)
     }
 }
 
@@ -137,7 +128,7 @@ enum Captured {
     }
 
     @Test func aPassingRunHasNoFailures() {
-        for name in ["mobileTestsPassed", "mobileBuildPassed", "xcodeBuildPassed", "xcodeTestsPassed"] {
+        for name in ["xcodeBuildPassed", "xcodeTestsPassed"] {
             #expect(Captured.output(name).failures.isEmpty, "\(name)")
         }
     }
@@ -208,19 +199,11 @@ func failingRunText(passing: Int) -> String {
         let corrupt = "🧪 Test\n\nErrors (1):\n\n  ✗ LLVM Profile Error: Invalid profile data to merge\n"
         #expect(ToolOutput(text: corrupt, server: .mobileBuildMCP).failures.map(\.title) == ["LLVM Profile Error"])
     }
-
-    @Test func aLeftOutListIsPointedToWithoutACountOfItsOwn() throws {
-        let compact = try #require(Captured.output("mobileTestsPassed").compactTestResult(savedPath: "/saved.txt"))
-        let json = try #require((ResultBundle.parse(compact) as? [String: Any])?["data"] as? [String: Any])
-        #expect(json["testCases"] as? String == "per-test list left out to keep this result short; the counts above are complete, and the full result is in /saved.txt")
-        #expect(Captured.output("mobileBuildPassed").compactTestResult(savedPath: "/saved.txt") == nil)
-    }
 }
 
 @Suite struct ResultBundleTests {
     @Test func theBundleIsFoundFromEitherShapeOfResult() {
         #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileTestsFailedUnlocated"), server: .mobileBuildMCP), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim_1.xcresult")
-        #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim.xcresult")
         #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileBuildFailed"), server: .mobileBuildMCP), home: Captured.home) == nil)
     }
 
@@ -499,11 +482,6 @@ func failingRunText(passing: Int) -> String {
         #expect(report.tests == 1)
     }
 
-    @Test func aPassingRunKeepsTheServersResult() async {
-        let report = await Self.report("mobileTestsPassed")
-        #expect(report == Report(ok: true, detail: "3 passed", durationMs: 14_544, tests: 3, failures: [], result: nil, notes: [], bundle: "/Users/dev/Library/Developer/MobileBuildMCP/workspaces/sample-0000/result-bundles/test_sim.xcresult"))
-    }
-
     @Test func aFailingRunCarriesItsFailuresForThePane() async {
         let report = await Self.report("mobileTestsFailed", isError: true)
         #expect(!report.ok)
@@ -531,18 +509,8 @@ func failingRunText(passing: Int) -> String {
         #expect(ResultBundle.targets(listing: listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Failed")]))[test] == nil)
     }
 
-    @Test func aRunThatRanNoTestsTellsClaudeWhy() async {
-        let report = await Self.report("mobileTestsNoneRan")
-        #expect(report.notes == [Report.noTestsNote])
+    @Test func theNoTestsNoteSaysWhatIsKnown() {
         #expect(Report.noTestsNote == "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this.")
-    }
-
-    @Test func expectedFailuresReachClaudeAsANote() async {
-        let runner = FakeRunner(responses: [
-            "xcrun xcresulttool get test-results summary --path \(Captured.workspace)/result-bundles/test_sim.xcresult --compact": .init(status: 0, stdout: Captured.text("xcresultSummaryWithExpectedFailures")),
-        ])
-        let report = await Self.report("mobileTestsPassed", runner: runner)
-        #expect(report.notes.first?.hasPrefix("xcrew: 2 tests also ran as expected failures") == true)
     }
 
     @Test func aBuildFailureReachesClaudeWithItsErrorCountedOnce() async {
@@ -550,11 +518,13 @@ func failingRunText(passing: Int) -> String {
         #expect(report.result?.contains("Errors (1):") == true)
     }
 
-    @Test func aResultClaudeCodeSavedIsReadBackAndShortened() async throws {
-        let saved = SavedResultTests.saved()
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aResultClaudeCodeSavedIsReadBackAndShortened() async throws {
+        let saved = SavedResultTests.saved(Raw.json("serial"))
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
         let report = await Report.make(kind: .test, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
-        #expect(report.ok)
+        #expect(!report.ok)
+        #expect(report.tests == 4)
         #expect(report.result?.contains("the full result is in \(saved)") == true)
     }
 
@@ -820,35 +790,72 @@ extension FailureNotes {
         await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
     }
 
+    static let kit = "/testbed/concurrency/Kit/Kit.swift"
+    static let kitMessage = "var 'sharedCount' is not concurrency-safe because it is nonisolated global shared mutable state; this is an error in the Swift 6 language mode [#MutableGlobalVariable]"
+
+    /// The real build's JSON with its first warning written at three lines of its file, each warning's message from the
+    /// `from`th on replaced by its own: MobileBuildMCP lists a warning once, and a result that repeats one is made here.
+    static func json(from: Int = 3) -> String {
+        var result = Raw.capture("build_sim")["structuredContent"] as! [String: Any]
+        var data = result["data"] as! [String: Any]
+        var diagnostics = data["diagnostics"] as! [String: Any]
+        let message = (diagnostics["warnings"] as! [[String: Any]])[0]["message"] as! String
+        diagnostics["warnings"] = (0..<3).map { index in ["message": index < from ? message : "another warning \(index)", "location": "\(kit):\(index + 1)"] }
+        data["diagnostics"] = diagnostics
+        result["data"] = data
+        return String(decoding: try! JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
+    }
+
     @Test func aRepeatedWarningInTheTextIsListedOnceWithItsCountAndEveryPlace() async throws {
         let result = try #require(await ReportTests.report("mobileTestsPassedWithWarnings").result)
         #expect(result.count < Captured.text("mobileTestsPassedWithWarnings").count)
         #expect(result.contains("Warnings (3):\n\n  ⚠ \(Self.message) (3×, /Users/dev/Warn/Sources/Warn/Warn.swift:4, :5, :6)\n\n✅ 1 test passed, 0 failed, 0 skipped (⏱️ 8.0s)"))
     }
 
-    @Test func aRepeatedWarningInTheJSONIsListedOnceWithItsCountAndEveryPlace() async throws {
-        let result = try #require(await ReportTests.report("mobileTestsPassedWithWarningsJSON").result)
-        #expect(result.count < Captured.text("mobileTestsPassedWithWarningsJSON").count)
+    /// The real build lists its `sending` closure warning twice, in two files: once each, as the compiler gave it.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aRepeatedWarningInTheJSONIsListedOnceWithItsCountAndEveryPlace() async throws {
+        let result = try #require(await Self.report(Raw.json("build_sim")).result)
         let data = try #require((ResultBundle.parse(result) as? [String: Any])?["data"] as? [String: Any])
         let warnings = try #require((data["diagnostics"] as? [String: Any])?["warnings"] as? [[String: Any]])
-        #expect(warnings.count == 1)
-        #expect(warnings.first?["message"] as? String == Self.message)
-        #expect(warnings.first?["count"] as? Int == 3)
-        #expect(warnings.first?["location"] as? String == "/Users/dev/Warn/Sources/Warn/Warn.swift:4, :5, :6")
+        #expect(warnings.count == 6)
+        let repeated = warnings.filter { $0["count"] != nil }
+        #expect(repeated.count == 1)
+        #expect(repeated.first?["message"] as? String == "passing closure as a 'sending' parameter risks causing data races between code in the current isolation context and concurrent execution of the closure; this is an error in the Swift 6 language mode [#RegionIsolation::SendingClosureRisksDataRace]")
+        #expect(repeated.first?["count"] as? Int == 2)
+        #expect(repeated.first?["location"] as? String == "/testbed/concurrency/Kit/Kit.swift:13, /testbed/concurrency/Feature/Feature.swift:6")
         #expect((data["summary"] as? [String: Any])?["status"] as? String == "SUCCEEDED")
     }
 
-    @Test func distinctWarningsAreLeftAsTheServerWroteThem() async {
-        #expect(await Self.report(Self.distinct("mobileTestsPassedWithWarnings")).result == nil)
-        #expect(await Self.report(Self.distinct("mobileTestsPassedWithWarningsJSON")).result == nil)
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aWarningRepeatedInOneFileHasItsPathOnce() async throws {
+        let result = try #require(await Self.report(Self.json()).result)
+        let warnings = try #require(((ResultBundle.parse(result) as? [String: Any])?["data"] as? [String: Any]).flatMap { ($0["diagnostics"] as? [String: Any])?["warnings"] as? [[String: Any]] })
+        #expect(warnings.count == 1)
+        #expect(warnings.first?["message"] as? String == Self.kitMessage)
+        #expect(warnings.first?["count"] as? Int == 3)
+        #expect(warnings.first?["location"] as? String == "/testbed/concurrency/Kit/Kit.swift:1, :2, :3")
     }
 
-    @Test func aWarningListedOnceKeepsItsOwnLinesBesideARepeatedOne() async throws {
+    @Test func distinctWarningsInTheTextAreLeftAsTheServerWroteThem() async {
+        #expect(await Self.report(Self.distinct("mobileTestsPassedWithWarnings")).result == nil)
+    }
+
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func distinctWarningsInTheJSONAreLeftAsTheServerWroteThem() async {
+        #expect(await Self.report(Self.json(from: 0)).result == nil)
+    }
+
+    @Test func aWarningListedOnceInTheTextKeepsItsOwnLinesBesideARepeatedOne() async throws {
         let text = try #require(await Self.report(Self.distinct("mobileTestsPassedWithWarnings", from: 2)).result)
         #expect(text.contains("  ⚠ \(Self.message) (2×, /Users/dev/Warn/Sources/Warn/Warn.swift:4, :5)\n\n  ⚠ another warning 2\n    /Users/dev/Warn/Sources/Warn/Warn.swift:6\n\n✅"))
-        let json = try #require(await Self.report(Self.distinct("mobileTestsPassedWithWarningsJSON", from: 2)).result)
+    }
+
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aWarningListedOnceInTheJSONKeepsItsOwnLinesBesideARepeatedOne() async throws {
+        let json = try #require(await Self.report(Self.json(from: 2)).result)
         let warnings = try #require(((ResultBundle.parse(json) as? [String: Any])?["data"] as? [String: Any]).flatMap { ($0["diagnostics"] as? [String: Any])?["warnings"] as? [[String: Any]] })
-        #expect(warnings.map { $0["location"] as? String } == ["/Users/dev/Warn/Sources/Warn/Warn.swift:4, :5", "/Users/dev/Warn/Sources/Warn/Warn.swift:6"])
+        #expect(warnings.map { $0["location"] as? String } == ["/testbed/concurrency/Kit/Kit.swift:1, :2", "/testbed/concurrency/Kit/Kit.swift:3"])
         #expect(warnings.last?["count"] == nil)
     }
 
@@ -858,8 +865,9 @@ extension FailureNotes {
         #expect(result.contains("(3×, /Users/dev/My Warn/Sources/Warn/Warn.swift:4, :5, :6)\n\n✅"))
     }
 
-    @Test func aSavedResultTheCollapseAloneWouldEditStaysSaved() async {
-        let saved = SavedResultTests.saved(Captured.text("mobileTestsPassedWithWarningsJSON").replacingOccurrences(of: "output.test-result", with: "output.build-result"), as: "mcp-build_macos-1.txt")
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aSavedResultTheCollapseAloneWouldEditStaysSaved() async {
+        let saved = SavedResultTests.saved(Self.json(), as: "mcp-build_sim-1.txt")
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
         let report = await Report.make(kind: .build, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
         #expect(report.ok)
@@ -882,15 +890,17 @@ extension FailureNotes {
 
 @Suite struct SavedResultTests {
     /// A result Claude Code saved, at `<config>/projects/<project>/<session>/tool-results/<name>`, `config` in `folder`.
-    static func saved(_ text: String = Captured.text("mobileTestsPassed"), as name: String = "mcp-test_sim-1.txt", in folder: String = "claude") -> String {
+    /// What it holds matters only to a test that reads it back; finding it goes by its path alone.
+    static func saved(_ text: String = "{}", as name: String = "mcp-test_sim-1.txt", in folder: String = "claude") -> String {
         let root = Project.temporary()
         let path = "\(folder)/projects/-work-App/0b6e4c1a/tool-results/\(name)"
         root.write(text, to: path)
         return root.root.appending(path: path).path
     }
 
-    @Test func aNoticeInOtherWordsStillLeadsToTheFile() async {
-        let path = Self.saved()
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aNoticeInOtherWordsStillLeadsToTheFile() async {
+        let path = Self.saved(Raw.json("serial"))
         for notice in ["Result too large; written to \(path) (JSON).", "Saved the full output at \(path)", "Error: output exceeded the limit. See '\(path)'.", "Output has been saved to \(path).\nFormat: JSON", "Output saved to `\(path)`", "Saved: <\(path)>", "Saved to “\(path)”."] {
             #expect(Report.savedPath(notice) == path, "\(notice)")
         }
@@ -964,8 +974,9 @@ extension FailureNotes {
 
 /// A run the mod knows was repeated reads each test's runs from the bundle: the verdicts reach Claude, and the counts
 /// the mod keeps.
-@Suite struct RepeatedRunReportTests {
-    static let bundle = "\(Captured.workspace)/result-bundles/test_sim.xcresult"
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct RepeatedRunReportTests {
+    static var bundle: String { Raw.bundle("swift-testing") }
 
     func runner() -> FakeRunner {
         FakeRunner(responses: [
@@ -975,14 +986,14 @@ extension FailureNotes {
     }
 
     @Test func aRepeatedRunGivesEachTestItsVerdict() async {
-        let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: runner(), repeated: true)
+        let report = await Report.make(kind: .test, output: Raw.output("swift-testing"), home: Captured.home, runner: runner(), repeated: true)
         #expect(report.notes.contains { $0.contains("RepetitionTests/testMixed is flaky, failing 1 of 3") })
         #expect(report.repeated?.map(\.verdict) == [.flaky, .real, .passed])
     }
 
     /// The list is asked for only when the run was repeated: every other test run keeps its one fewer call.
     @Test func aRunNotRepeatedReadsNoRepetitions() async {
-        let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: runner())
+        let report = await Report.make(kind: .test, output: Raw.output("swift-testing"), home: Captured.home, runner: runner())
         #expect(report.repeated == nil)
         #expect(!report.notes.contains { $0.contains("flaky") })
     }
@@ -1026,8 +1037,9 @@ extension FailureNotes {
     }
 
     /// A run repeated whose bundle can't be read says it has no verdict, rather than nothing.
-    @Test func aRepeatedRunWithoutABundleSaysSo() async {
-        let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner(), repeated: true)
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aRepeatedRunWithoutABundleSaysSo() async {
+        let report = await Report.make(kind: .test, output: Raw.output("swift-testing"), home: Captured.home, runner: FakeRunner(), repeated: true)
         #expect(report.notes.contains { $0.contains("no verdict on which tests are flaky") })
     }
 }

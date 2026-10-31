@@ -33,9 +33,13 @@ import XcrewTestSupport
         #expect(await report(handle).backgroundTask == "b7x2k")
     }
 
-    @Test func aResultOrAnErrorNamesNoTask() async throws {
-        #expect(await report(try Self.fixture("mobileBuildPassed")).backgroundTask == nil)
+    @Test func anErrorNamesNoTask() async throws {
         #expect(await report(try Self.fixture("backgroundedCall"), isError: true).backgroundTask == nil)
+    }
+
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aResultNamesNoTask() async {
+        #expect(await report(Raw.text("build_sim")).backgroundTask == nil)
     }
 
     @Test func aNotificationCarriesItsStatusAndResult() throws {

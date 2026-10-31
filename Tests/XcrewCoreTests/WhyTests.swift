@@ -209,10 +209,10 @@ import XcrewTestSupport
     }
 
     /// A passing build is never explained.
-    @Test func aPassingBuildLooksAtNothing() async throws {
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aPassingBuildLooksAtNothing() async throws {
         let runner = FakeRunner()
-        let passed = try String(contentsOf: Bundle.module.url(forResource: "mobileBuildPassed", withExtension: "txt", subdirectory: "Fixtures/Reports")!, encoding: .utf8)
-        let report = await Report.make(kind: .build, output: ToolOutput(text: passed, server: .mobileBuildMCP), home: "/Users/dev", runner: runner, project: .temporary())
+        let report = await Report.make(kind: .build, output: Raw.output("build_sim"), home: "/Users/dev", runner: runner, project: .temporary())
         #expect(!report.notes.contains { $0.contains("because of the Mac") })
         #expect(report.cause == nil)
     }
