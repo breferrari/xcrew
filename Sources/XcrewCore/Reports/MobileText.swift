@@ -1,7 +1,8 @@
 import Foundation
 
-/// MobileBuildMCP's text, which it returns instead of JSON when a build or test run fails, read
-/// once into lines that each know their shape. Annotating and compacting edit these lines; `text`
+/// MobileBuildMCP's text, which Claude Code hands the mod for a build or test run whether it passed or failed, its JSON
+/// going only in `structuredContent` (docs/findings.md, *MobileBuildMCP's CLI and its MCP results*), read once into lines
+/// that each know their shape. Annotating and compacting edit these lines; `text`
 /// writes them back out unchanged where nothing edited them.
 struct MobileText: Sendable {
     /// A `✗` entry: a failing test, or a compile error.
@@ -131,15 +132,16 @@ struct MobileText: Sendable {
 
     // MARK: Reading
 
-    /// A failing run's counts, from its summary line.
+    /// The run's summary line, `✅ 1 test passed, 0 failed, 0 skipped` or `❌ 2 tests failed, 1 passed, 1 skipped`.
+    var summaryLine: Line? { lines.first(where: \.isSummary) }
+
+    /// The run's counts, from its summary line.
     var counts: TestCounts? {
-        lines.lazy.filter(\.isSummary).compactMap { MobileBuildMCPLine.counts(in: $0.text) }.first
+        summaryLine.flatMap { MobileBuildMCPLine.counts(in: $0.text) }
     }
 
-    /// How many tests the summary line, passing or failing, counts as skipped.
-    var skippedCount: Int {
-        lines.lazy.filter(\.isSummary).compactMap { MobileBuildMCPLine.skippedCount(in: $0.text) }.first ?? 0
-    }
+    /// How many tests the summary line counts as skipped.
+    var skippedCount: Int { counts?.skipped ?? 0 }
 
     /// The run's `(⏱️ 12.3s)`, in milliseconds.
     var durationMs: Int? {
@@ -188,12 +190,8 @@ struct MobileText: Sendable {
     }
 
     var summary: ToolOutput.Summary? {
-        if let counts, lines.contains(where: { MobileBuildMCPLine.isPassingSummary($0.text) }), (counts.failed ?? 0) == 0 {
-            return ToolOutput.Summary(ok: true, detail: "\(counts.passed ?? 0) passed")
-        }
-        if let counts {
-            let first = lines.lazy.compactMap(\.failing).first
-            return ToolOutput.Summary(ok: false, detail: "\(counts.failed ?? 0) of \(counts.sum) failed\(first.map { " · \($0.test.shown)" } ?? "")")
+        if let line = summaryLine, let counts = MobileBuildMCPLine.counts(in: line.text) {
+            return counts.summary(succeeded: line.text.hasPrefix("✅"), failing: lines.lazy.compactMap(\.failing).first?.test.shown)
         }
         if isTestRun, lines.contains(where: { MobileBuildMCPLine.isTestRunFailure($0.text) }) { return ToolOutput.Summary(ok: false, detail: ToolOutput.testsDidNotRun) }
         if lines.contains(where: { MobileBuildMCPLine.isBuildFailure($0.text) }) {

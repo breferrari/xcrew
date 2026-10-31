@@ -400,6 +400,15 @@ func failingRunText(passing: Int) -> String {
         await Report.make(kind: kind, output: Captured.output(name, isError: isError), home: Captured.home, runner: runner)
     }
 
+    /// A passing run's text, as Claude Code hands it, counts its tests on its `✅` line, in another order than a failing
+    /// run's `❌` line: the same verdict and total as the JSON path.
+    @Test func aPassingRunsTextCountsItsTests() async {
+        let report = await Self.report("mobileTestsPassedWithWarnings")
+        #expect(report.ok)
+        #expect(report.detail == "1 passed")
+        #expect(report.tests == 1)
+    }
+
     @Test func aPassingRunKeepsTheServersResult() async {
         let report = await Self.report("mobileTestsPassed")
         #expect(report == Report(ok: true, detail: "3 passed", durationMs: 14_544, tests: 3, failures: [], result: nil, notes: [], bundle: "/Users/dev/Library/Developer/MobileBuildMCP/workspaces/sample-0000/result-bundles/test_sim.xcresult"))

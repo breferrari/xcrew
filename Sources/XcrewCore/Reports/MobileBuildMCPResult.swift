@@ -40,9 +40,7 @@ struct MobileBuildMCPResult: Decodable, Sendable {
         guard schema?.hasPrefix(Self.schemaPrefix) == true, let summary = data?.summary else { return nil }
         let ok = summary.status == "SUCCEEDED"
         guard let counts = summary.counts else { return ToolOutput.Summary(ok: ok) }
-        let passed = counts.passed ?? 0, failed = counts.failed ?? 0, total = counts.sum
-        if total == 0 { return ToolOutput.Summary(ok: false, detail: ToolOutput.noTestsRan) }
-        return failed > 0 ? ToolOutput.Summary(ok: false, detail: "\(failed) of \(total) failed") : ToolOutput.Summary(ok: ok, detail: "\(passed) passed")
+        return counts.summary(succeeded: ok)
     }
 
     var durationMs: Int? { data?.summary?.durationMs.flatMap { Int(exactly: $0.rounded(.towardZero)) } }

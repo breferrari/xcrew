@@ -113,21 +113,10 @@ enum MobileBuildMCPLine {
     /// and a passing one's `✅ 1 test passed, 0 failed, 0 skipped` name them in different orders (docs/findings.md, *Test
     /// reports from the two servers*).
     static func counts(in line: String) -> TestCounts? {
-        guard isSummary(line) else { return nil }
         guard let passed = line.firstMatch(of: #/(\d+) (?:tests? )?passed\b/#).flatMap({ Int($0.1) }),
               let failed = line.firstMatch(of: #/(\d+) (?:tests? )?failed\b/#).flatMap({ Int($0.1) }),
               let skipped = line.firstMatch(of: #/(\d+) (?:tests? )?skipped\b/#).flatMap({ Int($0.1) }) else { return nil }
         return TestCounts(passed: passed, failed: failed, skipped: skipped)
-    }
-
-    /// Whether a summary line is a passing run's.
-    static func isPassingSummary(_ line: String) -> Bool {
-        line.hasPrefix("✅ ") && isSummary(line)
-    }
-
-    /// How many tests a summary line, passing or failing, counts as skipped.
-    static func skippedCount(in line: String) -> Int? {
-        line.firstMatch(of: #/^(?:❌|✅) \d+ tests? .*?(\d+) skipped/#).flatMap { Int($0.1) }
     }
 
     /// `(⏱️ 12.3s)`, how long the run took, in seconds.
