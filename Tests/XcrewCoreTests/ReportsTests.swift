@@ -235,7 +235,16 @@ func failingRunText(passing: Int) -> String {
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aCrashGetsItsExceptionAndFramesAndASkipItsReason() async throws {
         let added = await FailureNotes.addingText(to: try Raw.text("timing"), from: try Self.timing())
-        #expect(added.contains(Self.crash + "      crashed: EXC_BREAKPOINT (SIGTRAP)\n      Fatal error: Index out of range\n      libswiftCore.dylib  closure #1 in closure #1 in _assertionFailure"), "\(added)")
+        let frames = [
+            "crashed: EXC_BREAKPOINT (SIGTRAP)",
+            "Fatal error: Index out of range",
+            "libswiftCore.dylib  closure #1 in closure #1 in _assertionFailure(_:_:file:line:flags:)",
+            "libswiftCore.dylib  _assertionFailure(_:_:file:line:flags:)",
+            "libswiftCore.dylib  Array._checkSubscript(_:wasNativeTypeChecked:)",
+            "libswiftCore.dylib  Array.subscript.getter",
+            "FeatureTests  CrashTests.testOutOfRange()",
+        ]
+        #expect(added.contains(Self.crash + frames.map { "      \($0)\n" }.joined() + "\n"), "\(added)")
         #expect(added.contains("  ⏭️ ProbeTests/testSkipped (0.009s)\n      skipped: waits for the farewell screen"), "\(added)")
     }
 
