@@ -110,6 +110,20 @@ test('a green an older xcrew inferred from a run\'s selection is read as still r
   expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
 })
 
+test('a pass in a scheme that shares the red scheme\'s first part leaves the red red', async ($, on) => {
+  project(on, [FAILED, PASSED])
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'Shop · Staging' })
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'Shop · Release' })
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+})
+
+test('a stored ledger with an entry that isn\'t one is read without it', async ($, on) => {
+  const at = Date.UTC(2026, 9, 30, 11, 0)
+  const entry = { test: TEST, red: { scope: 'test_sim', at, message: 'kept' }, failing: 'test_sim', last: at }
+  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [null, entry], updated: at } } })
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+})
+
 test('a red test a passing run doesn\'t list as passed stays red, though the run selected its class', async ($, on) => {
   // The field case: a test deleted since its red, then a run of its class, whose results don't hold it.
   project(on, [FAILED, { ok: true, detail: '4 passed', passed: [{ test: 'GreetingTests/testBye' }, { test: 'GreetingTests/testWave' }] }])

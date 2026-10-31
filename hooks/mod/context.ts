@@ -146,8 +146,9 @@ const SELECTIONS = ', '
 
 /** A scope's scheme, as `historyOf` wrote it; empty when it named none. */
 export function schemeOfScope(scope: string): string {
-  const [, scheme = ''] = scopeParts(scope).base.split(SCHEME)
-  return scheme
+  const base = scopeParts(scope).base
+  const at = base.indexOf(SCHEME)
+  return at < 0 ? '' : base.slice(at + SCHEME.length)
 }
 
 /** A scope `historyOf` wrote, read back: its tool and scheme (`test_sim · App`), and its selections. */
