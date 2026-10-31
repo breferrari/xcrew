@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 — 2026-10-31
 
 - The line above the prompt counts a serial XCTest run's and a Swift Testing run's progress while it goes, `testing N of M`, as MobileBuildMCP's result counts their tests. Before, it showed no count until the tests were done.
 - A test that failed and then passed when retried (`-retry-tests-on-failure`) no longer shows as a failure in the failures pane or red in the ledger. MobileBuildMCP's text lists it among the failures, but its own count, like the result bundle, counts it passed.
