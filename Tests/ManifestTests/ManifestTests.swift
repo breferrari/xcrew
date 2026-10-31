@@ -183,7 +183,8 @@ import Testing
         let loop = try #require(try text("hooks/mod/loop.ts").firstMatch(of: /export function loopNote[\s\S]*?\n}/)).output
         let setupFact = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const SETUP_FACT = '([^']*)'/)?.1)
         let concurrencyNote = try #require(ConcurrencyReport(count: 12, modules: [.init(name: "Kit", count: 8), .init(name: "Feature", count: 4)]).summary?.note)
-        let texts = [
+        // Built in typed parts: one literal of every note overruns the oldest toolchain's type-checker.
+        let briefing: [String] = [
             String(setupFact),
             concurrencyNote,
             try text("context/routing.md"),
@@ -191,22 +192,32 @@ import Testing
             SessionBriefing.deviceHubNote("Xcode 27.2"),
             SessionBriefing.failoverNote(reason: "it isn't installed"),
             String(loop),
+        ]
+        let runNotes: [String] = [
             Report.noTestsNote,
             Report.noTestsInBundleNote,
             FailureNotes.noCrashLog,
             FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
             ResultBundle.noRepetitionsNote,
             ResultBundle.repetitionsNote([.init(test: "S/t", failed: 2, passed: 3, runs: 5, verdict: .flaky), .init(test: "S/u", failed: 5, passed: 0, runs: 5, verdict: .real)]) ?? "",
-            ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":5,"expectedFailures":1}"#, names: ["S/t()"]) ?? "",
-            ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":5,"expectedFailures":1}"#, knownIssues: ["S/t()"]) ?? "",
-            ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":5,"expectedFailures":2}"#, names: ["S/t()"], knownIssues: ["S/u()"]) ?? "",
-            ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":5,"expectedFailures":1}"#) ?? "",
             Report.warningsNote([ToolOutput.Warning(message: "unused", path: "/a/A.swift", line: 3)], of: 2) ?? "",
+        ]
+        let one = #"{"totalTestCount":5,"expectedFailures":1}"#, two = #"{"totalTestCount":5,"expectedFailures":2}"#
+        let expectedFailureNotes: [String?] = [
+            ResultBundle.expectedFailuresNote(summary: one, names: ["S/t()"]),
+            ResultBundle.expectedFailuresNote(summary: one, knownIssues: ["S/t()"]),
+            ResultBundle.expectedFailuresNote(summary: two, names: ["S/t()"], knownIssues: ["S/u()"]),
+            ResultBundle.expectedFailuresNote(summary: one),
+        ]
+        let buildDatabase: [String] = [
             LockedBuildDatabase.free,
             LockedBuildDatabase.unknown,
             LockedBuildDatabase.held(by: ProcessList.Process(id: 42, parent: 1, elapsed: 90, command: "/x/xcodebuild build -destination platform=iOS Simulator,name=iPhone 17", program: "xcodebuild")),
             LockedBuildDatabase.heldElsewhere(by: ProcessList.Process(id: 43, parent: 1, elapsed: 40, command: "/x/SWBBuildService", program: "SWBBuildService")),
-        ] + ToolErrorNotes.known.map(\.note) + (try Self.modTools.map { try toolDescription($0.constant, in: $0.file) })
+        ]
+        let toolErrors: [String] = ToolErrorNotes.known.map(\.note)
+        let modTools: [String] = try Self.modTools.map { try toolDescription($0.constant, in: $0.file) }
+        let texts: [String] = briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + modTools
         var sentences: [String] = []
         for text in texts {
             for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }
