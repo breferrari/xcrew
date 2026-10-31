@@ -78,6 +78,15 @@ struct TestbedReplayTests {
         try (Self.header + "export const replays = " + String(decoding: json, as: UTF8.self) + "\n").write(to: Self.goldens, atomically: true, encoding: .utf8)
     }
 
+    /// A retried test that passed on a later try is counted passed, though MobileBuildMCP's text still lists it among the
+    /// failures: the report lists only the test that never passed, as its count does (1 failed).
+    @Test func aRetriedTestThatPassedIsNoFailure() async throws {
+        let report = try #require(try await Self.replay("retry")["report"] as? [String: Any])
+        let failures = try #require(report["failures"] as? [[String: Any]])
+        #expect(failures.compactMap { $0["title"] as? String } == ["ProbeTests/testFails"])
+        #expect(report["detail"] as? String == "1 of 4 failed · ProbeTests/testFails")
+    }
+
     @Test(arguments: names) func aGoldenIsItsCaptureAndWhatTheCLIAnswers(name: String) async throws {
         #expect(try NSDictionary(dictionary: Self.golden(name)) == NSDictionary(dictionary: await Self.replay(name)))
     }

@@ -225,8 +225,12 @@ public struct Report: Sendable, Equatable, Codable {
         // A run that failed because of the Mac says so first: its errors would read as the code's.
         if let why = await why { notes.insert(why, at: 0) }
 
-        // A failing test's target, from the run's test list, which skips and expected failures read too.
-        let targets = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { ResultBundle.targets(listing: await bundle.tests()) } else { [TestID: String]() }
+        // A failing test's target, from the run's test list, which skips and expected failures read too. A test the list
+        // counts passed, as a retried test that passed on a later try is, is no failure, though the text lists it.
+        let listing = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { await bundle.tests() } else { "" }
+        let targets = ResultBundle.targets(listing: listing)
+        let passed = ResultBundle.passedTests(listing: listing)
+        let failures = final.failures.filter { !$0.isTest || !passed.contains(TestID(xcresultID: $0.title)) }
         let isUnread = kind != .run && !final.isError && final.isNotTheServers
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(
@@ -234,7 +238,7 @@ public struct Report: Sendable, Equatable, Codable {
             detail: summary.detail,
             durationMs: final.reportedDuration,
             tests: tests,
-            failures: summary.ok ? [] : Self.attaching(images, targets: targets, to: final.failures),
+            failures: summary.ok ? [] : Self.attaching(images, targets: targets, to: failures),
             result: compact ?? (edited ? final.text : nil),
             notes: notes,
             repeated: repeatedTests,
