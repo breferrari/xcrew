@@ -14,6 +14,12 @@ struct CrashErrorTests {
         ])
     }
 
+    /// The serial run with `showTestTiming` on lists the same error twice beside its other failing tests: its failures
+    /// are its tests.
+    @Test func aRunWithACrashAndOtherFailuresListsItsTestsAlone() throws {
+        #expect(try Raw.output("timing").failures.map(\.title) == ["CrashTests/testOutOfRange", "ProbeTests/testFails", "ProbeTests/testFlaky"])
+    }
+
     /// Another error in the same run, here a real one from `captures/environment/module-cache-invalid.txt` written
     /// into the crash's Errors, is still listed: only the crashed test's own error goes.
     @Test func anotherErrorBesideACrashStaysListed() throws {
