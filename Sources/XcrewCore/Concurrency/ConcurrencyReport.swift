@@ -39,6 +39,19 @@ public struct ConcurrencyReport: Sendable, Equatable, Codable {
     /// Why the project couldn't be read, so modules come from the log's task headers alone.
     public var projectUnread: String?
 
+    /// How many concurrency diagnostics a build's log holds before the note after it gives them.
+    public static let noteAt = 10
+
+    /// The note after a build with `noteAt` or more: the counts, as facts, and the command that lists them.
+    public var summary: ConcurrencySummary? {
+        guard count >= Self.noteAt else { return nil }
+        let top = groups.prefix(2).map { "\($0.name) (\($0.count))" }
+        let most = groups.count == 1 ? "all of them \(top[0])" : "most of them \(top.joined(separator: " and "))"
+        let changed = inChangedLines.flatMap { $0 > 0 ? "; \($0) \($0 == 1 ? "is" : "are") in lines this branch changed" : nil } ?? ""
+        let note = "xcrew: this build's log has \(Space.counted(count, "Swift concurrency diagnostic")) in \(Space.counted(modules.count, "module")), \(most)\(changed). `xcrew concurrency` lists them by compiler group and module."
+        return ConcurrencySummary(count: count, note: note)
+    }
+
     /// The module a diagnostic's file is in when no project here builds it.
     public static let noModule = "not in a project"
 

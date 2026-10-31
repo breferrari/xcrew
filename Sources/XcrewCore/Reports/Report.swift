@@ -36,6 +36,9 @@ public struct Report: Sendable, Equatable, Codable {
     /// Why the run failed when the cause is the Mac, with its fix (`Why`): the note that leads `notes`, apart, so the
     /// failures pane can open with it.
     public var cause: String?
+    /// The run's Swift concurrency diagnostics, when its log holds at least `ConcurrencyReport.noteAt`: apart from the
+    /// notes, since the mod gives it once a session for each scope, and again when the count moves by a quarter.
+    public var concurrency: ConcurrencySummary?
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
@@ -167,6 +170,15 @@ public struct Report: Sendable, Equatable, Codable {
             guard errors.contains(where: XcodePinCheck.mayBeTheToolchain) || logged().contains(where: XcodePinCheck.mayBeTheToolchain) else { return nil }
             return XcodePinCheck.failureNote(await XcodeSnapshot.take(of: project, on: machine), hasXcodes: machine.runner.which("xcodes") != nil)
         }()
+        async let concurrency: ConcurrencySummary? = {
+            // MobileBuildMCP's result lists each diagnostic once: one listing fewer than the note's count can't hold that
+            // many concurrency ones, so its log isn't read.
+            guard read.server == .mobileBuildMCP, let project, let machine, warnings.count + read.reportedErrors.count >= ConcurrencyReport.noteAt,
+                  let log = read.buildLog(home: home) else { return nil }
+            let selected = await Xcodes.selected(on: machine).map { URL(fileURLWithPath: $0.path) }
+            let report = try? await ConcurrencyReport.read(log: URL(fileURLWithPath: log), project: project, groups: { named in .read(docs: (named ?? selected).map(ConcurrencyGroups.docs(in:))) }, using: runner)
+            return report?.summary
+        }()
         var final = read
         var edited = false
         var images: [TestID: FailureImages] = [:]
@@ -225,7 +237,8 @@ public struct Report: Sendable, Equatable, Codable {
             pinNote: await pinNote,
             pin: await pinNote == nil ? nil : project?.xcodePin.map { "\($0.version) (\($0.file))" },
             backgroundTask: isUnread ? Self.backgroundTask(in: final.text) : nil,
-            cause: await why
+            cause: await why,
+            concurrency: await concurrency
         )
     }
 }

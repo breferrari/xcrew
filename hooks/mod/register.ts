@@ -5,6 +5,7 @@ import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptL
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
 import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
+import { givesConcurrency } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, runsWholeScope, xcodeSelected, xcodeStarted } from './context'
@@ -214,7 +215,7 @@ export const register: Register = on => {
     // It never throws: without the CLI it falls back to whether the server reported an error.
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated), 120_000, result.text ?? '')
-    const outcome = withPinNamedOnce(reportOf(reported, result.isError === true))
+    const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, result.isError === true)), scope)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
@@ -339,6 +340,7 @@ export const register: Register = on => {
     sessionProfileSchemes = new Map()
     found = []
     pinsNamed.clear()
+    concurrencyGiven.clear()
     seenAt = {}
     void loadProblems($).catch(() => undefined)
     void quietly(() => readXcodeStart($))
@@ -419,7 +421,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
 async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
   const args = [...reportArgs(call.server, call.kind, false, call.repeated), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
   const reported = await answer($, args, 120_000, text)
-  const outcome = withPinNamedOnce(reportOf(reported, false))
+  const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, false)), call.scope)
   if (reported === undefined || outcome.isUnread) return undefined
   const ended = await quietly(() => $.clock.now())
   if (ended === undefined) return undefined
@@ -858,6 +860,17 @@ const CARD_SAVE_MS = 15_000
 const backgrounded = new Map<string, Backgrounded>()
 /** How many calls are kept waiting for their notification. */
 const UNREAD_KEPT = 20
+
+/** The concurrency counts Claude has read this session, by scope. */
+const concurrencyGiven = new Map<string, number>()
+
+/** Adds the run's concurrency note the first time its scope has one this session, and when its count moves far enough. */
+function withConcurrencyOnce(outcome: Report, scope: string): Report {
+  const counted = outcome.concurrency
+  if (!counted || !givesConcurrency(concurrencyGiven.get(scope), counted.count)) return outcome
+  concurrencyGiven.set(scope, counted.count)
+  return { ...outcome, notes: [...outcome.notes, counted.note] }
+}
 
 /** The pins Claude has read of this session: each is named with the first failure it may explain, and not again. */
 const pinsNamed = new Set<string>()

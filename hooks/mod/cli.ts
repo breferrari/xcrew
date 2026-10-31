@@ -38,6 +38,8 @@ export type Report = {
   isVerdictOnly?: boolean
   /** Why the run failed when the cause is the Mac, with its fix: the note that leads `notes`, for the pane to open with. */
   cause?: string
+  /** The run's Swift concurrency diagnostics when its log holds many: how many, and the note that gives their counts. */
+  concurrency?: { count: number; note: string }
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */

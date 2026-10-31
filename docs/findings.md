@@ -455,6 +455,11 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
   - Failing that, the target that owns the file, through the workspace reading `xcrew graph` uses, after the path is spelled as the file system does.
   - Else "not in a project".
 - **Changed lines:** the lines *Warnings in changed lines* reads. `--changed` keeps only those.
+- **The note after a build.**
+  - After a MobileBuildMCP build or test whose log holds `ConcurrencyReport.noteAt` (10) concurrency diagnostics or more, Claude reads their counts as one note: how many, in how many modules, the two biggest groups, and how many are in changed lines. It names `xcrew concurrency`.
+  - MobileBuildMCP's result lists each diagnostic once, so a result listing fewer than 10 can't hold that many, and its log isn't read.
+  - The mod gives the note once per scope a session, and again when the count moves by `CONCURRENCY_MOVE` (a quarter) of the count last given (`hooks/mod/concurrency.ts`).
+  - The Xcode MCP names no log, so it has no note.
 
 ## Flaky or real
 

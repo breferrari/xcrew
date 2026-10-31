@@ -1,0 +1,51 @@
+import { expect, mock, test } from 'claude-code/testing'
+import type { On } from 'claude-code'
+import type { Report } from './cli'
+import { callTool, stubCli } from './testing'
+
+/** A passing build whose log holds `count` concurrency diagnostics, with the note the CLI words for them. */
+function built(count: number): Partial<Report> {
+  return { ok: true, detail: 'build succeeded', failures: [], notes: [], concurrency: { count, note: `xcrew: this build's log has ${count} Swift concurrency diagnostics in 2 modules. \`xcrew concurrency\` lists them by compiler group and module.` } }
+}
+
+function session(on: On, reports: Partial<Report>[]) {
+  mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  stubCli(on, { reports })
+  on('tool.call', () => ({ result: {}, text: 'the server\'s result' }))
+}
+
+/** What Claude reads after a MobileBuildMCP build of `scheme`. */
+const build = async ($: Parameters<typeof callTool>[0], scheme = 'App') =>
+  ((await callTool($, 'mcp__MobileBuildMCP__build_sim', { scheme })).context ?? []) as string[]
+
+const said = (context: string[]) => context.filter(line => line.includes('Swift concurrency diagnostics'))
+
+test('the counts ride on the first build that has many, and not again for the same scheme', async ($, on) => {
+  session(on, [built(40), built(40)])
+  expect(said(await build($))).toHaveLength(1)
+  expect(said(await build($))).toHaveLength(0)
+})
+
+test('a count that moves by a quarter or more is given again; a smaller move is not', async ($, on) => {
+  session(on, [built(40), built(49), built(30), built(29)])
+  await build($)
+  expect(said(await build($))).toHaveLength(0)
+  expect(said(await build($))).toHaveLength(1)
+  expect(said(await build($))).toHaveLength(0)
+})
+
+test('another scheme, or a new session, is given its own', async ($, on) => {
+  session(on, [built(40), built(40), built(40)])
+  await build($, 'App')
+  expect(said(await build($, 'Kit'))).toHaveLength(1)
+  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  expect(said(await build($, 'App'))).toHaveLength(1)
+})
