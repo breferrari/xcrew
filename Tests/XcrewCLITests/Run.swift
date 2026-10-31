@@ -11,6 +11,10 @@ struct Run {
     let errors: [String]
 
     init(_ argv: String..., context: CheckContext = .fake(), stdin: String = "") async {
+        await self.init(argv: argv, context: context, stdin: stdin)
+    }
+
+    init(argv: [String], context: CheckContext = .fake(), stdin: String = "") async {
         let output = Mutex<[String]>([]), errors = Mutex<[String]>([])
         status = await CLI.run(
             argv, context: context, standardInput: { Data(stdin.utf8) },
