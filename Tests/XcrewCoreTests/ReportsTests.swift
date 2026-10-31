@@ -4,8 +4,10 @@ import Testing
 @testable import XcrewCore
 import XcrewTestSupport
 
-/// Real results from MobileBuildMCP 2.7.1 and the Xcode MCP (Xcode 27.1), and `xcresulttool`'s
-/// output, captured against a sample Swift package with machine paths replaced.
+/// Results from MobileBuildMCP 2.7.1 and the Xcode MCP, and `xcresulttool`'s output, in shapes captured against a
+/// sample Swift package with machine paths replaced. Nothing regenerates them. The Xcode MCP's (`xcode*`) are hand-kept,
+/// said to be from Xcode 27.1, until the test bed's Xcode MCP capture replaces them (docs/findings.md, *The Xcode MCP's
+/// fixtures are hand-kept*); real MobileBuildMCP results are in `Raw`.
 enum Captured {
     static func text(_ name: String) -> String {
         let url = Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures/Reports")!

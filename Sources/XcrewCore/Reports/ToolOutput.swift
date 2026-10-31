@@ -1,12 +1,14 @@
 import Foundation
 
 /// What a build, test or run call came to, read once from the server's own output into the shape
-/// it has. Each shape matches output captured from a real server (see
-/// `Tests/XcrewCoreTests/Fixtures/Reports`); output in any other shape falls back to whether the
-/// server reported a tool error, so a server update degrades the summary rather than breaking it.
+/// it has. Each shape matches a server's output, as the test bed's captures and the tests' own
+/// fixtures (`Tests/XcrewCoreTests/Fixtures/Reports`) hold it. Output in any other shape falls back
+/// to whether the server reported a tool error, so a server update degrades the summary rather than
+/// breaking it.
 public struct ToolOutput: Sendable {
     enum Shape: Sendable {
-        /// MobileBuildMCP's JSON, which it returns when a build or test run succeeds.
+        /// MobileBuildMCP's JSON, which it returns beside its text in `structuredContent`; read when a
+        /// result's text is that JSON, as a result Claude Code saved to a file may be.
         case mobileBuildMCPJSON(MobileBuildMCPResult)
         /// MobileBuildMCP's text, which it returns instead when one fails.
         case mobileBuildMCPText(MobileText)

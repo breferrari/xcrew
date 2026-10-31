@@ -1,8 +1,10 @@
 /**
- * Real results from MobileBuildMCP 2.7.1 and the Xcode MCP (Xcode 27.1), captured against a sample
- * Swift package, with machine paths and identifiers replaced. `isError` is whether the server
- * reported the call as a tool error: the Xcode MCP reports failed builds and failed tests as
- * normal results, and MobileBuildMCP switches from JSON to text when a call fails.
+ * Results from MobileBuildMCP 2.7.1 and the Xcode MCP, in shapes captured against a sample Swift
+ * package, with machine paths and identifiers replaced. Nothing regenerates them. The Xcode MCP's
+ * (`xcode*`) are hand-kept, said to be from Xcode 27.1, until the test bed's Xcode MCP capture
+ * replaces them (docs/findings.md, *The Xcode MCP's fixtures are hand-kept*); real MobileBuildMCP
+ * test runs are in `replays.ts`. `isError` is whether the server reported the call as a tool
+ * error: the Xcode MCP reports failed builds and failed tests as normal results.
  */
 export type Captured = { isError: boolean; text: string }
 

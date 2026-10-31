@@ -1,6 +1,6 @@
 import Foundation
 
-/// MobileBuildMCP's JSON, which it returns when a build or test run succeeds:
+/// MobileBuildMCP's JSON, which it returns beside its text in `structuredContent`:
 /// `{"schema": "mobilebuildmcp.output.test-result", "data": {"summary": …, "artifacts": …}}`.
 struct MobileBuildMCPResult: Decodable, Sendable {
     struct Summary: Decodable, Sendable {
