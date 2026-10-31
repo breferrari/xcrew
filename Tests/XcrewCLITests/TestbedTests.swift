@@ -743,7 +743,7 @@ struct InstalledGroupDocsTests {
     @Test func theNameRuleCatchesEveryGroupTheDocsSayIsConcurrencys() {
         let docs = ConcurrencyGroups.read(docs: InstalledGroupDocs.folder)
         #expect(docs.isFromDocs)
-        #expect(docs.titles.count >= 5, "too few concurrency groups in the docs: their shape changed")
+        #expect(docs.titles.count >= 5, "too few concurrency groups in the docs at \(InstalledGroupDocs.folder?.path ?? ""): their shape changed; read: \(docs.documented.sorted())")
         for group in docs.titles.keys.sorted() {
             #expect(ConcurrencyGroups.namesConcurrency(group), "\(group): its doc says concurrency, its name doesn't")
         }
