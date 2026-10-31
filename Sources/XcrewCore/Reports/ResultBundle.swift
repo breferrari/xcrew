@@ -111,6 +111,21 @@ public struct ResultBundle: Sendable {
         return passed.subtracting(failed)
     }
 
+    /// Each test `passedTests` counts passed, once per test bundle it passed in, the bundle its target, as `Suite/test`; a
+    /// test case filed under no bundle has none. Nil when the listing isn't a test list.
+    static func passed(listing: String) -> [PassedTest]? {
+        guard let json = parse(listing) as? [String: Any], json["testNodes"] != nil else { return nil }
+        let passed = passedTests(listing: listing)
+        var targets: [TestID: Set<String>] = [:]
+        for bundle in nodes(json) where (bundle["nodeType"] as? String)?.hasSuffix("test bundle") == true {
+            guard let name = bundle["name"] as? String else { continue }
+            for node in nodes(bundle["children"]) where node["nodeType"] as? String == "Test Case" && node["result"] as? String == "Passed" {
+                if let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), passed.contains(id) { targets[id, default: []].insert(name) }
+            }
+        }
+        return PassedTest.sorted(passed.flatMap { id in targets[id].map { $0.map { PassedTest(test: id.shown, target: $0) } } ?? [PassedTest(test: id.shown, target: nil)] })
+    }
+
     /// Each failed test's target in `xcresulttool get test-results tests` output: the test bundle it's filed under, a unit
     /// or UI test bundle named as its target is. A test of the same name failing in two bundles has none: the ledger would
     /// trust a guess.

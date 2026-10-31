@@ -138,6 +138,11 @@ public struct ToolOutput: Sendable {
     }
 
     /// Every failure a run reported, from each shape `summary` reads; none for a passing run.
+    /// The tests the Xcode MCP's results give as passed; MobileBuildMCP's are read from its result bundle.
+    var passedTests: [PassedTest]? {
+        if case let .xcodeMCPJSON(result) = shape { result.passedTests } else { nil }
+    }
+
     public var failures: [Failure] {
         switch shape {
         case let .xcodeMCPJSON(result): result.failures

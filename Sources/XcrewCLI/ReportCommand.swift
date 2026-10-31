@@ -7,9 +7,9 @@ import XcrewCore
 struct ReportCommand: Command {
     let name = "report"
     let valuedOptions: Set<String> = ["server", "kind", "log"]
-    let flags: Set<String> = ["error", "repeated", "notification"]
+    let flags: Set<String> = ["error", "repeated", "notification", "passed"]
     let usage = [
-        "report --server S --kind K [--error] [--repeated] [--notification] [--log PATH]   (mod) read a build, test or run result on stdin; print its report as JSON; --repeated reads each repeated test's runs; --notification reads the result in a background task's notification; --log reads a MobileBuildMCP run's log and the result bundle it names, after the notification when both are given",
+        "report --server S --kind K [--error] [--repeated] [--passed] [--notification] [--log PATH]   (mod) read a build, test or run result on stdin; print its report as JSON; --repeated reads each repeated test's runs; --passed lists the tests the results give as passed, for the ledger; --notification reads the result in a background task's notification; --log reads a MobileBuildMCP run's log and the result bundle it names, after the notification when both are given",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -21,15 +21,16 @@ struct ReportCommand: Command {
         }
         let machine = invocation.context.machine
         let repeated = invocation.arguments.has("repeated")
+        let passed = invocation.arguments.has("passed")
         let report: Report
         if invocation.arguments.has("notification") {
             let text = String(decoding: await invocation.standardInput(), as: UTF8.self)
-            report = await Report.make(kind: kind, notification: text, log: invocation.arguments["log"], server: server, home: machine.home.path, runner: machine.runner, repeated: repeated, project: invocation.context.project, machine: machine)
+            report = await Report.make(kind: kind, notification: text, log: invocation.arguments["log"], server: server, home: machine.home.path, runner: machine.runner, repeated: repeated, passed: passed, project: invocation.context.project, machine: machine)
         } else if let log = invocation.arguments["log"] {
-            report = await Report.make(kind: kind, log: RunLog.end(ofLogAt: log), runner: machine.runner, repeated: repeated)
+            report = await Report.make(kind: kind, log: RunLog.end(ofLogAt: log), runner: machine.runner, repeated: repeated, passed: passed)
         } else {
             let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
-            report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, project: invocation.context.project, machine: machine)
+            report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, passed: passed, project: invocation.context.project, machine: machine)
         }
         let encoded = try JSONEncoder.sorted.encode(report)
         invocation.print(String(decoding: encoded, as: UTF8.self))

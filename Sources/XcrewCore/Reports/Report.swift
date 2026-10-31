@@ -19,6 +19,9 @@ public struct Report: Sendable, Equatable, Codable {
     public var notes: [String]
     /// For a run repeated with `-test-iterations`: each repeated test, and how many of its runs failed.
     public var repeated: [ResultBundle.Repeated]?
+    /// With `--passed`: the tests the run's results list as passed, for the ledger; nil when not asked for or when they
+    /// can't be read.
+    public var passed: [PassedTest]?
     /// A build or test call whose result holds nothing in its server's own forms, and isn't an error: a call Claude moved
     /// to the background answers with Claude Code's handle, not the server's result. Absent otherwise.
     public var isUnread: Bool?
@@ -112,13 +115,13 @@ public struct Report: Sendable, Equatable, Codable {
     /// A finished run told from its MobileBuildMCP log, for a task whose result couldn't be read: the log's last verdict,
     /// and for a test run each failing test from the result bundle the log names, with each repeated test's runs when
     /// `repeated`. Without a bundle `xcresulttool` reads, the verdict alone, said to be so; without a verdict, no outcome.
-    public static func make(kind: Kind, log: String, runner: any CommandRunning, repeated: Bool = false) async -> Report {
+    public static func make(kind: Kind, log: String, runner: any CommandRunning, repeated: Bool = false, passed: Bool = false) async -> Report {
         guard let ok = RunLog.outcome(of: log, kind: kind) else { return unread }
         let path = kind == .test ? RunLog.resultBundle(in: log) : nil
         if let path {
             let listing = await ResultBundle(path: path, runner: runner).tests()
             if let failed = ResultBundle.failedTests(listing: listing) {
-                return Report(ok: ok, failures: ok ? [] : failed, notes: [], repeated: repeated ? ResultBundle.repetitions(listing: listing) : nil, bundle: path)
+                return Report(ok: ok, failures: ok ? [] : failed, notes: [], repeated: repeated ? ResultBundle.repetitions(listing: listing) : nil, passed: passed ? ResultBundle.passed(listing: listing) : nil, bundle: path)
             }
         }
         return Report(ok: ok, failures: [], notes: [], bundle: path, isVerdictOnly: true)
@@ -127,21 +130,21 @@ public struct Report: Sendable, Equatable, Codable {
     /// A call moved to the background, from its task's notification: the result of a task that completed, read as the
     /// call's own, its shorter result put back in the notification Claude reads; else the run's log at `log`, when there
     /// is one; else no outcome.
-    public static func make(kind: Kind, notification text: String, log: String?, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
+    public static func make(kind: Kind, notification text: String, log: String?, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, passed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
         let notification = TaskNotification(text)
         if let notification, let result = notification.completedResult {
-            var read = await make(kind: kind, output: ToolOutput(text: result, server: server, isError: false), home: home, runner: runner, repeated: repeated, project: project, machine: machine)
+            var read = await make(kind: kind, output: ToolOutput(text: result, server: server, isError: false), home: home, runner: runner, repeated: repeated, passed: passed, project: project, machine: machine)
             if read.isUnread != true {
                 if let shorter = read.result { read.result = notification.replacingResult(with: shorter) }
                 return read
             }
         }
         guard let log else { return unread }
-        return await make(kind: kind, log: RunLog.end(ofLogAt: log), runner: runner, repeated: repeated)
+        return await make(kind: kind, log: RunLog.end(ofLogAt: log), runner: runner, repeated: repeated, passed: passed)
     }
 
     /// A result Claude Code saved to a file is read back from it.
-    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
+    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false, passed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
         let saved = savedPath(output.text)
         let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, server: output.server, isError: output.isError) } ?? output
         let isTest = kind == .test
@@ -236,8 +239,10 @@ public struct Report: Sendable, Equatable, Codable {
         // counts passed, such as a retry that passed, is no failure, though MobileBuildMCP's text lists it.
         let listing = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { await bundle.tests() } else { "" }
         let targets = ResultBundle.targets(listing: listing)
-        let passed = ResultBundle.passedTests(listing: listing)
-        let failures = final.failures.filter { !$0.isTest || !passed.contains(TestID(xcresultID: $0.title)) }
+        let passing = ResultBundle.passedTests(listing: listing)
+        let failures = final.failures.filter { !$0.isTest || !passing.contains(TestID(xcresultID: $0.title)) }
+        // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its bundle.
+        let passedTests: [PassedTest]? = if !passed || !isTest { nil } else if read.server == .xcode { final.passedTests } else if let bundle { ResultBundle.passed(listing: await bundle.tests()) } else { nil }
         let isUnread = kind != .run && !final.isError && final.isNotTheServers
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(
@@ -249,6 +254,7 @@ public struct Report: Sendable, Equatable, Codable {
             result: compact ?? (edited ? final.text : nil),
             notes: notes,
             repeated: repeatedTests,
+            passed: passedTests,
             isUnread: isUnread ? true : nil,
             bundle: bundle?.path,
             pinNote: await pinNote,
