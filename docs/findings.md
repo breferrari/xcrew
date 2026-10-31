@@ -580,10 +580,15 @@ Measured on October 30, 2026 with Claude Code 2.1.314 on macOS 27.2, in interact
 
 ## Stopping a program
 
-Read October 31, 2026, on macOS 27.2 with Xcode 27.2's Foundation, in a scratch program; nothing of a project's ran.
+Measured October 31, 2026, on macOS 27.2 with Xcode 27.2's Foundation, in a scratch program; nothing of a project's ran.
 
 - **`Process` starts its child in a process group of its own, and `terminate()` stops the group.** `/bin/sh -c 'sleep … & wait'` run through `Process` was its group's leader (its pgid its pid), and its background `sleep` shared that group. After `terminate()`, the `sleep` was gone too, while `kill -TERM` of the same shell from a terminal left it running. So a background child of the program usually ends with it. One that ignores SIGTERM, or leaves the group, outlives it and can hold the program's pipes for as long as it lives: that's the case the runner's grace after a stop is for, and the case its test starts (`(trap '' TERM; exec sleep …) & wait`).
-- **A test's awaited call resumes only when the cooperative thread pool has a thread free.** On CI's macOS runner, the runner's timeout tests measured 11.8-13 s around a call with a 200 ms timeout, and ended each time within a second or two of the whole suite. Here, with the pool pinned to one thread (`LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`), the same calls took 1.8-2.7 s and ended with the suite, against 0.24 s with the pool's usual width. So a test that times an awaited call measures the suite's load as much as the call; the timeout tests assert what a stop guarantees instead.
+
+## Timing an awaited call in a test
+
+Measured October 31, 2026: CI's macOS runner, from a run's logs, and this repository's own suite on a 10-core Mac, macOS 27.2, Xcode 27.2.
+
+- **An awaited call resumes only when the cooperative thread pool has a thread free.** On CI's macOS runner, the runner's timeout tests measured 11.8-13 s around a call with a 200 ms timeout, and ended each time within a second or two of the whole suite. On a 10-core Mac, with the pool pinned to one thread (`LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`), the same calls took 1.8-2.7 s and ended within a second of the suite's end, against 0.24 s with the pool's usual width. So a test that times an awaited call measures the suite's load as much as the call; the timeout tests assert what a stop guarantees instead.
 
 ## Toolchains
 
