@@ -182,9 +182,10 @@ import Testing
     func toldToClaude() throws -> [String] {
         let loop = try #require(try text("hooks/mod/loop.ts").firstMatch(of: /export function loopNote[\s\S]*?\n}/)).output
         let setupFact = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const SETUP_FACT = '([^']*)'/)?.1)
+        let concurrencyNote = try #require(ConcurrencyReport(count: 12, modules: [.init(name: "Kit", count: 8), .init(name: "Feature", count: 4)]).summary?.note)
         let texts = [
             String(setupFact),
-            try #require(ConcurrencyReport(count: 12, modules: [.init(name: "Kit", count: 8), .init(name: "Feature", count: 4)]).summary?.note),
+            concurrencyNote,
             try text("context/routing.md"),
             SessionBriefing.setupOffer,
             SessionBriefing.deviceHubNote("Xcode 27.2"),
