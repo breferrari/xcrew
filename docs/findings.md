@@ -346,7 +346,7 @@ A run turns a red green when its own results list the test as passed:
 - **Where.** The same tool and scheme as the run it fails in now, and the target the report named for it when both name one. Any selection counts, `-skip-testing:` and the Xcode MCP's `RunSomeTests` included, since the list says what ran. A Swift Testing name is the same test with its `()` or without.
 - **A failing run counts as well**, for the reds its list holds as passed.
 - **Why not the selection.** The ledger first inferred a pass from the run's scope, then from a selection that reaches the test. A field report of October 31, 2026 (xcrew 0.11.0, a large modular app) had a test deleted from its file turned green by a run of its class that never ran it, and the evidence block wrote "red → green" for it. A selection says what could run, the list what did.
-- **Cost.** The list costs one `xcresulttool` call on a run that read none, so the mod asks for it (`xcrew report --passed`) only while the branch's ledger may hold a red with no green: before its first write in a session, or while one waits.
+- **Cost.** The list costs one `xcresulttool` call on a run that read none, so the mod asks for it (`xcrew report --passed`) only while the branch's ledger holds a red with no green, read after the ledger writes before it are done.
 
 A run whose report the CLI couldn't read is left out, since its outcome would be a guess. Writes happen after the run's result goes back to Claude, one after another, and reading the ledger waits for them.
 
