@@ -806,6 +806,21 @@ struct TestbedRawTests {
         #expect(RunLog.phase(ofLogAt: midRun, expectedTests: 5) == "testing 4 of 5")
     }
 
+    /// A log read once the tests' build is done, before any start of testing: a prefix of the finished log, cut just after
+    /// `** TEST BUILD SUCCEEDED **`. The band names the test phase, with no count yet.
+    @Test(arguments: ["serial.log", "swift-testing.log", "profile.log", "shapes.log"])
+    func aLogCutAtTheTestBuildsEndIsTesting(log: String) throws {
+        let finished = try Self.captured(log)
+        let end = try #require(finished.range(of: "** TEST BUILD SUCCEEDED **\n"))
+        #expect(RunLog.phase(of: String(finished[..<end.upperBound]), expectedTests: 4) == "testing")
+    }
+
+    /// A build's log, which ends `** BUILD SUCCEEDED **`, never names the test phase.
+    @Test func aBuildsLogIsNeverTesting() throws {
+        let log = Testbed.root.appending(path: "captures/concurrency/build_sim.log")
+        #expect(RunLog.phase(ofLogAt: log, expectedTests: 4) == "building Feature")
+    }
+
     /// A finished serial log, `Testing started` its last line, counts every test.
     @Test func aFinishedSerialLogCountsEveryTest() {
         #expect(RunLog.phase(ofLogAt: Self.raw.appending(path: "serial.log"), expectedTests: 4) == "testing 4 of 4")

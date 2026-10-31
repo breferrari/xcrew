@@ -352,6 +352,7 @@ func failingRunText(passing: Int) -> String {
     static let linking = "Ld /Users/dev/App/Build/Products/Debug-iphonesimulator/Utility.framework/Utility normal (in target 'Utility' from project 'Foundation')\n"
     static let signing = "CodeSign /Users/dev/App/Build/Products/Debug/MockMacros (in target 'MockMacros' from project 'Mocks')\n"
     static let otherTask = "ProcessInfoPlistFile /Users/dev/App/Build/Products/Debug-iphonesimulator/Utility.framework/Info.plist (in target 'Utility' from project 'Foundation')\n"
+    static let testBuildDone = "** TEST BUILD SUCCEEDED **\n\n"
     static let testingStarts = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\n"
     /// xcodebuild's start of testing, then results, in the order a serial capture holds them. No capture holds the
     /// parallel runner's start of testing; its result lines are xcrew's own fixture's.
@@ -374,6 +375,13 @@ func failingRunText(passing: Int) -> String {
         #expect(RunLog.phase(of: Self.preamble + Self.compiling + Self.tests, expectedTests: 959) == "testing 2 of 959")
         #expect(RunLog.phase(of: Self.preamble + Self.compiling + Self.tests, expectedTests: nil) == "testing · 2 done")
         #expect(RunLog.phase(of: Self.preamble + Self.compiling + Self.testingStarts, expectedTests: 959) == "testing 0 of 959")
+    }
+
+    /// Once the tests' build is done, the phase is testing, with no count until testing starts; a build's end is not.
+    @Test func onceTheTestsBuildIsDoneThePhaseIsTesting() {
+        #expect(RunLog.phase(of: Self.preamble + Self.compiling + Self.testBuildDone, expectedTests: 959) == "testing")
+        #expect(RunLog.phase(of: Self.preamble + Self.compiling + Self.testBuildDone + Self.tests, expectedTests: 959) == "testing 2 of 959")
+        #expect(RunLog.phase(of: Self.preamble + Self.compiling + "** BUILD SUCCEEDED **\n", expectedTests: 959) == "compiling Utility")
     }
 
     /// A log without xcodebuild's start of testing counts from MobileBuildMCP's `Testing started`, the last resort.

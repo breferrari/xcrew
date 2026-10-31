@@ -20,13 +20,16 @@ public enum RunLog {
     /// How much of a log's end holds its latest task line, nearly always.
     static let tailBytes = 64 * 1024
 
-    /// A short phase for the band, or nil before the first task. `expectedTests` is the last run's total.
+    /// A short phase for the band, or nil before the first task. `expectedTests` is the last run's total. From the
+    /// end of the tests' build until testing starts, the phase is testing, with no count (docs/findings.md, *Test progress
+    /// in a run's log*).
     static func phase(in data: Data, expectedTests: Int?) -> String? {
         if let testing = testingStart(in: data) {
             let done = testsFinished(in: String(decoding: data[testing...], as: UTF8.self))
             if let expectedTests, done <= expectedTests { return "testing \(done) of \(expectedTests)" }
             return "testing · \(done) done"
         }
+        if data.range(of: Data("\n** TEST BUILD SUCCEEDED **".utf8), options: .backwards) != nil { return "testing" }
         // No count for a build: xcodebuild starts work on nearly every module early, and prints no line when one is done.
         let tail = String(decoding: data.suffix(tailBytes), as: UTF8.self)
         return buildStep(tail) ?? (data.count > tailBytes ? lastStep(in: data) : nil)
