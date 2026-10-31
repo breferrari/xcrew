@@ -5,7 +5,7 @@ import XcrewTestSupport
 
 /// Of the lines a branch changed that can run, which a test run ran: read from the run's coverage archive.
 @Suite struct ChangedLineCoverageTests {
-    static var bundle: String { Raw.bundle("swift-testing") }
+    static let bundle = Raw.passingBundle
 
     /// `xccov view --archive --file <path> --json`, as probed: a line that can't run says so and has no count.
     @Test func eachLineThatCanRunSaysWhetherItRan() {
@@ -52,48 +52,48 @@ import XcrewTestSupport
         return project
     }
 
-    func note(_ project: Project, _ runner: FakeRunner) async -> String? {
-        let report = await Report.make(kind: .test, output: Raw.output("swift-testing"), home: Captured.home, runner: runner, project: project)
+    func note(_ project: Project, _ runner: FakeRunner) async throws -> String? {
+        let report = await Report.make(kind: .test, output: try Raw.output("swift-testing"), home: Captured.home, runner: runner, project: project)
         return report.notes.first { $0.contains("changed line") || $0.contains("changed file") }
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aChangedLineTheRunDidNotRunIsNamed() async {
+    func aChangedLineTheRunDidNotRunIsNamed() async throws {
         let project = project()
-        #expect(await note(project, run(project)) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
+        #expect(try await note(project, run(project)) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func everyChangedLineRan() async {
+    func everyChangedLineRan() async throws {
         let project = project()
-        #expect(await note(project, run(project, counts: [1, nil, 5, 2])) == "xcrew: all 3 changed lines that can run ran in this test run. 1 changed file isn't in this run's coverage: CartView.swift.")
+        #expect(try await note(project, run(project, counts: [1, nil, 5, 2])) == "xcrew: all 3 changed lines that can run ran in this test run. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
     /// A file whose counts xccov can't give is unknown, not a file with no line that can run: no note claims a count.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aFileXccovCannotReadLeavesNoNote() async {
+    func aFileXccovCannotReadLeavesNoNote() async throws {
         let project = project()
         var runner = run(project)
         runner.responses["xcrun xccov view --archive --file \(project.root.path)/Sources/Cart/Cart.swift --json \(Self.bundle)"] = .init(status: 1)
-        #expect(await note(project, runner) == nil)
+        #expect(try await note(project, runner) == nil)
     }
 
     /// The archive can name one file in two spellings, as the build was started and as the file system spells it.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aFileListedInTwoSpellingsCountsOnce() async {
+    func aFileListedInTwoSpellingsCountsOnce() async throws {
         let project = project()
         var runner = run(project)
         let cart = "\(project.root.path)/Sources/Cart/Cart.swift", real = "\(ProjectLayout.canonical(project.root))/Sources/Cart/Cart.swift"
         let escaped = { (path: String) in path.replacingOccurrences(of: "/", with: "\\/") }
         runner.responses["xcrun xccov view --archive --file-list --json \(Self.bundle)"] = .init(status: 0, stdout: #"["\#(escaped(cart))","\#(escaped(real))"]"#)
         runner.responses["xcrun xccov view --archive --file \(real) --json \(Self.bundle)"] = runner.responses["xcrun xccov view --archive --file \(cart) --json \(Self.bundle)"]
-        #expect(await note(project, runner) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
+        #expect(try await note(project, runner) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
     /// A package or Tuist manifest is never in a run's coverage, and neither is a file outside the project, such as a
     /// server's code in the same repository: none is named.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aManifestOrAFileOutsideTheProjectIsNeverNamed() async {
+    func aManifestOrAFileOutsideTheProjectIsNeverNamed() async throws {
         let project = project()
         project.write("// swift-tools-version:6.0\n", to: "Package.swift")
         project.write("let tuist = 1\n", to: "Tuist.swift")
@@ -108,15 +108,15 @@ import XcrewTestSupport
         runner.responses[git("diff --name-only --no-renames --no-relative -z \(FakeRunner.base)")] = .init(status: 0, stdout: files.map { "\($0)\u{0}" }.joined())
         let diff = git("-c core.quotePath=false diff -U0 --no-color --no-renames --no-relative --no-prefix \(FakeRunner.base) -- \(ProjectLayout.canonical(project.root))/Sources/Cart/Cart.swift")
         runner.responses[diff] = .init(status: 0, stdout: "+++ \(app)/Sources/Cart/Cart.swift\n@@ -3,0 +4,4 @@\n")
-        let found = await note(project, runner)
+        let found = try await note(project, runner)
         #expect(found == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
     /// A run of no tests ran none of the changed lines, as its coverage says, but says nothing of them: no note.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aRunOfNoTestsHasNoNote() async {
+    func aRunOfNoTestsHasNoNote() async throws {
         let project = project()
-        let report = await Report.make(kind: .test, output: Raw.jsonOutput("empty-filter"), home: Captured.home, runner: run(project, counts: [0, nil, 0, 0], bundle: Raw.bundle("empty-filter")), project: project)
+        let report = await Report.make(kind: .test, output: try Raw.jsonOutput("empty-filter"), home: Captured.home, runner: run(project, counts: [0, nil, 0, 0], bundle: try Raw.bundle("empty-filter")), project: project)
         #expect(report.tests == 0)
         #expect(!report.notes.contains { $0.contains("changed line") || $0.contains("changed file") })
     }
@@ -131,48 +131,48 @@ import XcrewTestSupport
 
     /// A test bundle's files are the tests, not the code they test: a changed test file is neither counted nor named.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aTestBundlesFilesAreLeftOut() async {
+    func aTestBundlesFilesAreLeftOut() async throws {
         let project = project()
         project.write("final class CartTests {}\n", to: "Sources/Cart/CartTests.swift")
         let cart = "\(project.root.path)/Sources/Cart/Cart.swift", tests = "\(project.root.path)/Sources/Cart/CartTests.swift"
         let report = Self.report([("Cart.framework", 2, [cart]), ("CartTests.xctest", 5, [tests])])
-        #expect(await note(project, run(project, listed: [tests], changed: ["Sources/Cart/CartTests.swift"], report: report)) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
+        #expect(try await note(project, run(project, listed: [tests], changed: ["Sources/Cart/CartTests.swift"], report: report)) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
     /// A target none of whose lines ran wasn't reached by the run, as a filter leaves one out: it's said once, not its
     /// changed lines one by one.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aTargetTheRunDidNotReachIsSaidOnce() async {
+    func aTargetTheRunDidNotReachIsSaidOnce() async throws {
         let project = project()
         let report = Self.report([("Cart.framework", 0, ["\(project.root.path)/Sources/Cart/Cart.swift"])])
-        #expect(await note(project, run(project, counts: [0, nil, 0, 0], report: report)) == "xcrew: this test run ran nothing in Cart, where 1 changed file is. 1 changed file isn't in this run's coverage: CartView.swift.")
+        #expect(try await note(project, run(project, counts: [0, nil, 0, 0], report: report)) == "xcrew: this test run ran nothing in Cart, where 1 changed file is. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
     /// A file built into the app and into its test bundle too, as some projects add sources to a test target, is the
     /// app's code: it counts as the app's target was reached.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aFileInTheAppAndItsTestBundleCounts() async {
+    func aFileInTheAppAndItsTestBundleCounts() async throws {
         let project = project()
         let cart = "\(project.root.path)/Sources/Cart/Cart.swift"
         let report = Self.report([("Cart.app", 2, [cart]), ("CartTests.xctest", 5, [cart])])
-        #expect(await note(project, run(project, report: report)) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
+        #expect(try await note(project, run(project, report: report)) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
     /// A target the run didn't reach after lines that ran: its own sentence, its file not named again as outside.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aTargetNotReachedAfterLinesThatRanIsItsOwnSentence() async {
+    func aTargetNotReachedAfterLinesThatRanIsItsOwnSentence() async throws {
         let project = project()
         let report = Self.report([("Cart.framework", 2, ["\(project.root.path)/Sources/Cart/Cart.swift"]), ("Widget.appex", 0, ["\(project.root.path)/Sources/Cart/CartView.swift"])])
-        #expect(await note(project, run(project, report: report)) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. This test run ran nothing in Widget, where 1 changed file is.")
+        #expect(try await note(project, run(project, report: report)) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. This test run ran nothing in Widget, where 1 changed file is.")
     }
 
     /// A target with no line that can run, such as one of protocols and types alone, had nothing to run: it isn't one the
     /// run didn't reach.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aTargetWithNoLineThatCanRunIsNotUnreached() async {
+    func aTargetWithNoLineThatCanRunIsNotUnreached() async throws {
         let project = project()
         let report = Self.report([("Cart.framework", 0, ["\(project.root.path)/Sources/Cart/Cart.swift"])], executable: 0)
-        #expect(await note(project, run(project, counts: [nil, nil, nil, nil], report: report)) == "xcrew: 1 changed file isn't in this run's coverage: CartView.swift.")
+        #expect(try await note(project, run(project, counts: [nil, nil, nil, nil], report: report)) == "xcrew: 1 changed file isn't in this run's coverage: CartView.swift.")
     }
 
     /// A package's report names its test target without the bundle's extension, `ShapeTests`; its product is the
@@ -189,15 +189,15 @@ import XcrewTestSupport
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func withoutCoverageThereIsNoNote() async {
+    func withoutCoverageThereIsNoNote() async throws {
         let project = project()
-        #expect(await note(project, run(project, coverage: false)) == nil)
+        #expect(try await note(project, run(project, coverage: false)) == nil)
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aBuildHasNoNote() async {
+    func aBuildHasNoNote() async throws {
         let project = project()
-        let report = await Report.make(kind: .build, output: Raw.output("swift-testing"), home: Captured.home, runner: run(project), project: project)
+        let report = await Report.make(kind: .build, output: try Raw.output("swift-testing"), home: Captured.home, runner: run(project), project: project)
         #expect(!report.notes.contains { $0.contains("changed line") })
     }
 }

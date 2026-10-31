@@ -212,7 +212,7 @@ import XcrewTestSupport
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aPassingBuildLooksAtNothing() async throws {
         let runner = FakeRunner()
-        let report = await Report.make(kind: .build, output: Raw.output("build_sim"), home: "/Users/dev", runner: runner, project: .temporary())
+        let report = await Report.make(kind: .build, output: try Raw.output("build_sim"), home: "/Users/dev", runner: runner, project: .temporary())
         #expect(!report.notes.contains { $0.contains("because of the Mac") })
         #expect(report.cause == nil)
     }

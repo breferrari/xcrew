@@ -124,10 +124,10 @@ import XcrewTestSupport
     /// MobileBuildMCP's JSON for a passing build lists its warnings with their places too: the real build's, in a
     /// project whose branch changed `Kit/Kit.swift`'s line 9.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aMobileBuildMCPJSONWarningInAChangedLineIsNamed() async {
+    func aMobileBuildMCPJSONWarningInAChangedLineIsNamed() async throws {
         let project = Project.temporary(containing: ["Kit"])
         let root = ProjectLayout.canonical(project.root)
-        let json = Raw.json("build_sim").replacingOccurrences(of: "/testbed/concurrency", with: root)
+        let json = try Raw.json("build_sim").replacingOccurrences(of: "/testbed/concurrency", with: root)
         let runner = FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Kit/Kit.swift"], diffed: ["\(root)/Kit/Kit.swift"], diff: "+++ Kit/Kit.swift\n@@ -8,0 +9 @@\n"))
         let report = await Report.make(kind: .build, output: ToolOutput(text: json, server: .mobileBuildMCP), home: Captured.home, runner: runner, project: project)
         let note = report.notes.first { $0.contains("lines this branch changed") }

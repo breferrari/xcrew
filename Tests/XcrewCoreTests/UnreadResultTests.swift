@@ -38,8 +38,8 @@ import XcrewTestSupport
 
     /// Nor does a real MobileBuildMCP result, as text or as its JSON.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"), arguments: ["build_sim", "swift-testing", "serial", "shapes", "profile", "empty-filter"])
-    func noRawResultIsUnread(_ name: String) async {
-        for text in [Raw.text(name), Raw.json(name)] {
+    func noRawResultIsUnread(_ name: String) async throws {
+        for text in [try Raw.text(name), try Raw.json(name)] {
             for kind in [Report.Kind.build, .test] {
                 #expect(await report(text, server: .mobileBuildMCP, kind: kind).isUnread == nil, "\(name) as \(kind)")
             }

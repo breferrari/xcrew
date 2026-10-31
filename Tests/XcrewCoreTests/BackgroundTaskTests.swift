@@ -38,8 +38,8 @@ import XcrewTestSupport
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aResultNamesNoTask() async {
-        #expect(await report(Raw.text("build_sim")).backgroundTask == nil)
+    func aResultNamesNoTask() async throws {
+        #expect(await report(try Raw.text("build_sim")).backgroundTask == nil)
     }
 
     @Test func aNotificationCarriesItsStatusAndResult() throws {

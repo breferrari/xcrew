@@ -99,7 +99,7 @@ import XcrewTestSupport
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aPassWithAnotherXcodeThanThePinSaysNothing() async throws {
-        #expect(try await pinNote(context(pin: "25.0\n"), text: Raw.text("build_sim"), isError: false) == nil)
+        #expect(try await pinNote(context(pin: "25.0\n"), text: try Raw.text("build_sim"), isError: false) == nil)
     }
 
     /// The pin is named only where another SDK or toolchain may be the cause: a type error in a line just written, a

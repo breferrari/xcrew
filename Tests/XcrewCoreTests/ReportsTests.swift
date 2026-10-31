@@ -530,7 +530,7 @@ func failingRunText(passing: Int) -> String {
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aResultClaudeCodeSavedIsReadBackAndShortened() async throws {
-        let saved = SavedResultTests.saved(Raw.json("serial"))
+        let saved = SavedResultTests.saved(try Raw.json("serial"))
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
         let report = await Report.make(kind: .test, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
         #expect(!report.ok)
@@ -805,15 +805,15 @@ extension FailureNotes {
 
     /// The real build's JSON with its first warning written at three lines of its file, each warning's message from the
     /// `from`th on replaced by its own: MobileBuildMCP lists a warning once, and a result that repeats one is made here.
-    static func json(from: Int = 3) -> String {
-        var result = Raw.capture("build_sim")["structuredContent"] as! [String: Any]
-        var data = result["data"] as! [String: Any]
-        var diagnostics = data["diagnostics"] as! [String: Any]
-        let message = (diagnostics["warnings"] as! [[String: Any]])[0]["message"] as! String
+    static func json(from: Int = 3) throws -> String {
+        var result = try #require(try Raw.capture("build_sim")["structuredContent"] as? [String: Any])
+        var data = try #require(result["data"] as? [String: Any])
+        var diagnostics = try #require(data["diagnostics"] as? [String: Any])
+        let message = try #require((diagnostics["warnings"] as? [[String: Any]])?.first?["message"] as? String, "the build capture lists no warning")
         diagnostics["warnings"] = (0..<3).map { index in ["message": index < from ? message : "another warning \(index)", "location": "\(kit):\(index + 1)"] }
         data["diagnostics"] = diagnostics
         result["data"] = data
-        return String(decoding: try! JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
+        return String(decoding: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
     }
 
     @Test func aRepeatedWarningInTheTextIsListedOnceWithItsCountAndEveryPlace() async throws {
@@ -825,7 +825,7 @@ extension FailureNotes {
     /// The real build lists its `sending` closure warning twice, in two files: once each, as the compiler gave it.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aRepeatedWarningInTheJSONIsListedOnceWithItsCountAndEveryPlace() async throws {
-        let result = try #require(await Self.report(Raw.json("build_sim")).result)
+        let result = try #require(await Self.report(try Raw.json("build_sim")).result)
         let data = try #require((ResultBundle.parse(result) as? [String: Any])?["data"] as? [String: Any])
         let warnings = try #require((data["diagnostics"] as? [String: Any])?["warnings"] as? [[String: Any]])
         #expect(warnings.count == 6)
@@ -839,7 +839,7 @@ extension FailureNotes {
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aWarningRepeatedInOneFileHasItsPathOnce() async throws {
-        let result = try #require(await Self.report(Self.json()).result)
+        let result = try #require(await Self.report(try Self.json()).result)
         let warnings = try #require(((ResultBundle.parse(result) as? [String: Any])?["data"] as? [String: Any]).flatMap { ($0["diagnostics"] as? [String: Any])?["warnings"] as? [[String: Any]] })
         #expect(warnings.count == 1)
         #expect(warnings.first?["message"] as? String == Self.kitMessage)
@@ -852,8 +852,8 @@ extension FailureNotes {
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func distinctWarningsInTheJSONAreLeftAsTheServerWroteThem() async {
-        #expect(await Self.report(Self.json(from: 0)).result == nil)
+    func distinctWarningsInTheJSONAreLeftAsTheServerWroteThem() async throws {
+        #expect(await Self.report(try Self.json(from: 0)).result == nil)
     }
 
     @Test func aWarningListedOnceInTheTextKeepsItsOwnLinesBesideARepeatedOne() async throws {
@@ -863,7 +863,7 @@ extension FailureNotes {
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aWarningListedOnceInTheJSONKeepsItsOwnLinesBesideARepeatedOne() async throws {
-        let json = try #require(await Self.report(Self.json(from: 2)).result)
+        let json = try #require(await Self.report(try Self.json(from: 2)).result)
         let warnings = try #require(((ResultBundle.parse(json) as? [String: Any])?["data"] as? [String: Any]).flatMap { ($0["diagnostics"] as? [String: Any])?["warnings"] as? [[String: Any]] })
         #expect(warnings.map { $0["location"] as? String } == ["/testbed/concurrency/Kit/Kit.swift:1, :2", "/testbed/concurrency/Kit/Kit.swift:3"])
         #expect(warnings.last?["count"] == nil)
@@ -876,8 +876,8 @@ extension FailureNotes {
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aSavedResultTheCollapseAloneWouldEditStaysSaved() async {
-        let saved = SavedResultTests.saved(Self.json(), as: "mcp-build_sim-1.txt")
+    func aSavedResultTheCollapseAloneWouldEditStaysSaved() async throws {
+        let saved = SavedResultTests.saved(try Self.json(), as: "mcp-build_sim-1.txt")
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
         let report = await Report.make(kind: .build, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
         #expect(report.ok)
@@ -909,8 +909,8 @@ extension FailureNotes {
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aNoticeInOtherWordsStillLeadsToTheFile() async {
-        let path = Self.saved(Raw.json("serial"))
+    func aNoticeInOtherWordsStillLeadsToTheFile() async throws {
+        let path = Self.saved(try Raw.json("serial"))
         for notice in ["Result too large; written to \(path) (JSON).", "Saved the full output at \(path)", "Error: output exceeded the limit. See '\(path)'.", "Output has been saved to \(path).\nFormat: JSON", "Output saved to `\(path)`", "Saved: <\(path)>", "Saved to “\(path)”."] {
             #expect(Report.savedPath(notice) == path, "\(notice)")
         }
@@ -986,7 +986,7 @@ extension FailureNotes {
 /// the mod keeps.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
 struct RepeatedRunReportTests {
-    static var bundle: String { Raw.bundle("swift-testing") }
+    static let bundle = Raw.passingBundle
 
     func runner() -> FakeRunner {
         FakeRunner(responses: [
@@ -995,15 +995,15 @@ struct RepeatedRunReportTests {
         ])
     }
 
-    @Test func aRepeatedRunGivesEachTestItsVerdict() async {
-        let report = await Report.make(kind: .test, output: Raw.output("swift-testing"), home: Captured.home, runner: runner(), repeated: true)
+    @Test func aRepeatedRunGivesEachTestItsVerdict() async throws {
+        let report = await Report.make(kind: .test, output: try Raw.output("swift-testing"), home: Captured.home, runner: runner(), repeated: true)
         #expect(report.notes.contains { $0.contains("RepetitionTests/testMixed is flaky, failing 1 of 3") })
         #expect(report.repeated?.map(\.verdict) == [.flaky, .real, .passed])
     }
 
     /// The list is asked for only when the run was repeated: every other test run keeps its one fewer call.
-    @Test func aRunNotRepeatedReadsNoRepetitions() async {
-        let report = await Report.make(kind: .test, output: Raw.output("swift-testing"), home: Captured.home, runner: runner())
+    @Test func aRunNotRepeatedReadsNoRepetitions() async throws {
+        let report = await Report.make(kind: .test, output: try Raw.output("swift-testing"), home: Captured.home, runner: runner())
         #expect(report.repeated == nil)
         #expect(!report.notes.contains { $0.contains("flaky") })
     }
@@ -1048,8 +1048,8 @@ struct RepeatedRunReportTests {
 
     /// A run repeated whose bundle can't be read says it has no verdict, rather than nothing.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aRepeatedRunWithoutABundleSaysSo() async {
-        let report = await Report.make(kind: .test, output: Raw.output("swift-testing"), home: Captured.home, runner: FakeRunner(), repeated: true)
+    func aRepeatedRunWithoutABundleSaysSo() async throws {
+        let report = await Report.make(kind: .test, output: try Raw.output("swift-testing"), home: Captured.home, runner: FakeRunner(), repeated: true)
         #expect(report.notes.contains { $0.contains("no verdict on which tests are flaky") })
     }
 }

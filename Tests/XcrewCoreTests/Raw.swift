@@ -1,39 +1,47 @@
 import Foundation
+import Testing
 @testable import XcrewCore
 import XcrewTestSupport
 
 /// MobileBuildMCP's real results, from the test bed's raw captures (`captures/raw/<name>.json`): the text Claude Code
 /// hands the mod, and the JSON MobileBuildMCP returns beside it in `structuredContent`, which an older MobileBuildMCP or
-/// a result Claude Code saved may give instead. A test reading them is skipped without a test bed.
+/// a result Claude Code saved may give instead. A test reading them is skipped without a test bed, and one whose capture
+/// is missing fails by name, naming the file.
 enum Raw {
-    static func capture(_ name: String) -> [String: Any] {
-        let data = try! Data(contentsOf: Testbed.root.appending(path: "captures/raw/\(name).json"))
-        return try! JSONSerialization.jsonObject(with: data) as! [String: Any]
+    /// The result bundle the `swift-testing` capture names, under `Captured.home`.
+    static let passingBundle = "/Users/dev/Library/Developer/MobileBuildMCP/workspaces/field-3d32f8cd53a2/result-bundles/test_sim_2026-10-31T02-58-52-105Z_pid20279_8eddb088.xcresult"
+
+    static func capture(_ name: String) throws -> [String: Any] {
+        let url = Testbed.root.appending(path: "captures/raw/\(name).json")
+        let data = try #require(try? Data(contentsOf: url), "the test bed has no captures/raw/\(name).json, at \(url.path)")
+        return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any], "captures/raw/\(name).json isn't a JSON object")
     }
 
     /// The result's text blocks, joined as the mod joins them.
-    static func text(_ name: String) -> String {
-        (capture(name)["content"] as! [[String: Any]]).compactMap { $0["text"] as? String }.joined()
+    static func text(_ name: String) throws -> String {
+        let content = try #require(try capture(name)["content"] as? [[String: Any]], "captures/raw/\(name).json has no content")
+        return content.compactMap { $0["text"] as? String }.joined()
     }
 
-    static func json(_ name: String) -> String {
-        let data = try! JSONSerialization.data(withJSONObject: capture(name)["structuredContent"]!, options: [.sortedKeys, .withoutEscapingSlashes])
-        return String(decoding: data, as: UTF8.self)
+    static func json(_ name: String) throws -> String {
+        let structured = try #require(try capture(name)["structuredContent"], "captures/raw/\(name).json has no structuredContent")
+        return String(decoding: try JSONSerialization.data(withJSONObject: structured, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
     }
 
-    static func isError(_ name: String) -> Bool { capture(name)["isError"] as? Bool ?? false }
+    static func isError(_ name: String) throws -> Bool { try capture(name)["isError"] as? Bool ?? false }
 
-    static func output(_ name: String) -> ToolOutput {
-        ToolOutput(text: text(name), server: .mobileBuildMCP, isError: isError(name))
+    static func output(_ name: String) throws -> ToolOutput {
+        ToolOutput(text: try text(name), server: .mobileBuildMCP, isError: try isError(name))
     }
 
-    static func jsonOutput(_ name: String) -> ToolOutput {
-        ToolOutput(text: json(name), server: .mobileBuildMCP, isError: isError(name))
+    static func jsonOutput(_ name: String) throws -> ToolOutput {
+        ToolOutput(text: try json(name), server: .mobileBuildMCP, isError: try isError(name))
     }
 
     /// The result bundle `structuredContent` names, under `Captured.home`.
-    static func bundle(_ name: String) -> String {
-        let artifacts = ((capture(name)["structuredContent"] as! [String: Any])["data"] as! [String: Any])["artifacts"] as! [String: Any]
-        return (artifacts["xcresultPath"] as! String).replacingOccurrences(of: "~", with: Captured.home)
+    static func bundle(_ name: String) throws -> String {
+        let data = (try capture(name)["structuredContent"] as? [String: Any])?["data"] as? [String: Any]
+        let path = try #require((data?["artifacts"] as? [String: Any])?["xcresultPath"] as? String, "captures/raw/\(name).json names no result bundle")
+        return path.replacingOccurrences(of: "~", with: Captured.home)
     }
 }
