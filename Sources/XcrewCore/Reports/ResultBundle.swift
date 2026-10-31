@@ -76,8 +76,11 @@ public struct ResultBundle: Sendable {
         }
     }
 
-    /// Each skipped test in `xcresulttool get test-results tests` output, in the listing's order, with
-    /// why it was skipped (its `Test skipped - <reason>` message) and how long it ran.
+    /// What the result bundle writes before a skip's reason: XCTest's `XCTSkip`, or Swift Testing's `.disabled`.
+    static let skipPrefixes = ["Test skipped - ", "Test skipped: "]
+
+    /// Each skipped test in `xcresulttool get test-results tests` output, in the listing's order, with why it was
+    /// skipped (its message, without the prefix `skipPrefixes` names) and how long it ran.
     public static func skippedTests(listing: String) -> [(test: TestID, skip: Skip)] {
         nodes(parse(listing)).compactMap { node in
             guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Skipped",
@@ -85,7 +88,9 @@ public struct ResultBundle: Sendable {
             else { return nil }
             // Directly below the test case, or below each of its repetitions in a repeated run.
             let message = nodes(node["children"]).first { $0["nodeType"] as? String == "Skip Message" }?["name"] as? String
-            let reason = message.map { $0.hasPrefix("Test skipped - ") ? String($0.dropFirst("Test skipped - ".count)) : $0 }
+            let reason = message.map { message in
+                skipPrefixes.first(where: message.hasPrefix).map { String(message.dropFirst($0.count)) } ?? message
+            }
             return (test, Skip(reason: reason, seconds: node["durationInSeconds"] as? Double ?? 0))
         }
     }

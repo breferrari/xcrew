@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A skipped Swift Testing test's reason no longer repeats `Test skipped:` before it in the result Claude reads.
 - A Swift Testing test that recorded a known issue is named in the note to Claude as one, with `withKnownIssue`, not as an expected failure with XCTest's `XCTExpectFailure`. A run with both names each by its own API.
 - Once a test run's build is done, the line above the prompt says `testing` until the tests start, rather than the build's last step.
 - The line above the prompt counts a test run's progress while it goes, for a serial XCTest run and a Swift Testing one, as MobileBuildMCP counts the tests: an expected failure and a known issue's pass left out, a parameterised test once. Before, it waited for MobileBuildMCP's `Testing started`, which comes only after the tests.

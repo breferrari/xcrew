@@ -197,6 +197,12 @@ func failingRunText(passing: Int) -> String {
         #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileTestsFailedUnlocated"), server: .mobileBuildMCP), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim_1.xcresult")
     }
 
+    /// Swift Testing's `.disabled` writes its reason after `Test skipped: `, which goes as XCTest's prefix does.
+    @Test func aSwiftTestingSkipsReasonIsItsOwnToo() {
+        let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"ShapesTests/skipped()","name":"skipped()","result":"Skipped","durationInSeconds":0,"children":[{"nodeType":"Skip Message","name":"Test skipped: skipped on purpose"}]}]}"#
+        #expect(ResultBundle.skippedTests(listing: listing).map(\.skip.reason) == ["skipped on purpose"])
+    }
+
     @Test func anAnswerThatIsNoneOfThemGivesNothing() {
         #expect(ResultBundle.sourceLocation(details: "not json") == nil)
         #expect(ResultBundle.crashSummary(log: "not a crash log") == nil)

@@ -39,6 +39,11 @@ struct BundleAnswerTests {
         #expect(skips.first?.skip.reason == "waits for the farewell screen")
     }
 
+    /// Swift Testing's `.disabled` writes its reason after `Test skipped: `, XCTest's `XCTSkip` after `Test skipped - `.
+    @Test func aSwiftTestingSkipsReasonComesWithoutItsPrefix() throws {
+        #expect(ResultBundle.skippedTests(listing: try Raw.file("shapes.tests.json")).map(\.skip.reason) == ["skipped on purpose"])
+    }
+
     @Test func theTestListNamesEachExpectedFailure() throws {
         #expect(ResultBundle.expectedFailures(listing: try Raw.file("serial.tests.json")) == ["ProbeTests/testExpectedFailure()"])
     }
