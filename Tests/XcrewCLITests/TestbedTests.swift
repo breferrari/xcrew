@@ -787,3 +787,16 @@ struct TestbedPassingCountsTests {
         #expect(report.tests == 1)
     }
 }
+
+/// What the mod reads from `xcrew report` for a passing run, as it calls it: the count the band stores as the next run's
+/// "of M", and the outcome's "N passed".
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedPassingReportCommandTests {
+    @Test func reportGivesAPassingRunsTestsForTheNextRunsCount() async throws {
+        let text = try String(contentsOf: Testbed.root.appending(path: "captures/field/coverage.txt"), encoding: .utf8)
+        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", stdin: text)
+        let answer = try #require(try JSONSerialization.jsonObject(with: Data(run.text.utf8)) as? [String: Any])
+        #expect(answer["tests"] as? Int == 1)
+        #expect(answer["detail"] as? String == "1 passed")
+    }
+}
