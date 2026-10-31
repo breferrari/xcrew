@@ -774,3 +774,16 @@ enum InstalledGroupDocs {
         return FileManager.default.fileExists(atPath: folder.path) ? folder : nil
     }()
 }
+
+/// A passing MobileBuildMCP test run's text counts its tests on its `✅` line, which Claude Code hands xcrew in place of the
+/// JSON: the outcome says how many passed, and the count is the run's total, as the JSON path gives them.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedPassingCountsTests {
+    @Test func aPassingRunsTextGivesItsCountAndTotal() async throws {
+        let text = try String(contentsOf: Testbed.root.appending(path: "captures/field/coverage.txt"), encoding: .utf8)
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP), home: "/testbed/user", runner: FakeRunner())
+        #expect(report.ok)
+        #expect(report.detail == "1 passed")
+        #expect(report.tests == 1)
+    }
+}

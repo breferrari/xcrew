@@ -188,6 +188,9 @@ struct MobileText: Sendable {
     }
 
     var summary: ToolOutput.Summary? {
+        if let counts, lines.contains(where: { MobileBuildMCPLine.isPassingSummary($0.text) }), (counts.failed ?? 0) == 0 {
+            return ToolOutput.Summary(ok: true, detail: "\(counts.passed ?? 0) passed")
+        }
         if let counts {
             let first = lines.lazy.compactMap(\.failing).first
             return ToolOutput.Summary(ok: false, detail: "\(counts.failed ?? 0) of \(counts.sum) failed\(first.map { " · \($0.test.shown)" } ?? "")")
