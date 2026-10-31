@@ -34,12 +34,13 @@ test('the counts ride on the first build that has many, and not again for the sa
   expect(said(await build($))).toHaveLength(0)
 })
 
-test('a count that moves by a quarter or more is given again; a smaller move is not', async ($, on) => {
-  session(on, [built(40), built(49), built(30), built(29)])
-  await build($)
-  expect(said(await build($))).toHaveLength(0)
+/** An incremental build logs only what it recompiled: a lower count is the log's, not the code's. */
+test('it is given again only on a rise of a quarter over the highest given: 40 given, 12 silent, 40 silent, 50 given', async ($, on) => {
+  session(on, [built(40), built(12), built(40), built(50)])
   expect(said(await build($))).toHaveLength(1)
   expect(said(await build($))).toHaveLength(0)
+  expect(said(await build($))).toHaveLength(0)
+  expect(said(await build($))).toHaveLength(1)
 })
 
 test('another scheme, or a new session, is given its own', async ($, on) => {

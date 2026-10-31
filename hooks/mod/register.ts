@@ -863,11 +863,11 @@ const backgrounded = new Map<string, Backgrounded>()
 /** How many calls are kept waiting for their notification. */
 const UNREAD_KEPT = 20
 
-/** The concurrency counts Claude has read this session, by scope. */
+/** The highest concurrency count Claude has read this session, by scheme. */
 const concurrencyGiven = new Map<string, number>()
 
-/** Adds the run's concurrency note the first time its scheme has one this session, and when its count moves far enough:
- * a build and a test run of one scheme, whatever their selections, build the same code. */
+/** Adds the run's concurrency note the first time its scheme has one this session, and when its count rises far enough
+ * above the highest given: a build and a test run of one scheme, whatever their selections, build the same code. */
 function withConcurrencyOnce(outcome: Report, scope: string): Report {
   const counted = outcome.concurrency
   const scheme = schemeOfScope(scope)
