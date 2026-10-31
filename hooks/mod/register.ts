@@ -217,7 +217,7 @@ export const register: Register = on => {
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
     // It never throws: without the CLI it falls back to whether the server reported an error.
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
-    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated, asksPassed(kind)), 120_000, result.text ?? '')
+    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated, await asksForPassed($, kind)), 120_000, result.text ?? '')
     const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, result.isError === true)), scope)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
@@ -423,7 +423,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
  * how the run ended, from the call to the notification. Nothing, when neither says.
  */
 async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, asksPassed(call.kind)), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
@@ -893,13 +893,17 @@ function withPinNamedOnce(outcome: Report): Report {
 let ledgerWrites: Promise<unknown> = Promise.resolve()
 
 /**
- * Whether the branch's ledger holds a red with no green, as the last write left it; unknown before one. A test run asks
- * the CLI for its passed tests only while one may wait, so a passing run on a clean ledger reads no test list.
+ * Whether a test run asks the CLI for its passed tests: only while its branch's ledger, once the writes before it are
+ * done, holds a red with no green, so a passing run on a clean ledger reads no test list. A branch the CLI can't name
+ * keeps no ledger, so nothing is asked.
  */
-let ledgerWaits: boolean | undefined
-
-function asksPassed(kind: string): boolean {
-  return kind === 'test' && ledgerWaits !== false
+async function asksForPassed($: EngineInterface, kind: string): Promise<boolean> {
+  if (kind !== 'test') return false
+  await ledgerWrites
+  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  if (!head) return false
+  const ledger = ledgerOf(await quietly(() => $.store.get(ledgerKey(head))))
+  return (ledger?.entries ?? []).some(entry => !entry.green)
 }
 
 /** Writes a finished test run into its branch's ledger, after the writes before it, without holding up the run's result. */
@@ -912,9 +916,7 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   const head = headOf(await answer($, ['project', '--branch'], 10_000))
   if (!head) return
   const key = ledgerKey(head)
-  const ledger = afterTestRun(ledgerOf(await $.store.get(key)), run)
-  await $.store.set(key, ledger)
-  ledgerWaits = ledger.entries.some(entry => !entry.green)
+  await $.store.set(key, afterTestRun(ledgerOf(await $.store.get(key)), run))
   const others = (await $.store.keys()).filter(stored => stored.startsWith(LEDGER_PREFIX) && stored !== key)
   const stored = Object.fromEntries(await Promise.all(others.map(async other => [other, await $.store.get(other)] as const)))
   await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))
