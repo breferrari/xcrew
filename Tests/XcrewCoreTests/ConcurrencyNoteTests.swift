@@ -30,8 +30,9 @@ import XcrewTestSupport
         #expect(summary?.note == "xcrew: this build's log has 12 Swift concurrency diagnostics in 2 modules, most of them MutableGlobalVariable (8) and SendingRisksDataRace (4). `xcrew concurrency` lists them by compiler group and module.")
     }
 
+    /// A result listing many warnings, of which the log's concurrency ones are fewer than ten.
     @Test func aBuildWithFewerThanTenHasNone() async {
-        #expect(await report(listed: 9, diagnostics: 9).concurrency == nil)
+        #expect(await report(listed: 12, diagnostics: 9).concurrency == nil)
     }
 
     /// The result lists every warning once: one listing fewer than ten can't have ten concurrency ones, so its log isn't read.
