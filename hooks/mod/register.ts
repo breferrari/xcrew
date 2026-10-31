@@ -2,6 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderElement } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullRun, FullRuns, ResultRow, SetupChoices, SetupForm, SetupPicks, StaleProject } from '../../types'
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
+import { agentLabelOf } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
 import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
@@ -168,7 +169,8 @@ export const register: Register = on => {
     // the gauge starts when the log appears, before which the run itself hasn't begun.
     let measuredFrom = writesLog ? undefined : started
     let following: Following = {}
-    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }) }))
+    const by = await quietly(() => agentLabel($, e.agentId))
+    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }), ...(by ? { by } : {}) }))
     const readPhase = async (since: number) => {
       const found = (await quietly(() => runPhase($, name, since, expectedTests, following.logPath))) ?? {}
       const step = phaseStep(following, found, writesLog)
@@ -220,7 +222,7 @@ export const register: Register = on => {
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
     // its real end comes later, as a task notification (`UserMessage` below).
-    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, ranAll: runsWholeScope(parsed, input), fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}) }
+    const run: Ending = { tool: name, ...(by ? { by } : {}), scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, ranAll: runsWholeScope(parsed, input), fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
         backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }) })
@@ -375,7 +377,7 @@ export const register: Register = on => {
 }
 
 /** A finished build, test or run call, as its ending is recorded. */
-type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; ranAll: boolean; fullSuite: boolean; toolUseId?: string }
+type Ending = { tool: string; by?: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; ranAll: boolean; fullSuite: boolean; toolUseId?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
 type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean> }
@@ -403,7 +405,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
   saveCard($)
   const ending = endingOf(outcome, ended, elapsed, earlier)
   const requestId = run.toolUseId
-  if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures)))
+  if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => withBy(rowOf(ending, outcome.failures), run.by)))
   await showEnding($, tool, ending, run.usesBand)
   // Long enough that the person has likely looked away; their notification settings decide how it arrives.
   if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
@@ -902,6 +904,24 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   const others = (await $.store.keys()).filter(stored => stored.startsWith(LEDGER_PREFIX) && stored !== key)
   const stored = Object.fromEntries(await Promise.all(others.map(async other => [other, await $.store.get(other)] as const)))
   await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))
+}
+
+/** Each subagent's label by its id, once read: `null` for one whose description says nothing or that the list doesn't name. */
+const agentLabels = new Map<string, string | null>()
+
+/** The label of the subagent whose loop a call runs in, by its own description; none on the main loop. */
+async function agentLabel($: EngineInterface, agentId: string | undefined): Promise<string | undefined> {
+  if (agentId === undefined) return undefined
+  if (!agentLabels.has(agentId)) {
+    const agents = await $.agent.list()
+    agentLabels.set(agentId, agentLabelOf(agents.find(agent => agent.id === agentId)?.description) ?? null)
+  }
+  return agentLabels.get(agentId) ?? undefined
+}
+
+/** A row with the subagent that started its run, when one did. */
+function withBy(row: ResultRow | undefined, by: string | undefined): ResultRow | undefined {
+  return row && by ? { ...row, by } : row
 }
 
 /** Reads the other worktrees' runs into the line: what the CLI answers, or what it held, until that ages out. */

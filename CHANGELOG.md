@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A build or test run a subagent started says which, on the line above the prompt and on its row in the transcript, by the subagent's own description, quoted: `· by "Fix login tests"`.
 - `xcrew graph` no longer reads imports from a Swift file a target only copies as a resource, and `xcrew graph --owner` names no target that builds one; `affected` still counts such a file, since a changed resource changes its target's bundle.
 - The line above the prompt adds a dim line for the builds and test runs going in the project's other worktrees, each with its worktree, tool and phase, as `elsewhere: feature · test_sim · testing 120 of 959`.
 - The full `xcrew doctor` adds up this project's MobileBuildMCP storage across its checkouts and worktrees and, past a budget of 40 GB (`XCREW_STORAGE_BUDGET_GB` sets another), names the largest workspace with the `mobilebuildmcp purge --dry-run` command that lists what it would delete. It also names the workspaces on this Mac whose project folder is gone. It deletes nothing, and stays out of the line above the prompt, since the report walks every file.

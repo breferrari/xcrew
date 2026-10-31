@@ -1,5 +1,6 @@
 import type { ElementConstructor, RenderElement } from 'claude-code'
 import type { BandProblems, BandRun, ElsewhereRun, ResultRow } from '../../types'
+import { byText } from './agent'
 import { elsewhereText } from './elsewhere'
 import { estimate, stopwatch } from './format'
 
@@ -36,7 +37,12 @@ function piece(text: string, color?: string): Segment[] {
 /** The band's one line, as coloured pieces: the run's outcome or progress, then what's for the prompt. What changes
  * comes first, so a narrow terminal cuts the target last. */
 export function segments(run: BandRun, now: number): Segment[] {
-  return [...outcomeSegments(run, now), ...pointer(run.ended), ...(run.target ? piece(run.target) : [])]
+  return [...outcomeSegments(run, now), ...pointer(run.ended), ...(run.target ? piece(run.target) : []), ...by(run.by)]
+}
+
+/** Which subagent started the run, last, so a narrow terminal cuts it first. */
+function by(label: string | undefined): Segment[] {
+  return label ? piece(byText(label)) : []
 }
 
 /** The run alone: going, with its time, gauge and phase, or ended, with its outcome. */
@@ -140,7 +146,7 @@ export function runTree(elements: Elements, run: BandRun, now: number): RenderEl
 export function resultTree(elements: Elements, tool: string, row: ResultRow): RenderElement {
   const failures = row.failures.map(failure => line(elements, [segment('✗', 'error'), segment(' '), segment(failure.title), ...(failure.where ? piece(failure.where) : [])]))
   const more = row.more > 0 ? [line(elements, [segment(`${row.more} more`, 'subtle')])] : []
-  return elements.Box({ flexDirection: 'column', children: [line(elements, endedSegments(tool, row.ended)), ...failures, ...more] })
+  return elements.Box({ flexDirection: 'column', children: [line(elements, [...endedSegments(tool, row.ended), ...by(row.by)]), ...failures, ...more] })
 }
 
 /** The doctor's most serious problem: a pending restart over a finished run, anything else while no run shows. */
