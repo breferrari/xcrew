@@ -785,6 +785,7 @@ import Testing
         "logs": "whether its server writes a log to follow",
         "ledger": "red-to-green ledger of tests",
         "run": "the run in progress",
+        "elsewhere": "the runs going in the project's other worktrees",
         "loop": "the recent whole-suite runs the loop budget counts",
         "failures": "the last failing run's failures",
         "problems": "the doctor's latest problems",
@@ -917,6 +918,12 @@ import Testing
         let kept = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1)
         let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
         #expect(kept == shim)
+    }
+
+    /// The mod keeps the other worktrees' line as long as a quiet log still counts as a run going: one window, both sides.
+    @Test func theElsewhereLineIsKeptAsLongAsAQuietRunCounts() throws {
+        let kept = try #require(try text("hooks/mod/elsewhere.ts").firstMatch(of: /ELSEWHERE_KEPT_MS = (\d+)_000/)?.1)
+        #expect(Int(kept) == Int(OtherRuns.quietFor))
     }
 
     /// Every field `xcrew evidence` reads from the mod's ledger is one the ledger's types declare: a field renamed on one

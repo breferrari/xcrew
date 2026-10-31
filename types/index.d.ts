@@ -38,6 +38,9 @@ export type FailureList = {
   cause?: string
 }
 
+/** The runs going in the project's other worktrees, as `xcrew runs` last answered, and when. */
+export type ElsewhereRuns = { runs: { worktree: string; tool: string; phase?: string }[]; at: number }
+
 /** The most serious problem the band shows from `xcrew doctor`, and how many more there are. */
 export type BandProblems = { isFailure: boolean; message: string; more: number; isRestart?: boolean }
 
@@ -75,6 +78,6 @@ export type SetupForm = { choices: SetupChoices | null; picks: SetupPicks; unrea
 
 declare module 'claude-code' {
   interface PluginState {
-    xcrew: { run: BandRun | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null; loop: FullRuns; setup: boolean; form: SetupForm | null; wroteConfig: boolean }
+    xcrew: { run: BandRun | null; elsewhere: ElsewhereRuns | null; failures: FailureList | null; problems: BandProblems | null; build: CliBuild | null; row: StateFamily<ResultRow | null>; stale: StaleProject | null; loop: FullRuns; setup: boolean; form: SetupForm | null; wroteConfig: boolean }
   }
 }

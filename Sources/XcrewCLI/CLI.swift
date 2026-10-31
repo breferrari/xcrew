@@ -12,6 +12,7 @@ public enum CLI {
         CardCommand(),
         EvidenceCommand(),
         PhaseCommand(),
+        RunsCommand(),
         ProjectCommand(),
         XcodeSkillsCommand(),
         XcodeCommand(),

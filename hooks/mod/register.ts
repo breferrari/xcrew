@@ -1,8 +1,9 @@
 import { atom, memberOf, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
-import type { BandProblems, BandRun, CliBuild, FailureList, FullRun, FullRuns, ResultRow, SetupChoices, SetupForm, SetupPicks, StaleProject } from '../../types'
-import { changedRun, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import type { EngineInterface, Register, RenderElement } from 'claude-code'
+import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullRun, FullRuns, ResultRow, SetupChoices, SetupForm, SetupPicks, StaleProject } from '../../types'
+import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
+import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
+import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, otherRunsOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
@@ -23,6 +24,7 @@ import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, kindOf, mayBe
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
+const elsewhereState = atom({ plugin: 'xcrew', key: 'elsewhere' } as const, null as ElsewhereRuns | null)
 const loopState = atom({ plugin: 'xcrew', key: 'loop' } as const, {} as FullRuns)
 const failuresState = atom({ plugin: 'xcrew', key: 'failures' } as const, null as FailureList | null)
 const problemsState = atom({ plugin: 'xcrew', key: 'problems' } as const, null as BandProblems | null)
@@ -155,6 +157,8 @@ export const register: Register = on => {
     // What the gauge measures against; a tool's first run has none and shows its time alone.
     const usual = earlier.length > 0 ? average(earlier) : undefined
     const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
+    // While this run goes, the other worktrees' runs are read too, so the line under it stays current.
+    if (usesBand) void quietly(() => followElsewhere($))
     // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
     const followsLog = parsed.server === 'MobileBuildMCP'
     const expectedTests = followsLog && key !== undefined ? ((await quietly(() => $.store.get(testsKey(key)))) as number | undefined) : undefined
@@ -267,14 +271,20 @@ export const register: Register = on => {
   })
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
+    const elements = $.ui.resolve(e)
+    const elsewhere = await quietly(() => read($, elsewhereState))
+    // The other worktrees' runs go on a line of their own, below whatever the band shows first.
+    const withElsewhere = (first: RenderElement): RenderElement =>
+      elsewhere ? elements.Box({ flexDirection: 'column', children: [first, elsewhereTree(elements, elsewhere.runs)] }) : first
     const run = await read($, runState)
     const now = await $.clock.now()
     // A run going has the band; then the restart, which fixes most of what a finished run or a problem shows.
-    if (run && !run.ended) return runTree($.ui.resolve(e), run, now)
+    if (run && !run.ended) return withElsewhere(runTree(elements, run, now))
     const problems = await read($, problemsState)
-    if (problems?.isRestart) return problemsTree($.ui.resolve(e), problems)
-    if (showsRun(run, now)) return runTree($.ui.resolve(e), run, now)
-    return problems ? problemsTree($.ui.resolve(e), problems) : next(e)
+    if (problems?.isRestart) return withElsewhere(problemsTree(elements, problems))
+    if (showsRun(run, now)) return withElsewhere(runTree(elements, run, now))
+    if (problems) return withElsewhere(problemsTree(elements, problems))
+    return elsewhere ? elsewhereTree(elements, elsewhere.runs) : next(e)
   })
   // A run's row in the transcript draws its outcome while the surface says it's collapsed; expanded (ctrl+o), or where the
   // surface doesn't say, it's the result Claude read, which is untouched.
@@ -346,6 +356,7 @@ export const register: Register = on => {
     }
     void (async () => {
       if (!drawsBand((await quietly(() => $.session.surfaces())) ?? [])) return
+      void followElsewhere($)
       if ((await $.clock.now()) - lastRead >= REREAD_EVERY_MS) await loadProblems($)
     })().catch(() => undefined)
     return next(e)
@@ -871,6 +882,33 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   const others = (await $.store.keys()).filter(stored => stored.startsWith(LEDGER_PREFIX) && stored !== key)
   const stored = Object.fromEntries(await Promise.all(others.map(async other => [other, await $.store.get(other)] as const)))
   await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))
+}
+
+/** The timer that reads the other worktrees' runs again, while the line shows or this session's own run goes. */
+let elsewhereTimer: { cancel: () => void } | undefined
+
+/** Reads the other worktrees' runs into the line: what the CLI answers, or what it held, until that ages out. */
+async function readElsewhere($: EngineInterface): Promise<void> {
+  const read = otherRunsOf(await answer($, ['runs'], 10_000))
+  const now = await quietly(() => $.clock.now())
+  if (now === undefined) return
+  await quietly(() => update($, elsewhereState, held => afterRead(held, read, now)))
+  await quietly(() => $.ui.invalidate('ui.render'))
+}
+
+/** Reads the other worktrees' runs now, then every few seconds until none shows and no run of this session's goes. */
+async function followElsewhere($: EngineInterface): Promise<void> {
+  await readElsewhere($)
+  if (elsewhereTimer) return
+  elsewhereTimer = await quietly(() =>
+    $.clock.every(ELSEWHERE_EVERY_MS, async () => {
+      await readElsewhere($)
+      const [shown, run] = await Promise.all([quietly(() => read($, elsewhereState)), quietly(() => read($, runState))])
+      if (shown || (run && !run.ended)) return
+      elsewhereTimer?.cancel()
+      elsewhereTimer = undefined
+    }),
+  )
 }
 
 /** The ledger of the branch checked out now, after the writes of a run that just ended, as `text` words it. */

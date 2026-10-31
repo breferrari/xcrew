@@ -73,6 +73,8 @@ export function stubCli(
     look?: (args: readonly string[]) => string | Error
     /** What `xcrew evidence` prints, for what the mod sends it, with what it writes to stderr, or the Error it fails with. */
     evidence?: (stdin: string | undefined) => string | Error | { stdout: string; stderr: string }
+    /** What `xcrew runs` answers each time: the other worktrees' runs, or the Error it fails with. */
+    runs?: () => unknown
     noBuild?: boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
   } = {},
@@ -86,6 +88,8 @@ export function stubCli(
     calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
     if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
+    const runs = args[0] === 'runs' ? (answers.runs?.() ?? []) : undefined
+    if (runs instanceof Error) throw runs
     // The commands that print text rather than JSON.
     const printing = new Map<string, () => string | Error | { stdout: string; stderr: string } | undefined>([['look', () => answers.look?.(args)], ['evidence', () => answers.evidence?.(e.init?.stdin)]])
     if (args[0] === 'setup' && !args.includes('--choices')) printing.set('setup', () => String(answers.setup?.(args) ?? ''))
@@ -105,6 +109,7 @@ export function stubCli(
       : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
       : args[0] === 'setup' ? (answers.setup?.(args) ?? null)
       : args[0] === 'note' ? { notes: answers.notes?.(args, e.init?.stdin) ?? [] }
+      : args[0] === 'runs' ? runs
       : null
     )
     const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : (printed ?? JSON.stringify(answer))

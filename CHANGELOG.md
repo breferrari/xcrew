@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The line above the prompt adds a dim line for the builds and test runs going in the project's other worktrees, each with its worktree, tool and phase, as `elsewhere: feature · test_sim · testing 120 of 959`.
 - The full `xcrew doctor` adds up this project's MobileBuildMCP storage across its checkouts and worktrees and, past a budget of 40 GB (`XCREW_STORAGE_BUDGET_GB` sets another), names the largest workspace with the `mobilebuildmcp purge --dry-run` command that lists what it would delete. It also names the workspaces on this Mac whose project folder is gone. It deletes nothing, and stays out of the line above the prompt, since the report walks every file.
 - `/xcrew flaky` lists the tests marked flaky on the branch checked out, each with how many of its runs failed and the repeated run that found it flaky, straight from the ledger, without a turn.
 - When a build or test failed because of the Mac, as with a corrupt module cache or a missing simulator, the failures pane opens with that cause and its fix, as Claude read it, ahead of the failing tests and compile errors, and the line above the prompt points to the pane even when the run listed no errors.

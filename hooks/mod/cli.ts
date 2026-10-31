@@ -1,4 +1,4 @@
-import type { CliBuild, FailureList } from '../../types'
+import type { CliBuild, ElsewhereRuns, FailureList } from '../../types'
 
 /**
  * The mod's protocol with the Swift CLI, which reads and parses everything the servers print: which
@@ -135,6 +135,16 @@ export function xcodeSelectionOf(answer: unknown): { state: string; scheme?: str
 export function xcodeHostsServerOf(answer: unknown): boolean | undefined {
   const hosts = (answer as { xcodeHostsServer?: unknown } | undefined)?.xcodeHostsServer
   return typeof hosts === 'boolean' ? hosts : undefined
+}
+
+/** The other worktrees' runs, as `xcrew runs` answers; undefined when it didn't answer a list. */
+export function otherRunsOf(answer: unknown): ElsewhereRuns['runs'] | undefined {
+  if (!Array.isArray(answer)) return undefined
+  return answer.flatMap(run => {
+    const { worktree, tool, phase } = (run ?? {}) as { worktree?: unknown; tool?: unknown; phase?: unknown }
+    if (typeof worktree !== 'string' || typeof tool !== 'string') return []
+    return [{ worktree, tool, ...(typeof phase === 'string' && phase !== '' ? { phase } : {}) }]
+  })
 }
 
 /** The scheme selected in Xcode, as `xcrew project --xcuserstate <file>` answers. */
