@@ -165,3 +165,113 @@ import XcrewTestSupport
         #expect(!ModuleGraph.read(project([:], spec: Self.edges)).modules.contains { $0.target == "Lint" })
     }
 }
+
+/// How each dependency arises in `project.pbxproj`, by the phase or setting that makes it: what `graph` keeps and what
+/// `affected` reads, and a Swift file a target only copies, which it doesn't build.
+@Suite struct ModuleGraphPhasesTests {
+    /// `App` links `Feature` and copies it too, only copies `Core`, and names `Data` as a dependency; `AppTests` runs in
+    /// `App` through `TEST_HOST`. `Feature` compiles `Feature/Shown.swift` and copies `Feature/Extra.swift` as a resource.
+    static let phases = """
+        // !$*UTF8*$!
+        { archiveVersion = 1; objects = {
+          G = { isa = PBXGroup; sourceTree = "<group>"; children = (FS, FX); };
+          FS = { isa = PBXFileReference; path = Feature/Shown.swift; sourceTree = "<group>"; };
+          FX = { isa = PBXFileReference; path = Feature/Extra.swift; sourceTree = "<group>"; };
+          PC = { isa = PBXFileReference; path = Core.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+          PD = { isa = PBXFileReference; path = Data.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+          PF = { isa = PBXFileReference; path = Feature.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+          PA = { isa = PBXFileReference; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+          PT = { isa = PBXFileReference; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+          TC = { isa = PBXNativeTarget; name = Core; productType = "com.apple.product-type.framework"; productReference = PC; };
+          TD = { isa = PBXNativeTarget; name = Data; productType = "com.apple.product-type.framework"; productReference = PD; };
+          TF = { isa = PBXNativeTarget; name = Feature; productType = "com.apple.product-type.framework"; productReference = PF; buildPhases = (FSRC, FRES); };
+          FSRC = { isa = PBXSourcesBuildPhase; files = (BFS); };
+          BFS = { isa = PBXBuildFile; fileRef = FS; };
+          FRES = { isa = PBXResourcesBuildPhase; files = (BFX); };
+          BFX = { isa = PBXBuildFile; fileRef = FX; };
+          TA = { isa = PBXNativeTarget; name = App; productType = "com.apple.product-type.application"; productReference = PA; buildPhases = (ALINK, AEMBED); dependencies = (DEPD); };
+          DEPD = { isa = PBXTargetDependency; target = TD; };
+          ALINK = { isa = PBXFrameworksBuildPhase; files = (BLF); };
+          BLF = { isa = PBXBuildFile; fileRef = PF; };
+          AEMBED = { isa = PBXCopyFilesBuildPhase; files = (BEF, BEC); };
+          BEF = { isa = PBXBuildFile; fileRef = PF; };
+          BEC = { isa = PBXBuildFile; fileRef = PC; };
+          TT = { isa = PBXNativeTarget; name = AppTests; productType = "com.apple.product-type.bundle.unit-test"; productReference = PT; buildConfigurationList = LT; };
+          LT = { isa = XCConfigurationList; buildConfigurations = (CT); };
+          CT = { isa = XCBuildConfiguration; name = Debug; buildSettings = { TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/App"; }; };
+        }; rootObject = G; }
+        """
+
+    func project() -> Project {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write(Self.phases, to: "App.xcodeproj/project.pbxproj")
+        project.write("import Foundation\n", to: "Feature/Shown.swift")
+        project.write("import Data\n", to: "Feature/Extra.swift")
+        return project
+    }
+
+    /// Embedding alone carries a binary, not a module: the graph's layers are what's linked or named, and a framework
+    /// both linked and copied is a dependency. `affected` reads every edge, the test host and the embedded one included.
+    @Test func eachEdgeCountsByHowItArises() throws {
+        let project = project()
+        let graph = ModuleGraph.read(project)
+        let app = try #require(graph.modules.first { $0.target == "App" })
+        #expect(app.dependencies == ["Data", "Feature"])
+        #expect(app.embeds == ["Core"])
+        let workspace = try WorkspaceGraph.read(project).get()
+        #expect(workspace.targets["App"]?.dependencies == ["Core", "Data", "Feature"])
+        #expect(workspace.targets["AppTests"]?.dependencies == ["App"])
+    }
+
+    /// A target that copies the app it runs in, as `TEST_HOST` names it, still builds on that app: copying it doesn't
+    /// make the test host an embedding alone.
+    @Test func aCopiedTestHostIsStillADependency() throws {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("""
+            // !$*UTF8*$!
+            { archiveVersion = 1; objects = {
+              PA = { isa = PBXFileReference; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+              PX = { isa = PBXFileReference; path = Ext.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+              TA = { isa = PBXNativeTarget; name = App; productType = "com.apple.product-type.application"; productReference = PA; };
+              TX = { isa = PBXNativeTarget; name = Ext; productType = "com.apple.product-type.framework"; productReference = PX; buildPhases = (COPY); buildConfigurationList = LX; };
+              COPY = { isa = PBXCopyFilesBuildPhase; files = (BA); };
+              BA = { isa = PBXBuildFile; fileRef = PA; };
+              LX = { isa = XCConfigurationList; buildConfigurations = (CX); };
+              CX = { isa = XCBuildConfiguration; name = Debug; buildSettings = { TEST_HOST = "$(BUILT_PRODUCTS_DIR)/App.app/App"; }; };
+            }; rootObject = TA; }
+            """, to: "App.xcodeproj/project.pbxproj")
+        let ext = try #require(ModuleGraph.read(project).modules.first { $0.target == "Ext" })
+        #expect(ext.dependencies == ["App"])
+        #expect(ext.embeds == nil)
+    }
+
+    /// A Swift file a target only copies is no source of its: its imports aren't read, and it has no owner that builds it.
+    /// `affected` still counts it, since a changed resource changes the target's bundle.
+    @Test func aSwiftFileATargetOnlyCopiesIsNoSourceOfIt() throws {
+        let project = project()
+        let graph = ModuleGraph.read(project)
+        #expect(graph.imports.isEmpty)
+        #expect(FileOwners.of("Feature/Extra.swift", in: project).targets.isEmpty)
+        #expect(FileOwners.of("Feature/Shown.swift", in: project).targets == ["Feature"])
+        let workspace = try WorkspaceGraph.read(project).get()
+        #expect(workspace.owners(of: ProjectLayout.canonical(project.root.appending(path: "Feature/Extra.swift"))).targets == ["Feature"])
+    }
+
+    /// The JSON format names no phase: a product a target is a member of counts as a dependency, as it always has, until
+    /// the format is reviewed (docs/findings.md, *The module graph*).
+    @Test func theJSONFormatsProductMembershipStillCountsAsADependency() throws {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.write("""
+            {
+              "files": [ { "path": "<PRODUCTS>/Core.framework", "target-membership": [ "App" ] } ],
+              "targets": [
+                { "name": "Core", "id": "C", "product-type": "framework", "product": "Products/Core.framework" },
+                { "name": "App", "id": "A", "product-type": "application", "product": "Products/App.app" },
+              ],
+            }
+            """, to: "App.xcodeproj/project.xcproj")
+        let app = try #require(ModuleGraph.read(project).modules.first { $0.target == "App" })
+        #expect(app.dependencies == ["Core"])
+        #expect(app.embeds == nil)
+    }
+}

@@ -4,27 +4,50 @@ import Foundation
 /// tests need, in either format, `project.pbxproj` or Xcode 27.2's `project.xcproj` (docs/findings.md, *Affected
 /// tests*). Whatever the reading meets and doesn't model is kept as a reason, which runs everything.
 struct ProjectGraph: Sendable {
+    /// How a target comes to build on another: named as a dependency, linking its product, copying its product in without
+    /// linking it, or running in it as a test bundle's host app.
+    enum Edge: Sendable, Hashable {
+        case named, linked, embedded, testHost
+    }
+
     struct Target: Sendable, Equatable {
         let name: String
         let isTest: Bool
         /// A UI test bundle, `…bundle.ui-testing`: it drives the app on a simulator, unlike a unit test bundle.
         let isUITest: Bool
-        /// The targets it builds on: its dependencies and, for a test bundle, the app it runs in.
-        var dependencies: Set<String>
+        /// The targets it builds on, each with how it does.
+        var edges: [String: Set<Edge>]
         /// The product type without `com.apple.product-type.`, as both formats name it: `framework`, `application`.
         let kind: String
 
-        init(name: String, isTest: Bool, isUITest: Bool, dependencies: Set<String>, kind: String) {
-            (self.name, self.isTest, self.isUITest, self.dependencies, self.kind) = (name, isTest, isUITest, dependencies, kind)
+        init(name: String, isTest: Bool, isUITest: Bool, edges: [String: Set<Edge>], kind: String) {
+            (self.name, self.isTest, self.isUITest, self.edges, self.kind) = (name, isTest, isUITest, edges, kind)
         }
 
         /// A target as a project file declares it: what kind it is comes from its product type, in either format.
-        init(name: String, productType: String, dependencies: Set<String>) {
+        init(name: String, productType: String, edges: [String: Set<Edge>]) {
             let kind = productType.hasPrefix(Self.productTypePrefix) ? String(productType.dropFirst(Self.productTypePrefix.count)) : productType
-            self.init(name: name, isTest: productType.contains("test"), isUITest: productType.contains("ui-testing"), dependencies: dependencies, kind: kind)
+            self.init(name: name, isTest: productType.contains("test"), isUITest: productType.contains("ui-testing"), edges: edges, kind: kind)
         }
 
         static let productTypePrefix = "com.apple.product-type."
+
+        /// Every target it builds on, however: what `affected` follows, since a change to any of them reaches it.
+        var dependencies: Set<String> { Set(edges.keys) }
+        /// The targets it builds on other than by embedding alone: the layers `graph` reads, since embedding carries a
+        /// binary, not a module.
+        var declared: Set<String> { Set(edges.filter { $0.value != [.embedded] }.keys) }
+        /// The targets it only embeds.
+        var embedded: Set<String> { Set(edges.filter { $0.value == [.embedded] }.keys) }
+
+        mutating func add(_ target: String, as edge: Edge) {
+            edges[target, default: []].insert(edge)
+        }
+
+        /// This target and another of its name in another project, every edge of both kept: dropping one could skip a test.
+        func merged(with other: Target) -> Target {
+            Target(name: name, isTest: isTest || other.isTest, isUITest: isUITest || other.isUITest, edges: edges.merging(other.edges) { $0.union($1) }, kind: kind)
+        }
     }
 
     /// A folder whose files all join `targets`, but for the files an exception set names, whose membership differs.
@@ -35,16 +58,17 @@ struct ProjectGraph: Sendable {
     }
 
     var targets: [String: Target] = [:]
-    /// Each file a target lists, by canonical path.
+    /// Each file a target lists, by canonical path, in any of its phases.
     var owners: [String: Set<String>] = [:]
+    /// Of `owners`, the files a target compiles: those its Sources phase lists. The JSON reader doesn't read a member's
+    /// phase yet, so there every file a target lists counts as one it compiles.
+    var compiled: [String: Set<String>] = [:]
     var folders: [Folder] = []
     /// Each product a target here builds, by its file name: `Core.framework`.
     var products: [String: String] = [:]
-    /// Products a target links that no target in this project builds, for the workspace to resolve across projects.
-    var links: [String: Set<String>] = [:]
-    /// Of `links`, the products a target only copies into its own, an app embedding a framework it doesn't link: Tuist
-    /// embeds every framework below an app's dependencies this way.
-    var embedsOnly: [String: Set<String>] = [:]
+    /// The products each target builds on, by their file names, each with how: linked, copied in (Tuist embeds every
+    /// framework below an app's dependencies), or its test host; for the workspace to resolve across projects.
+    var productEdges: [String: [String: Set<Edge>]] = [:]
     /// Targets in other projects a target depends on, by name, through a proxy into that project, for the workspace to
     /// resolve.
     var external: [String: Set<String>] = [:]
@@ -76,12 +100,14 @@ struct ProjectGraph: Sendable {
 
     /// The targets that own the file at a canonical path, or nothing when the project names none; `excepted` when an
     /// exception set changes its membership, itself or a folder above it, which the reading doesn't model. A file inside
-    /// a bundle the project lists whole, an asset catalog or a data model, is the bundle's.
-    func owners(of path: String) -> (targets: Set<String>, isExcepted: Bool) {
+    /// a bundle the project lists whole, an asset catalog or a data model, is the bundle's. With `compiledOnly`, a file
+    /// the project lists counts for the targets that compile it alone.
+    func owners(of path: String, compiledOnly: Bool = false) -> (targets: Set<String>, isExcepted: Bool) {
         var found = Set<String>()
         var ancestor = path
+        let listed = compiledOnly ? compiled : owners
         while !ancestor.isEmpty {
-            found.formUnion(owners[ancestor] ?? [])
+            found.formUnion(listed[ancestor] ?? [])
             ancestor = (ancestor as NSString).deletingLastPathComponent
             if ancestor == "/" { break }
         }
@@ -148,10 +174,10 @@ struct ProjectGraph: Sendable {
         graph.products = productOwners
         for (id, target) in natives {
             guard let name = names[id] else { continue }
-            var dependencies = Set<String>()
+            var edges: [String: Set<Edge>] = [:]
             for dependency in target["dependencies"] as? [String] ?? [] {
                 if let targetID = objects[dependency]?["target"] as? String, let dependedOn = names[targetID] {
-                    dependencies.insert(dependedOn)
+                    edges[dependedOn, default: []].insert(.named)
                 } else if let proxy = (objects[dependency]?["targetProxy"] as? String).flatMap({ objects[$0] }),
                           let portal = (proxy["containerPortal"] as? String).flatMap({ objects[$0] }),
                           (portal["path"] as? String)?.hasSuffix(".xcodeproj") == true,
@@ -164,11 +190,10 @@ struct ProjectGraph: Sendable {
             }
             // A test bundle runs in its host app, named by the product its TEST_HOST setting points at, built here or in
             // another project of the workspace.
-            graph.links[name, default: []].formUnion(testHosts(of: target, in: objects))
-            var linked = Set<String>(), copied = Set<String>()
+            for host in testHosts(of: target, in: objects) { graph.productEdges[name, default: [:]][host, default: []].insert(.testHost) }
             for phase in target["buildPhases"] as? [String] ?? [] {
                 let isa = objects[phase]?["isa"] as? String ?? ""
-                let links = Self.linkPhases.contains(isa)
+                let edge = Self.productPhases[isa]
                 for buildFile in objects[phase]?["files"] as? [String] ?? [] {
                     guard let reference = objects[buildFile]?["fileRef"] as? String else { continue }
                     let files = (objects[reference]?["isa"] as? String) == "PBXVariantGroup" ? (objects[reference]?["children"] as? [String] ?? []) : [reference]
@@ -176,22 +201,19 @@ struct ProjectGraph: Sendable {
                         // Linking or embedding another target's product depends on it, entry or not: Xcode finds it implicitly.
                         // Anything else in the build folder, a file a script writes, is no product and no file of the project's.
                         if objects[file]?["sourceTree"] as? String == "BUILT_PRODUCTS_DIR", let product = objects[file]?["path"] as? String {
-                            if links, Self.isProduct(product) {
-                                let file = (product as NSString).lastPathComponent
-                                graph.links[name, default: []].insert(file)
-                                if isa == "PBXCopyFilesBuildPhase" { copied.insert(file) } else { linked.insert(file) }
+                            if let edge, Self.isProduct(product) {
+                                graph.productEdges[name, default: [:]][(product as NSString).lastPathComponent, default: []].insert(edge)
                             }
                             continue
                         }
                         guard let url = location(file) else { continue }
                         graph.owners[Self.lexical(url), default: []].insert(name)
+                        if isa == "PBXSourcesBuildPhase" { graph.compiled[Self.lexical(url), default: []].insert(name) }
                     }
                 }
             }
-            let embedsOnly = copied.subtracting(linked)
-            if !embedsOnly.isEmpty { graph.embedsOnly[name] = embedsOnly }
             let productType = target["productType"] as? String ?? ""
-            graph.targets[name] = Target(name: name, productType: productType, dependencies: dependencies)
+            graph.targets[name] = Target(name: name, productType: productType, edges: edges)
             let configurations = (target["buildConfigurationList"] as? String).flatMap { objects[$0]?["buildConfigurations"] as? [String] } ?? []
             let configured = configurations.map { objects[$0]?["buildSettings"] as? [String: Any] ?? [:] }
             for key in Self.readSettings {
@@ -213,8 +235,8 @@ struct ProjectGraph: Sendable {
     /// The JSON format's base for the products targets build.
     static let productsBase = "<PRODUCTS>/"
 
-    /// The build phases that link or embed another target's product.
-    static let linkPhases: Set = ["PBXFrameworksBuildPhase", "PBXCopyFilesBuildPhase"]
+    /// The build phases that build on another target's product, and how: linking it, or copying it in.
+    static let productPhases: [String: Edge] = ["PBXFrameworksBuildPhase": .linked, "PBXCopyFilesBuildPhase": .embedded]
 
     /// Whether a build-folder file is a product a target builds, by its extension.
     static func isProduct(_ path: String) -> Bool {
@@ -282,10 +304,12 @@ struct ProjectGraph: Sendable {
         }
         for target in targets {
             guard let name = target["name"] as? String else { continue }
-            var dependencies = Set<String>()
-            for reference in (target["dependencies"] as? [Any] ?? []) + [target["test-host-target"]].compactMap({ $0 }) {
+            var edges: [String: Set<Edge>] = [:]
+            var references: [(reference: Any, edge: Edge)] = (target["dependencies"] as? [Any] ?? []).map { ($0, .named) }
+            if let host = target["test-host-target"] { references.append((host, .testHost)) }
+            for (reference, edge) in references {
                 if let dependedOn = targetName(reference) {
-                    dependencies.insert(dependedOn)
+                    edges[dependedOn, default: []].insert(edge)
                 } else if let other = reference as? String {
                     // A target this project doesn't define: another project's, by name, among those the workspace reads.
                     graph.external[name, default: []].insert(other)
@@ -294,7 +318,7 @@ struct ProjectGraph: Sendable {
                 }
             }
             let productType = target["product-type"] as? String ?? ""
-            graph.targets[name] = Target(name: name, productType: productType, dependencies: dependencies)
+            graph.targets[name] = Target(name: name, productType: productType, edges: edges)
             let settings = target["build-settings"] as? [String: Any] ?? [:]
             for key in Self.readSettings where settings.keys.contains(where: { Self.names($0, key) }) {
                 // A conditional key alone sets it for the configurations it names, and leaves the others to the default.
@@ -308,8 +332,12 @@ struct ProjectGraph: Sendable {
                 // A path from another base is no file of the project's. A product, `<PRODUCTS>/Core.framework`, links the target
                 // that builds it to each target it's a member of, entry or not; a system framework links nothing of ours.
                 if let path, path.hasPrefix("<") {
+                    // The reader doesn't read a member's phase yet, so a product a target is a member of counts as linked,
+                    // as it always has, until the format is reviewed (docs/findings.md, *The module graph*).
                     if path.hasPrefix(Self.productsBase) {
-                        for member in (node["target-membership"] as? [Any] ?? []).compactMap(targetName) { graph.links[member, default: []].insert((path as NSString).lastPathComponent) }
+                        for member in (node["target-membership"] as? [Any] ?? []).compactMap(targetName) {
+                            graph.productEdges[member, default: [:]][(path as NSString).lastPathComponent, default: []].insert(.linked)
+                        }
                     }
                     continue
                 }
@@ -323,7 +351,10 @@ struct ProjectGraph: Sendable {
                 case "group", "variant-group", "version-group":
                     walk(node["children"] as? [[String: Any]] ?? [], in: url)
                 default:
-                    for target in membership { graph.owners[Self.lexical(url), default: []].insert(target) }
+                    for target in membership {
+                        graph.owners[Self.lexical(url), default: []].insert(target)
+                        graph.compiled[Self.lexical(url), default: []].insert(target)
+                    }
                 }
             }
         }

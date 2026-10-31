@@ -19,7 +19,7 @@ public struct FileOwners: Sendable, Equatable, Codable {
         case let .failure(unread):
             owners.unread = unread.reason
         case let .success(workspace):
-            let owned = workspace.owners(of: path)
+            let owned = workspace.builders(of: path)
             owners.targets = owned.targets.sorted()
             owners.excepted = owned.isExcepted ? true : nil
         }

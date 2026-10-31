@@ -1,8 +1,8 @@
 import Foundation
 
 /// A workspace's modules as its projects declare them, and where each source's imports of those modules land in that
-/// graph. The declared dependencies are the layers: no other file of a project names them (docs/findings.md, *Module
-/// The module graph*). Each import gets a class, stated as a fact, with no verdict.
+/// graph. The declared dependencies are the layers: no other file of a project names them (docs/findings.md, *The
+/// module graph*). Each import gets a class, stated as a fact, with no verdict.
 public struct ModuleGraph: Sendable, Equatable, Codable {
     public struct Module: Sendable, Equatable, Codable {
         /// The name a source imports it by.
@@ -83,12 +83,8 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
             productFiles.merge(read.productFiles) { first, _ in first }
             settings.merge(read.settings[ProjectGraph.moduleName] ?? [:]) { $0.merged(with: $1) }
         }
-        // Embedding alone carries a framework's binary, not its module: the layers are what's linked or named.
-        let targets = workspace.targets.mapValues { target in
-            var declared = target
-            declared.dependencies.subtract(workspace.embedded[target.name] ?? [])
-            return declared
-        }
+        let targets = workspace.targets
+        let declared = targets.mapValues(\.declared)
         var moduleNames: [String: String] = [:]
         for target in targets.keys.sorted() {
             let fallback = identifier(productFiles[target].map(productName) ?? target)
@@ -115,22 +111,22 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
         func reachable(from target: String) -> Set<String> {
             if let known = reached[target] { return known }
             var found = Set<String>()
-            var next = Array(targets[target]?.dependencies ?? [])
+            var next = Array(declared[target] ?? [])
             while let name = next.popLast() {
                 guard found.insert(name).inserted else { continue }
-                next.append(contentsOf: targets[name]?.dependencies ?? [])
+                next.append(contentsOf: declared[name] ?? [])
             }
             reached[target] = found
             return found
         }
         let testers = targets.values.filter(\.isTest).reduce(into: [String: [String]]()) { all, test in
-            for dependency in test.dependencies { all[dependency, default: []].append(test.name) }
+            for dependency in declared[test.name] ?? [] { all[dependency, default: []].append(test.name) }
         }
         graph.modules = moduleTargets.map { target in
             Module(
                 name: moduleNames[target.name, default: target.name], target: target.name, kind: target.kind, project: projectOf[target.name] ?? "",
-                dependencies: target.dependencies.sorted(), tests: testers[target.name, default: []].sorted(),
-                embeds: workspace.embedded[target.name].map { $0.sorted() }
+                dependencies: (declared[target.name] ?? []).sorted(), tests: testers[target.name, default: []].sorted(),
+                embeds: target.embedded.isEmpty ? nil : target.embedded.sorted()
             )
         }.sorted { ($0.name, $0.target) < ($1.name, $1.target) }
         var imported: [String: Set<String>] = [:]
@@ -146,7 +142,7 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
                 }
                 for owner in owners where !candidates.contains(owner) {
                     func placement(of target: String) -> Placement {
-                        if targets[owner]?.dependencies.contains(target) == true { .declared }
+                        if declared[owner]?.contains(target) == true { .declared }
                         else if reachable(from: owner).contains(target) { .transitiveOnly }
                         else if reachable(from: target).contains(owner) { .upward }
                         else { .undeclared }
@@ -160,7 +156,7 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
         }
         graph.imports.sort { ($0.target, $0.file, $0.line) < ($1.target, $1.file, $1.line) }
         graph.unimported = targets.values.flatMap { target in
-            target.dependencies.filter { isImportable(targets[$0]?.kind ?? "") && !(imported[target.name]?.contains($0) ?? false) }.map { Unimported(target: target.name, dependency: $0) }
+            (declared[target.name] ?? []).filter { isImportable(targets[$0]?.kind ?? "") && !(imported[target.name]?.contains($0) ?? false) }.map { Unimported(target: target.name, dependency: $0) }
         }.sorted { ($0.target, $0.dependency) < ($1.target, $1.dependency) }
         return graph
     }
@@ -173,7 +169,7 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
         var excepted = Set<String>()
         // A path is looked up in the project that lists it, not in every project of the workspace.
         for (_, graph) in workspace.projects {
-            var paths = Set(graph.owners.keys.filter { $0.hasSuffix(".swift") })
+            var paths = Set(graph.compiled.keys.filter { $0.hasSuffix(".swift") })
             for folder in graph.folders {
                 let base = URL(fileURLWithPath: folder.path)
                 let enumerator = FileManager.default.enumerator(at: base, includingPropertiesForKeys: nil)
@@ -182,7 +178,7 @@ public struct ModuleGraph: Sendable, Equatable, Codable {
                 }
             }
             for path in paths {
-                let owned = graph.owners(of: path)
+                let owned = graph.owners(of: path, compiledOnly: true)
                 if owned.isExcepted { excepted.insert(path) } else if !owned.targets.isEmpty { files[path, default: []].formUnion(owned.targets) }
             }
         }

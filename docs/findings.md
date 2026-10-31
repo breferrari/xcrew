@@ -404,7 +404,7 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
   - upward: the imported module depends on the importer.
 
   Tuist's `tuist inspect dependencies` calls the transitive-only case an implicit dependency. On the fixture copy above, it reported `App implicitly depends on: Core` once App imported Core. Projects rely on transitive-only imports on purpose, so the graph states the class and nothing more.
-- **Embedding isn't depending.** Tuist puts every framework below an app's dependencies into the app's *Embed Frameworks* phase, while it links only the ones the manifest names. In the test bed's `field` App, Feature is in Frameworks and Embed Frameworks, Core and Data in Embed Frameworks alone (test bed v0.8.5). The graph counts a product the target only copies as `embeds`, not as a dependency. `affected` still counts it, since a change to an embedded framework reaches the app.
+- **Embedding isn't depending.** Tuist puts every framework below an app's dependencies into the app's *Embed Frameworks* phase, while it links only the ones the manifest names. In the test bed's `field` App, Feature is in Frameworks and Embed Frameworks, Core and Data in Embed Frameworks alone (test bed v0.8.5). The reading keeps how a target comes to build on each other one: named as a dependency, linked (*Frameworks*), copied in (*Copy Files*), or its test host (`TEST_HOST`). The graph counts one the target only copies as `embeds`, not as a dependency; one it also links, names or runs in is a dependency. `affected` follows every edge, since a change to an embedded framework reaches the app.
 - **Module names.** Apple's build settings reference describes `PRODUCT_MODULE_NAME` as "Must be a valid identifier" and gives no default (read through Sosumi, October 30, 2026). `xcodebuild -showBuildSettings` derives it from `PRODUCT_NAME` (Xcode 27.2, the test bed's `forms/classic`):
   - `My-App 2.x` → `My_App_2_x`;
   - `2Fast` → `_Fast`: a leading digit is replaced, not prefixed;
@@ -415,9 +415,8 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
 - **Imports are read by their words**, by The Swift Programming Language's grammar (`attributes? import import-kind? import-path`) and SE-0409's access level before `import`, with comments and string literals skipped. An import inside `#if` is marked conditional, since the condition isn't evaluated.
 - **A new file in a generated project belongs to no target** until the project is generated again: Tuist lists each source in the project file.
 - **Names two targets share.** A library's product is `libCore.a`, and its module is `Core`. Two targets can build one module name, one per platform. An import of it is placed by whichever of them sits nearest the importer.
-- **Not read yet:**
-  - The JSON format's embed-only products: no project here writes one, so a `<PRODUCTS>` file a target is a member of counts as a dependency.
-  - A `.swift` file a target copies as a resource is read as if it were compiled: the project reading doesn't keep which phase lists a file.
+- **A Swift file a target only copies**, listed in its *Copy Bundle Resources* phase and not its *Compile Sources*, is no source of it: `graph` reads no import from it and `--owner` names no target that builds it. `affected` still counts it, since a changed resource changes the target's bundle.
+- **Not read yet:** the JSON format's embed-only products. A member's `build-phase` (`App/frameworks`, `App/resources`) isn't read, so a `<PRODUCTS>` file a target is a member of counts as a dependency, and every file it's a member of counts as one it compiles. That waits on the review of Xcode 27.2's project format.
 
 ## Flaky or real
 
