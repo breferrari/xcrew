@@ -10,6 +10,7 @@ public enum CLI {
         ConcurrencyCommand(),
         ReportCommand(),
         NoteCommand(),
+        SessionCommand(),
         CardCommand(),
         EvidenceCommand(),
         PhaseCommand(),

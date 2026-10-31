@@ -73,6 +73,8 @@ export function stubCli(
     look?: (args: readonly string[]) => string | Error
     /** What `xcrew evidence` prints, for what the mod sends it, with what it writes to stderr, or the Error it fails with. */
     evidence?: (stdin: string | undefined) => string | Error | { stdout: string; stderr: string }
+    /** What `xcrew session` answers for a session tool's text the mod pipes in. */
+    session?: (stdin: string | undefined) => unknown
     /** What `xcrew runs` answers each time: the other worktrees' runs, or the Error it fails with. */
     runs?: () => unknown
     noBuild?: boolean
@@ -110,6 +112,7 @@ export function stubCli(
       : args[0] === 'setup' ? (answers.setup?.(args) ?? null)
       : args[0] === 'note' ? { notes: answers.notes?.(args, e.init?.stdin) ?? [] }
       : args[0] === 'runs' ? (runs ?? [])
+      : args[0] === 'session' ? (answers.session?.(e.init?.stdin) ?? {})
       : null
     )
     const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : (printed ?? JSON.stringify(answer))

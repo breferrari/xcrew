@@ -4,12 +4,12 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
-import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, runsWholeScope, xcodeSelected, xcodeStarted } from './context'
+import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, observeSession, runsWholeScope, xcodeSelected, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
@@ -134,7 +134,8 @@ export const register: Register = on => {
       const result = await next(e)
       const forwarded = forwardedTool(parsed, e as unknown as Record<string, unknown>)
       if (forwarded) lost(forwarded)
-      else observe(parsed, result.text ?? '')
+      // MobileBuildMCP answers its session tools in text, which the CLI reads.
+      else if (observe(parsed, result.text ?? '').needsReading) await quietly(async () => observeSession(sessionOf(await answer($, ['session'], 10_000, result.text ?? ''))))
       // A call that failed may have a way around it, which the CLI names: an Xcode MCP call whose connection closed, or a
       // MobileBuildMCP error with another route. Not an Xcode MCP tool MobileBuildMCP proxies, through a bridge of its own
       // that reconnecting the plugin's server doesn't restart.

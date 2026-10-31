@@ -167,6 +167,21 @@ export function hashOf(answer: unknown): string | undefined {
   return typeof hash === 'string' ? hash : undefined
 }
 
+/** What `xcrew session` read of a session tool's text: its profiles, each a scheme and simulator, or the profile it names. */
+export function sessionOf(answer: unknown): { profiles?: Record<string, { scheme?: string; simulatorName?: string }>; currentProfile?: string } | undefined {
+  if (answer === null || typeof answer !== 'object') return undefined
+  const { profiles, currentProfile } = answer as { profiles?: unknown; currentProfile?: unknown }
+  const read: { profiles?: Record<string, { scheme?: string; simulatorName?: string }>; currentProfile?: string } = {}
+  if (profiles !== null && typeof profiles === 'object') {
+    read.profiles = Object.fromEntries(Object.entries(profiles as Record<string, unknown>).map(([name, profile]) => {
+      const { scheme, simulatorName } = (profile ?? {}) as { scheme?: unknown; simulatorName?: unknown }
+      return [name, { ...(typeof scheme === 'string' ? { scheme } : {}), ...(typeof simulatorName === 'string' ? { simulatorName } : {}) }]
+    }))
+  }
+  if (typeof currentProfile === 'string') read.currentProfile = currentProfile
+  return read
+}
+
 /** The notes `xcrew note` has for a tool's result; none when it couldn't answer. */
 export function notesOf(answer: unknown): string[] {
   const { notes } = (answer ?? {}) as { notes?: unknown }

@@ -175,6 +175,16 @@ Setup reads the unit-test scheme from the project instead of asking. Apple docum
 - Only shared schemes (`xcshareddata`) count. Schemes under `xcuserdata` are one person's and aren't committed. A workspace lists its projects in nested `Group`s, each `group:` path relative to the group around it, and a testable's `ReferencedContainer` says which project holds its target, since two projects can each have one called `Tests`.
 - Unit and UI test bundles are both `.xctest`, so the target's product type decides: `com.apple.product-type.bundle.unit-test` in `project.pbxproj`, or `product-type: bundle.unit-test` in the JSON `project.xcproj` that Xcode 27.2 writes by default. The JSON keys come from the format's source (apple/xcode-project-format 0.1.0), not from a file Xcode wrote here. Projects with buildable folders still declare their targets in either file. When neither file names a scheme's target, setup says it couldn't tell and lists the schemes instead of guessing.
 
+## MobileBuildMCP's session answers
+
+The session tools answer in text, with their JSON only in `structuredContent`, which Claude Code doesn't hand the mod. Seen on the test bed's `captures/raw/session-defaults.json` and `profile-switched.json` (MobileBuildMCP 2.7.1, October 31, 2026):
+
+- `session_show_defaults` answers a tree: `⚙️ Show Defaults`, then for each profile `📁 probe` and its `├ scheme: Feature`, `├ simulatorName: …` lines, ending `└ extraArgs: …`, with `(not set)` for none.
+- The listing marks no profile as in use. Its renderer writes none in show mode (`utils/renderers/domain-result-text.js`, `createSessionDefaultsItems`), and only the JSON's `currentProfile` names one.
+- `session_use_defaults_profile` answers `✅ Activated profile (unit profile)`. It writes `(default profile)` for the unnamed one.
+
+The mod read every session answer as JSON, so on a real server it learned nothing from them. The line above the prompt never named a MobileBuildMCP run's scheme from its session defaults, and nothing kept per profile followed a switch. Now the CLI reads both texts by these shapes (`xcrew session`, `SessionAnswer`), and the mod learns from its answer. A listing keeps the profile already known, since it names none. A text in neither shape changes nothing, and the mod reads the JSON as before.
+
 ## Xcode's scheme selection
 
 Read in MobileBuildMCP 2.7.1's source (Homebrew, `libexec/build/`) on October 30, 2026; macOS 27.2, Xcode 27.2.

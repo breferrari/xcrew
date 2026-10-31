@@ -17,26 +17,43 @@ let xcode: Target = {}
  */
 const fromXcode: { active?: string; last?: string; profiles: Record<string, string>; listings: number } = { profiles: {}, listings: 0 }
 
-/** Learns from one finished call's output. */
-export function observe(tool: XcodeTool, text: string): void {
+/**
+ * Learns from one finished call's output, when it's JSON. A MobileBuildMCP session tool's answer that isn't, as 2.7.1
+ * writes them, is the CLI's to read (`observeSession`): this says whether it is one.
+ */
+export function observe(tool: XcodeTool, text: string): { needsReading: boolean } {
   // Only these answers name one; parsing every other result would read large outputs for nothing.
-  if (!namesTarget(tool)) return
+  if (!namesTarget(tool)) return { needsReading: false }
   const json = parse(text)
-  if (!json) return
+  if (!json) return { needsReading: tool.server === 'MobileBuildMCP' }
   if (tool.server === 'MobileBuildMCP') {
-    const data = json.data as { currentProfile?: string; profiles?: typeof mobile.profiles } | undefined
-    if (json.schema === 'mobilebuildmcp.output.session-defaults' && data?.profiles) {
-      mobile.profiles = data.profiles
-      fromXcode.profiles = {}
-      fromXcode.listings += 1
-    }
-    if (typeof data?.currentProfile === 'string') mobile.current = data.currentProfile
-    return
+    const data = json.data as Session | undefined
+    learnSession(json.schema === 'mobilebuildmcp.output.session-defaults' ? (data ?? {}) : { currentProfile: data?.currentProfile })
+    return { needsReading: false }
   }
   // XcodeOpenWorkspace says activeScheme; XcodeSwitchScheme says activeSchemeName.
   const scheme = [json.activeScheme, json.activeSchemeName].find(value => typeof value === 'string') as string | undefined
   const destination = [json.activeDestinationDisplayTitle, json.activeRunDestination].find(value => typeof value === 'string') as string | undefined
   if (scheme || destination) xcode = { scheme: scheme ?? xcode.scheme, destination: destination ?? xcode.destination }
+  return { needsReading: false }
+}
+
+/** What a session answer says: the profiles a listing names, and the profile in use when it names one. */
+export type Session = { currentProfile?: string; profiles?: typeof mobile.profiles }
+
+/** Learns from what the CLI read of a session answer's text (docs/findings.md, *MobileBuildMCP's session answers*). */
+export function observeSession(read: Session | undefined): void {
+  if (read) learnSession(read)
+}
+
+/** A listing replaces the profiles; a profile in use is learned only when named, so a listing keeps the one known. */
+function learnSession(read: Session): void {
+  if (read.profiles) {
+    mobile.profiles = read.profiles
+    fromXcode.profiles = {}
+    fromXcode.listings += 1
+  }
+  if (typeof read.currentProfile === 'string') mobile.current = read.currentProfile
 }
 
 /** Forgets what the Xcode MCP has active after a call that may have changed it but whose answer can't be read. */

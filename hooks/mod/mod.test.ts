@@ -513,27 +513,83 @@ function serve(on: On, results: Record<string, { isError: boolean; text: string 
   return statuses
 }
 
-test('the status line names the scheme and simulator MobileBuildMCP will use', async ($, on) => {
+/**
+ * The CLI reading the session tools' captured texts as `xcrew session` does (`fixtures.ts`'s `…Read`), and any other
+ * text as one in no shape it knows, `{}`. Returns what the mod asked it.
+ */
+function readsSessions(on: On): CliCall[] {
+  const read = new Map([[captured.mobileSessionDefaults.text, captured.mobileSessionDefaultsRead.text], [captured.mobileProfileSwitched.text, captured.mobileProfileSwitchedRead.text]])
+  return stubCli(on, { session: stdin => JSON.parse(read.get(stdin ?? '') ?? '{}') })
+}
+
+test('the status line names the scheme and simulator MobileBuildMCP will use, from its defaults\' JSON', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
-  const statuses = serve(on, { session_show_defaults: captured.mobileSessionDefaults }, clock)
+  const statuses = serve(on, { session_show_defaults: captured.mobileSessionDefaultsJSON }, clock)
 
   await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__session_show_defaults')
   await callTool($, 'mcp__plugin_xcrew_MobileBuildMCP__test_sim')
 
-  expect(statuses).toContain('test_sim · MacroProbe-Package on iPhone 16 · 0:03')
+  expect(statuses).toContain('test_sim · Feature on xcrew-testbed · 0:03')
 })
 
-test('switching profiles changes what the status line names', async ($, on) => {
+test('switching profiles changes what the status line names, from the answers\' text', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
+  const asked = readsSessions(on)
   const statuses = serve(on, { session_show_defaults: captured.mobileSessionDefaults, session_use_defaults_profile: captured.mobileProfileSwitched }, clock)
 
   await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
   await callTool($, 'mcp__MobileBuildMCP__session_use_defaults_profile', { profile: 'unit' })
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
 
-  expect(statuses).toContain('build_sim · iPhone 12 · 0:03')
+  expect(statuses).toContain('build_sim · Data on xcrew-testbed · 0:03')
+  expect(asked.filter(call => call.args[0] === 'session').map(call => call.stdin)).toEqual([captured.mobileSessionDefaults.text, captured.mobileProfileSwitched.text])
+})
+
+test('the text of a switch made before any listing names the profile, and a listing\'s text then gives its scheme', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  readsSessions(on)
+  const statuses = serve(on, { session_use_defaults_profile: captured.mobileProfileSwitched, session_show_defaults: captured.mobileSessionDefaults }, clock)
+
+  await callTool($, 'mcp__MobileBuildMCP__session_use_defaults_profile', { profile: 'unit' })
+  await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(statuses).toContain('build_sim · Data on xcrew-testbed · 0:03')
+})
+
+test('a listing\'s text names no profile in use, so the one already known stays', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  readsSessions(on)
+  let show = captured.mobileSessionDefaultsJSON
+  const statuses = serve(on, { get session_show_defaults() { return show } }, clock)
+
+  await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  show = captured.mobileSessionDefaults
+  await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(statuses).toContain('build_sim · Feature on xcrew-testbed · 0:03')
+})
+
+test('a session answer in a shape the mod doesn\'t know leaves what it knows as it was', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  readsSessions(on)
+  let show = captured.mobileSessionDefaultsJSON
+  const statuses = serve(on, { get session_show_defaults() { return show } }, clock)
+
+  await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  for (const text of ['\n⚙️ Show Defaults\n\nprofiles moved to a table\n', '\n⚙️ Show Defaults\n\n📁 probe\n  ├ workspacePath: /w\n', '\n⚙️ Use Defaults Profile\n\n✅ Activated a new kind of profile\n']) {
+    show = { isError: false, text }
+    await callTool($, 'mcp__MobileBuildMCP__session_show_defaults')
+  }
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+
+  expect(statuses).toContain('build_sim · Feature on xcrew-testbed · 0:03')
 })
 
 test('the status line names the scheme and destination the Xcode MCP has active', async ($, on) => {
@@ -639,7 +695,7 @@ test('any session-defaults answer that names the profile in use is read, not onl
   const clock = mock.clock(on)
   mock.store(on)
   const statuses = serve(on, {
-    session_show_defaults: captured.mobileSessionDefaults,
+    session_show_defaults: captured.mobileSessionDefaultsJSON,
     session_clear_defaults: { isError: false, text: '{"schema":"mobilebuildmcp.output.session-profile","data":{"currentProfile":"unit"}}' },
   }, clock)
 
@@ -647,7 +703,7 @@ test('any session-defaults answer that names the profile in use is read, not onl
   await callTool($, 'mcp__MobileBuildMCP__session_clear_defaults')
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
 
-  expect(statuses).toContain('build_sim · iPhone 12 · 0:03')
+  expect(statuses).toContain('build_sim · Data on xcrew-testbed · 0:03')
 })
 
 test('the mod asks the shim for its build once, then runs the build directly', async ($, on) => {
