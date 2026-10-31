@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The ledger and the evidence block mark a test passed only when the run's results list it as passed, so a test deleted or renamed since it failed no longer shows as fixed. Before, a later run whose selection included the test was taken to have passed it.
+
 ## 0.11.0 — 2026-10-31
 
 - The line above the prompt counts a serial XCTest run's and a Swift Testing run's progress while it goes, `testing N of M`, as MobileBuildMCP's result counts their tests. Before, it showed no count until the tests were done.

@@ -7,7 +7,10 @@ import { callTool, mapStore, runCommand, stubCli } from './testing'
 const TEST = 'GreetingTests/testHello'
 const FAILED: Partial<Report> = { ok: false, failures: [{ title: TEST, message: 'XCTAssertEqual failed: ("Hi") is not equal to ("Hello")', where: 'GreetingTests.swift:9', isTest: true }] }
 const BUILD_FAILED: Partial<Report> = { ok: false, failures: [{ title: 'Greeting.swift:4', message: 'cannot find greet in scope', isTest: false }] }
-const PASSED: Partial<Report> = { ok: true, detail: '12 passed' }
+/** A pass whose results list the test as passed, as `xcrew report --passed` reads them. */
+const PASSED: Partial<Report> = { ok: true, detail: '12 passed', passed: [{ test: TEST }] }
+/** A pass whose results don't hold the test. */
+const PASSED_OTHERS: Partial<Report> = { ok: true, detail: '11 passed', passed: [{ test: 'GreetingTests/testBye' }] }
 const DAY_MS = 24 * 60 * 60_000
 
 /**
@@ -29,7 +32,7 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
     return { value: { tool: `mcp__xcrew__${e.name}` } }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  stubCli(on, {
+  const calls = stubCli(on, {
     reports,
     ...(options.reportFails ? { reportFails: options.reportFails } : {}),
     project: args => {
@@ -41,7 +44,7 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
     },
   })
   on('tool.call', () => ({ result: {}, text: 'the server\'s result' }))
-  return { clock, registered, store }
+  return { calls, clock, registered, store }
 }
 
 const LEDGER = 'mcp__xcrew__ledger'
@@ -59,81 +62,85 @@ test('a test that fails and then passes in the same scope is listed red, then gr
   expect(text).not.toContain('Still red')
 })
 
-test('a pass of another selection never ran the test: it stays red', async ($, on) => {
-  project(on, [FAILED, PASSED])
-  await run($, 'AppTests')
-  await run($, 'OtherTests')
+test('a test run asks the CLI for its passed tests only while a red may be waiting', async ($, on) => {
+  const { calls } = project(on, [FAILED, PASSED, PASSED])
+  const asked = () => calls.filter(call => call.args[0] === 'report').map(call => call.args.includes('--passed'))
+  // Before any write the mod can't tell, so it asks; then while the red waits; and not once it's green.
+  await run($)
+  await ledgerText($)
+  await run($)
+  await ledgerText($)
+  await run($)
+  expect(asked()).toEqual([true, true, false])
+})
+
+test('a red test a passing run doesn\'t list as passed stays red, though the run selected its class', async ($, on) => {
+  // The field case: a test deleted since its red, then a run of its class, whose results don't hold it.
+  project(on, [FAILED, { ok: true, detail: '4 passed', passed: [{ test: 'GreetingTests/testBye' }, { test: 'GreetingTests/testWave' }] }])
+  await run($, 'AppTests/GreetingTests/testHello')
+  await run($, 'AppTests/GreetingTests')
   const text = await ledgerText($)
   expect(text).toContain(`Still red (1):\n- ${TEST}: red`)
   expect(text).not.toContain('Red, then green')
 })
 
-for (const selection of ['AppTests/GreetingTests', 'AppTests']) {
-  test(`a test red under its method is green once a run of ${selection} passes`, async ($, on) => {
-    project(on, [FAILED, PASSED])
-    await run($, 'AppTests/GreetingTests/testHello')
-    await run($, selection)
-    expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
-  })
-}
-
-test('a pass of a sibling class or another target never ran the test: it stays red', async ($, on) => {
-  project(on, [FAILED, PASSED, PASSED])
+test('a red test the run lists as passed turns green, whatever the run selected', async ($, on) => {
+  project(on, [FAILED, PASSED])
   await run($, 'AppTests/GreetingTests/testHello')
-  await run($, 'AppTests/FarewellTests')
-  await run($, 'OtherTests/GreetingTests')
-  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
-})
-
-test('a test red under its target is green once a run of its class in that target passes', async ($, on) => {
-  project(on, [FAILED, PASSED])
-  await run($, 'AppTests')
-  await run($, 'AppTests/GreetingTests')
-  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
-})
-
-test('a run of the target a test may not be in leaves it red, when its failing run selected two targets', async ($, on) => {
-  project(on, [FAILED, PASSED])
-  await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-only-testing:AppTests', '-only-testing:OtherTests'] })
   await run($, 'OtherTests')
-  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
-})
-
-test('a Swift Testing selection, its method spelled with (), reaches the test either way', async ($, on) => {
-  project(on, [FAILED, PASSED, FAILED, PASSED])
-  await run($, 'AppTests/GreetingTests/testHello()')
-  await run($, 'AppTests/GreetingTests')
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
-test('a test red in a whole-suite run is green once a run of its method passes', async ($, on) => {
+test('a pass that skipped other tests turns green the reds it lists as passed', async ($, on) => {
   project(on, [FAILED, PASSED])
   await run($)
-  await run($, 'AppTests/GreetingTests/testHello')
-  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-skip-testing:AppTests/FarewellTests'] })
+  expect(await ledgerText($)).toContain('Red, then green, on feat/ledger (1 test)')
+})
+
+test('a pass under another scheme leaves a red red, though it lists the test', async ($, on) => {
+  project(on, [FAILED, PASSED])
+  await run($)
+  await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'Other' })
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+})
+
+test('a pass with no list of its passed tests turns nothing green', async ($, on) => {
+  project(on, [FAILED, { ok: true, detail: '12 passed' }])
+  await run($)
+  await run($)
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+})
+
+test('a test named with () on one side only is the same test', async ($, on) => {
+  project(on, [FAILED, { ok: true, passed: [{ test: `${TEST}()` }] }, { ok: false, failures: [{ title: 'GreetingTests/testWave()', message: 'nope', isTest: true }] }, { ok: true, passed: [{ test: 'GreetingTests/testWave' }] }])
+  for (let each = 0; each < 4; each++) await run($)
+  expect(await ledgerText($)).toContain('Red, then green, on feat/ledger (2 tests)')
 })
 
 const FAILED_IN_TARGET: Partial<Report> = { ok: false, failures: [{ ...FAILED.failures![0]!, target: 'AppTests' }] }
 
-test('a test whose target the report named is green once a run of that whole target passes, though it failed in a whole-suite run', async ($, on) => {
-  project(on, [FAILED_IN_TARGET, PASSED])
+test('a test whose target the report named is green once a pass in that target lists it', async ($, on) => {
+  project(on, [FAILED_IN_TARGET, { ok: true, passed: [{ test: TEST, target: 'AppTests' }] }])
   await run($)
   await run($, 'AppTests')
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
-test('a class of the same name in another target never ran a test whose target the report named', async ($, on) => {
-  project(on, [FAILED_IN_TARGET, PASSED])
+test('a test of the same name passing in another target leaves a red whose target the report named red', async ($, on) => {
+  project(on, [FAILED_IN_TARGET, { ok: true, passed: [{ test: TEST, target: 'OtherTests' }] }])
   await run($)
-  await run($, 'OtherTests/GreetingTests')
+  await run($)
   expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
 })
 
 test('a test that fails again in another target takes the newest target the report names', async ($, on) => {
-  project(on, [FAILED_IN_TARGET, { ok: false, failures: [{ ...FAILED.failures![0]!, target: 'NewTests' }] }, PASSED])
+  project(on, [FAILED_IN_TARGET, { ok: false, failures: [{ ...FAILED.failures![0]!, target: 'NewTests' }] }, { ok: true, passed: [{ test: TEST, target: 'AppTests' }] }, { ok: true, passed: [{ test: TEST, target: 'NewTests' }] }])
   await run($)
   await run($)
-  await run($, 'NewTests')
+  await run($)
+  expect(await ledgerText($)).toContain('Still red (1)')
+  await run($)
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
@@ -237,20 +244,12 @@ test('a run whose report the CLI couldn\'t read is no evidence: it turns nothing
   expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}`)
 })
 
-test('a pass that skipped tests turns nothing green', async ($, on) => {
-  project(on, [FAILED, PASSED])
-  await run($)
-  await callTool($, 'mcp__MobileBuildMCP__test_sim', { extraArgs: ['-skip-testing:AppTests/GreetingTests'] })
-  expect(await ledgerText($)).toContain('Still red (1)')
-})
-
-test('of the Xcode MCP\'s test tools, only its run of all tests turns a red green', async ($, on) => {
-  project(on, [FAILED, PASSED, FAILED, PASSED])
+test('an Xcode MCP run of some tests turns a red green when its results list it, and not when they don\'t', async ($, on) => {
+  project(on, [FAILED, PASSED_OTHERS, PASSED])
   await callTool($, 'mcp__xcode__RunSomeTests')
   await callTool($, 'mcp__xcode__RunSomeTests')
   expect(await ledgerText($)).toContain('Still red (1)')
-  await callTool($, 'mcp__xcode__RunAllTests')
-  await callTool($, 'mcp__xcode__RunAllTests')
+  await callTool($, 'mcp__xcode__RunSomeTests')
   expect(await ledgerText($)).toContain('Red, then green')
 })
 
@@ -267,7 +266,7 @@ test('a test that fails again elsewhere is green only once that scope passes it'
 test('a failing run turns green the reds it ran without failing them', async ($, on) => {
   const OTHER = 'GreetingTests/testBye'
   const both: Partial<Report> = { ok: false, failures: [FAILED.failures?.[0] ?? { title: '', message: '' }, { title: OTHER, message: 'nope', isTest: true }] }
-  project(on, [both, { ok: false, failures: [{ title: OTHER, message: 'still nope', isTest: true }] }])
+  project(on, [both, { ok: false, failures: [{ title: OTHER, message: 'still nope', isTest: true }], passed: [{ test: TEST }] }])
   await run($)
   await run($)
   const text = await ledgerText($)
@@ -298,7 +297,7 @@ test('a test no run has written for two weeks leaves the ledger, while the branc
 const REPEATED = ['-only-testing:AppTests/GreetingTests/testHello', '-test-iterations', '5', '-test-repetition-relaunch-enabled', 'YES']
 const repeat = (tool: Engine) => callTool(tool, 'mcp__MobileBuildMCP__test_sim', { extraArgs: REPEATED })
 const MIXED: Partial<Report> = { ...FAILED, repeated: [{ test: TEST, failed: 2, passed: 3, runs: 5, verdict: 'flaky' }] }
-const CLEAN: Partial<Report> = { ok: true, repeated: [{ test: TEST, failed: 0, passed: 5, runs: 5, verdict: 'passed' }] }
+const CLEAN: Partial<Report> = { ok: true, repeated: [{ test: TEST, failed: 0, passed: 5, runs: 5, verdict: 'passed' }], passed: [{ test: TEST }] }
 const REAL: Partial<Report> = { ...FAILED, repeated: [{ test: TEST, failed: 5, passed: 0, runs: 5, verdict: 'real' }] }
 const SKIPPED: Partial<Report> = { ok: true, repeated: [{ test: TEST, failed: 0, passed: 0, runs: 5, verdict: 'none' }] }
 

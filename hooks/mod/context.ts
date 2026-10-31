@@ -161,10 +161,10 @@ export function selectedTests(input: Record<string, unknown>): string[] {
 export const NARROWING_OR_REPEATING = ['-only-test-configuration', '-skip-test-configuration', '-testPlan', '-retry-tests-on-failure', '-run-tests-until-failure']
 
 /**
- * Whether a test run ran every test its scope names, so a pass in it is a pass of each: not one that skips some
- * (`-skip-testing:`), nor an Xcode MCP run of some tests, whose selection the scope doesn't read; only its run of all.
+ * Whether a test run ran every test its scope names: not one that skips some (`-skip-testing:`), nor an Xcode MCP run of
+ * some tests, whose selection the scope doesn't read; only its run of all. Part of what makes a full-suite run.
  */
-export function runsWholeScope(tool: XcodeTool, input: Record<string, unknown>): boolean {
+function runsWholeScope(tool: XcodeTool, input: Record<string, unknown>): boolean {
   const extraArgs = Array.isArray(input.extraArgs) ? (input.extraArgs as unknown[]) : []
   if (extraArgs.some(arg => typeof arg === 'string' && arg.startsWith('-skip-testing:'))) return false
   return runsEveryTestItNames(tool)

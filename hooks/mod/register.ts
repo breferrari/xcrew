@@ -9,7 +9,7 @@ import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
-import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, observeSession, runsWholeScope, xcodeSelected, xcodeStarted } from './context'
+import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, observeSession, xcodeSelected, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
@@ -217,13 +217,13 @@ export const register: Register = on => {
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
     // It never throws: without the CLI it falls back to whether the server reported an error.
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
-    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated), 120_000, result.text ?? '')
+    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated, asksPassed(kind)), 120_000, result.text ?? '')
     const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, result.isError === true)), scope)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
     // its real end comes later, as a task notification (`UserMessage` below).
-    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, ranAll: runsWholeScope(parsed, input), fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
+    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
         backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }) })
@@ -379,7 +379,7 @@ export const register: Register = on => {
 }
 
 /** A finished build, test or run call, as its ending is recorded. */
-type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; ranAll: boolean; fullSuite: boolean; toolUseId?: string; by?: string }
+type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
 type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean> }
@@ -401,7 +401,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
   await quietly(() => recordRun($, scope, outcome.ok, outcome.failures, outcome.cause))
   // Only what the CLI read goes in the ledger: without it, or from a log's verdict alone, the outcome says no test's own.
   const readTests = kind === 'test' && isRead && !outcome.isVerdictOnly
-  if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, ranAll: run.ranAll, repeated: outcome.repeated ?? [], bundle: outcome.bundle })
+  if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, repeated: outcome.repeated ?? [], ...(outcome.passed ? { passed: outcome.passed } : {}), bundle: outcome.bundle })
   // A failed run may have stopped early: its count is no total for the next run's.
   if (key !== undefined && outcome.ok && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
   saveCard($)
@@ -423,7 +423,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
  * how the run ended, from the call to the notification. Nothing, when neither says.
  */
 async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, asksPassed(call.kind)), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
@@ -892,6 +892,16 @@ function withPinNamedOnce(outcome: Report): Report {
 /** The ledger writes in flight, one after another, so two runs ending together each keep their entries. */
 let ledgerWrites: Promise<unknown> = Promise.resolve()
 
+/**
+ * Whether the branch's ledger holds a red with no green, as the last write left it; unknown before one. A test run asks
+ * the CLI for its passed tests only while one may wait, so a passing run on a clean ledger reads no test list.
+ */
+let ledgerWaits: boolean | undefined
+
+function asksPassed(kind: string): boolean {
+  return kind === 'test' && ledgerWaits !== false
+}
+
 /** Writes a finished test run into its branch's ledger, after the writes before it, without holding up the run's result. */
 function recordLedger($: EngineInterface, run: TestRun): void {
   ledgerWrites = ledgerWrites.then(() => writeLedger($, run)).catch(() => undefined)
@@ -902,7 +912,9 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   const head = headOf(await answer($, ['project', '--branch'], 10_000))
   if (!head) return
   const key = ledgerKey(head)
-  await $.store.set(key, afterTestRun(ledgerOf(await $.store.get(key)), run))
+  const ledger = afterTestRun(ledgerOf(await $.store.get(key)), run)
+  await $.store.set(key, ledger)
+  ledgerWaits = ledger.entries.some(entry => !entry.green)
   const others = (await $.store.keys()).filter(stored => stored.startsWith(LEDGER_PREFIX) && stored !== key)
   const stored = Object.fromEntries(await Promise.all(others.map(async other => [other, await $.store.get(other)] as const)))
   await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))

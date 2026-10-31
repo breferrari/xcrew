@@ -57,7 +57,7 @@ for (const [name, replay, mark, time, detail, firstFailure] of [
     await callTool($, TEST_SIM, { tool_use_id: `toolu_${name}` })
 
     const reported = seen.cli.filter(call => call.args[0] === 'report')
-    expect(reported.map(call => call.args)).toEqual([['report', '--server', 'MobileBuildMCP', '--kind', 'test', ...(replay.isError ? ['--error'] : [])]])
+    expect(reported.map(call => call.args)).toEqual([['report', '--server', 'MobileBuildMCP', '--kind', 'test', ...(replay.isError ? ['--error'] : []), '--passed']])
     expect(reported[0]?.stdin).toBe(replay.text)
     expect(seen.toasts).toEqual([])
 

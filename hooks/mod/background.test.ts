@@ -89,7 +89,7 @@ test("a backgrounded test run's notification is read as its result", async ($, o
   const text = notificationText('the server\'s result')
   const entered = await notify($, clock, text)
   // One call: the CLI falls back to the run's log itself when the result can't be read.
-  expect(reportCalls(cli).at(-1)).toMatchObject({ args: ['report', '--server', 'MobileBuildMCP', '--kind', 'test', '--notification', '--log', LOG], stdin: text })
+  expect(reportCalls(cli).at(-1)).toMatchObject({ args: ['report', '--server', 'MobileBuildMCP', '--kind', 'test', '--passed', '--notification', '--log', LOG], stdin: text })
   expect(entered.text).toBe(notificationText('shorter'))
   expect(entered.context).toContain('xcrew: a note on the run')
   // The run took from the call to the notification: 2:55, then a minute.

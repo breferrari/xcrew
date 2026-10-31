@@ -24,6 +24,8 @@ export type Report = {
   notes: string[]
   /** For a run repeated with `-test-iterations`: each repeated test's runs, and the verdict the CLI gives them. */
   repeated?: Repetition[]
+  /** With `--passed`: the tests the run's results list as passed, `Suite/test`; absent when not asked for or unreadable. */
+  passed?: { test: string; target?: string }[]
   /** The result said no outcome, as a call moved to the background answers with a handle. */
   isUnread?: boolean
   /** A test run's result bundle. */
@@ -76,8 +78,8 @@ export function ranOutOfTime(startedAt: number, now: number, timeoutMs: number):
   return now - startedAt >= timeoutMs
 }
 
-export function reportArgs(server: string, kind: string, isError: boolean, repeated = false): string[] {
-  return ['report', '--server', server, '--kind', kind, ...(isError ? ['--error'] : []), ...(repeated ? ['--repeated'] : [])]
+export function reportArgs(server: string, kind: string, isError: boolean, repeated = false, passed = false): string[] {
+  return ['report', '--server', server, '--kind', kind, ...(isError ? ['--error'] : []), ...(repeated ? ['--repeated'] : []), ...(passed ? ['--passed'] : [])]
 }
 
 export function phaseArgs(tool: string, since: number, expectedTests: number | undefined, log: string | undefined): string[] {

@@ -26,8 +26,14 @@ export type Flakiness = { failed: number; runs: number; scope?: string; at?: num
 
 export type Ledger = { entries: LedgerEntry[]; updated: number }
 
-/** A finished test run, as the ledger reads it. `ranAll`: it ran every test its scope names, so its passes count. */
-export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; ranAll: boolean; repeated?: readonly Repetition[]; bundle?: string }
+/**
+ * A finished test run, as the ledger reads it. `passed`: the tests its results list as passed, each with the test bundle
+ * the result bundle files it under when it names one; absent when the CLI couldn't read them.
+ */
+export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; repeated?: readonly Repetition[]; passed?: readonly Passed[]; bundle?: string }
+
+/** A test a run's results list as passed. */
+export type Passed = { test: string; target?: string }
 
 /** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
 export function label(head: Head, isShort: boolean): string {
@@ -55,38 +61,19 @@ export function covers(passed: string, failed: string): boolean {
 }
 
 /**
- * Whether a run of `passed` scope ran `test`, red in `failing`: the scopes `covers` matches, or the same tool and scheme
- * with a selection that reaches the test. A selection is `TestTarget[/TestClass[/TestMethod]]` (`man xcodebuild`), a
- * Swift Testing method with or without its `()`, and the ledger names a test `Suite/test`. With its `target`, from the
- * result bundle, a selection reaches the test when it names that target and, past it, the test or a class it's in.
- * Without one, as in entries recorded before the report named it, the target comes from the selections of the run it
- * failed in: a selection of a class or method reaches the test under a target that run could have run it in, or under
- * any target when that run selected none; a selection of a whole target only when that run's selections leave the test
- * exactly one target.
+ * Whether a run of `scope` passed `entry`'s test: its results list the test as passed, under the same tool and scheme
+ * as the run it fails in now, and in the target the report named for it when both name one. A Swift Testing name is
+ * the same test with its `()` or without. A selection that would reach the test is no evidence: the test may be gone.
  */
-export function reaches(passed: string, test: string, failing: string, target?: string): boolean {
-  if (covers(passed, failing)) return true
-  const pass = scopeParts(passed), fail = scopeParts(failing)
-  if (pass.base !== fail.base) return false
-  if (target !== undefined) return pass.selections.map(path).some(([named = '', ...rest]) => named === target && within(test, rest))
-  // The targets the failing run could have run the test in; none known when it selected none.
-  const targets = new Set(fail.selections.map(path).filter(([, ...rest]) => within(test, rest)).map(([target = '']) => target))
-  return pass.selections.map(path).some(([target = '', ...rest]) =>
-    rest.length > 0
-      ? within(test, rest) && (fail.selections.length === 0 || targets.has(target))
-      : targets.size === 1 && targets.has(target),
-  )
+export function passes(scope: string, passed: readonly Passed[], entry: LedgerEntry): boolean {
+  if (scopeParts(scope).base !== scopeParts(entry.failing).base) return false
+  const test = bare(entry.test)
+  return passed.some(each => bare(each.test) === test && (each.target === undefined || entry.target === undefined || each.target === entry.target))
 }
 
-/** A selection's components, a Swift Testing method's `()` taken off. */
-function path(selection: string): string[] {
-  return (selection.endsWith('()') ? selection.slice(0, -2) : selection).split('/')
-}
-
-/** Whether `test` (`Suite/test`) is the class or method `components` name, or in it; no components name everything. */
-function within(test: string, components: string[]): boolean {
-  const named = components.join('/')
-  return named === '' || test === named || test.startsWith(`${named}/`)
+/** A test's name without a Swift Testing method's `()`. */
+function bare(test: string): string {
+  return test.endsWith('()') ? test.slice(0, -2) : test
 }
 
 /** Whether a run scope is a tool and scheme's whole suite, not a selection of its tests. */
@@ -98,13 +85,12 @@ export function isWholeScope(scope: string): boolean {
  * The ledger after a test run.
  * - A failing test enters red, or turns red again after a green, keeping its first red; either way it now fails in this
  *   run's scope.
- * - A run that ran every test of its scope turns green each red test it reaches and didn't fail, a failing run
- *   included: its other tests passed. A run that didn't get as far as tests (a build failure) turns nothing green.
+ * - A run turns green each red test its results list as passed (`passes`), a failing run included. A run whose
+ *   results the CLI couldn't read turns nothing green.
  * - An entry no run has written for as long as the history is kept is dropped.
  */
 export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
   const failed = new Map(run.failures.filter(failure => failure.isTest).map(failure => [failure.title, failure]))
-  const testsRan = run.ok || failed.size > 0
   // The CLI's verdict on each repeated test. A flaky test stays red, marked so, until a repeated run passes it every
   // time; one run passing it is no evidence. A test failing every run is a real failure, flaky no longer.
   const repeated = new Map((run.repeated ?? []).map(test => [test.test, test]))
@@ -121,8 +107,8 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
       return { test: entry.test, red: entry.red, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) }
     }
     const cleared = !entry.flaky || repeated.get(entry.test)?.verdict === 'passed'
-    const passes = !entry.green && cleared && run.ranAll && testsRan && reaches(run.scope, entry.test, entry.failing, entry.target)
-    return passes ? { ...entry, green: { scope: run.scope, at: run.at }, last: run.at } : entry
+    const isGreen = !entry.green && cleared && run.passed !== undefined && passes(run.scope, run.passed, entry)
+    return isGreen ? { ...entry, green: { scope: run.scope, at: run.at }, last: run.at } : entry
   })
   for (const test of failing) {
     if (entries.some(entry => entry.test === test)) continue
