@@ -46,6 +46,23 @@ import XcrewTestSupport
         #expect(ConcurrencyGroups(titles: ["RegionIsolation": "Region isolation"], isFromDocs: true).counts(["RegionIsolation", "SendingRisksDataRace"]))
     }
 
+    /// Swift 6.2's docs, which Xcode 26 ships, head a doc with its title alone: the file's name gives the group.
+    @Test func aDocHeadedWithItsTitleAloneIsNamedByItsFile() {
+        let groups = ConcurrencyGroups.read(docs: docs([
+            "sendable-closure-captures": "# Captures in a `@Sendable` closure\n\n`@Sendable` closures can be called multiple times concurrently.\n",
+        ]))
+        #expect(groups.titles == ["SendableClosureCaptures": "Captures in a `@Sendable` closure"])
+    }
+
+    /// A doc may say less than its group's name: Swift 6.2's `IsolatedConformances` speaks of neither concurrency nor
+    /// data races. The docs add groups and titles; they never take one away.
+    @Test func aGroupsNameCountsWhereItsDocIsSilent() {
+        let groups = ConcurrencyGroups.read(docs: docs([
+            "isolated-conformances": "# Global-actor isolated conformances\n\nA protocol conformance can be isolated to a specific global actor.\n",
+        ]))
+        #expect(groups.counts(["IsolatedConformances"]))
+    }
+
     @Test func withoutDocsTheGroupsNameDecides() {
         let groups = ConcurrencyGroups.read(docs: nil)
         #expect(!groups.isFromDocs)

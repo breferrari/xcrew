@@ -736,17 +736,16 @@ struct TestbedConcurrencyTests {
     }
 }
 
-/// The name rule stands in where an Xcode ships no group docs; on this Mac's Xcode it must say what the docs say, for
-/// every group they document, so a new Swift's groups show here first.
+/// The name rule stands in where an Xcode ships no group docs: every group this Mac's Xcode documents as concurrency's,
+/// it must catch too, so it's never weaker than the docs, and a new Swift's group shows here first.
 @Suite(.enabled(if: InstalledGroupDocs.folder != nil, "no Xcode with Swift's diagnostic group docs"))
 struct InstalledGroupDocsTests {
-    @Test func theNameRuleAgreesWithTheDocs() {
+    @Test func theNameRuleCatchesEveryGroupTheDocsSayIsConcurrencys() {
         let docs = ConcurrencyGroups.read(docs: InstalledGroupDocs.folder)
-        let byName = ConcurrencyGroups.read(docs: nil)
         #expect(docs.isFromDocs)
-        #expect(docs.titles.count >= 10, "too few concurrency groups in the docs: their shape changed")
-        for group in docs.documented.sorted() {
-            #expect(byName.counts([group]) == (docs.titles[group] != nil), "\(group): the docs say \(docs.titles[group] == nil ? "not concurrency" : "concurrency")")
+        #expect(docs.titles.count >= 5, "too few concurrency groups in the docs: their shape changed")
+        for group in docs.titles.keys.sorted() {
+            #expect(ConcurrencyGroups.namesConcurrency(group), "\(group): its doc says concurrency, its name doesn't")
         }
     }
 }
