@@ -212,12 +212,16 @@ struct MobileText: Sendable {
         return nil
     }
 
-    /// `✗ Suite / test: message` or `✗ message`, each maybe followed by its `/path:line`.
+    /// `✗ Suite / test: message` or `✗ message`, each maybe followed by its `/path:line`. With one crashed test, the
+    /// Swift runtime error the run lists for it under Errors, plainly and behind the xctest log's prefix, is that test's,
+    /// and its crash note's, not a failure of its own; any other error stays.
     var failures: [ToolOutput.Failure] {
         var failures: [ToolOutput.Failure] = []
         var seen: Set<TestID> = []
+        let crashed = Set(lines.compactMap(\.failing).filter { FailureNotes.isCrash($0.message) }.map(\.test))
         for (index, line) in lines.enumerated() {
             guard let entry = line.entry, !entry.isExcerpt else { continue }
+            if crashed.count == 1, entry.failing == nil, MobileBuildMCPLine.runtimeError(entry.text) != nil { continue }
             let location = location(after: index).map { "\(ToolOutput.basename($0.path)):\($0.line)" }
             if let failing = entry.failing {
                 // It lists a failing test twice, once with its location; the first is kept.

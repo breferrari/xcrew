@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A test that crashed on a Swift runtime error is listed alone in the failures pane and on its row, its error under it in the crash note. Before, the error came first as two failures of its own: once plainly, and once with xctest's log prefix as its title.
 - A skipped Swift Testing test's reason no longer repeats `Test skipped:` before it in the result Claude reads.
 - A Swift Testing test that recorded a known issue is named in the note to Claude as one, with `withKnownIssue`, not as an expected failure with XCTest's `XCTExpectFailure`. A run with both names each by its own API.
 - Once a test run's build is done, the line above the prompt says `testing` until the tests start, rather than the build's last step.
