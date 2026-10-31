@@ -434,6 +434,7 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
     - Xcode 27.2 heads each `# <title> (<Group>)`. It has 76 docs, no `region-isolation-*` ones, and index pages whose heading names no group.
     - Swift 6.2, which Xcode 26 ships, heads each with its title alone (swiftlang/swift at `swift-6.2-RELEASE`, read October 31, 2026). The file's name, in PascalCase, gives the group. For every concurrency doc there that's the group's real name: `sendable-closure-captures` is `SendableClosureCaptures`.
     - So where some heading names its group, one that doesn't is an index page; where none does, the file names the group.
+    - Xcode 26.0 (CI's oldest toolchain, October 31, 2026) ships two group docs, `AvailabilityUnrecognizedName` and `ImplementationOnlyDeprecated`, neither about concurrency. There the name words decide every group.
   - A group counts when its doc speaks of concurrency or data races, or its title names `Sendable` (`ExplicitSendable`, whose doc mentions neither), or when the words in its name say so: `sendable`, `sending`, `isolat`, `actor`, `concurren`, `datarace`, `globalvariable`.
     - A doc may say less than its name. Swift 6.2's `IsolatedConformances` doc speaks of neither concurrency nor data races; Xcode 27.2's speaks of data races. So the docs add groups and titles, but never take one away.
     - A body's `Sendable` isn't enough: `ImplicitStrongCapture`'s doc has one in an example's code and isn't about concurrency.
