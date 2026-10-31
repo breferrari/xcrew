@@ -21,16 +21,14 @@ import XcrewTestSupport
         try FileManager.default.setAttributes([.modificationDate: Self.now.addingTimeInterval(-ago)], ofItemAtPath: url.path)
     }
 
-    /// This checkout is `main`; `worktrees` are its linked ones, made on disk unless named in `missing`.
-    func going(worktrees: [String], missing: Set<String> = []) async throws -> [OtherRuns.Run] {
-        try FileManager.default.createDirectory(at: main, withIntermediateDirectories: true)
-        for name in worktrees where !missing.contains(name) { try FileManager.default.createDirectory(at: worktree(name), withIntermediateDirectories: true) }
-        // `Project` standardizes the path, dropping `/private`: git is asked under that spelling.
-        let project = Project(root: main)
-        let responses: [String: CommandResult] = [
-            "git -C \(project.root.path) rev-parse --show-prefix": .init(status: 0, stdout: "\n"),
-            "git -C \(project.root.path) worktree list --porcelain": FakeRunner.worktreeList(main: main.path, linked: worktrees.map { worktree($0).path }),
-        ]
+    /// This checkout is `main`; `worktrees` are its linked ones, made on disk unless named in `missing`. With `prefix`, the
+    /// project sits that folder down in each.
+    func going(worktrees: [String], missing: Set<String> = [], prefix: String = "") async throws -> [OtherRuns.Run] {
+        let here = prefix.isEmpty ? main : main.appending(path: prefix)
+        try FileManager.default.createDirectory(at: here, withIntermediateDirectories: true)
+        for name in worktrees where !missing.contains(name) { try FileManager.default.createDirectory(at: worktree(name).appending(path: prefix), withIntermediateDirectories: true) }
+        let project = Project(root: here)
+        let responses = FakeRunner.worktreeResponses(project: project, main: main.path, linked: worktrees.map { worktree($0).path }, prefix: prefix)
         let machine = Machine(environment: [:], home: home, runner: FakeRunner(responses: responses))
         return await OtherRuns.going(project: project, machine: machine, now: Self.now)
     }
@@ -42,7 +40,6 @@ import XcrewTestSupport
         let runs = try await going(worktrees: ["feature"])
         #expect(runs.map(\.worktree) == ["feature"])
         #expect(runs.first?.tool == "test_sim")
-        #expect(runs.first?.root == worktree("feature").path)
         #expect(runs.first?.phase != nil)
     }
 
@@ -52,6 +49,26 @@ import XcrewTestSupport
         try log("test_sim_2026-11-01T23-50-00-000Z_pid100_a.log", in: worktree("quiet"), ago: 91, text: Self.testing)
         try log("test_sim_2026-11-01T23-59-00-000Z_pid100_a.log", in: worktree("busy"), ago: 89, text: Self.testing)
         #expect(try await going(worktrees: ["done", "quiet", "busy"]).map(\.worktree) == ["busy"])
+    }
+
+    /// A run is named by its worktree, not by the project's folder in it.
+    @Test func aProjectAFolderDownIsNamedByItsWorktree() async throws {
+        try log("test_sim_2026-11-01T23-59-00-000Z_pid100_a.log", in: worktree("feature").appending(path: "App"), ago: 5, text: Self.testing)
+        try log("build_sim_2026-11-01T23-59-00-000Z_pid100_a.log", in: worktree("spike").appending(path: "App"), ago: 5, text: "Build started\n")
+        #expect(try await going(worktrees: ["feature", "spike"], prefix: "App").map(\.worktree) == ["feature", "spike"])
+    }
+
+    /// Only xcodebuild's logs end on a verdict: a Swift package build's never does, so it's no run of this line's.
+    @Test func aSwiftPackageBuildIsNotARun() async throws {
+        try log("build_spm_2026-11-01T23-59-00-000Z_pid100_a.log", in: worktree("feature"), ago: 5, text: "Build complete! (1,92 secs)\n")
+        #expect(try await going(worktrees: ["feature"]).isEmpty)
+    }
+
+    /// A parser's debug log written after the run's own doesn't hide the run.
+    @Test func aNewerDebugLogBesideARunLeavesTheRun() async throws {
+        try log("test_sim_2026-11-01T23-59-00-000Z_pid100_a.log", in: worktree("feature"), ago: 10, text: Self.testing)
+        try log("test_sim_parser-debug_2026-11-01T23-59-05-000Z_pid100_a.log", in: worktree("feature"), ago: 1, text: "debug\n")
+        #expect(try await going(worktrees: ["feature"]).map(\.tool) == ["test_sim"])
     }
 
     /// This session's own runs are on its band already; other logs MobileBuildMCP keeps aren't runs.

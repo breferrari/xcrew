@@ -79,7 +79,7 @@ A line above the prompt follows every build and test:
 - **While it runs:** elapsed time, a gauge against how long that scheme and test selection usually take, and the phase (`compiling Payments`, `testing 431 of 959`).
 - **When it ends:** the outcome, compared with recent runs, and what failed.
 - **A long run** also sends a notification.
-- **Other worktrees' runs**, going in the project's other worktrees, show on a dim line of their own under it: `elsewhere: feature · test_sim · testing 120 of 959`.
+- **Runs in other worktrees** show on a dim line of their own under it: `elsewhere: feature · test_sim · testing 120 of 959`.
 - **Where the line can't draw**, such as VS Code, the status line counts and a toast reports the outcome.
 
 The [image at the top](#your-xcode-crew-inside-claude-code) shows all four states.

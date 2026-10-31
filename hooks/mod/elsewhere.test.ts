@@ -16,7 +16,7 @@ const FIX = { worktree: 'fix', root: '/work/trees/fix', tool: 'build_sim' }
 const PROBLEM: Problem = { status: 'fail', id: 'xcode-mcp/claude-approved', message: "Claude Code isn't approved in Xcode" }
 
 /** A session where `xcrew runs` answers the next of `answers` each time it's asked, the last one again after. */
-function session(on: On, answers: unknown[], options: { problems?: Problem[]; surfaces?: RenderSurface[]; reports?: Partial<Report>[] } = {}) {
+function session(on: On, answers: unknown[], options: { problems?: Problem[]; surfaces?: RenderSurface[]; reports?: Partial<Report>[]; held?: Promise<void> } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 10, 1, 12, 0) })
   mock.store(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -33,6 +33,7 @@ function session(on: On, answers: unknown[], options: { problems?: Problem[]; su
   on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['engine'] }))
   on('prompt.submit', (_, e) => ({ text: e.text }))
   on('tool.call', async () => {
+    if (options.held) await options.held
     await clock.advance(3_000)
     return { result: {}, text: 'ok' }
   })
@@ -73,8 +74,7 @@ test('past two runs, the line counts the rest', async ($, on) => {
   expect((await bandLines($)).find(line => line.startsWith('elsewhere: '))).toBe('elsewhere: feature · test_sim · testing 120 of 959; spike · build_sim · compiling; +1 more')
 })
 
-/** This session's run comes first, and a problem the band ranks first stays above the line. */
-test("the line sits below this session's run and below a ranked problem", async ($, on) => {
+test('the line sits below a problem the band ranks first', async ($, on) => {
   const { clock } = session(on, [[FEATURE]], { problems: [PROBLEM] })
   await start($, clock)
   await submitPrompt($, 'go on')
@@ -82,6 +82,33 @@ test("the line sits below this session's run and below a ranked problem", async 
   const lines = await bandLines($)
   expect(lines.findIndex(line => line.startsWith('elsewhere: '))).toBe(lines.length - 1)
   expect(lines.join('')).toContain("Claude Code isn't approved in Xcode")
+})
+
+test("the line sits below this session's run while it goes", async ($, on) => {
+  let release = () => {}
+  const held = new Promise<void>(resolve => (release = resolve))
+  const { clock } = session(on, [[FEATURE]], { held })
+  await start($, clock)
+  const running = callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
+  const lines = await bandLines($)
+  expect(lines.join('')).toContain('build_sim')
+  expect(lines.findIndex(line => line.startsWith('elsewhere: '))).toBe(lines.length - 1)
+  release()
+  await running
+})
+
+/** A prompt and a run starting together start one timer: once the line goes, nothing reads the other worktrees' runs again. */
+test('reads started together share one timer, which stops once the line goes', async ($, on) => {
+  const { clock, calls } = session(on, [[FEATURE], [FEATURE], []])
+  await start($, clock)
+  await Promise.all([submitPrompt($, 'one'), callTool($, 'mcp__MobileBuildMCP__build_sim')])
+  await clock.settle()
+  await clock.advance(5_000)
+  await clock.advance(5_000)
+  const asked = calls.filter(call => call.args[0] === 'runs').length
+  await clock.advance(60_000)
+  expect(calls.filter(call => call.args[0] === 'runs').length).toBe(asked)
 })
 
 test('the line goes when the CLI answers none, and the refresh stops', async ($, on) => {
@@ -108,10 +135,12 @@ test("a CLI that can't answer keeps the line 90 seconds, then clears it", async 
   expect((await bandLines($)).some(line => line.startsWith('elsewhere: '))).toBe(false)
 })
 
-test("the plain status line keeps this session's run only", async ($, on) => {
-  const { clock, statuses } = session(on, [[FEATURE]], { surfaces: [] })
+/** Where no band draws, the other worktrees' runs aren't read: the plain status line keeps this session's run only. */
+test('where no band draws, the other worktrees are never read', async ($, on) => {
+  const { clock, calls, statuses } = session(on, [[FEATURE]], { surfaces: [] })
   await start($, clock)
   await submitPrompt($, 'go on')
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(calls.some(call => call.args[0] === 'runs')).toBe(false)
   expect(statuses.some(text => text?.includes('elsewhere'))).toBe(false)
 })

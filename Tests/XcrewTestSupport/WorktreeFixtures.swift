@@ -17,4 +17,13 @@ extension FakeRunner {
             + prunable.map { "worktree \($0)\nHEAD 3\ndetached\nprunable gitdir file points to non-existent location" }
         return CommandResult(status: 0, stdout: blocks.joined(separator: "\n\n") + "\n")
     }
+
+    /// git's answers in a checkout at `project`, the project `prefix` folders down in it, whose main checkout's top is
+    /// `main` and whose linked worktrees' tops are `linked`.
+    public static func worktreeResponses(project: Project, main: String, linked: [String], prefix: String = "") -> [String: CommandResult] {
+        [
+            "git -C \(project.root.path) rev-parse --show-prefix": CommandResult(status: 0, stdout: "\(prefix)\n"),
+            "git -C \(project.root.path) worktree list --porcelain": worktreeList(main: main, linked: linked),
+        ]
+    }
 }

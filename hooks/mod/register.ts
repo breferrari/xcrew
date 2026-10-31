@@ -3,7 +3,7 @@ import type { EngineInterface, Register, RenderElement } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullRun, FullRuns, ResultRow, SetupChoices, SetupForm, SetupPicks, StaleProject } from '../../types'
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, otherRunsOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
@@ -356,7 +356,7 @@ export const register: Register = on => {
     }
     void (async () => {
       if (!drawsBand((await quietly(() => $.session.surfaces())) ?? [])) return
-      void followElsewhere($)
+      void quietly(() => followElsewhere($))
       if ((await $.clock.now()) - lastRead >= REREAD_EVERY_MS) await loadProblems($)
     })().catch(() => undefined)
     return next(e)
@@ -686,6 +686,9 @@ async function sessionRoot($: EngineInterface): Promise<string> {
   return named ?? (await quietly(() => $.session.cwd())) ?? ''
 }
 
+/** Whether a timer reads the other worktrees' runs: set before any wait, so callers at once start one. */
+let followingElsewhere = false
+
 /**
  * The scheme each MobileBuildMCP profile builds with, for a call that names none, once the CLI has answered: the config's
  * active one under `''`. Read again after setup.
@@ -884,12 +887,9 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))
 }
 
-/** The timer that reads the other worktrees' runs again, while the line shows or this session's own run goes. */
-let elsewhereTimer: { cancel: () => void } | undefined
-
 /** Reads the other worktrees' runs into the line: what the CLI answers, or what it held, until that ages out. */
 async function readElsewhere($: EngineInterface): Promise<void> {
-  const read = otherRunsOf(await answer($, ['runs'], 10_000))
+  const read = elsewhereOf(await answer($, ['runs'], 10_000))
   const now = await quietly(() => $.clock.now())
   if (now === undefined) return
   await quietly(() => update($, elsewhereState, held => afterRead(held, read, now)))
@@ -898,17 +898,28 @@ async function readElsewhere($: EngineInterface): Promise<void> {
 
 /** Reads the other worktrees' runs now, then every few seconds until none shows and no run of this session's goes. */
 async function followElsewhere($: EngineInterface): Promise<void> {
+  // Taken before any wait, so callers at once start one timer.
+  if (followingElsewhere) return readElsewhere($)
+  followingElsewhere = true
   await readElsewhere($)
-  if (elsewhereTimer) return
-  elsewhereTimer = await quietly(() =>
+  let reading = false
+  const timer = await quietly(() =>
     $.clock.every(ELSEWHERE_EVERY_MS, async () => {
-      await readElsewhere($)
-      const [shown, run] = await Promise.all([quietly(() => read($, elsewhereState)), quietly(() => read($, runState))])
-      if (shown || (run && !run.ended)) return
-      elsewhereTimer?.cancel()
-      elsewhereTimer = undefined
+      // A read that outlasts the period isn't joined by another.
+      if (reading) return
+      reading = true
+      try {
+        await readElsewhere($)
+        const [shown, run] = await Promise.all([quietly(() => read($, elsewhereState)), quietly(() => read($, runState))])
+        if (shown || (run && !run.ended)) return
+        timer?.cancel()
+        followingElsewhere = false
+      } finally {
+        reading = false
+      }
     }),
   )
+  if (!timer) followingElsewhere = false
 }
 
 /** The ledger of the branch checked out now, after the writes of a run that just ended, as `text` words it. */

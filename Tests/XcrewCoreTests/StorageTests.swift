@@ -44,7 +44,7 @@ import XcrewTestSupport
             "git -C /work/App worktree list --porcelain": .init(status: 0, stdout: "worktree /work/App\nHEAD 0123\nbranch refs/heads/main\n\nworktree /work/App/.claude/worktrees/fix\nHEAD 4567\nbranch refs/heads/worktree-fix\n"),
         ])
         let live = await ProjectWorkspaces.live(of: Project(root: URL(fileURLWithPath: "/work/App")), using: runner)
-        #expect(live == [.init(root: "/work/App", key: "App-fc001cdb6ae6"), .init(root: "/work/App/.claude/worktrees/fix", key: "fix-a7a71a1a86d1")])
+        #expect(live == [.init(root: "/work/App", key: "App-fc001cdb6ae6", top: "/work/App"), .init(root: "/work/App/.claude/worktrees/fix", key: "fix-a7a71a1a86d1", top: "/work/App/.claude/worktrees/fix")])
     }
 
     /// A worktree git still lists but whose folder is gone, `prunable`, isn't a live checkout.
@@ -53,13 +53,13 @@ import XcrewTestSupport
             "git -C /work/App rev-parse --show-prefix": .init(status: 0, stdout: "\n"),
             "git -C /work/App worktree list --porcelain": .init(status: 0, stdout: "worktree /work/App\nHEAD 0123\nbranch refs/heads/main\n\nworktree /work/App/.claude/worktrees/fix\nHEAD 4567\nbranch refs/heads/worktree-fix\nprunable gitdir file points to non-existent location\n"),
         ])
-        #expect(await ProjectWorkspaces.live(of: Project(root: URL(fileURLWithPath: "/work/App")), using: runner) == [.init(root: "/work/App", key: "App-fc001cdb6ae6")])
+        #expect(await ProjectWorkspaces.live(of: Project(root: URL(fileURLWithPath: "/work/App")), using: runner) == [.init(root: "/work/App", key: "App-fc001cdb6ae6", top: "/work/App")])
     }
 
     /// Outside git, the project alone.
     @Test func outsideGitTheProjectAlone() async {
         let live = await ProjectWorkspaces.live(of: Project(root: URL(fileURLWithPath: "/work/App")), using: FakeRunner())
-        #expect(live == [.init(root: "/work/App", key: "App-fc001cdb6ae6")])
+        #expect(live == [.init(root: "/work/App", key: "App-fc001cdb6ae6", top: "/work/App")])
     }
 
     func workspace(_ key: String, log: String?) throws -> URL {

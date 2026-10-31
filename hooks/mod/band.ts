@@ -1,5 +1,5 @@
 import type { ElementConstructor, RenderElement } from 'claude-code'
-import type { BandProblems, BandRun, ElsewhereRuns, ResultRow } from '../../types'
+import type { BandProblems, BandRun, ElsewhereRun, ResultRow } from '../../types'
 import { elsewhereText } from './elsewhere'
 import { estimate, stopwatch } from './format'
 
@@ -125,8 +125,8 @@ function line({ Box, Text }: Elements, parts: Segment[]): RenderElement {
   return Box({ flexDirection: 'row', children })
 }
 
-/** The other worktrees' runs, dim, under what the band shows first: a fact, with no advice. */
-export function elsewhereTree({ Text }: Elements, runs: ElsewhereRuns['runs']): RenderElement {
+/** The other worktrees' runs, dim, under what the band shows first. */
+export function elsewhereTree({ Text }: Elements, runs: ElsewhereRun[]): RenderElement {
   return Text({ color: 'subtle', wrap: 'truncate-end', children: [elsewhereText(runs)] })
 }
 

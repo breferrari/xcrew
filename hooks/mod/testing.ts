@@ -88,7 +88,7 @@ export function stubCli(
     calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
     if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
-    const runs = args[0] === 'runs' ? (answers.runs?.() ?? []) : undefined
+    const runs = args[0] === 'runs' ? answers.runs?.() : undefined
     if (runs instanceof Error) throw runs
     // The commands that print text rather than JSON.
     const printing = new Map<string, () => string | Error | { stdout: string; stderr: string } | undefined>([['look', () => answers.look?.(args)], ['evidence', () => answers.evidence?.(e.init?.stdin)]])
@@ -109,7 +109,7 @@ export function stubCli(
       : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
       : args[0] === 'setup' ? (answers.setup?.(args) ?? null)
       : args[0] === 'note' ? { notes: answers.notes?.(args, e.init?.stdin) ?? [] }
-      : args[0] === 'runs' ? runs
+      : args[0] === 'runs' ? (runs ?? [])
       : null
     )
     const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : (printed ?? JSON.stringify(answer))

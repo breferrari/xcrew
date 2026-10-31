@@ -7,6 +7,8 @@ public enum ProjectWorkspaces {
     public struct Checkout: Sendable, Equatable {
         public let root: String
         public let key: String
+        /// The checkout's top folder, the worktree as the person knows it; the root itself when the project is at it.
+        public var top: String = ""
     }
 
     /// Where a workspace's project is: one of this project's live checkouts, a root its log names that's gone (its folder
@@ -27,10 +29,11 @@ public enum ProjectWorkspaces {
         let listed = await git("worktree", "list", "--porcelain")
         let prefix = await prefixed.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         let tops = listed.succeeded ? Worktree.checkouts(listed: listed.stdout).filter { !$0.isBare && !$0.isPrunable }.map(\.top) : []
-        let roots = tops.isEmpty ? [project.root.path] : tops.map { prefix.isEmpty ? $0 : URL(fileURLWithPath: $0).appending(path: prefix).path }
+        let checkouts = tops.isEmpty ? [(top: project.root.path, root: project.root.path)] : tops.map { (top: $0, root: prefix.isEmpty ? $0 : URL(fileURLWithPath: $0).appending(path: prefix).path) }
         var seen: Set<String> = []
-        return roots.flatMap { root in
-            [root, ProjectLayout.canonicalPath(root)].map(RunLog.workspaceKey(root:)).filter { seen.insert($0).inserted }.map { Checkout(root: root, key: $0) }
+        return checkouts.flatMap { checkout in
+            [checkout.root, ProjectLayout.canonicalPath(checkout.root)].map(RunLog.workspaceKey(root:)).filter { seen.insert($0).inserted }
+                .map { Checkout(root: checkout.root, key: $0, top: checkout.top) }
         }
     }
 

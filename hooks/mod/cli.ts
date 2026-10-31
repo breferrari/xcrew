@@ -1,4 +1,4 @@
-import type { CliBuild, ElsewhereRuns, FailureList } from '../../types'
+import type { CliBuild, ElsewhereRun, FailureList } from '../../types'
 
 /**
  * The mod's protocol with the Swift CLI, which reads and parses everything the servers print: which
@@ -138,7 +138,7 @@ export function xcodeHostsServerOf(answer: unknown): boolean | undefined {
 }
 
 /** The other worktrees' runs, as `xcrew runs` answers; undefined when it didn't answer a list. */
-export function otherRunsOf(answer: unknown): ElsewhereRuns['runs'] | undefined {
+export function elsewhereOf(answer: unknown): ElsewhereRun[] | undefined {
   if (!Array.isArray(answer)) return undefined
   return answer.flatMap(run => {
     const { worktree, tool, phase } = (run ?? {}) as { worktree?: unknown; tool?: unknown; phase?: unknown }
