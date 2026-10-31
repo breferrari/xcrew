@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import XcrewCore
 import XcrewTestSupport
@@ -460,6 +461,25 @@ func failingRunText(passing: Int) -> String {
         #expect(report.detail == "no tests ran")
         #expect(report.tests == 0)
         #expect(report.notes.contains(Report.noTestsInBundleNote))
+    }
+
+    /// A run of expected failures alone counts them in its total and in none of passed, failed and skipped: tests ran.
+    @Test func anUncountedSuccessOfExpectedFailuresRanTests() async {
+        let report = await Self.uncounted(bundleSummary: #"{"totalTestCount":3,"passedTests":0,"failedTests":0,"skippedTests":0,"expectedFailures":3}"#)
+        #expect(report.detail != "no tests ran")
+        #expect(report.tests == 3)
+    }
+
+    /// A run the bundle counts no test in ran none of the changed lines: its coverage isn't asked for.
+    @Test func anUncountedSuccessWhoseBundleCountsNoneAsksNoCoverage() async {
+        let command = "xcrun xcresulttool get test-results summary --path \(Captured.workspace)/result-bundles/test_sim.xcresult --compact"
+        let runner = RecordingRunner(FakeRunner(responses: [command: .init(status: 0, stdout: #"{"totalTestCount":0,"passedTests":0,"failedTests":0,"skippedTests":0}"#)]))
+        _ = await Report.make(kind: .test, output: ToolOutput(text: Self.uncounted, server: .mobileBuildMCP), home: Captured.home, runner: runner, project: Project.temporary())
+        #expect(!runner.asked.contains { $0.contains("xccov") }, "\(runner.asked)")
+    }
+
+    @Test func theBundleNoteSaysWhatIsKnown() {
+        #expect(Report.noTestsInBundleNote == "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this.")
     }
 
     /// With no bundle summary to read, nothing more is known than the text says: a pass, with no count.
@@ -1010,4 +1030,21 @@ extension FailureNotes {
         let report = await Report.make(kind: .test, output: ToolOutput(text: Captured.text("mobileTestsPassed"), server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner(), repeated: true)
         #expect(report.notes.contains { $0.contains("no verdict on which tests are flaky") })
     }
+}
+
+/// A runner that answers as the one it wraps and keeps each command it was asked, joined by spaces.
+final class RecordingRunner: CommandRunning {
+    let wrapped: FakeRunner
+    private let calls = Mutex<[String]>([])
+
+    init(_ wrapped: FakeRunner) { self.wrapped = wrapped }
+
+    var asked: [String] { calls.withLock { $0 } }
+
+    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        calls.withLock { $0.append(argv.joined(separator: " ")) }
+        return await wrapped.run(argv, stdin: stdin, timeout: timeout)
+    }
+
+    func which(_ name: String) -> String? { wrapped.which(name) }
 }

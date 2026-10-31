@@ -144,13 +144,13 @@ public struct ResultBundle: Sendable {
         return "\(ToolOutput.basename(file)):\(line)"
     }
 
-    /// How many tests the summary counts as expected failures.
     /// A run's counts as `xcresulttool get test-results summary` gives them; nothing when it gave none.
     static func counts(summary: String) -> TestCounts? {
         guard let summary = parse(summary) as? [String: Any], let total = summary["totalTestCount"] as? Int else { return nil }
         return TestCounts(passed: summary["passedTests"] as? Int, failed: summary["failedTests"] as? Int, skipped: summary["skippedTests"] as? Int, total: total)
     }
 
+    /// How many tests the summary counts as expected failures.
     public static func expectedFailureCount(summary: String) -> Int {
         (parse(summary) as? [String: Any])?["expectedFailures"] as? Int ?? 0
     }

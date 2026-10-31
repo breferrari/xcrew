@@ -192,6 +192,7 @@ import Testing
             SessionBriefing.failoverNote(reason: "it isn't installed"),
             String(loop),
             Report.noTestsNote,
+            Report.noTestsInBundleNote,
             FailureNotes.noCrashLog,
             FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
             ResultBundle.noRepetitionsNote,

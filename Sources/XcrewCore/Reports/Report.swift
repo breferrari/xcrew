@@ -52,11 +52,11 @@ public struct Report: Sendable, Equatable, Codable {
         return "\(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
     }
 
+    /// What makes a run of no tests, after either note's evidence.
+    static let noTestsCause = "An -only-testing or -skip-testing filter whose target or class names match nothing does this."
+    static let noTestsNote = "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. \(noTestsCause)"
     /// The same, for a run whose text gave no count and whose result bundle counts 0 tests.
-    static let noTestsInBundleNote =
-        "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this."
-    static let noTestsNote =
-        "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this."
+    static let noTestsInBundleNote = "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. \(noTestsCause)"
 
     /// The longest text read as a notice: far below the size at which Claude Code saves a result (docs/findings.md),
     /// with room for the saved JSON's schema the notice names.
@@ -142,6 +142,11 @@ public struct Report: Sendable, Equatable, Codable {
         let bundle = isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
         // The summary is needed whatever the run came to, so it's asked for while the failures are looked up.
         async let bundleSummary: String? = { await bundle?.summary() }()
+        // MobileBuildMCP writes "Test succeeded" with no count when no test ran and when it couldn't count them alike: the
+        // run's result bundle says which, before anything below branches on the verdict or the count. Without a summary to
+        // read, it stays a pass with no count.
+        let bundleCounts = read.mobileText?.isUncountedSuccess == true ? await bundleSummary.flatMap(ResultBundle.counts(summary:)) : nil
+        let readSummary = bundleCounts.map { $0.summary(succeeded: read.summary.ok) } ?? read.summary
         // What the branch changed is listed once, by whichever asks first, meanwhile: for the warnings that name a
         // place, and for a test run with coverage.
         let warnings = read.warnings
@@ -155,16 +160,16 @@ public struct Report: Sendable, Equatable, Codable {
         }()
         async let coverage: ChangedLineCoverage? = {
             // A run of no tests ran none of the changed lines, which says nothing of them.
-            guard let project, let bundle, read.testTotal != 0 else { return nil }
+            guard let project, let bundle, (bundleCounts?.ran ?? read.testTotal) != 0 else { return nil }
             return await ChangedLineCoverage.of(bundle, change: { await change.value() }, project: project, using: runner)
         }()
         async let why: String? = {
-            guard let project, !read.summary.ok else { return nil }
+            guard let project, !readSummary.ok else { return nil }
             return await Why.note(for: read, home: home, project: project, runner: runner)
         }()
         async let pinNote: String? = {
             // MobileBuildMCP builds with the Xcode the pin decides; the Xcode MCP, with whichever is open.
-            guard read.server == .mobileBuildMCP, let project, let machine, !read.summary.ok, project.xcodePin != nil else { return nil }
+            guard read.server == .mobileBuildMCP, let project, let machine, !readSummary.ok, project.xcodePin != nil else { return nil }
             let errors = read.reportedErrors.map(\.message)
             // A test run whose build failed lists only that; the compiler's errors are in the build log it names. A failed
             // test's log holds the app's own output, so it isn't read.
@@ -194,9 +199,6 @@ public struct Report: Sendable, Equatable, Codable {
                 (final, edited) = (ToolOutput(cleaned, isError: output.isError), true)
             }
         }
-        // MobileBuildMCP writes "Test succeeded" with no count when no test ran and when it couldn't count them alike: the
-        // run's result bundle says which. Without a summary to read, it stays a pass with no count.
-        let bundleCounts = final.mobileText?.isUncountedSuccess == true ? await bundleSummary.flatMap(ResultBundle.counts(summary:)) : nil
         let summary = bundleCounts.map { $0.summary(succeeded: final.summary.ok) } ?? final.summary
 
         var notes = ToolErrorNotes.notes(for: output)
