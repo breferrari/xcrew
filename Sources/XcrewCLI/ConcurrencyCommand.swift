@@ -16,10 +16,9 @@ struct ConcurrencyCommand: Command {
             invocation.print(WhyCommand.noLog)
             return 1
         }
-        let selected = await Xcodes.selected(on: context.machine).map { URL(fileURLWithPath: $0.path) }
         let report: ConcurrencyReport
         do {
-            report = try await ConcurrencyReport.read(log: URL(fileURLWithPath: log), project: context.project, groups: { named in .read(docs: (named ?? selected).map(ConcurrencyGroups.docs(in:))) }, onlyChanged: invocation.arguments.has("changed"), using: context.runner)
+            report = try await ConcurrencyReport.read(log: URL(fileURLWithPath: log), project: context.project, machine: context.machine, onlyChanged: invocation.arguments.has("changed"))
         } catch {
             invocation.print("xcrew: couldn't read \(log)")
             return 1

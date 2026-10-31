@@ -184,7 +184,7 @@ import Testing
         let setupFact = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const SETUP_FACT = '([^']*)'/)?.1)
         let texts = [
             String(setupFact),
-            ConcurrencyReport(count: 12, groups: [.init(name: "MutableGlobalVariable", count: 8, modules: []), .init(name: "SendingRisksDataRace", count: 4, modules: [])], modules: [.init(name: "Kit", count: 8), .init(name: "Feature", count: 4)], inChangedLines: 3).summary?.note ?? "",
+            try #require(ConcurrencyReport(count: 12, modules: [.init(name: "Kit", count: 8), .init(name: "Feature", count: 4)]).summary?.note),
             try text("context/routing.md"),
             SessionBriefing.setupOffer,
             SessionBriefing.deviceHubNote("Xcode 27.2"),

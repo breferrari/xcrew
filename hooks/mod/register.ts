@@ -5,7 +5,7 @@ import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptL
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
 import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
-import { givesConcurrency } from './concurrency'
+import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, runsWholeScope, xcodeSelected, xcodeStarted } from './context'
@@ -421,7 +421,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
 async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
   const args = [...reportArgs(call.server, call.kind, false, call.repeated), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
   const reported = await answer($, args, 120_000, text)
-  const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, false)), call.scope)
+  const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
   const ended = await quietly(() => $.clock.now())
   if (ended === undefined) return undefined
@@ -430,7 +430,9 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   // The runs that ended meanwhile count among the earlier ones; the server's time leaves out the wait for the notification.
   const { passed: earlier, failed: earlierFailed } = await earlierRuns($, call.key, ended)
   const loop = await recordEnding($, { ...call, usesBand, earlier }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
-  return { ...(outcome.result === undefined ? {} : { result: outcome.result }), notes: [...outcome.notes, ...(loop ? [loop] : [])] }
+  // Given only once it reaches Claude: a note dropped above isn't counted as read.
+  const notes = withConcurrencyOnce(outcome, call.scope).notes
+  return { ...(outcome.result === undefined ? {} : { result: outcome.result }), notes: [...notes, ...(loop ? [loop] : [])] }
 }
 
 /** Whether a run is going now: it keeps the band from a call that ended in the background meanwhile. */
@@ -864,11 +866,13 @@ const UNREAD_KEPT = 20
 /** The concurrency counts Claude has read this session, by scope. */
 const concurrencyGiven = new Map<string, number>()
 
-/** Adds the run's concurrency note the first time its scope has one this session, and when its count moves far enough. */
+/** Adds the run's concurrency note the first time its scheme has one this session, and when its count moves far enough:
+ * a build and a test run of one scheme, whatever their selections, build the same code. */
 function withConcurrencyOnce(outcome: Report, scope: string): Report {
   const counted = outcome.concurrency
-  if (!counted || !givesConcurrency(concurrencyGiven.get(scope), counted.count)) return outcome
-  concurrencyGiven.set(scope, counted.count)
+  const scheme = schemeOfScope(scope)
+  if (!counted || !givesConcurrency(concurrencyGiven.get(scheme), counted.count)) return outcome
+  concurrencyGiven.set(scheme, counted.count)
   return { ...outcome, notes: [...outcome.notes, counted.note] }
 }
 

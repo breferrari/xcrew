@@ -7,7 +7,7 @@ import XcrewTestSupport
 @Suite struct ConcurrencyNoteTests {
     /// A build result listing `listed` warnings, whose log under the home holds `diagnostics` concurrency ones: 8 in
     /// `Kit`, the rest in `Feature`, by their task headers.
-    func report(listed: Int, diagnostics: Int) async -> Report {
+    func report(listed: Int, diagnostics: Int, json: Bool = false) async -> Report {
         let project = Project.temporary()
         let home = project.root.appending(path: "home")
         var log = "SwiftCompile normal arm64 /p/Kit/Kit.swift (in target 'Kit' from project 'App')\n"
@@ -19,7 +19,11 @@ import XcrewTestSupport
         }
         project.write(log, to: "home/logs/build.log")
         let warnings = (1...listed).map { "  ⚠ diagnostic \($0)\n    /p/Kit/Kit.swift:\($0)\n" }.joined(separator: "\n")
-        let text = "\n🔨 Build\n\nWarnings (\(listed)):\n\n\(warnings)\n✅ Build succeeded. (⏱️ 3.4s)\n  └ Files:\n     └── ~/logs/build.log — Build Logs\n"
+        let listedJSON = (1...listed).map { #"{"message":"diagnostic \#($0)","location":"/p/Kit/Kit.swift:\#($0)"}"# }.joined(separator: ",")
+        // A passing run may answer in JSON, which names its log among its artifacts.
+        let text = json
+            ? #"{"schema":"mobilebuildmcp.output.build-result","schemaVersion":"3","didError":false,"error":null,"data":{"summary":{"status":"SUCCEEDED","durationMs":3400},"artifacts":{"buildLogPath":"~/logs/build.log"},"diagnostics":{"warnings":[\#(listedJSON)],"errors":[]}}}"#
+            : "\n🔨 Build\n\nWarnings (\(listed)):\n\n\(warnings)\n✅ Build succeeded. (⏱️ 3.4s)\n  └ Files:\n     └── ~/logs/build.log — Build Logs\n"
         let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: project.root.appending(path: "Applications"))
         return await Report.make(kind: .build, output: ToolOutput(text: text, server: .mobileBuildMCP), home: home.path, runner: FakeRunner(), project: project, machine: machine)
     }
@@ -27,7 +31,11 @@ import XcrewTestSupport
     @Test func aBuildWithManyGivesTheirCountsAsFacts() async {
         let summary = await report(listed: 12, diagnostics: 12).concurrency
         #expect(summary?.count == 12)
-        #expect(summary?.note == "xcrew: this build's log has 12 Swift concurrency diagnostics in 2 modules, most of them MutableGlobalVariable (8) and SendingRisksDataRace (4). `xcrew concurrency` lists them by compiler group and module.")
+        #expect(summary?.note == "xcrew: this build's log has 12 Swift concurrency diagnostics in 2 modules; `xcrew concurrency` lists them by compiler group and module.")
+    }
+
+    @Test func aPassingRunsJSONNamesItsLog() async {
+        #expect(await report(listed: 12, diagnostics: 12, json: true).concurrency?.count == 12)
     }
 
     /// A result listing many warnings, of which the log's concurrency ones are fewer than ten.

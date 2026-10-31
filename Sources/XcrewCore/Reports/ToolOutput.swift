@@ -185,9 +185,10 @@ public struct ToolOutput: Sendable {
         }
     }
 
-    /// The build log MobileBuildMCP names in a failed run's text, with `~` read as `home`.
+    /// The build log MobileBuildMCP names, in a run's text or among a passing run's JSON artifacts, with `~` read as `home`.
     func buildLog(home: String) -> String? {
-        mobileText?.buildLog.map { Self.expandingHome($0, home: home) }
+        let named = if case let .mobileBuildMCPJSON(result) = shape { result.data?.artifacts?.buildLogPath } else { mobileText?.buildLog }
+        return named.map { Self.expandingHome($0, home: home) }
     }
 
     /// A path MobileBuildMCP writes with `~` for the home folder, made absolute.

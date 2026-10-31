@@ -456,9 +456,9 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
   - Else "not in a project".
 - **Changed lines:** the lines *Warnings in changed lines* reads. `--changed` keeps only those.
 - **The note after a build.**
-  - After a MobileBuildMCP build or test whose log holds `ConcurrencyReport.noteAt` (10) concurrency diagnostics or more, Claude reads their counts as one note: how many, in how many modules, the two biggest groups, and how many are in changed lines. It names `xcrew concurrency`.
-  - MobileBuildMCP's result lists each diagnostic once, so a result listing fewer than 10 can't hold that many, and its log isn't read.
-  - The mod gives the note once per scope a session, and again when the count moves by `CONCURRENCY_MOVE` (a quarter) of the count last given (`hooks/mod/concurrency.ts`).
+  - After a MobileBuildMCP build or test whose log holds `ConcurrencyReport.noteAt` (10) concurrency diagnostics or more, Claude reads one note: how many, in how many modules, and that `xcrew concurrency` lists them. Nothing more, so the note runs no git.
+  - MobileBuildMCP's result lists each diagnostic once (MobileBuildMCP 2.7.1, the test bed's `concurrency` capture, v0.8.7, October 31, 2026; pinned by `eachDiagnosticOnceIsMobileBuildMCPsList`). So a result listing fewer than 10 can't hold that many, and its log isn't read. A passing run that answers in JSON names its log in `artifacts.buildLogPath`.
+  - The mod gives the note once per scheme a session, a build and a test run of one scheme being one, and again when the count moves by `CONCURRENCY_MOVE` (a quarter) of the count last given (`hooks/mod/concurrency.ts`). A build that compiled only some files logs fewer, so a clean build after an incremental one can give it again.
   - The Xcode MCP names no log, so it has no note.
 
 ## Flaky or real

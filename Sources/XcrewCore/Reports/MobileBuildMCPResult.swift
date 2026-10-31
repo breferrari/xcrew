@@ -11,6 +11,7 @@ struct MobileBuildMCPResult: Decodable, Sendable {
 
     struct Artifacts: Decodable, Sendable {
         @Lenient var xcresultPath: String?
+        @Lenient var buildLogPath: String?
     }
 
     struct Warning: Decodable, Sendable {

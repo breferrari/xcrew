@@ -37,7 +37,7 @@ public struct Report: Sendable, Equatable, Codable {
     /// failures pane can open with it.
     public var cause: String?
     /// The run's Swift concurrency diagnostics, when its log holds at least `ConcurrencyReport.noteAt`: apart from the
-    /// notes, since the mod gives it once a session for each scope, and again when the count moves by a quarter.
+    /// notes, for the mod to decide when Claude reads it.
     public var concurrency: ConcurrencySummary?
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
@@ -175,9 +175,7 @@ public struct Report: Sendable, Equatable, Codable {
             // many concurrency ones, so its log isn't read.
             guard read.server == .mobileBuildMCP, let project, let machine, warnings.count + read.reportedErrors.count >= ConcurrencyReport.noteAt,
                   let log = read.buildLog(home: home) else { return nil }
-            let selected = await Xcodes.selected(on: machine).map { URL(fileURLWithPath: $0.path) }
-            let report = try? await ConcurrencyReport.read(log: URL(fileURLWithPath: log), project: project, groups: { named in .read(docs: (named ?? selected).map(ConcurrencyGroups.docs(in:))) }, using: runner)
-            return report?.summary
+            return try? await ConcurrencyReport.read(log: URL(fileURLWithPath: log), project: project, machine: machine, readsChanges: false).summary
         }()
         var final = read
         var edited = false

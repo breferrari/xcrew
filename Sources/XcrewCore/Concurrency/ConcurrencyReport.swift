@@ -45,10 +45,7 @@ public struct ConcurrencyReport: Sendable, Equatable, Codable {
     /// The note after a build with `noteAt` or more: the counts, as facts, and the command that lists them.
     public var summary: ConcurrencySummary? {
         guard count >= Self.noteAt else { return nil }
-        let top = groups.prefix(2).map { "\($0.name) (\($0.count))" }
-        let most = groups.count == 1 ? "all of them \(top[0])" : "most of them \(top.joined(separator: " and "))"
-        let changed = inChangedLines.flatMap { $0 > 0 ? "; \($0) \($0 == 1 ? "is" : "are") in lines this branch changed" : nil } ?? ""
-        let note = "xcrew: this build's log has \(Space.counted(count, "Swift concurrency diagnostic")) in \(Space.counted(modules.count, "module")), \(most)\(changed). `xcrew concurrency` lists them by compiler group and module."
+        let note = "xcrew: this build's log has \(Space.counted(count, "Swift concurrency diagnostic")) in \(Space.counted(modules.count, "module")); `xcrew concurrency` lists them by compiler group and module."
         return ConcurrencySummary(count: count, note: note)
     }
 
@@ -57,7 +54,16 @@ public struct ConcurrencyReport: Sendable, Equatable, Codable {
 
     /// The log's concurrency diagnostics, the modules from the project's targets. `changed` limits them to lines the
     /// branch changed, when given.
-    public static func read(log: URL, project: Project, groups docs: @Sendable (URL?) async -> ConcurrencyGroups, onlyChanged: Bool = false, using runner: any CommandRunning) async throws -> ConcurrencyReport {
+    /// The log's report, its groups from the docs of the Xcode it names, else the one builds use on `machine`, looked up
+    /// only then. `readsChanges` false leaves git alone: the note after a build gives no changed-line count.
+    public static func read(log: URL, project: Project, machine: Machine, onlyChanged: Bool = false, readsChanges: Bool = true) async throws -> ConcurrencyReport {
+        try await read(log: log, project: project, groups: { named in
+            let xcode = if let named { named } else { await Xcodes.selected(on: machine).map { URL(fileURLWithPath: $0.path) } }
+            return .read(docs: xcode.map(ConcurrencyGroups.docs(in:)))
+        }, onlyChanged: onlyChanged, readsChanges: readsChanges, using: machine.runner)
+    }
+
+    public static func read(log: URL, project: Project, groups docs: @Sendable (URL?) async -> ConcurrencyGroups, onlyChanged: Bool = false, readsChanges: Bool = true, using runner: any CommandRunning) async throws -> ConcurrencyReport {
         var listed: [(diagnostic: CompilerDiagnostic, target: String?)] = []
         var target: String?
         var xcode: URL?
@@ -98,7 +104,7 @@ public struct ConcurrencyReport: Sendable, Equatable, Codable {
             }
         }
         var report = ConcurrencyReport(groupsFromDocs: groups.isFromDocs, xcode: xcode?.path)
-        if !found.isEmpty || (onlyChanged && !ungrouped.isEmpty) {
+        if readsChanges, !found.isEmpty || (onlyChanged && !ungrouped.isEmpty) {
             switch await GitChanges.since(nil, in: project, using: runner) {
             case let .failure(failure):
                 if onlyChanged { report.changeUnread = failure.description }

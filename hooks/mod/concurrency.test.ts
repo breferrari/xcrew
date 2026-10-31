@@ -23,8 +23,8 @@ function session(on: On, reports: Partial<Report>[]) {
 }
 
 /** What Claude reads after a MobileBuildMCP build of `scheme`. */
-const build = async ($: Parameters<typeof callTool>[0], scheme = 'App') =>
-  ((await callTool($, 'mcp__MobileBuildMCP__build_sim', { scheme })).context ?? []) as string[]
+const build = async ($: Parameters<typeof callTool>[0], scheme = 'App', tool = 'build_sim', input: Record<string, unknown> = {}) =>
+  ((await callTool($, `mcp__MobileBuildMCP__${tool}`, { scheme, ...input })).context ?? []) as string[]
 
 const said = (context: string[]) => context.filter(line => line.includes('Swift concurrency diagnostics'))
 
@@ -48,4 +48,12 @@ test('another scheme, or a new session, is given its own', async ($, on) => {
   expect(said(await build($, 'Kit'))).toHaveLength(1)
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   expect(said(await build($, 'App'))).toHaveLength(1)
+})
+
+/** A test run builds the scheme too, and its log holds the same diagnostics: the scheme's note isn't given twice. */
+test('a build and a test run of one scheme, or two selections, are one scheme', async ($, on) => {
+  session(on, [built(40), built(40), built(40)])
+  expect(said(await build($, 'App'))).toHaveLength(1)
+  expect(said(await build($, 'App', 'test_sim'))).toHaveLength(0)
+  expect(said(await build($, 'App', 'test_sim', { extraArgs: ['-only-testing:AppTests/One'] }))).toHaveLength(0)
 })
