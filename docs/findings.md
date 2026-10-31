@@ -621,7 +621,7 @@ Measured on October 30, 2026 with Claude Code 2.1.314 on macOS 27.2, in interact
 
 ## Test progress in a run's log
 
-Read October 31, 2026, in the test bed's raw captures (v0.8.8 to v0.8.10: MobileBuildMCP 2.7.1, Xcode 27.2, iOS 27.2).
+Read October 31, 2026, in the test bed's raw captures (v0.8.8 to v0.8.16: MobileBuildMCP 2.7.1, Xcode 27.2, iOS 27.2).
 
 - **A serial XCTest run** writes `Test Case '-[FeatureTests.ProbeTests testFails]' started.`, then `… failed (0.006 seconds).`, `passed (…)` or `skipped (…)`, with a capital C and no `on 'Clone …'`, unlike the parallel runner's `Test case '…' passed on 'Clone 1 of …'`.
 - **An expected failure is written as passed.** `XCTExpectFailure` gives `Expected failure in -[FeatureTests.ProbeTests testExpectedFailure]: …` inside the case, then `Test Case '-[…testExpectedFailure]' passed`. MobileBuildMCP's counts for that run are 1 passed, 2 failed, 1 skipped: four of the five cases, the expected failure left out. So the count of a run's progress leaves it out too, and a finished run's count is the total the next run measures against.
@@ -629,7 +629,15 @@ Read October 31, 2026, in the test bed's raw captures (v0.8.8 to v0.8.10: Mobile
 - **The tests' build ends before a second xcodebuild runs them.** MobileBuildMCP builds with `build-for-testing`, then runs `test-without-building`. In every test log captured (v0.8.10: raw/serial.log, swift-testing.log, profile.log, shapes.log), `** TEST BUILD SUCCEEDED **` is followed by that second `Command line invocation:`, `Writing result bundle at path:`, then the start of testing. A build's log (concurrency/build_sim.log) holds no such line; it ends `** BUILD SUCCEEDED **`. So from that line until testing starts, the phase is testing with no count, rather than the build's last step.
 - **Swift Testing's lines** (v0.8.9, raw/shapes.log): `✔ Test passes() passed after 0.001 seconds.`, `✘ Test fails() failed after 0.006 seconds with 1 issue.`, `➜ Test skipped() skipped: "skipped on purpose"`, `━ Test knownIssue() passed after 0.001 seconds with 1 known issue.`, `✔ Test parameterised(value:) with 3 test cases passed after …` (once for its three cases), and a suite's `✘ Suite ShapesTests failed after …`. Some start with a zero-width space before the symbol. MobileBuildMCP counts that run's six tests as 1 failed, 3 passed, 1 skipped: the parameterised test once, the known issue's pass in none. Progress counts the same, leaving out the suite's line and the run's `Test run with 6 tests in 1 suite …`.
 - **Read with string checks, not regular expressions.** The band reads a run's whole test output once a second. Built with `swiftc -O` on macOS 27.2, the count took 23.6 s with Swift regular expressions on a serial log of 20,000 tests (60,000 lines, 3.7 MB), and 0.17 s with string checks.
-- **Not read yet:** the parallel runner's log, whose start of testing and skipped line no capture holds; Swift Testing's `was cancelled`; and a log with several passes of the tests (`-test-iterations`, `-retry-tests-on-failure`, a test plan's configurations), which counts from the first and may pass the total.
+- **A run that tests a case more than once** (test bed v0.8.16, raw/retry, configurations, shapes-iterations, and field/probes.log). MobileBuildMCP's count is its result bundle summary's top level, which counts a test once however often it ran (`utils/xcresult-test-failures.js`, `extractTestSummaryCountsFromXcresult`, MobileBuildMCP 2.7.1). The log writes each run of it:
+  - `-test-iterations 5` (field/probes) starts each pass with its own `Test Suite 'Selected tests' started` and writes every test again: 20 results against MobileBuildMCP's 4.
+  - `-retry-tests-on-failure -test-iterations 3` (raw/retry) stays in one pass and writes a failed test again at once: `testFails` failed three times in a row, `testFlaky` failed and then passed. MobileBuildMCP counts 1 failed, 2 passed, 1 skipped, the flaky test by its last try.
+  - A test plan's two configurations (raw/configurations) each start with `Test Suite 'All tests' started`. MobileBuildMCP counts each test once: 1 failed, 1 passed, 1 skipped.
+  - Swift Testing's `-test-iterations 2` (raw/shapes-iterations) writes one `◇ Test run started.` and each test once, its time the iterations' together. MobileBuildMCP counts 5, as for one pass.
+
+  So progress counts through a run's first pass, and from a second start of testing of one kind, or a test written a second time, it's testing with no count. The log doesn't say how many more times a test will run, so no count of it can be held to MobileBuildMCP's.
+- **A cancelled Swift Testing test is counted as skipped, as MobileBuildMCP does** (raw/cancel): `➜ Test cancels() was cancelled after 0.001 seconds: "cancelled on purpose"`, and MobileBuildMCP's 1 passed, 0 failed, 1 skipped. Progress counts it as a finished test.
+- **Not read yet:** the parallel runner's live log, which no published capture holds.
 
 ## Stopping a program
 
