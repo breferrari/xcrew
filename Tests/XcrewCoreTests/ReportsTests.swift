@@ -222,9 +222,10 @@ func failingRunText(passing: Int) -> String {
         #expect(ResultBundle.skippedTests(listing: "not json").isEmpty)
     }
 
+    /// Without the test list, which API the tests used is unknown, so the note names both.
     @Test func expectedFailuresAreNamedWithTheTrueTotal() {
         #expect(ResultBundle.expectedFailuresNote(summary: Captured.text("xcresultSummaryWithExpectedFailures"))
-            == "xcrew: 2 tests also ran as expected failures (XCTExpectFailure). They count as neither passed nor failed in the result: 961 tests ran in all.")
+            == "xcrew: 2 tests also ran as expected failures (XCTExpectFailure or withKnownIssue). They count as neither passed nor failed in the result: 961 tests ran in all.")
         #expect(ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":3,"passedTests":3,"expectedFailures":0}"#) == nil)
         #expect(ResultBundle.expectedFailuresNote(summary: "not json") == nil)
     }
@@ -548,6 +549,13 @@ func failingRunText(passing: Int) -> String {
             == "xcrew: 2 tests also ran as expected failures (XCTExpectFailure): A/a() and B/b(). They count as neither passed nor failed in the result: 5 tests ran in all.")
         let many = (1...7).map { "T/t\($0)()" }
         #expect(ResultBundle.expectedFailuresNote(summary: #"{"expectedFailures":7}"#, names: many)?.contains("T/t1(), T/t2(), T/t3(), T/t4(), T/t5() and 2 more") == true)
+    }
+
+    /// A run with both names each by the API it used: XCTest's expected failures and Swift Testing's known issues.
+    @Test func aRunWithExpectedFailuresAndKnownIssuesNamesEachByItsAPI() {
+        let summary = #"{"totalTestCount":6,"passedTests":3,"expectedFailures":3}"#
+        #expect(ResultBundle.expectedFailuresNote(summary: summary, names: ["A/a()"], knownIssues: ["B/b()", "C/c()"])
+            == "xcrew: 3 tests also ran expecting a failure: A/a() as an expected failure (XCTExpectFailure), B/b() and C/c() with known issues (withKnownIssue). They count as neither passed nor failed in the result: 6 tests ran in all.")
     }
 
     @Test func aCrashWithoutACrashLogSaysSo() async {

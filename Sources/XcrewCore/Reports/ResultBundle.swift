@@ -155,26 +155,51 @@ public struct ResultBundle: Sendable {
         (parse(summary) as? [String: Any])?["expectedFailures"] as? Int ?? 0
     }
 
-    /// The tests in `xcresulttool get test-results tests` output that ran as expected failures, in the listing's order.
+    /// The XCTest tests in `xcresulttool get test-results tests` output that ran as expected failures
+    /// (`XCTExpectFailure`), in the listing's order.
     public static func expectedFailures(listing: String) -> [String] {
-        nodes(parse(listing)).compactMap { node in
-            node["nodeType"] as? String == "Test Case" && node["result"] as? String == "Expected Failure" ? node["nodeIdentifier"] as? String : nil
-        }
+        expectedFailureNodes(listing).filter { !isSwiftTesting($0) }.compactMap { $0["nodeIdentifier"] as? String }
+    }
+
+    /// The Swift Testing tests in the listing that ran with a known issue (`withKnownIssue`), which
+    /// `xcresulttool` files as an Expected Failure too, in the listing's order.
+    public static func knownIssues(listing: String) -> [String] {
+        expectedFailureNodes(listing).filter(isSwiftTesting).compactMap { $0["nodeIdentifier"] as? String }
+    }
+
+    static func expectedFailureNodes(_ listing: String) -> [[String: Any]] {
+        nodes(parse(listing)).filter { $0["nodeType"] as? String == "Test Case" && $0["result"] as? String == "Expected Failure" }
+    }
+
+    /// A Swift Testing test's identifier URL names it, `test://com.apple.xcode/SwiftTesting/KitTests/…`, where
+    /// an XCTest test's names its target's path (docs/findings.md, *Known issues and expected failures*).
+    static func isSwiftTesting(_ node: [String: Any]) -> Bool {
+        (node["nodeIdentifierURL"] as? String)?.contains("/SwiftTesting/") == true
     }
 
     /// Expected failures named in the note before the rest are counted.
     static let mostNamed = 5
 
-    /// A note naming a run's expected failures (`XCTExpectFailure`), from `xcresulttool get test-results
-    /// summary` and the tests the list names: MobileBuildMCP's counts leave them out, so passed + failed
-    /// + skipped falls short of the tests that ran. Nil when there are none.
-    public static func expectedFailuresNote(summary: String, names: [String] = []) -> String? {
+    /// A note naming a run's expected failures, from `xcresulttool get test-results summary` and the
+    /// tests the list names, each by the API it used: XCTest's `XCTExpectFailure` (`names`) and Swift
+    /// Testing's `withKnownIssue` (`knownIssues`). MobileBuildMCP's counts leave them out, so passed +
+    /// failed + skipped falls short of the tests that ran. Nil when there are none.
+    public static func expectedFailuresNote(summary: String, names: [String] = [], knownIssues: [String] = []) -> String? {
         let counts = parse(summary) as? [String: Any]
         let expected = expectedFailureCount(summary: summary)
         guard expected > 0 else { return nil }
-        let tests = expected == 1 ? "1 test also ran as an expected failure" : "\(expected) tests also ran as expected failures"
+        let tests: String
+        if knownIssues.isEmpty {
+            let api = names.isEmpty ? "XCTExpectFailure or withKnownIssue" : "XCTExpectFailure"
+            tests = (expected == 1 ? "1 test also ran as an expected failure" : "\(expected) tests also ran as expected failures") + " (\(api))" + listed(names)
+        } else if names.isEmpty {
+            tests = (expected == 1 ? "1 test also ran with a known issue" : "\(expected) tests also ran with known issues") + " (withKnownIssue)" + listed(knownIssues)
+        } else {
+            let failures = names.count == 1 ? "an expected failure" : "expected failures", issues = knownIssues.count == 1 ? "a known issue" : "known issues"
+            tests = "\(expected) tests also ran expecting a failure: \(joined(names)) as \(failures) (XCTExpectFailure), \(joined(knownIssues)) with \(issues) (withKnownIssue)"
+        }
         let total = (counts?["totalTestCount"] as? Int).map { ": \($0) tests ran in all" } ?? ""
-        return "xcrew: \(tests) (XCTExpectFailure)\(listed(names)). They count as neither passed nor failed in the result\(total)."
+        return "xcrew: \(tests). They count as neither passed nor failed in the result\(total)."
     }
 
     /// `: A, B and C`, or `: A, B, C, D, E and 2 more`; nothing without names.

@@ -17,6 +17,12 @@ enum Raw {
         return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any], "captures/raw/\(name).json isn't a JSON object")
     }
 
+    /// A file beside the captures, as `xcresulttool`'s answer about a capture's bundle: `shapes.summary.json`.
+    static func file(_ name: String) throws -> String {
+        let url = Testbed.root.appending(path: "captures/raw/\(name)")
+        return try #require(try? String(contentsOf: url, encoding: .utf8), "the test bed has no captures/raw/\(name), at \(url.path)")
+    }
+
     /// The result's text blocks, joined as the mod joins them.
     static func text(_ name: String) throws -> String {
         let content = try #require(try capture(name)["content"] as? [[String: Any]], "captures/raw/\(name).json has no content")

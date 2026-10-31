@@ -206,8 +206,8 @@ public struct Report: Sendable, Equatable, Codable {
         if isTest, tests == 0 { notes.append(bundleCounts == nil ? noTestsNote : noTestsInBundleNote) }
         if let bundle, let summary = await bundleSummary {
             // The test list is only asked for when the summary counts expected failures to name.
-            let names = ResultBundle.expectedFailureCount(summary: summary) > 0 ? ResultBundle.expectedFailures(listing: await bundle.tests()) : []
-            if let expected = ResultBundle.expectedFailuresNote(summary: summary, names: names) { notes.append(expected) }
+            let listing = ResultBundle.expectedFailureCount(summary: summary) > 0 ? await bundle.tests() : ""
+            if let expected = ResultBundle.expectedFailuresNote(summary: summary, names: ResultBundle.expectedFailures(listing: listing), knownIssues: ResultBundle.knownIssues(listing: listing)) { notes.append(expected) }
         }
         // A run repeated with `-test-iterations` says, per test, whether it's flaky or failing for real.
         var repeatedTests: [ResultBundle.Repeated]?
