@@ -23,7 +23,7 @@ import XcrewTestSupport
 
     static func report(listing: String?, passed: Bool = true, runner: RecordingRunner? = nil) async -> Report {
         let runner = runner ?? RecordingRunner(FakeRunner(responses: listing.map { [listingCommand: .init(status: 0, stdout: $0)] } ?? [:]))
-        return await Report.make(kind: .test, output: ToolOutput(text: passing, server: .mobileBuildMCP), home: Captured.home, runner: runner, passed: passed)
+        return await Report.make(kind: .test, output: ToolOutput(text: passing, server: .mobileBuildMCP), home: Captured.home, runner: runner, listsPassed: passed)
     }
 
     @Test func aPassingRunListsItsPassedTestsWithTheirTargetWhenAsked() async {
@@ -60,7 +60,7 @@ import XcrewTestSupport
     }
 
     @Test func anXcodeRunListsTheResultsItGivesAsPassed() async {
-        let report = await Report.make(kind: .test, output: Captured.output("xcodeTestsPassed"), home: Captured.home, runner: FakeRunner(), passed: true)
+        let report = await Report.make(kind: .test, output: Captured.output("xcodeTestsPassed"), home: Captured.home, runner: FakeRunner(), listsPassed: true)
         #expect(report.passed == [
             PassedTest(test: "MacroProbeTests/testMacro", target: nil),
             PassedTest(test: "MacroProbeTests/testMacroWithStringLiteral", target: nil),
@@ -71,14 +71,24 @@ import XcrewTestSupport
     }
 
     @Test func aFailingXcodeRunListsOnlyItsPasses() async {
-        let report = await Report.make(kind: .test, output: Captured.output("xcodeTestsFailed"), home: Captured.home, runner: FakeRunner(), passed: true)
+        let report = await Report.make(kind: .test, output: Captured.output("xcodeTestsFailed"), home: Captured.home, runner: FakeRunner(), listsPassed: true)
         #expect(report.passed == [PassedTest(test: "PlainTests/testAddition", target: nil), PassedTest(test: "PlainTests/testComparison", target: nil)])
     }
 
     @Test func aRunReadFromItsLogListsItsPassedTests() async {
         let log = "** TEST EXECUTE SUCCEEDED **\n\nTest session results, code coverage, and logs:\n\t\(Self.bundle)\n"
         let runner = FakeRunner(responses: [Self.listingCommand: .init(status: 0, stdout: Self.listing([Self.testBundle("AppTests", [("ViewModelTests/testLoad()", "Passed")])]))])
-        let report = await Report.make(kind: .test, log: log, runner: runner, passed: true)
+        let report = await Report.make(kind: .test, log: log, runner: runner, listsPassed: true)
+        #expect(report.passed == [PassedTest(test: "ViewModelTests/testLoad", target: "AppTests")])
+    }
+}
+
+@Suite struct PassedTestsFromANotificationTests {
+    /// A backgrounded run's result, read from its task's notification, lists its passed tests as a foreground one does.
+    @Test func aRunReadFromItsNotificationListsItsPassedTests() async {
+        let text = "<task-notification>\n<task-id>k4q5tm9v2</task-id>\n<status>completed</status>\n<summary>MCP task k4q5tm9v2 (plugin:xcrew:MobileBuildMCP/test_sim) completed.</summary>\n<result>\n\(PassedTestsTests.passing)\n</result>\n</task-notification>"
+        let runner = FakeRunner(responses: [PassedTestsTests.listingCommand: .init(status: 0, stdout: PassedTestsTests.listing([PassedTestsTests.testBundle("AppTests", [("ViewModelTests/testLoad()", "Passed")])]))])
+        let report = await Report.make(kind: .test, notification: text, log: nil, server: .mobileBuildMCP, home: Captured.home, runner: runner, listsPassed: true)
         #expect(report.passed == [PassedTest(test: "ViewModelTests/testLoad", target: "AppTests")])
     }
 }

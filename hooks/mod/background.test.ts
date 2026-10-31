@@ -240,3 +240,12 @@ test("a backgrounded subagent's run keeps its label on the band's outcome", asyn
   expect(text).toContain('5 passed')
   expect(text).toContain(' · by "Fix login tests"')
 })
+
+/** A backgrounded run is read at its notification: it asks for its passed tests there while its branch has a red waiting. */
+test("a backgrounded test run's notification asks for its passed tests while a red waits", async ($, on) => {
+  const { clock, cli, store } = session(on, { reports: [{ ok: true, passed: [{ test: 'CrashTests/testOutOfRange' }] }] })
+  store.set('ledger./work/App @ main', { entries: [{ test: 'CrashTests/testOutOfRange', red: { scope: 'test_sim · App', at: 0, message: 'Crash' }, failing: 'test_sim · App', last: 0 }], updated: 0 })
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  await notify($, clock)
+  expect(reportCalls(cli).at(-1)?.args).toEqual(['report', '--server', 'MobileBuildMCP', '--kind', 'test', '--passed', '--notification', '--log', LOG])
+})

@@ -21,16 +21,16 @@ struct ReportCommand: Command {
         }
         let machine = invocation.context.machine
         let repeated = invocation.arguments.has("repeated")
-        let passed = invocation.arguments.has("passed")
+        let listsPassed = invocation.arguments.has("passed")
         let report: Report
         if invocation.arguments.has("notification") {
             let text = String(decoding: await invocation.standardInput(), as: UTF8.self)
-            report = await Report.make(kind: kind, notification: text, log: invocation.arguments["log"], server: server, home: machine.home.path, runner: machine.runner, repeated: repeated, passed: passed, project: invocation.context.project, machine: machine)
+            report = await Report.make(kind: kind, notification: text, log: invocation.arguments["log"], server: server, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         } else if let log = invocation.arguments["log"] {
-            report = await Report.make(kind: kind, log: RunLog.end(ofLogAt: log), runner: machine.runner, repeated: repeated, passed: passed)
+            report = await Report.make(kind: kind, log: RunLog.end(ofLogAt: log), runner: machine.runner, repeated: repeated, listsPassed: listsPassed)
         } else {
             let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
-            report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, passed: passed, project: invocation.context.project, machine: machine)
+            report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         }
         let encoded = try JSONEncoder.sorted.encode(report)
         invocation.print(String(decoding: encoded, as: UTF8.self))

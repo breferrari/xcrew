@@ -17,7 +17,7 @@ const DAY_MS = 24 * 60 * 60_000
  * A project on `branch` (the CLI names it and the project's root), whose test runs report the next of `reports`. The
  * store starts with `stored`; registered tools are collected in `registered`.
  */
-function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; readsStore?: boolean; reportFails?: () => boolean } = {}) {
+function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; readsStore?: boolean; reportFails?: () => boolean; holdFirst?: Promise<void> } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 9, 30, 12, 0) })
   // A test that reads what the mod kept gets the store as a plain map.
   const store = options.readsStore ? mapStore(on) : (mock.store(on, options.stored ?? {}), undefined)
@@ -43,7 +43,14 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
       return { isGenerated: false, root: '/work/App', branch }
     },
   })
-  on('tool.call', () => ({ result: {}, text: 'the server\'s result' }))
+  // The first call, with `holdFirst`, stays open until it settles, so another run can end meanwhile.
+  let held = options.holdFirst
+  on('tool.call', async () => {
+    const hold = held
+    held = undefined
+    await hold
+    return { result: {}, text: 'the server\'s result' }
+  })
   return { calls, clock, registered, store }
 }
 
@@ -72,6 +79,21 @@ test('a test run asks the CLI for its passed tests only while its branch has a r
   await ledgerText($)
   await run($)
   expect(asked()).toEqual([false, true, false])
+})
+
+test('a run that a red was written during asks for its passed tests, and turns that red green', async ($, on) => {
+  let release = () => {}
+  const holdFirst = new Promise<void>(resolve => { release = resolve })
+  // The held run's report comes second: the other run ends first, failing the test.
+  const { calls } = project(on, [FAILED, PASSED], { holdFirst })
+  const held = run($, 'AppTests')
+  await run($, 'AppTests/GreetingTests')
+  await ledgerText($)
+  release()
+  await held
+  const reports = calls.filter(call => call.args[0] === 'report')
+  expect(reports.at(-1)?.args).toContain('--passed')
+  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
 test('a red test a passing run doesn\'t list as passed stays red, though the run selected its class', async ($, on) => {
