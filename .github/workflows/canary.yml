@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: breferrari/xcrew-testbed
-          ref: 0a66107d662e1292df94dd1cbce4c9ad0a37fc41 # v0.8.9
+          ref: 55f7761803a96c5148db276314455f7a4b2842ad # v0.8.10
           path: xcrew-testbed
       # The README's images, at the commit it pins, as in ci.yml.
       - uses: actions/checkout@v5
