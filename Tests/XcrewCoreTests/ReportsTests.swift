@@ -351,7 +351,10 @@ func failingRunText(passing: Int) -> String {
     static let linking = "Ld /Users/dev/App/Build/Products/Debug-iphonesimulator/Utility.framework/Utility normal (in target 'Utility' from project 'Foundation')\n"
     static let signing = "CodeSign /Users/dev/App/Build/Products/Debug/MockMacros (in target 'MockMacros' from project 'Mocks')\n"
     static let otherTask = "ProcessInfoPlistFile /Users/dev/App/Build/Products/Debug-iphonesimulator/Utility.framework/Info.plist (in target 'Utility' from project 'Foundation')\n"
-    static let tests = "Testing started\nTest case 'CurrencyFormatterTests.test_euroFormat()' passed on 'Clone 1 of iPhone 12 - xctest (26885)' (0.004 seconds)\nTest case 'CurrencyFormatterTests.test_poundFormat()' failed on 'Clone 1 of iPhone 12 - xctest (26885)' (0.020 seconds)\n"
+    static let testingStarts = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\n"
+    /// xcodebuild's start of testing, then results, in the order a serial capture holds them. No capture holds the
+    /// parallel runner's start of testing; its result lines are xcrew's own fixture's.
+    static let tests = testingStarts + "Test case 'CurrencyFormatterTests.test_euroFormat()' passed on 'Clone 1 of iPhone 12 - xctest (26885)' (0.004 seconds)\nTest case 'CurrencyFormatterTests.test_poundFormat()' failed on 'Clone 1 of iPhone 12 - xctest (26885)' (0.020 seconds)\n"
 
     @Test func whileCompilingThePhaseNamesTheModule() {
         #expect(RunLog.phase(of: Self.preamble + Self.otherTask + Self.compiling, expectedTests: nil) == "compiling Utility")
@@ -369,7 +372,40 @@ func failingRunText(passing: Int) -> String {
     @Test func onceTestsRunThePhaseCountsThem() {
         #expect(RunLog.phase(of: Self.preamble + Self.compiling + Self.tests, expectedTests: 959) == "testing 2 of 959")
         #expect(RunLog.phase(of: Self.preamble + Self.compiling + Self.tests, expectedTests: nil) == "testing · 2 done")
-        #expect(RunLog.phase(of: Self.preamble + Self.compiling + "Testing started\n", expectedTests: 959) == "testing 0 of 959")
+        #expect(RunLog.phase(of: Self.preamble + Self.compiling + Self.testingStarts, expectedTests: 959) == "testing 0 of 959")
+    }
+
+    /// A log without xcodebuild's start of testing counts from MobileBuildMCP's `Testing started`, the last resort.
+    @Test func withoutXcodebuildsStartTheMarkerStartsTheCount() {
+        #expect(RunLog.phase(of: Self.preamble + "Testing started\n", expectedTests: 959) == "testing 0 of 959")
+    }
+
+    /// Swift Testing's start of testing starts the count as xcodebuild's does.
+    @Test func swiftTestingsStartStartsTheCount() {
+        #expect(RunLog.phase(of: Self.preamble + "◇ Test run started.\n✔ Test passes() passed after 0.001 seconds.\n", expectedTests: 5) == "testing 1 of 5")
+    }
+
+    /// Swift Testing's result lines as Event.HumanReadableOutputRecorder writes them, each counted as MobileBuildMCP counts it.
+    @Test func eachSwiftTestingResultCountsAsMobileBuildMCPCountsIt() {
+        #expect(RunLog.testsFinished(in: "✔ Test retries() passed after 0.001 seconds with 1 warning.") == 1)
+        #expect(RunLog.testsFinished(in: "✘ Test fails() failed after 0.006 seconds with 2 issues (including 1 known issue).") == 1)
+        #expect(RunLog.testsFinished(in: "━ Test knownIssue() passed after 0.001 seconds with 1 known issue.") == 0)
+        #expect(RunLog.testsFinished(in: "\u{200B}➜ Test skipped() skipped: \"skipped on purpose\"") == 1)
+        #expect(RunLog.testsFinished(in: "➜ Test skipped() skipped.") == 1)
+        #expect(RunLog.testsFinished(in: "✔ Test case passing 1 argument value → 1 to parameterised(value:) passed after 0.001 seconds.") == 0)
+        #expect(RunLog.testsFinished(in: "✘ Test run with 6 tests in 1 suite failed after 5.023 seconds with 1 issue.") == 0)
+        #expect(RunLog.testsFinished(in: "✘ Suite ShapesTests failed after 5.020 seconds with 1 issue.") == 0)
+    }
+
+    /// A test's display name is read as its name, never as its result.
+    @Test func aSwiftTestingNameIsntReadAsItsResult() {
+        #expect(RunLog.testsFinished(in: "✔ Test \"handles a known issue\" passed after 0.001 seconds.") == 1)
+        #expect(RunLog.testsFinished(in: "━ Test \"retries when failed after a timeout\" passed after 0.001 seconds with 1 known issue.") == 0)
+    }
+
+    /// A skip's comment can run over several lines; its first line counts the test.
+    @Test func aSkipWhoseCommentRunsOverLinesCounts() {
+        #expect(RunLog.testsFinished(in: "➜ Test skipped() skipped: \"first line\nsecond line\"\n") == 1)
     }
 
     @Test func moreTestsThanLastTimeDropsTheTotal() {

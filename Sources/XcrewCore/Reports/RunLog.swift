@@ -4,51 +4,94 @@ import Foundation
 /// What a MobileBuildMCP run is doing now, read from the xcodebuild output it logs as the run goes.
 /// Test results land in batches as the parallel runners flush, so a test count moves in steps.
 public enum RunLog {
-    /// A short phase for the band, or nil before the first task. `expectedTests` is the last run's total.
+    /// `phase(in:)` for a log held as text.
     public static func phase(of log: String, expectedTests: Int?) -> String? {
-        let testing = log.range(of: "\nTesting started", options: .backwards)?.lowerBound ?? (log.hasPrefix("Testing started") ? log.startIndex : nil)
-        if let testing {
-            let done = testsFinished(in: log[testing...])
-            if let expectedTests, done <= expectedTests { return "testing \(done) of \(expectedTests)" }
-            return "testing · \(done) done"
-        }
-        // No count for a build: xcodebuild starts work on nearly every module early, and prints no line when one is done.
-        return buildStep(log)
+        phase(in: Data(log.utf8), expectedTests: expectedTests)
+    }
+
+    /// The phase of the log at `url`, reading only what it needs: a clean build's log runs to tens of
+    /// megabytes, and the band asks once a second. A test run's count needs only what follows its start of testing;
+    /// a build's step needs only the log's end.
+    public static func phase(ofLogAt url: URL, expectedTests: Int?) -> String? {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+        return phase(in: data, expectedTests: expectedTests)
     }
 
     /// How much of a log's end holds its latest task line, nearly always.
     static let tailBytes = 64 * 1024
 
-    /// The phase of the log at `url`, reading only what it needs: a clean build's log runs to tens of
-    /// megabytes, and the band asks once a second. A test run's count needs only what follows its last
-    /// `Testing started`; a build's step needs only the log's end.
-    /// How many tests a log's lines say have finished, counted as MobileBuildMCP counts a run's tests: the parallel
-    /// runner's `Test case '…' passed on 'Clone 1 of …'`, and a serial run's `Test Case '-[…]' passed|failed|skipped (…)`,
-    /// but for an expected failure, which XCTest writes as passed and MobileBuildMCP leaves out (docs/findings.md, *Test
-    /// progress in a run's log*). Only shapes a capture holds are read.
-    static func testsFinished(in log: Substring) -> Int {
+    /// A short phase for the band, or nil before the first task. `expectedTests` is the last run's total.
+    static func phase(in data: Data, expectedTests: Int?) -> String? {
+        if let testing = testingStart(in: data) {
+            let done = testsFinished(in: String(decoding: data[testing...], as: UTF8.self))
+            if let expectedTests, done <= expectedTests { return "testing \(done) of \(expectedTests)" }
+            return "testing · \(done) done"
+        }
+        // No count for a build: xcodebuild starts work on nearly every module early, and prints no line when one is done.
+        let tail = String(decoding: data.suffix(tailBytes), as: UTF8.self)
+        return buildStep(tail) ?? (data.count > tailBytes ? lastStep(in: data) : nil)
+    }
+
+    /// Where testing starts in a log: xcodebuild's own first `Test Suite '…'` line for XCTest, or Swift Testing's
+    /// `◇ Test run started.`, whichever comes first. MobileBuildMCP writes its `Testing started` only once the tests have
+    /// run, so that's the last resort (docs/findings.md, *Test progress in a run's log*).
+    static func testingStart(in data: Data) -> Data.Index? {
+        func lineStart(_ marker: String, before end: Data.Index? = nil, options: Data.SearchOptions = []) -> Data.Index? {
+            let bytes = Data(marker.utf8)
+            if data.starts(with: bytes) { return data.startIndex }
+            let line = data.range(of: Data("\n".utf8) + bytes, options: options, in: data.startIndex..<(end ?? data.endIndex))
+            return line.map { $0.lowerBound + 1 }
+        }
+        let suite = lineStart("Test Suite '")
+        return lineStart("◇ Test run started.", before: suite) ?? suite ?? lineStart("Testing started", options: .backwards)
+    }
+
+    /// How many tests a log's lines say have finished, counted as MobileBuildMCP counts a run's tests (docs/findings.md,
+    /// *Test progress in a run's log*). Only shapes a capture or Swift Testing's source holds are read:
+    /// - the parallel runner's `Test case '…' passed on 'Clone 1 of …'`;
+    /// - a serial run's `Test Case '-[…]' passed|failed|skipped (…)`, but for an expected failure, which XCTest writes as
+    ///   passed and MobileBuildMCP leaves out;
+    /// - Swift Testing's `✔ Test …() passed after …`, `failed after …` and `skipped`, a parameterised test once, but for a
+    ///   pass with a known issue, which MobileBuildMCP leaves out, and never a suite's line, a case's or the run's total.
+    ///
+    /// Plain string checks, not regular expressions: the band reads a whole test run's output once a second.
+    static func testsFinished(in log: String) -> Int {
         var count = 0
         var expected: Set<Substring> = []
         for line in log.split(separator: "\n", omittingEmptySubsequences: true) {
-            if line.firstMatch(of: #/^Test case '.*' (?:passed|failed)/#) != nil {
-                count += 1
-            } else if let found = line.firstMatch(of: #/^Test Case '-\[([^\]]+)\]' (passed|failed|skipped) \(/#) {
-                if !expected.contains(found.1) { count += 1 }
-            } else if let found = line.firstMatch(of: #/Expected failure in -\[([^\]]+)\]/#) {
-                expected.insert(found.1)
+            if line.hasPrefix("Test case '") {
+                if line.contains("' passed") || line.contains("' failed") { count += 1 }
+            } else if line.hasPrefix(serialCase), let close = line.range(of: "]' ") {
+                let verdict = line[close.upperBound...]
+                let finished = verdict.hasPrefix("passed (") || verdict.hasPrefix("failed (") || verdict.hasPrefix("skipped (")
+                if finished, !expected.contains(line[line.index(line.startIndex, offsetBy: serialCase.count)..<close.lowerBound]) {
+                    count += 1
+                }
+            } else if let open = line.range(of: "Expected failure in -["), let close = line[open.upperBound...].firstIndex(of: "]") {
+                expected.insert(line[open.upperBound..<close])
+            } else if let counted = swiftTestingCounts(line) {
+                if counted { count += 1 }
             }
         }
         return count
     }
 
-    public static func phase(ofLogAt url: URL, expectedTests: Int?) -> String? {
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
-        let marker = Data("Testing started".utf8)
-        if let testing = data.range(of: Data("\n".utf8) + marker, options: .backwards)?.lowerBound ?? (data.starts(with: marker) ? data.startIndex : nil) {
-            return phase(of: String(decoding: data[testing...], as: UTF8.self), expectedTests: expectedTests)
+    static let serialCase = "Test Case '-["
+
+    /// Whether a Swift Testing test's result line counts, or nil for any other line. Its name can hold any words, so its
+    /// result is the last `passed after` or `failed after` in it.
+    static func swiftTestingCounts(_ line: Substring) -> Bool? {
+        let words = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
+        guard words.count == 2, !words[0].isEmpty, words[1].hasPrefix("Test "),
+              !words[1].hasPrefix("Test run with "), !words[1].hasPrefix("Test case passing ") else { return nil }
+        let test = words[1]
+        let passed = test.range(of: " passed after ", options: .backwards)
+        let failed = test.range(of: " failed after ", options: .backwards)
+        if let passed, failed.map({ $0.lowerBound < passed.lowerBound }) ?? true {
+            return !test[passed.upperBound...].contains("known issue")
         }
-        let tail = String(decoding: data.suffix(tailBytes), as: UTF8.self)
-        return buildStep(tail) ?? (data.count > tailBytes ? lastStep(in: data) : nil)
+        if failed != nil { return true }
+        return test.hasSuffix(" skipped.") || test.contains(" skipped: \"") ? true : nil
     }
 
     /// The latest task's step in a log whose end holds none, such as a long run of linker warnings:

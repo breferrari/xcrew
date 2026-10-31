@@ -795,12 +795,33 @@ struct TestbedRawTests {
 
     /// Five tests ran, one an expected failure, which MobileBuildMCP's counts leave out: 1 passed, 2 failed, 1 skipped.
     @Test func aSerialRunsFinishedTestsAreCountedButItsExpectedFailure() throws {
-        #expect(RunLog.testsFinished(in: Substring(try Self.captured("serial.log"))) == 4)
+        #expect(RunLog.testsFinished(in: try Self.captured("serial.log")) == 4)
+    }
+
+    /// MobileBuildMCP writes `Testing started` only after the tests: a log read while they run counts from xcodebuild's
+    /// own start of testing. Copied mid-run, six Swift Testing tests in, the last still going: four counted, a known
+    /// issue's pass left out, as MobileBuildMCP's total (5) leaves it out.
+    @Test func aLogReadMidRunCountsTheTestsFinishedSoFar() {
+        let midRun = Self.raw.appending(path: "shapes-midrun.log")
+        #expect(RunLog.phase(ofLogAt: midRun, expectedTests: 5) == "testing 4 of 5")
+    }
+
+    /// A finished serial log, `Testing started` its last line, counts every test.
+    @Test func aFinishedSerialLogCountsEveryTest() {
+        #expect(RunLog.phase(ofLogAt: Self.raw.appending(path: "serial.log"), expectedTests: 4) == "testing 4 of 4")
+    }
+
+    /// A Swift Testing run counts each test once, a parameterised one too, and leaves out a known issue's pass, the
+    /// suite's line and the run's total: the count MobileBuildMCP gives the run (1 failed, 3 passed, 1 skipped).
+    @Test func aSwiftTestingRunsCountIsTheTotalMobileBuildMCPGivesIt() throws {
+        let total = try #require(ToolOutput(text: try Self.content("shapes"), server: .mobileBuildMCP).testTotal)
+        #expect(total == 5)
+        #expect(RunLog.testsFinished(in: try Self.captured("shapes.log")) == total)
     }
 
     /// The count a run reaches is the total the next run's line measures against: both count the same tests.
     @Test func aSerialRunsCountIsTheTotalMobileBuildMCPGivesIt() throws {
         let total = try #require(ToolOutput(text: try Self.content("serial"), server: .mobileBuildMCP).testTotal)
-        #expect(RunLog.testsFinished(in: Substring(try Self.captured("serial.log"))) == total)
+        #expect(RunLog.testsFinished(in: try Self.captured("serial.log")) == total)
     }
 }

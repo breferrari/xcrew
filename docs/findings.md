@@ -582,12 +582,14 @@ Measured on October 30, 2026 with Claude Code 2.1.314 on macOS 27.2, in interact
 
 ## Test progress in a run's log
 
-Read October 31, 2026, in the test bed's raw captures (v0.8.8: MobileBuildMCP 2.7.1, Xcode 27.2, iOS 27.2), each a finished run's log.
+Read October 31, 2026, in the test bed's raw captures (v0.8.8 and v0.8.9: MobileBuildMCP 2.7.1, Xcode 27.2, iOS 27.2).
 
 - **A serial XCTest run** writes `Test Case '-[FeatureTests.ProbeTests testFails]' started.`, then `… failed (0.006 seconds).`, `passed (…)` or `skipped (…)`, with a capital C and no `on 'Clone …'`, unlike the parallel runner's `Test case '…' passed on 'Clone 1 of …'`.
 - **An expected failure is written as passed.** `XCTExpectFailure` gives `Expected failure in -[FeatureTests.ProbeTests testExpectedFailure]: …` inside the case, then `Test Case '-[…testExpectedFailure]' passed`. MobileBuildMCP's counts for that run are 1 passed, 2 failed, 1 skipped: four of the five cases, the expected failure left out. So the count of a run's progress leaves it out too, and a finished run's count is the total the next run measures against.
-- **`Testing started` is the last line** of every finished 2.7.1 log captured, after `** TEST EXECUTE … **` (raw/serial.log, swift-testing.log, profile.log, and xcrew's own failed-run fixture). Progress is counted only after that line, so on these logs it counts nothing. Whether a log read while the run goes has the line earlier isn't captured yet.
-- **Not read yet:** the parallel runner's skipped line, and Swift Testing's failed, skipped, parameterised and suite lines, which no capture holds.
+- **`Testing started` is written only after the tests.** It's the last line of every finished 2.7.1 log captured, after `** TEST EXECUTE … **`. In the test bed's run copied ten times, a second apart, while it ran (v0.8.9, raw/shapes-midrun.log), the tests had started by the seventh copy, `Test Suite 'All tests' started at` at line 495 and `◇ Test run started.` at 498, and no copy held `Testing started` or `** TEST EXECUTE`. So progress is counted from xcodebuild's own start of testing, whichever of those comes first, and from the marker only when neither is there.
+- **Swift Testing's lines** (v0.8.9, raw/shapes.log): `✔ Test passes() passed after 0.001 seconds.`, `✘ Test fails() failed after 0.006 seconds with 1 issue.`, `➜ Test skipped() skipped: "skipped on purpose"`, `━ Test knownIssue() passed after 0.001 seconds with 1 known issue.`, `✔ Test parameterised(value:) with 3 test cases passed after …` (once for its three cases), and a suite's `✘ Suite ShapesTests failed after …`. Some start with a zero-width space before the symbol. MobileBuildMCP counts that run's six tests as 1 failed, 3 passed, 1 skipped: the parameterised test once, the known issue's pass in none. Progress counts the same, leaving out the suite's line and the run's `Test run with 6 tests in 1 suite …`.
+- **Read with string checks, not regular expressions.** The band reads a run's whole test output once a second. Built with `swiftc -O` on macOS 27.2, the count took 23.6 s with Swift regular expressions on a serial log of 20,000 tests (60,000 lines, 3.7 MB), and 0.17 s with string checks.
+- **Not read yet:** the parallel runner's log, whose start of testing and skipped line no capture holds; Swift Testing's `was cancelled`; and a log with several passes of the tests (`-test-iterations`, `-retry-tests-on-failure`, a test plan's configurations), which counts from the first and may pass the total.
 
 ## Stopping a program
 

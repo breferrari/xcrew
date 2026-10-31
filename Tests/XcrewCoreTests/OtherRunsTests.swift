@@ -33,7 +33,7 @@ import XcrewTestSupport
         return await OtherRuns.going(project: project, machine: machine, now: Self.now)
     }
 
-    static let testing = "Testing started\nTest Case '-[AppTests.GreetingTests testHello]' started.\n"
+    static let testing = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\nTest Case '-[AppTests.GreetingTests testHello]' started.\n"
 
     @Test func anotherWorktreesRunIsListedWithItsToolAndPhase() async throws {
         try log("test_sim_2026-11-01T23-59-00-000Z_pid100_a.log", in: worktree("feature"), ago: 5, text: Self.testing)
