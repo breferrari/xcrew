@@ -227,3 +227,16 @@ test('a notification that arrives while another run is going leaves that run on 
   release()
   await running
 })
+
+/** A subagent's run moved to the background keeps saying which subagent started it, once its notification is read. */
+test("a backgrounded subagent's run keeps its label on the band's outcome", async ($, on) => {
+  const { clock } = session(on, { surface: 'terminal', reports: [{ ok: true, detail: '5 passed' }] })
+  on('agent.list', () => ({ value: [{ id: 'a1', description: 'Fix login tests', type: 'general-purpose', status: 'running' as const }] }))
+  await callTool($, TEST, { agentId: 'a1' })
+  await notify($, clock, notificationText("the server's result"))
+  const band = await $.ui.mount({ plugin: 'xcrew', component: 'AbovePrompt', surface: 'terminal', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120, scroll: { offset: 0, bodyRows: 10 }, view: {} } } as never)
+  const text = (await band.findAll({ type: 'Text' })).map(found => found.text).join('')
+  await band.unmount()
+  expect(text).toContain('5 passed')
+  expect(text).toContain(' · by "Fix login tests"')
+})

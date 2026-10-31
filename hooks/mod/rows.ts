@@ -11,8 +11,8 @@ export function drawsRow(kind: ToolKind | undefined): boolean {
 }
 
 /** None for a failure xcrew couldn't read: the result Claude read says more than a bare ✗. */
-export function rowOf(ended: NonNullable<BandRun['ended']>, failures: readonly Failure[]): ResultRow | undefined {
+export function rowOf(ended: NonNullable<BandRun['ended']>, failures: readonly Failure[], by?: string): ResultRow | undefined {
   if (!ended.ok && !ended.detail && failures.length === 0) return undefined
   const listed = ended.hasFailures ? failures : []
-  return { ended, failures: listed.slice(0, FAILURES_SHOWN).map(({ message: _, ...shown }) => shown), more: Math.max(0, listed.length - FAILURES_SHOWN) }
+  return { ended, failures: listed.slice(0, FAILURES_SHOWN).map(({ message: _, ...shown }) => shown), more: Math.max(0, listed.length - FAILURES_SHOWN), ...(by === undefined ? {} : { by }) }
 }

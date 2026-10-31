@@ -2,7 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderElement } from 'claude-code'
 import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullRun, FullRuns, ResultRow, SetupChoices, SetupForm, SetupPicks, StaleProject } from '../../types'
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
-import { agentLabelOf } from './agent'
+import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
 import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
@@ -169,8 +169,8 @@ export const register: Register = on => {
     // the gauge starts when the log appears, before which the run itself hasn't begun.
     let measuredFrom = writesLog ? undefined : started
     let following: Following = {}
-    const by = await quietly(() => agentLabel($, e.agentId))
-    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }), ...(by ? { by } : {}) }))
+    const by = await quietly(() => agentDescription($, e.agentId))
+    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }), ...(by === undefined ? {} : { by }) }))
     const readPhase = async (since: number) => {
       const found = (await quietly(() => runPhase($, name, since, expectedTests, following.logPath))) ?? {}
       const step = phaseStep(following, found, writesLog)
@@ -222,14 +222,14 @@ export const register: Register = on => {
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
     // its real end comes later, as a task notification (`UserMessage` below).
-    const run: Ending = { tool: name, ...(by ? { by } : {}), scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, ranAll: runsWholeScope(parsed, input), fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}) }
+    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, ranAll: runsWholeScope(parsed, input), fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
         backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }) })
         // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
         for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) backgrounded.delete(old)
       }
-      await showEnding($, name, { at: ended, elapsed, ok: true, isUnread: true }, usesBand)
+      await showEnding($, name, { at: ended, elapsed, ok: true, isUnread: true }, usesBand, by)
       return resultFor(result, outcome)
     }
     const loop = await recordEnding($, run, outcome, reported !== undefined, ended, elapsed)
@@ -266,7 +266,7 @@ export const register: Register = on => {
           const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
           // A run going meanwhile keeps the band: the notification is an earlier call's.
           if (usesBand && (await anotherRunGoing($))) return
-          await showEnding($, call.tool, { at: now, elapsed: task.durationMs ?? 0, ok: true, background: { ...(task.status ? { status: task.status } : {}), ...(task.durationMs === undefined ? {} : { durationMs: task.durationMs }) } }, usesBand)
+          await showEnding($, call.tool, { at: now, elapsed: task.durationMs ?? 0, ok: true, background: { ...(task.status ? { status: task.status } : {}), ...(task.durationMs === undefined ? {} : { durationMs: task.durationMs }) } }, usesBand, call.by)
         }),
       )
     }
@@ -342,6 +342,7 @@ export const register: Register = on => {
     sessionProfileSchemes = new Map()
     found = []
     pinsNamed.clear()
+    agentDescriptions.clear()
     concurrencyGiven.clear()
     seenAt = {}
     void loadProblems($).catch(() => undefined)
@@ -377,7 +378,7 @@ export const register: Register = on => {
 }
 
 /** A finished build, test or run call, as its ending is recorded. */
-type Ending = { tool: string; by?: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; ranAll: boolean; fullSuite: boolean; toolUseId?: string }
+type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; ranAll: boolean; fullSuite: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
 type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean> }
@@ -405,8 +406,8 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
   saveCard($)
   const ending = endingOf(outcome, ended, elapsed, earlier)
   const requestId = run.toolUseId
-  if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => withBy(rowOf(ending, outcome.failures), run.by)))
-  await showEnding($, tool, ending, run.usesBand)
+  if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
+  await showEnding($, tool, ending, run.usesBand, run.by)
   // Long enough that the person has likely looked away; their notification settings decide how it arrives.
   if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
   // A whole suite run again and again: past the budget, the tests the change can break would do.
@@ -516,9 +517,9 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
  * Shows how a run ended: on the band where one draws, the run going there ending with it, for as long as an ending
  * stays; elsewhere a toast carries the same line.
  */
-async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean): Promise<void> {
+async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean, by?: string): Promise<void> {
   if (!usesBand) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
-  await quietly(() => update($, runState, run => (run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending })))
+  await quietly(() => update($, runState, run => (run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending, ...(by === undefined ? {} : { by }) })))
   // The outcome leaves the band on its own; a later run has replaced it by then, or it's this one.
   await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
 }
@@ -906,22 +907,20 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))
 }
 
-/** Each subagent's label by its id, once read: `null` for one whose description says nothing or that the list doesn't name. */
-const agentLabels = new Map<string, string | null>()
+/**
+ * Each subagent's short description by its id, once a list named it or didn't: an id no list names is a workflow's agent
+ * or the engine's own fork, which no later list names either. A list that fails is asked again.
+ */
+const agentDescriptions = new Map<string, string | undefined>()
 
-/** The label of the subagent whose loop a call runs in, by its own description; none on the main loop. */
-async function agentLabel($: EngineInterface, agentId: string | undefined): Promise<string | undefined> {
+/** The short description of the subagent whose loop a call runs in; none on the main loop. */
+async function agentDescription($: EngineInterface, agentId: string | undefined): Promise<string | undefined> {
   if (agentId === undefined) return undefined
-  if (!agentLabels.has(agentId)) {
+  if (!agentDescriptions.has(agentId)) {
     const agents = await $.agent.list()
-    agentLabels.set(agentId, agentLabelOf(agents.find(agent => agent.id === agentId)?.description) ?? null)
+    agentDescriptions.set(agentId, shortDescription(agents.find(agent => agent.id === agentId)?.description))
   }
-  return agentLabels.get(agentId) ?? undefined
-}
-
-/** A row with the subagent that started its run, when one did. */
-function withBy(row: ResultRow | undefined, by: string | undefined): ResultRow | undefined {
-  return row && by ? { ...row, by } : row
+  return agentDescriptions.get(agentId)
 }
 
 /** Reads the other worktrees' runs into the line: what the CLI answers, or what it held, until that ages out. */

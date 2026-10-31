@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, RenderSurface } from 'claude-code'
 import { callTool, stubCli } from './testing'
 
 const BAND = {
@@ -15,7 +15,7 @@ function row(id: string) {
 }
 
 /** A session whose agents are `agents`, each by id with its own description, or whose list fails; the band drawn mid-run. */
-function session($: Engine, on: On, agents: { id: string; description: string }[] | Error, surfaces = ['terminal'] as ('terminal' | 'vscode')[]) {
+function session($: Engine, on: On, agents: { id: string; description: string }[] | Error, surfaces: RenderSurface[] = ['terminal']) {
   const clock = mock.clock(on)
   mock.store(on)
   on('session.surfaces', () => ({ value: surfaces }))
@@ -60,6 +60,7 @@ test("a subagent's run says which, by its own description, on the band and on it
 test("the main loop's run carries no label", async ($, on) => {
   const seen = session($, on, [{ id: 'a1', description: 'Fix login tests' }])
   await callTool($, TEST_SIM, { tool_use_id: 'toolu_1' })
+  expect(seen.band()).toContain('test_sim · 0:05')
   expect(seen.band()).not.toContain(' by ')
   expect(await rowText($, 'toolu_1')).not.toContain(' by ')
 })
@@ -71,10 +72,18 @@ test('a long or multi-line description is collapsed to one line and cut to 40 ch
   expect(seen.band()).toContain(' · by "Rewrite the login flow and its tests for…"')
 })
 
+/** Cut by what a reader counts as a character, so an emoji at the cut is kept whole or left out, never split. */
+test('the cut never splits an emoji', async ($, on) => {
+  const seen = session($, on, [{ id: 'a1', description: `${'a'.repeat(39)}🙂🙂 and more` }])
+  await callTool($, TEST_SIM, { agentId: 'a1', tool_use_id: 'toolu_1' })
+  expect(seen.band()).toContain(` · by "${'a'.repeat(39)}🙂…"`)
+})
+
 /** No substitute for a description that isn't there: no type, no name, no id. */
-test("an agent the list doesn't name, an empty description, or a list that fails gives no label", async ($, on) => {
+test("an agent the list doesn't name, or an empty description, gives no label", async ($, on) => {
   const seen = session($, on, [{ id: 'a2', description: '  ' }])
   await callTool($, TEST_SIM, { agentId: 'a1', tool_use_id: 'toolu_1' })
+  expect(seen.band()).toContain('test_sim · 0:05')
   expect(seen.band()).not.toContain(' by ')
   await callTool($, TEST_SIM, { agentId: 'a2', tool_use_id: 'toolu_2' })
   expect(seen.band()).not.toContain(' by ')

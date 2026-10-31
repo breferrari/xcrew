@@ -10,7 +10,7 @@ export type BandRun = {
   measuredFrom?: number
   /** What the run is doing now, read from its log: `compiling Utility · Formatter.swift`, `testing 312 of 959`. */
   phase?: string
-  /** The subagent that started the run, by its own description, as `agentLabelOf` gives it; absent for the main loop. */
+  /** The subagent that started the run, by its own description, shortened; absent for the main loop. */
   by?: string
   /** `hasFailures`: the run left failures, or the Mac's cause, in the pane, which the band points to. */
   /**
@@ -25,7 +25,7 @@ export type ResultRow = {
   ended: NonNullable<BandRun['ended']>
   failures: Pick<FailureList['items'][number], 'title' | 'where'>[]
   more: number
-  /** The subagent that started the run, by its own description; absent for the main loop. */
+  /** The subagent that started the run, by its own description, shortened; absent for the main loop. */
   by?: string
 }
 

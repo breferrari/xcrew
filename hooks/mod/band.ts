@@ -1,6 +1,5 @@
 import type { ElementConstructor, RenderElement } from 'claude-code'
 import type { BandProblems, BandRun, ElsewhereRun, ResultRow } from '../../types'
-import { byText } from './agent'
 import { elsewhereText } from './elsewhere'
 import { estimate, stopwatch } from './format'
 
@@ -40,9 +39,10 @@ export function segments(run: BandRun, now: number): Segment[] {
   return [...outcomeSegments(run, now), ...pointer(run.ended), ...(run.target ? piece(run.target) : []), ...by(run.by)]
 }
 
-/** Which subagent started the run, last, so a narrow terminal cuts it first. */
-function by(label: string | undefined): Segment[] {
-  return label ? piece(byText(label)) : []
+/** Which subagent started the run, by its own description, quoted since the words are the agent's: last, so a narrow
+ * terminal cuts it first. */
+function by(description: string | undefined): Segment[] {
+  return description ? piece(`by "${description}"`) : []
 }
 
 /** The run alone: going, with its time, gauge and phase, or ended, with its outcome. */
