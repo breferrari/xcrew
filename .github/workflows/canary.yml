@@ -70,6 +70,8 @@ jobs:
         run: |
           scripts/background-texts.sh "$(readlink -f "$(command -v claude)")" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
         shell: bash
+        env:
+          XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed
       - name: xcrew notes an Xcode MCP call whose connection closed
         run: |
           scripts/closed-connection.sh "$(readlink -f "$(command -v claude)")" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }

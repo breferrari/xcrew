@@ -880,7 +880,7 @@ import Testing
 
     /// Every run of the Swift tests in CI (both Swift jobs, and the canary's) checks the test bed out, at one commit,
     /// named in full: a tag can move, and there a missing checkout fails `ciHasTheTestBed`. The canary's saved-result
-    /// check reads it too.
+    /// and background checks read it too.
     @Test func everySwiftTestRunPinsTheSameTestBed() throws {
         let workflows = [try text(".github/workflows/ci.yml"), try text(".github/workflows/canary.yml")]
         let pins = workflows.flatMap { $0.matches(of: /repository: breferrari\/xcrew-testbed\n\s+ref: ([0-9a-f]+)/).map { String($0.1) } }
@@ -888,7 +888,7 @@ import Testing
         #expect(Set(pins).count == 1)
         #expect(pins.allSatisfy { $0.count == 40 })
         let runs = workflows.map { $0.components(separatedBy: "XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed").count - 1 }
-        #expect(runs == [2, 2])
+        #expect(runs == [2, 3])
     }
 
     /// The canary opens an issue only for a failed run on main, the schedule's or a dispatch there: a dispatch on a branch

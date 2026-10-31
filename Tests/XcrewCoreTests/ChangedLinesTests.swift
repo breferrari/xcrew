@@ -94,46 +94,42 @@ import XcrewTestSupport
         FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Sources/Warn/Warn.swift"], diffed: ["\(ProjectLayout.canonical(project.root))/Sources/Warn/Warn.swift"], diff: diff, remote: remote))
     }
 
-    /// The compiler names files by their real path, `/private/var/...` for a temporary folder at `/var/...`.
-    func build(in project: Project) -> String {
-        let real = ProjectLayout.canonical(project.root)
-        return Captured.text("mobileTestsPassedWithWarnings").replacingOccurrences(of: "/Users/dev/Warn", with: real)
+    /// A project whose branch changed `Kit/Kit.swift`'s line 9, as the real build's concurrency fixture, and a git that
+    /// says so.
+    func kitChanged(_ project: Project, diff: String = "+++ Kit/Kit.swift\n@@ -8,0 +9 @@\n", remote: Bool = true) -> FakeRunner {
+        FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Kit/Kit.swift"], diffed: ["\(ProjectLayout.canonical(project.root))/Kit/Kit.swift"], diff: diff, remote: remote))
     }
 
-    @Test func aWarningInALineTheBranchChangedIsNamed() async {
-        let project = Project.temporary(containing: ["Sources/Warn"])
-        let report = await Report.make(kind: .test, output: ToolOutput(text: build(in: project), server: .mobileBuildMCP), home: Captured.home, runner: changed(project), project: project)
-        let note = report.notes.first { $0.contains("lines this branch changed") }
-        #expect(note?.contains("1 of 3 warnings") == true, "\(report.notes)")
-        #expect(note?.contains("Warn.swift:5") == true)
-        #expect(note?.contains("Warn.swift:4") == false)
+    /// The real build's text or JSON with its warnings in `project`. The compiler names files by their real path,
+    /// `/private/var/...` for a temporary folder at `/var/...`.
+    func build(_ shape: (String) throws -> String, in project: Project) throws -> ToolOutput {
+        ToolOutput(text: try shape("build_sim").replacingOccurrences(of: "/testbed/concurrency", with: ProjectLayout.canonical(project.root)), server: .mobileBuildMCP)
     }
 
-    @Test func noWarningInAChangedLineSaysNothing() async {
-        let project = Project.temporary(containing: ["Sources/Warn"])
-        let report = await Report.make(kind: .test, output: ToolOutput(text: build(in: project), server: .mobileBuildMCP), home: Captured.home, runner: changed(project, diff: "+++ Sources/Warn/Warn.swift\n@@ -40,0 +41 @@\n"), project: project)
-        #expect(!report.notes.contains { $0.contains("lines this branch changed") || $0.contains("no new warnings") })
-    }
-
-    @Test func withoutABaseThereIsNoNote() async {
-        let project = Project.temporary(containing: ["Sources/Warn"])
-        let report = await Report.make(kind: .test, output: ToolOutput(text: build(in: project), server: .mobileBuildMCP), home: Captured.home, runner: changed(project, remote: false), project: project)
-        #expect(!report.notes.contains { $0.contains("lines this branch changed") })
-    }
-
-    /// MobileBuildMCP's JSON for a passing build lists its warnings with their places too: the real build's, in a
-    /// project whose branch changed `Kit/Kit.swift`'s line 9.
-    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aMobileBuildMCPJSONWarningInAChangedLineIsNamed() async throws {
+    /// The real build lists 7 warnings; one is in the line the branch changed.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"), arguments: ["text", "JSON"])
+    func aWarningInALineTheBranchChangedIsNamed(_ shape: String) async throws {
         let project = Project.temporary(containing: ["Kit"])
-        let root = ProjectLayout.canonical(project.root)
-        let json = try Raw.json("build_sim").replacingOccurrences(of: "/testbed/concurrency", with: root)
-        let runner = FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Kit/Kit.swift"], diffed: ["\(root)/Kit/Kit.swift"], diff: "+++ Kit/Kit.swift\n@@ -8,0 +9 @@\n"))
-        let report = await Report.make(kind: .build, output: ToolOutput(text: json, server: .mobileBuildMCP), home: Captured.home, runner: runner, project: project)
+        let output = try build(shape == "text" ? Raw.text : Raw.json, in: project)
+        let report = await Report.make(kind: .build, output: output, home: Captured.home, runner: kitChanged(project), project: project)
         let note = report.notes.first { $0.contains("lines this branch changed") }
         #expect(note?.contains("1 of 7 warnings") == true, "\(report.notes)")
         #expect(note?.contains("Kit.swift:9") == true)
-        #expect(note?.contains("Kit.swift:1") == false)
+        #expect(note?.contains("Kit.swift:1 ") == false)
+    }
+
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func noWarningInAChangedLineSaysNothing() async throws {
+        let project = Project.temporary(containing: ["Kit"])
+        let report = await Report.make(kind: .build, output: try build(Raw.text, in: project), home: Captured.home, runner: kitChanged(project, diff: "+++ Kit/Kit.swift\n@@ -40,0 +41 @@\n"), project: project)
+        #expect(!report.notes.contains { $0.contains("lines this branch changed") || $0.contains("no new warnings") })
+    }
+
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func withoutABaseThereIsNoNote() async throws {
+        let project = Project.temporary(containing: ["Kit"])
+        let report = await Report.make(kind: .build, output: try build(Raw.text, in: project), home: Captured.home, runner: kitChanged(project, remote: false), project: project)
+        #expect(!report.notes.contains { $0.contains("lines this branch changed") })
     }
 
     /// A warning the build lists twice at one place is one warning; one without a place still counts in the total.

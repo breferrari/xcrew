@@ -5,9 +5,9 @@ import Testing
 import XcrewTestSupport
 
 /// Results from MobileBuildMCP 2.7.1 and the Xcode MCP, and `xcresulttool`'s output, in shapes captured against a
-/// sample Swift package with machine paths replaced. Nothing regenerates them. The Xcode MCP's (`xcode*`) are hand-kept,
-/// said to be from Xcode 27.1, until the test bed's Xcode MCP capture replaces them (docs/findings.md, *The Xcode MCP's
-/// fixtures are hand-kept*); real MobileBuildMCP results are in `Raw`.
+/// sample Swift package with machine paths replaced. They're hand-kept: nothing regenerates them, and each stays until a
+/// test bed capture replaces it (docs/findings.md, *Hand-kept fixtures*, names which). Real MobileBuildMCP results are in
+/// `Raw` and `Field`.
 enum Captured {
     static func text(_ name: String) -> String {
         let url = Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures/Reports")!
@@ -26,10 +26,6 @@ enum Captured {
     @Test func mobileBuildMCPTestRunsGiveCountsOrTheFirstFailingTest() {
         #expect(Captured.output("mobileTestsFailed", isError: true).summary == .init(ok: false, detail: "1 of 3 failed · PlainTests/testConcatenation"))
         #expect(Captured.output("mobileTestsBuildFailed", isError: true).summary == .init(ok: false, detail: "build failed, tests didn't run"))
-    }
-
-    @Test func mobileBuildMCPBuildsGiveTheFirstErrorWithItsFileAndLine() {
-        #expect(Captured.output("mobileBuildFailed", isError: true).summary == .init(ok: false, detail: "MacroProbe.swift:13 cannot convert value of type 'String' to specified type 'Int'"))
     }
 
     @Test func anXcodeMCPFailedBuildIsAFailureThoughReportedAsANormalResult() {
@@ -79,7 +75,6 @@ enum Captured {
 
     @Test func eachServerReportsHowLongTheRunItselfTook() {
         #expect(Captured.output("mobileTestsFailed").reportedDuration == 12_300)
-        #expect(Captured.output("mobileBuildFailed").reportedDuration == 3_200)
         #expect(Captured.output("xcodeBuildPassed").reportedDuration == 3_857)
         #expect(Captured.output("xcodeTestsPassed").reportedDuration == nil)
         #expect(ToolOutput(text: "Build succeeded", server: .mobileBuildMCP).reportedDuration == nil)
@@ -98,8 +93,7 @@ enum Captured {
         ])
     }
 
-    @Test func compileErrorsAreListedByFileAndLineFromEitherServer() {
-        #expect(Captured.output("mobileBuildFailed").failures == [.init(title: "MacroProbe.swift:13", message: "cannot convert value of type 'String' to specified type 'Int'")])
+    @Test func anXcodeMCPCompileErrorIsListedByFileAndLine() {
         #expect(Captured.output("xcodeBuildFailed").failures == [.init(title: "MacroProbe.swift:13", message: "Cannot convert value of type 'String' to specified type 'Int'")])
     }
 
@@ -124,7 +118,7 @@ enum Captured {
         #expect(Captured.output("mobileTestsFailed").failures.map(\.isTest) == [true])
         #expect(Captured.output("xcodeTestsFailed").failures.map(\.isTest) == [true, true, true])
         #expect(ToolOutput(text: "🧪 Test\n\nTest Failures (1):\n\n  ✗ FormatterTests / test_symbol(): failed - deliberate failure\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 30.7s)", server: .mobileBuildMCP).failures.map(\.isTest) == [true])
-        for name in ["mobileBuildFailed", "xcodeBuildFailed", "mobileTestsBuildFailed"] {
+        for name in ["xcodeBuildFailed", "mobileTestsBuildFailed"] {
             #expect(Captured.output(name).failures.allSatisfy { !$0.isTest }, "\(name)")
         }
     }
@@ -167,7 +161,6 @@ func failingRunText(passing: Int) -> String {
 
     @Test func aShortListIsLeftAsTheServerWroteIt() {
         #expect(ToolOutput(text: failingRunText(passing: 5), server: .mobileBuildMCP).compactTestText == nil)
-        #expect(Captured.output("mobileBuildFailed").compactTestText == nil)
     }
 
     @Test func aListClaudeCodeAlreadyCutIsCountedWhole() {
@@ -183,11 +176,7 @@ func failingRunText(passing: Int) -> String {
         #expect(ToolOutput(text: withSkip, server: .mobileBuildMCP).compactTestText?.contains("  (40 passing tests left out; failing tests are listed in full above)\n  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API\n\n❌") == true)
     }
 
-    @Test func aCompileErrorIsCountedOnce() {
-        let cleaned = Captured.output("mobileBuildFailed").mobileText?.withoutExcerpts()?.text ?? ""
-        #expect(cleaned.contains("Errors (1):"))
-        #expect(!cleaned.contains("✗ |"))
-        #expect(cleaned.contains("✗ cannot convert value of type 'String' to specified type 'Int'\n    /Users/dev/MacroProbe/Sources/MacroProbe/MacroProbe.swift:13"))
+    @Test func aTestRunWithNoExcerptIsLeftAlone() {
         #expect(Captured.output("mobileTestsFailed").mobileText?.withoutExcerpts() == nil)
     }
 
@@ -206,7 +195,6 @@ func failingRunText(passing: Int) -> String {
 @Suite struct ResultBundleTests {
     @Test func theBundleIsFoundFromEitherShapeOfResult() {
         #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileTestsFailedUnlocated"), server: .mobileBuildMCP), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim_1.xcresult")
-        #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileBuildFailed"), server: .mobileBuildMCP), home: Captured.home) == nil)
     }
 
     @Test func aFailingTestsDetailsGiveItsFileAndLine() {
@@ -483,15 +471,6 @@ func failingRunText(passing: Int) -> String {
         #expect(report.tests == nil)
     }
 
-    /// A passing run's text, as Claude Code hands it, counts its tests on its `✅` line, in another order than a failing
-    /// run's `❌` line: the same verdict and total as the JSON path.
-    @Test func aPassingRunsTextCountsItsTests() async {
-        let report = await Self.report("mobileTestsPassedWithWarnings")
-        #expect(report.ok)
-        #expect(report.detail == "1 passed")
-        #expect(report.tests == 1)
-    }
-
     @Test func aFailingRunCarriesItsFailuresForThePane() async {
         let report = await Self.report("mobileTestsFailed", isError: true)
         #expect(!report.ok)
@@ -521,11 +500,6 @@ func failingRunText(passing: Int) -> String {
 
     @Test func theNoTestsNoteSaysWhatIsKnown() {
         #expect(Report.noTestsNote == "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this.")
-    }
-
-    @Test func aBuildFailureReachesClaudeWithItsErrorCountedOnce() async {
-        let report = await Self.report("mobileBuildFailed", kind: .build, isError: true)
-        #expect(report.result?.contains("Errors (1):") == true)
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
@@ -786,18 +760,19 @@ extension FailureNotes {
 }
 
 @Suite struct RepeatedWarningTests {
-    static let message = "'oldAPI()' is deprecated: use newAPI() instead, which handles every locale and time zone the old one quietly ignored [#DeprecatedDeclaration]"
+    static let sending = "passing closure as a 'sending' parameter risks causing data races between code in the current isolation context and concurrent execution of the closure; this is an error in the Swift 6 language mode [#RegionIsolation::SendingClosureRisksDataRace]"
 
-    /// The captured text or JSON with the message of each warning from the `from`th on replaced by its own.
-    static func distinct(_ name: String, from: Int = 0) -> String {
-        let parts = Captured.text(name).components(separatedBy: message)
+    /// The real build's text with the message of each of its two `sending` warnings from the `from`th on replaced by its own.
+    static func distinct(from: Int = 0) throws -> String {
+        let parts = try Raw.text("build_sim").components(separatedBy: sending)
         return parts.dropFirst().enumerated().reduce(parts[0]) { text, part in
-            text + (part.offset < from ? message : "another warning \(part.offset)") + part.element
+            text + (part.offset < from ? sending : "another warning \(part.offset)") + part.element
         }
     }
 
+    /// The real build's result, read as its build.
     static func report(_ text: String) async -> Report {
-        await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
+        await Report.make(kind: .build, output: ToolOutput(text: text, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
     }
 
     static let kit = "/testbed/concurrency/Kit/Kit.swift"
@@ -816,13 +791,16 @@ extension FailureNotes {
         return String(decoding: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
     }
 
-    @Test func aRepeatedWarningInTheTextIsListedOnceWithItsCountAndEveryPlace() async throws {
-        let result = try #require(await ReportTests.report("mobileTestsPassedWithWarnings").result)
-        #expect(result.count < Captured.text("mobileTestsPassedWithWarnings").count)
-        #expect(result.contains("Warnings (3):\n\n  ⚠ \(Self.message) (3×, /Users/dev/Warn/Sources/Warn/Warn.swift:4, :5, :6)\n\n✅ 1 test passed, 0 failed, 0 skipped (⏱️ 8.0s)"))
+    /// The real build lists its `sending` closure warning twice, in two files: once, with its count and both places.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aRepeatedWarningInTheTextIsListedOnceWithItsCountAndEveryPlace() async throws {
+        let text = try Raw.text("build_sim")
+        let result = try #require(await Self.report(text).result)
+        #expect(result.count < text.count)
+        #expect(result.contains("  ⚠ \(Self.sending) (2×, /testbed/concurrency/Kit/Kit.swift:13, /testbed/concurrency/Feature/Feature.swift:6)\n\n  ⚠ sending 'box'"))
     }
 
-    /// The real build lists its `sending` closure warning twice, in two files: once each, as the compiler gave it.
+    /// The same in its JSON.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aRepeatedWarningInTheJSONIsListedOnceWithItsCountAndEveryPlace() async throws {
         let result = try #require(await Self.report(try Raw.json("build_sim")).result)
@@ -847,8 +825,9 @@ extension FailureNotes {
         #expect(warnings.first?["location"] as? String == "/testbed/concurrency/Kit/Kit.swift:1, :2, :3")
     }
 
-    @Test func distinctWarningsInTheTextAreLeftAsTheServerWroteThem() async {
-        #expect(await Self.report(Self.distinct("mobileTestsPassedWithWarnings")).result == nil)
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func distinctWarningsInTheTextAreLeftAsTheServerWroteThem() async throws {
+        #expect(await Self.report(try Self.distinct()).result == nil)
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
@@ -856,9 +835,10 @@ extension FailureNotes {
         #expect(await Self.report(try Self.json(from: 0)).result == nil)
     }
 
-    @Test func aWarningListedOnceInTheTextKeepsItsOwnLinesBesideARepeatedOne() async throws {
-        let text = try #require(await Self.report(Self.distinct("mobileTestsPassedWithWarnings", from: 2)).result)
-        #expect(text.contains("  ⚠ \(Self.message) (2×, /Users/dev/Warn/Sources/Warn/Warn.swift:4, :5)\n\n  ⚠ another warning 2\n    /Users/dev/Warn/Sources/Warn/Warn.swift:6\n\n✅"))
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aWarningListedOnceInTheTextKeepsItsOwnLinesBesideARepeatedOne() async throws {
+        let result = try #require(await Self.report(try Raw.text("build_sim")).result)
+        #expect(result.contains("  ⚠ \(Self.kitMessage)\n    /testbed/concurrency/Kit/Kit.swift:1\n\n"))
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
@@ -869,10 +849,11 @@ extension FailureNotes {
         #expect(warnings.last?["count"] == nil)
     }
 
-    @Test func aPathWithASpaceKeepsItsPlaces() async throws {
-        let text = Captured.text("mobileTestsPassedWithWarnings").replacingOccurrences(of: "/Users/dev/Warn/", with: "/Users/dev/My Warn/")
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aPathWithASpaceKeepsItsPlaces() async throws {
+        let text = try Raw.text("build_sim").replacingOccurrences(of: "/testbed/concurrency/", with: "/testbed/my concurrency/")
         let result = try #require(await Self.report(text).result)
-        #expect(result.contains("(3×, /Users/dev/My Warn/Sources/Warn/Warn.swift:4, :5, :6)\n\n✅"))
+        #expect(result.contains("(2×, /testbed/my concurrency/Kit/Kit.swift:13, /testbed/my concurrency/Feature/Feature.swift:6)\n\n"))
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))

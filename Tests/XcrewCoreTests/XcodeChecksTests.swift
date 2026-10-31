@@ -106,12 +106,16 @@ import XcrewTestSupport
     /// test's failed assertion, or a run that succeeded with no tests, says nothing of it.
     /// The run that succeeded is marked an error here, so it's the errors, not the outcome, that keep the pin out.
     @Test(arguments: [
-        (fixture("mobileBuildFailed"), Report.Kind.build),
-        (fixture("mobileTestsFailed"), .test),
+        (fixture("mobileTestsFailed"), Report.Kind.test),
         ("\n🧪 Test\n\n✅ Test succeeded. (⏱️ 3.4s)\n  └ Files:\n     └── ~/Library/Developer/MobileBuildMCP/workspaces/App-0000/logs/test_sim.log — Build Logs", .test),
     ])
     func aFailureOfTheCodeSaysNothingOfThePin(_ text: String, kind: Report.Kind) async throws {
         #expect(try await pinNote(context(pin: "25.0\n"), text: text, kind: kind) == nil)
+    }
+
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aTypeErrorInTheCodeSaysNothingOfThePin() async throws {
+        #expect(try await pinNote(context(pin: "25.0\n"), text: try Field.text("type-error"), kind: .build) == nil)
     }
 
     /// The errors another SDK or toolchain gives: a module another Swift compiled, a deployment target or SDK the

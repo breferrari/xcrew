@@ -26,7 +26,7 @@ import XcrewTestSupport
 
     /// No real result either server gave reads as unread: the test for a handle is that the text has nothing of the
     /// server's own, not that it says no outcome, so a passing text result or a format change stays a result.
-    @Test(arguments: ["mobileBuildFailed", "mobileTestsPassedWithWarnings", "mobileTestsFailed", "mobileTestsFailedUnlocated", "mobileTestsCrashedAndSkipped", "mobileTestsBuildFailed", "xcodeBuildPassed", "xcodeBuildFailed", "xcodeTestsPassed", "xcodeTestsFailed", "xcodeTestsBuildFailed"])
+    @Test(arguments: ["mobileTestsFailed", "mobileTestsFailedUnlocated", "mobileTestsCrashedAndSkipped", "mobileTestsBuildFailed", "xcodeBuildPassed", "xcodeBuildFailed", "xcodeTestsPassed", "xcodeTestsFailed", "xcodeTestsBuildFailed"])
     func noCapturedResultIsUnread(_ name: String) async throws {
         let url = try #require(Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures/Reports"))
         let text = try String(contentsOf: url, encoding: .utf8)
@@ -43,6 +43,14 @@ import XcrewTestSupport
             for kind in [Report.Kind.build, .test] {
                 #expect(await report(text, server: .mobileBuildMCP, kind: kind).isUnread == nil, "\(name) as \(kind)")
             }
+        }
+    }
+
+    /// Nor does a field scenario's.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"), arguments: ["type-error", "crash", "probes", "coverage", "empty-filter"])
+    func noFieldResultIsUnread(_ name: String) async throws {
+        for kind in [Report.Kind.build, .test] {
+            #expect(await report(try Field.text(name), server: .mobileBuildMCP, kind: kind).isUnread == nil, "\(name) as \(kind)")
         }
     }
 

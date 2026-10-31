@@ -18,12 +18,12 @@ import Testing
     func check(_ executable: String, xcrewReads: String = reads) async throws -> (status: Int32, errors: String, handed: String) {
         let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-background-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let fixture = "Tests/XcrewCoreTests/Fixtures/Reports/mobileBuildFailed.txt"
-        for folder in ["scripts", "bin", "Tests/XcrewCoreTests/Fixtures/Reports"] {
+        // A stand-in for the test bed's failed build: the stand-in xcrew reads only that a result sits in the notification.
+        for folder in ["scripts", "bin", "testbed/captures/field"] {
             try FileManager.default.createDirectory(at: root.appending(path: folder), withIntermediateDirectories: true)
         }
         try FileManager.default.copyItem(at: repository.appending(path: "scripts/background-texts.sh"), to: root.appending(path: "scripts/background-texts.sh"))
-        try FileManager.default.copyItem(at: repository.appending(path: fixture), to: root.appending(path: fixture))
+        try "\n🔨 Build\n\n❌ Build failed. (⏱️ 1.7s)\n".write(to: root.appending(path: "testbed/captures/field/type-error.txt"), atomically: true, encoding: .utf8)
         let xcrew = root.appending(path: "bin/xcrew")
         try """
         #!/bin/sh
@@ -34,6 +34,7 @@ import Testing
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = [root.appending(path: "scripts/background-texts.sh").path, root.appending(path: "claude").path]
+        process.environment = ProcessInfo.processInfo.environment.merging(["XCREW_TESTBED": root.appending(path: "testbed").path]) { _, new in new }
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         let errors = Pipe()
