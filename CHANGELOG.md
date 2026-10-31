@@ -4,7 +4,7 @@
 
 - The line above the prompt counts a test run's progress while it goes, for a serial XCTest run and a Swift Testing one, as MobileBuildMCP counts the tests: an expected failure and a known issue's pass left out, a parameterised test once. Before, it waited for MobileBuildMCP's `Testing started`, which comes only after the tests.
 - A passing MobileBuildMCP test run now says how many tests passed, in the line above the prompt and its row, and teaches the next run of that scheme its "testing N of M" total. Before, a passing run's text gave xcrew no count: the outcome showed none, and the progress line never learned M from a pass.
-- A MobileBuildMCP test run whose filter matched no test, which answers "Test succeeded" with no count, now reads as no tests ran, with its note, rather than as a pass.
+- A MobileBuildMCP test run that answers "Test succeeded" with no count now takes its count from its result bundle: one whose filter matched no test reads as no tests ran, with its note, rather than as a pass, and one whose count MobileBuildMCP couldn't read gets it from the bundle.
 - A build or test run a subagent started says which, on the line above the prompt and on its row in the transcript, by the subagent's own description, quoted: `· by "Fix login tests"`.
 - `xcrew graph` no longer reads imports from a Swift file a target only copies as a resource, and `xcrew graph --owner` names no target that builds one; `affected` still counts such a file, since a changed resource changes its target's bundle.
 - The line above the prompt adds a dim line for the builds and test runs going in the project's other worktrees, each with its worktree, tool and phase, as `elsewhere: feature · test_sim · testing 120 of 959`.

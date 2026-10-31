@@ -436,6 +436,40 @@ func failingRunText(passing: Int) -> String {
         await Report.make(kind: kind, output: Captured.output(name, isError: isError), home: Captured.home, runner: runner)
     }
 
+    /// MobileBuildMCP's text when it has no count: "Test succeeded", for a run of no tests and a run it couldn't count alike.
+    static let uncounted = "\n🧪 Test\n\n✅ Test succeeded. (⏱️ 3.4s)\n  └ Files:\n     └── ~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/\n         ├── logs/test_sim.log — Build Logs\n         └── result-bundles/test_sim.xcresult — Result Bundle\n"
+
+    static func uncounted(bundleSummary: String?) async -> Report {
+        let command = "xcrun xcresulttool get test-results summary --path \(Captured.workspace)/result-bundles/test_sim.xcresult --compact"
+        let runner = FakeRunner(responses: bundleSummary.map { [command: .init(status: 0, stdout: $0)] } ?? [:])
+        return await Report.make(kind: .test, output: ToolOutput(text: uncounted, server: .mobileBuildMCP), home: Captured.home, runner: runner)
+    }
+
+    /// Counts the text couldn't give, as when MobileBuildMCP's own read of the bundle timed out: the bundle has them.
+    @Test func anUncountedSuccessTakesItsCountFromTheBundle() async {
+        let report = await Self.uncounted(bundleSummary: #"{"totalTestCount":959,"passedTests":959,"failedTests":0,"skippedTests":0}"#)
+        #expect(report.ok)
+        #expect(report.detail == "959 passed")
+        #expect(report.tests == 959)
+        #expect(!report.notes.contains(Report.noTestsInBundleNote))
+    }
+
+    @Test func anUncountedSuccessWhoseBundleCountsNoneRanNoTests() async {
+        let report = await Self.uncounted(bundleSummary: #"{"totalTestCount":0,"passedTests":0,"failedTests":0,"skippedTests":0}"#)
+        #expect(!report.ok)
+        #expect(report.detail == "no tests ran")
+        #expect(report.tests == 0)
+        #expect(report.notes.contains(Report.noTestsInBundleNote))
+    }
+
+    /// With no bundle summary to read, nothing more is known than the text says: a pass, with no count.
+    @Test func anUncountedSuccessWithNoSummaryIsAPassWithNoCount() async {
+        let report = await Self.uncounted(bundleSummary: nil)
+        #expect(report.ok)
+        #expect(report.detail == nil)
+        #expect(report.tests == nil)
+    }
+
     /// A passing run's text, as Claude Code hands it, counts its tests on its `✅` line, in another order than a failing
     /// run's `❌` line: the same verdict and total as the JSON path.
     @Test func aPassingRunsTextCountsItsTests() async {

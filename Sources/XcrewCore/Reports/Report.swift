@@ -52,6 +52,9 @@ public struct Report: Sendable, Equatable, Codable {
         return "\(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
     }
 
+    /// The same, for a run whose text gave no count and whose result bundle counts 0 tests.
+    static let noTestsInBundleNote =
+        "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this."
     static let noTestsNote =
         "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this."
 
@@ -191,11 +194,14 @@ public struct Report: Sendable, Equatable, Codable {
                 (final, edited) = (ToolOutput(cleaned, isError: output.isError), true)
             }
         }
-        let summary = final.summary
+        // MobileBuildMCP writes "Test succeeded" with no count when no test ran and when it couldn't count them alike: the
+        // run's result bundle says which. Without a summary to read, it stays a pass with no count.
+        let bundleCounts = final.mobileText?.isUncountedSuccess == true ? await bundleSummary.flatMap(ResultBundle.counts(summary:)) : nil
+        let summary = bundleCounts.map { $0.summary(succeeded: final.summary.ok) } ?? final.summary
 
         var notes = ToolErrorNotes.notes(for: output)
-        let tests = final.testTotal
-        if isTest, tests == 0 { notes.append(noTestsNote) }
+        let tests = bundleCounts?.ran ?? final.testTotal
+        if isTest, tests == 0 { notes.append(bundleCounts == nil ? noTestsNote : noTestsInBundleNote) }
         if let bundle, let summary = await bundleSummary {
             // The test list is only asked for when the summary counts expected failures to name.
             let names = ResultBundle.expectedFailureCount(summary: summary) > 0 ? ResultBundle.expectedFailures(listing: await bundle.tests()) : []
