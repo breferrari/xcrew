@@ -580,6 +580,15 @@ Measured on October 30, 2026 with Claude Code 2.1.314 on macOS 27.2, in interact
 
 **Which simulators are a worktree's.** A simulator's name holds only the main checkout's folder name and the worktree's, so it can't tell two clones of one folder name apart, and setup takes the worktree's name from the folder Claude Code gives it, which can differ in letter case from the path `git worktree list` keeps. On October 30, 2026 (macOS 27.2, APFS case-insensitive), in a scratch repository, `git worktree add ../trees/MyTree` then `cd trees/mytree` gave `mytree` from both `pwd` and `/bin/pwd`, while `git worktree list --porcelain` still printed `MyTree`. So setup records each simulator it makes or reuses, by udid and the worktree's canonical path, in `<git common dir>/xcrew/worktree-simulators`, which every checkout of the repository shares. The doctor names a simulator to delete only from that record, comparing canonical paths (`ProjectLayout.canonical`, which resolves letter case), and setup finds one made earlier by the record before its name. A simulator made before the record existed is never named.
 
+## Test progress in a run's log
+
+Read October 31, 2026, in the test bed's raw captures (v0.8.8: MobileBuildMCP 2.7.1, Xcode 27.2, iOS 27.2), each a finished run's log.
+
+- **A serial XCTest run** writes `Test Case '-[FeatureTests.ProbeTests testFails]' started.`, then `… failed (0.006 seconds).`, `passed (…)` or `skipped (…)`, with a capital C and no `on 'Clone …'`, unlike the parallel runner's `Test case '…' passed on 'Clone 1 of …'`.
+- **An expected failure is written as passed.** `XCTExpectFailure` gives `Expected failure in -[FeatureTests.ProbeTests testExpectedFailure]: …` inside the case, then `Test Case '-[…testExpectedFailure]' passed`. MobileBuildMCP's counts for that run are 1 passed, 2 failed, 1 skipped: four of the five cases, the expected failure left out. So the count of a run's progress leaves it out too, and a finished run's count is the total the next run measures against.
+- **`Testing started` is the last line** of every finished 2.7.1 log captured, after `** TEST EXECUTE … **` (raw/serial.log, swift-testing.log, profile.log, and xcrew's own failed-run fixture). Progress is counted only after that line, so on these logs it counts nothing. Whether a log read while the run goes has the line earlier isn't captured yet.
+- **Not read yet:** the parallel runner's skipped line, and Swift Testing's failed, skipped, parameterised and suite lines, which no capture holds.
+
 ## Stopping a program
 
 Measured October 31, 2026, on macOS 27.2 with Xcode 27.2's Foundation, in a scratch program; nothing of a project's ran.

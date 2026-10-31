@@ -8,7 +8,7 @@ public enum RunLog {
     public static func phase(of log: String, expectedTests: Int?) -> String? {
         let testing = log.range(of: "\nTesting started", options: .backwards)?.lowerBound ?? (log.hasPrefix("Testing started") ? log.startIndex : nil)
         if let testing {
-            let done = log[testing...].matches(of: #/(?m)^Test case '.*' (?:passed|failed)/#).count
+            let done = testsFinished(in: log[testing...])
             if let expectedTests, done <= expectedTests { return "testing \(done) of \(expectedTests)" }
             return "testing · \(done) done"
         }
@@ -22,6 +22,25 @@ public enum RunLog {
     /// The phase of the log at `url`, reading only what it needs: a clean build's log runs to tens of
     /// megabytes, and the band asks once a second. A test run's count needs only what follows its last
     /// `Testing started`; a build's step needs only the log's end.
+    /// How many tests a log's lines say have finished, counted as MobileBuildMCP counts a run's tests: the parallel
+    /// runner's `Test case '…' passed on 'Clone 1 of …'`, and a serial run's `Test Case '-[…]' passed|failed|skipped (…)`,
+    /// but for an expected failure, which XCTest writes as passed and MobileBuildMCP leaves out (docs/findings.md, *Test
+    /// progress in a run's log*). Only shapes a capture holds are read.
+    static func testsFinished(in log: Substring) -> Int {
+        var count = 0
+        var expected: Set<Substring> = []
+        for line in log.split(separator: "\n", omittingEmptySubsequences: true) {
+            if line.firstMatch(of: #/^Test case '.*' (?:passed|failed)/#) != nil {
+                count += 1
+            } else if let found = line.firstMatch(of: #/^Test Case '-\[([^\]]+)\]' (passed|failed|skipped) \(/#) {
+                if !expected.contains(found.1) { count += 1 }
+            } else if let found = line.firstMatch(of: #/Expected failure in -\[([^\]]+)\]/#) {
+                expected.insert(found.1)
+            }
+        }
+        return count
+    }
+
     public static func phase(ofLogAt url: URL, expectedTests: Int?) -> String? {
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
         let marker = Data("Testing started".utf8)

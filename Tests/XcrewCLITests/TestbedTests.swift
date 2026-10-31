@@ -775,3 +775,32 @@ enum InstalledGroupDocs {
     }()
 }
 
+/// The test bed's raw captures: MobileBuildMCP's `test_sim` answers whole, with the log each names. A serial XCTest run
+/// writes `Test Case '-[…]' passed|failed|skipped (…)`, not the parallel runner's `Test case '…'`.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct TestbedRawTests {
+    static let raw = Testbed.root.appending(path: "captures/raw")
+
+    static func captured(_ file: String) throws -> String {
+        try String(contentsOf: raw.appending(path: file), encoding: .utf8)
+    }
+
+    /// The text MobileBuildMCP's answer hands Claude Code, its `content`, which the mod reads.
+    static func content(_ capture: String) throws -> String {
+        let answer = try #require(try JSONSerialization.jsonObject(with: Data(captured("\(capture).json").utf8)) as? [String: Any])
+        let result = (answer["result"] as? [String: Any]) ?? answer
+        let content = try #require(result["content"] as? [[String: Any]])
+        return content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+    }
+
+    /// Five tests ran, one an expected failure, which MobileBuildMCP's counts leave out: 1 passed, 2 failed, 1 skipped.
+    @Test func aSerialRunsFinishedTestsAreCountedButItsExpectedFailure() throws {
+        #expect(RunLog.testsFinished(in: Substring(try Self.captured("serial.log"))) == 4)
+    }
+
+    /// The count a run reaches is the total the next run's line measures against: both count the same tests.
+    @Test func aSerialRunsCountIsTheTotalMobileBuildMCPGivesIt() throws {
+        let total = try #require(ToolOutput(text: try Self.content("serial"), server: .mobileBuildMCP).testTotal)
+        #expect(RunLog.testsFinished(in: Substring(try Self.captured("serial.log"))) == total)
+    }
+}

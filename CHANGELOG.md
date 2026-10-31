@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The line above the prompt counts a serial XCTest run's progress, which it showed as 0 before, leaving out an expected failure as MobileBuildMCP's own count does.
 - A passing MobileBuildMCP test run now says how many tests passed, in the line above the prompt and its row, and teaches the next run of that scheme its "testing N of M" total. Before, a passing run's text gave xcrew no count: the outcome showed none, and the progress line never learned M from a pass.
 - A build or test run a subagent started says which, on the line above the prompt and on its row in the transcript, by the subagent's own description, quoted: `· by "Fix login tests"`.
 - `xcrew graph` no longer reads imports from a Swift file a target only copies as a resource, and `xcrew graph --owner` names no target that builds one; `affected` still counts such a file, since a changed resource changes its target's bundle.
