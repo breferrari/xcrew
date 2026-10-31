@@ -1,4 +1,4 @@
-import type { Failure, Head, Repetition } from './cli'
+import type { Failure, Head, Passed, Repetition } from './cli'
 import { dayAndTime } from './format'
 import { scopeParts } from './context'
 import { isStale } from './timing'
@@ -31,9 +31,6 @@ export type Ledger = { entries: LedgerEntry[]; updated: number }
  * the result bundle files it under when it names one; absent when the CLI couldn't read them.
  */
 export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; repeated?: readonly Repetition[]; passed?: readonly Passed[]; bundle?: string }
-
-/** A test a run's results list as passed. */
-export type Passed = { test: string; target?: string }
 
 /** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
 export function label(head: Head, isShort: boolean): string {

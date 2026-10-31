@@ -99,8 +99,12 @@ public struct ResultBundle: Sendable {
     /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
     /// target.
     static func passedTests(listing: String) -> Set<TestID> {
+        passedTests(in: parse(listing))
+    }
+
+    static func passedTests(in json: Any?) -> Set<TestID> {
         var passed: Set<TestID> = [], failed: Set<TestID> = []
-        for node in nodes(parse(listing)) where node["nodeType"] as? String == "Test Case" {
+        for node in nodes(json) where node["nodeType"] as? String == "Test Case" {
             guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)) else { continue }
             switch node["result"] as? String {
             case "Passed": passed.insert(id)
@@ -115,29 +119,30 @@ public struct ResultBundle: Sendable {
     /// test case filed under no bundle has none. Nil when the listing isn't a test list.
     static func passed(listing: String) -> [PassedTest]? {
         guard let json = parse(listing) as? [String: Any], json["testNodes"] != nil else { return nil }
-        let passed = passedTests(listing: listing)
-        var targets: [TestID: Set<String>] = [:]
-        for bundle in nodes(json) where (bundle["nodeType"] as? String)?.hasSuffix("test bundle") == true {
-            guard let name = bundle["name"] as? String else { continue }
-            for node in nodes(bundle["children"]) where node["nodeType"] as? String == "Test Case" && node["result"] as? String == "Passed" {
-                if let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), passed.contains(id) { targets[id, default: []].insert(name) }
-            }
-        }
-        return PassedTest.sorted(passed.flatMap { id in targets[id].map { $0.map { PassedTest(test: id.shown, target: $0) } } ?? [PassedTest(test: id.shown, target: nil)] })
+        let bundles = bundles(in: json, result: "Passed")
+        return passedTests(in: json).flatMap { id -> [PassedTest] in
+            let targets = bundles[id] ?? []
+            return targets.isEmpty ? [PassedTest(id)] : targets.map { PassedTest(id, target: $0) }
+        }.sorted()
     }
 
     /// Each failed test's target in `xcresulttool get test-results tests` output: the test bundle it's filed under, a unit
     /// or UI test bundle named as its target is. A test of the same name failing in two bundles has none: the ledger would
     /// trust a guess.
     public static func targets(listing: String) -> [TestID: String] {
+        bundles(in: parse(listing), result: "Failed").compactMapValues { $0.count == 1 ? $0.first : nil }
+    }
+
+    /// The test bundles each test case of `result` is filed under, by its id.
+    static func bundles(in json: Any?, result: String) -> [TestID: Set<String>] {
         var found: [TestID: Set<String>] = [:]
-        for bundle in nodes(parse(listing)) where (bundle["nodeType"] as? String)?.hasSuffix("test bundle") == true {
+        for bundle in nodes(json) where (bundle["nodeType"] as? String)?.hasSuffix("test bundle") == true {
             guard let name = bundle["name"] as? String else { continue }
-            for node in nodes(bundle["children"]) where node["nodeType"] as? String == "Test Case" && node["result"] as? String == "Failed" {
+            for node in nodes(bundle["children"]) where node["nodeType"] as? String == "Test Case" && node["result"] as? String == result {
                 if let id = node["nodeIdentifier"] as? String { found[TestID(xcresultID: id), default: []].insert(name) }
             }
         }
-        return found.compactMapValues { $0.count == 1 ? $0.first : nil }
+        return found
     }
 
     /// Frames of the crashed thread shown when none has a source file: enough to reach the test's own code from the crash.

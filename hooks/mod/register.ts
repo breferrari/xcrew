@@ -196,6 +196,8 @@ export const register: Register = on => {
       }),
     )
 
+    // Whether to ask the CLI for the run's passed tests is read while the run goes, off the path to its result.
+    const askingPassed = asksForPassed($, kind)
     // However the call ends, the run stops counting; one that failed beneath leaves the band too.
     const result = await next(e)
       .catch(async (error: unknown) => {
@@ -217,7 +219,7 @@ export const register: Register = on => {
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
     // It never throws: without the CLI it falls back to whether the server reported an error.
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
-    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated, await asksForPassed($, kind)), 120_000, result.text ?? '')
+    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated, await askingPassed), 120_000, result.text ?? '')
     const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, result.isError === true)), scope)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
@@ -895,15 +897,13 @@ let ledgerWrites: Promise<unknown> = Promise.resolve()
 /**
  * Whether a test run asks the CLI for its passed tests: only while its branch's ledger, once the writes before it are
  * done, holds a red with no green, so a passing run on a clean ledger reads no test list. A branch the CLI can't name
- * keeps no ledger, so nothing is asked.
+ * keeps no ledger, so nothing is asked; nor when the store can't be read, as bookkeeping never fails a run.
  */
 async function asksForPassed($: EngineInterface, kind: string): Promise<boolean> {
   if (kind !== 'test') return false
   await ledgerWrites
-  const head = headOf(await answer($, ['project', '--branch'], 10_000))
-  if (!head) return false
-  const ledger = ledgerOf(await quietly(() => $.store.get(ledgerKey(head))))
-  return (ledger?.entries ?? []).some(entry => !entry.green)
+  const read = await quietly(() => branchLedger($))
+  return (read?.ledger?.entries ?? []).some(entry => !entry.green)
 }
 
 /** Writes a finished test run into its branch's ledger, after the writes before it, without holding up the run's result. */

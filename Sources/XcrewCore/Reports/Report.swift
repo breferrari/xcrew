@@ -241,8 +241,16 @@ public struct Report: Sendable, Equatable, Codable {
         let targets = ResultBundle.targets(listing: listing)
         let passing = ResultBundle.passedTests(listing: listing)
         let failures = final.failures.filter { !$0.isTest || !passing.contains(TestID(xcresultID: $0.title)) }
-        // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its bundle.
-        let passedTests: [PassedTest]? = if !passed || !isTest { nil } else if read.server == .xcode { final.passedTests } else if let bundle { ResultBundle.passed(listing: await bundle.tests()) } else { nil }
+        // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
+        // bundle, whose test list is read once however many ask.
+        var passedTests: [PassedTest]?
+        if passed, isTest {
+            if read.server == .xcode {
+                passedTests = final.passedTests
+            } else if let bundle {
+                passedTests = ResultBundle.passed(listing: await bundle.tests())
+            }
+        }
         let isUnread = kind != .run && !final.isError && final.isNotTheServers
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         return Report(

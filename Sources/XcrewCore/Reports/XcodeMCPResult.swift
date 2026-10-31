@@ -30,7 +30,9 @@ struct XcodeMCPResult: Decodable, Sendable {
 
     /// The tests its results give as passed; nil when it gives no results. The Xcode MCP names no test bundle.
     var passedTests: [PassedTest]? {
-        results.map { results in PassedTest.sorted(results.filter { $0.state == "Passed" }.compactMap(\.identifier).map { PassedTest(test: TestID(xcresultID: $0).shown, target: nil) }) }
+        guard let results else { return nil }
+        let identifiers = results.filter { $0.state == "Passed" }.compactMap(\.identifier)
+        return identifiers.map { PassedTest(TestID(xcresultID: $0)) }.sorted()
     }
 
     /// The build's errors, without its warnings.

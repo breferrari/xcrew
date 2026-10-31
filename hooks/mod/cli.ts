@@ -12,6 +12,9 @@ export type Failure = FailureList['items'][number]
 /** A repeated test as `xcrew report` counts it, with its verdict: the CLI decides flaky or real, the mod only keeps it. */
 export type Repetition = { test: string; failed: number; passed: number; runs: number; verdict: 'flaky' | 'real' | 'passed' | 'none' }
 
+/** A test a run's results list as passed (`xcrew report --passed`), with the test bundle it ran in when the CLI names one. */
+export type Passed = { test: string; target?: string }
+
 /** What `xcrew report` makes of a finished build, test or run call. */
 export type Report = {
   ok: boolean
@@ -25,7 +28,7 @@ export type Report = {
   /** For a run repeated with `-test-iterations`: each repeated test's runs, and the verdict the CLI gives them. */
   repeated?: Repetition[]
   /** With `--passed`: the tests the run's results list as passed, `Suite/test`; absent when not asked for or unreadable. */
-  passed?: { test: string; target?: string }[]
+  passed?: Passed[]
   /** The result said no outcome, as a call moved to the background answers with a handle. */
   isUnread?: boolean
   /** A test run's result bundle. */
