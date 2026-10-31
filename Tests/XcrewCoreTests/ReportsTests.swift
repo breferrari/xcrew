@@ -191,6 +191,19 @@ func failingRunText(passing: Int) -> String {
         #expect(ResultBundle.skippedTests(listing: listing).map(\.skip.reason) == ["skipped on purpose"])
     }
 
+    /// A test the list counts passed in one target is still failed when another target's test of that id failed.
+    @Test func aTestPassedInOneTargetAndFailedInAnotherIsNotPassed() {
+        let listing = #"{"testNodes":[{"nodeType":"Unit test bundle","name":"ModuleATests","children":[{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testValidates()","result":"Failed"}]},{"nodeType":"Unit test bundle","name":"ModuleBTests","children":[{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testValidates()","result":"Passed"},{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testLogsIn()","result":"Passed"}]}]}"#
+        #expect(ResultBundle.passedTests(listing: listing) == [TestID(xcresultID: "LoginTests/testLogsIn()")])
+    }
+
+    /// The summary names the first test still failed, not one the test list counts passed.
+    @Test func theSummaryNamesTheFirstTestStillFailed() {
+        #expect(Report.naming("1 of 4 failed · ProbeTests/testAFlaky", first: "ProbeTests/testFails", insteadOf: "ProbeTests/testAFlaky") == "1 of 4 failed · ProbeTests/testFails")
+        #expect(Report.naming("1 of 4 failed · ProbeTests/testFails", first: "ProbeTests/testFails", insteadOf: "ProbeTests/testFails") == "1 of 4 failed · ProbeTests/testFails")
+        #expect(Report.naming("12 passed", first: nil, insteadOf: nil) == "12 passed")
+    }
+
     @Test func anAnswerThatIsNoneOfThemGivesNothing() {
         #expect(ResultBundle.sourceLocation(details: "not json") == nil)
         #expect(ResultBundle.crashSummary(log: "not a crash log") == nil)
@@ -373,6 +386,22 @@ func failingRunText(passing: Int) -> String {
     @Test func aSwiftTestingNameIsntReadAsItsResult() {
         #expect(RunLog.testsFinished(in: "✔ Test \"handles a known issue\" passed after 0.001 seconds.") == 1)
         #expect(RunLog.testsFinished(in: "━ Test \"retries when failed after a timeout\" passed after 0.001 seconds with 1 known issue.") == 0)
+    }
+
+    /// Swift Testing names a test without its suite, so the same name in two suites is two tests, never a repeat.
+    @Test func aSwiftTestingNameInTwoSuitesIsNoRepeat() {
+        #expect(RunLog.phase(of: Self.preamble + "◇ Test run started.\n✔ Test decodes() passed after 0.001 seconds.\n✔ Test decodes() passed after 0.001 seconds.\n", expectedTests: 5) == "testing 2 of 5")
+    }
+
+    /// A test's start line is no result, whatever its name holds.
+    @Test func aStartLineIsNoResultWhateverItsName() {
+        #expect(RunLog.testsFinished(in: "◇ Test \"Shows skipped. rows\" started.") == 0)
+        #expect(RunLog.testsFinished(in: "◇ Test \"was cancelled after a while\" started.") == 0)
+    }
+
+    /// A cancelled test counts as skipped, as MobileBuildMCP counts it.
+    @Test func aCancelledTestCountsAsFinished() {
+        #expect(RunLog.testsFinished(in: "➜ Test cancels() was cancelled after 0.001 seconds: \"cancelled on purpose\"") == 1)
     }
 
     /// A skip's comment can run over several lines; its first line counts the test.

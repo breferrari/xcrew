@@ -832,13 +832,6 @@ struct TestbedRawTests {
         #expect(RunLog.testsFinished(in: try Self.captured("serial.log")) == total)
     }
 
-    /// A log cut just before the `occurrence`th line that is `line`, as it read while the run went.
-    static func cut(_ log: String, before line: String, occurrence: Int) throws -> String {
-        let lines = log.split(separator: "\n", omittingEmptySubsequences: false)
-        let index = try #require(lines.indices.filter { lines[$0] == line }.dropFirst(occurrence - 1).first)
-        return lines[..<index].joined(separator: "\n") + "\n"
-    }
-
     /// A cancelled Swift Testing test counts as skipped, as MobileBuildMCP counts it: 1 passed, 1 skipped.
     @Test func aCancelledTestCountsAsMobileBuildMCPCountsIt() throws {
         let total = try #require(ToolOutput(text: try Self.content("cancel"), server: .mobileBuildMCP).testTotal)
@@ -857,23 +850,32 @@ struct TestbedRawTests {
     /// more the run will write is unknown, so the phase is testing with no count.
     @Test func aRetriedTestStopsTheCountAtItsSecondTry() throws {
         let log = try Self.captured("retry.log")
-        let again = "Test Case '-[FeatureTests.ProbeTests testFails]' failed (0.001 seconds)."
-        #expect(RunLog.phase(in: Data(try Self.cut(log, before: again, occurrence: 1).utf8), expectedTests: 4) == "testing 1 of 4")
-        #expect(RunLog.phase(in: Data(try Self.cut(log, before: again, occurrence: 1).appending(again + "\n").utf8), expectedTests: 4) == "testing")
-        #expect(RunLog.phase(in: Data(log.utf8), expectedTests: 4) == "testing")
+        let again = "Test Case '-[FeatureTests.ProbeTests testFails]' failed (0.001 seconds).\n"
+        let second = try #require(log.range(of: again))
+        let before = String(log[..<second.lowerBound])
+        #expect(RunLog.phase(of: before, expectedTests: 4) == "testing 1 of 4")
+        #expect(RunLog.phase(of: before + again, expectedTests: 4) == "testing")
+        #expect(RunLog.phase(of: log, expectedTests: 4) == "testing")
     }
 
-    /// `-test-iterations 5` starts testing again for each pass. Through the first the count is the run's own; from the
-    /// second start, testing with no count.
+    /// `-test-iterations 5` writes each test again in each pass. Through the first the count is the run's own; from the
+    /// first test the second pass writes, testing with no count.
     @Test func aRepeatedRunsSecondPassStopsTheCount() throws {
-        let log = try String(contentsOf: Testbed.root.appending(path: "captures/field/probes.log"), encoding: .utf8)
-        let start = "Test Suite 'Selected tests' started at 2026-10-30 18:10:35.475."
-        #expect(RunLog.phase(in: Data(try Self.cut(log, before: start, occurrence: 1).utf8), expectedTests: 4) == "testing 4 of 4")
-        #expect(RunLog.phase(in: Data(try Self.cut(log, before: start, occurrence: 1).appending(start + "\n").utf8), expectedTests: 4) == "testing")
-        #expect(RunLog.phase(in: Data(log.utf8), expectedTests: 4) == "testing")
+        let log = try TestbedFieldTests.captured("probes.log")
+        let again = "Test Case '-[FeatureTests.ProbeTests testExpectedFailure]' passed (0.023 seconds).\n"
+        let second = try #require(log.range(of: again))
+        let before = String(log[..<second.lowerBound])
+        #expect(RunLog.phase(of: before, expectedTests: 4) == "testing 4 of 4")
+        #expect(RunLog.phase(of: before + again, expectedTests: 4) == "testing")
+        #expect(RunLog.phase(of: log, expectedTests: 4) == "testing")
     }
 
-    /// A test plan's second configuration starts testing again: testing with no count.
+    /// A crash relaunches the test runner, which writes its start of testing again in the same pass: the count goes on.
+    @Test func aRelaunchAfterACrashKeepsTheCount() {
+        #expect(RunLog.phase(ofLogAt: Self.raw.appending(path: "timing.log"), expectedTests: 5) == "testing 4 of 5")
+    }
+
+    /// A test plan's second configuration writes each test again: testing with no count.
     @Test func aSecondConfigurationStopsTheCount() throws {
         #expect(RunLog.phase(ofLogAt: Self.raw.appending(path: "configurations.log"), expectedTests: 3) == "testing")
     }
