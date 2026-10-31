@@ -12,9 +12,14 @@ enum LogLines {
             guard let last = pending.lastIndex(of: UInt8(ascii: "\n")) else { continue }
             let text = String(decoding: pending[..<last], as: UTF8.self)
             // Split on the byte, not the Character: a log has no line a grapheme rule would join.
-            for line in text.utf8.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false) { body(Substring(line)) }
+            for line in text.utf8.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false) { body(withoutReturn(Substring(line))) }
             pending.removeSubrange(..<pending.index(after: last))
         }
-        if !pending.isEmpty { body(Substring(String(decoding: pending, as: UTF8.self))) }
+        if !pending.isEmpty { body(withoutReturn(Substring(String(decoding: pending, as: UTF8.self)))) }
+    }
+
+    /// A line of a log written with `\r\n` endings, without its `\r`.
+    static func withoutReturn(_ line: Substring) -> Substring {
+        line.utf8.last == UInt8(ascii: "\r") ? Substring(line.utf8.dropLast()) : line
     }
 }

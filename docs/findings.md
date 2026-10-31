@@ -428,22 +428,27 @@ The store is the plugin's, across every project, and a run scope (`test_sim · A
   - Errors carry it too.
   - Groups come from Swift's `include/swift/AST/DiagnosticGroups.def` (read October 31, 2026). It defines no concurrency parent. Its only links are `RegionIsolation` over `SendingRisksDataRace`, `SendingClosureRisksDataRace` and its `RegionIsolation*` groups, and `PerformanceHints` over its own.
   - Seen in the test bed's `concurrency` capture (v0.8.7, Xcode 27.2, MobileBuildMCP 2.7.1), in xcodebuild's log, MobileBuildMCP's result and the log it names.
-- **Which groups are concurrency's: the selected Xcode's own docs.**
+- **Which groups are concurrency's: the docs of the Xcode that built it.**
+  - The log names that Xcode, in the first path into its `Contents/Developer` folder. It may not be the selected Xcode, which is the fallback.
   - The default toolchain ships one doc per group, at `usr/share/doc/swift/diagnostics/<name>.md`, headed `# <title> (<Group>)`. Xcode 27.2 has 76 docs and no `region-isolation-*` ones.
   - A group counts when its doc's body speaks of concurrency or data races, or its title names `Sendable`. That covers `ExplicitSendable`, whose doc mentions neither. A body's `Sendable` isn't enough: `ImplicitStrongCapture`'s doc has one in an example's code and isn't about concurrency.
   - A group the docs don't cover goes by the words in its name: `sendable`, `sending`, `isolat`, `actor`, `concurren`, `datarace`, `globalvariable`. `InstalledGroupDocsTests` checks that the words say what the installed docs say for every documented group, so a new Swift's group shows there first.
   - The kinds the report gives are these groups, with their doc's title, and nothing of xcrew's own.
-- **Not every concurrency diagnostic has a group.** In Xcode 27.2, "stored property 'box' of 'Sendable'-conforming struct 'Holder' has non-Sendable type 'Box'" carries none. A diagnostic with no group is counted apart, never sorted by its text.
+- **Not every concurrency diagnostic has a group.** In Xcode 27.2, "stored property 'box' of 'Sendable'-conforming struct 'Holder' has non-Sendable type 'Box'" carries none. A Swift diagnostic with no group is counted apart, never sorted by its text. A C or Objective-C file's warnings carry a flag (`[-Wdeprecated-declarations]`), not a group, and aren't counted.
 - **`ActorIsolatedCall` is an error** even in the Swift 5 language mode with complete checking: "call to main actor-isolated instance method 'draw()' in a synchronous nonisolated context [#ActorIsolatedCall]". It stops the module's region analysis, so in the same module the `Sending*` warnings don't appear. That's why the capture's warning build leaves it out.
 - **Once each.**
   - xcodebuild's log writes each warning two or four times. MobileBuildMCP's result lists it once, and its log repeats it as xcodebuild's does.
   - The report counts each (file, line, message, groups) once. On the capture that gives exactly MobileBuildMCP's list (`eachDiagnosticOnceIsMobileBuildMCPsList`).
 - **The log, read in pieces.**
   - The report reads the run's own log, which holds every diagnostic; a server's result may be cut short.
-  - It reads 1 MB at a time and splits lines on the newline byte.
-  - Only a line whose bytes hold `warning: ` or `error: ` is parsed, by hand. `String.contains` and a `Regex` per line spent most of the time on grapheme boundaries.
-  - On a 50 MB log (the capture's warnings log repeated, 220,000 lines, a release build, October 31, 2026): 0.84 s and 69 MB at most, where per-line `contains` and `Regex` took 5 s.
-- **Module:** the target that owns the file, through the workspace reading `xcrew graph` uses. A file no project lists is "not in a project".
+  - It reads 1 MB at a time and splits lines on the newline byte, dropping a `\r` before it.
+  - Only a line whose bytes hold `warning: ` or `error: ` is parsed, by hand. Task headers and the Xcode's path are found by bytes too. A sample showed `String.contains` and a `Regex` per line spending most of the time on grapheme boundaries.
+  - On a 50 MB log (the capture's warnings log repeated, 220,000 lines, a release build, October 31, 2026), the report took 0.97 s and 73 MB at most. Per-line `contains` and `Regex` had taken 5 s.
+  - A build that compiled only some files logs only theirs, and the report says so.
+- **Module:**
+  - The target the log's task header names, `SwiftCompile … (in target 'Kit' from project 'App')`, above the diagnostic. That covers a package's sources, which no project file lists.
+  - Failing that, the target that owns the file, through the workspace reading `xcrew graph` uses, after the path is spelled as the file system does.
+  - Else "not in a project".
 - **Changed lines:** the lines *Warnings in changed lines* reads. `--changed` keeps only those.
 
 ## Flaky or real

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import XcrewCore
 import XcrewTestSupport
@@ -14,6 +15,8 @@ import XcrewTestSupport
         #expect(CompilerDiagnostic.parse("/p/K.swift:9: warning: stored property 'box' has non-Sendable type 'Box'")?.groups == [])
         #expect(CompilerDiagnostic.parse("note: Building targets in dependency order") == nil)
         #expect(CompilerDiagnostic.parse("xcodebuild: error: Unable to find a destination") == nil)
+        // The earliest mark is the diagnostic's, whatever its message says.
+        #expect(CompilerDiagnostic.parse("/p/A.swift:3:1: error: foo: warning: bar [#ActorIsolatedCall]") == CompilerDiagnostic(path: "/p/A.swift", line: 3, isError: true, message: "foo: warning: bar", groups: ["ActorIsolatedCall"]))
     }
 
     /// A docs folder as a toolchain ships it: one file per group, headed `# <title> (<Group>)`.
@@ -54,7 +57,6 @@ import XcrewTestSupport
 
     /// A log as xcodebuild writes one: each warning more than once, one outside concurrency, one with no group, an error.
     static let log = """
-        CompileSwift normal arm64 /p/Kit/Kit.swift (in target 'Kit' from project 'Concurrency')
         /p/Kit/Kit.swift:1:12: warning: var 'sharedCount' is not concurrency-safe [#MutableGlobalVariable]
         /p/Kit/Kit.swift:24:17: warning: sending 'box' risks causing data races [#RegionIsolation::SendingRisksDataRace]
         /p/Kit/Kit.swift:1:12: warning: var 'sharedCount' is not concurrency-safe [#MutableGlobalVariable]
@@ -91,12 +93,12 @@ import XcrewTestSupport
 
     @Test func eachDiagnosticCountsOnceByGroupAndModule() async throws {
         let project = project()
-        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: ConcurrencyGroups.read(docs: nil), using: FakeRunner())
+        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil) }, using: FakeRunner())
         #expect(report.count == 5)
         #expect(report.errors == 1)
         #expect(report.ungrouped == 1)
         #expect(report.groups.map { "\($0.name) \($0.count)" } == ["MutableGlobalVariable 3", "SendingRisksDataRace 2"])
-        #expect(report.groups.first?.modules == ["Kit": 1, "Feature": 1, "App": 1])
+        #expect(report.groups.first?.modules.map { "\($0.name) \($0.count)" } == ["App 1", "Feature 1", "Kit 1"])
         #expect(report.modules.map { "\($0.name) \($0.count)" } == ["Kit 2", "App 1", "Feature 1", "not in a project 1"])
     }
 
@@ -106,7 +108,71 @@ import XcrewTestSupport
         let padding = String(repeating: "note: nothing to see here\n", count: 80_000)
         let root = ProjectLayout.canonical(project.root)
         project.write(padding + Self.log.replacing("/p/", with: root + "/") + padding, to: "build.log")
-        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: ConcurrencyGroups.read(docs: nil), using: FakeRunner())
+        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil) }, using: FakeRunner())
         #expect(report.count == 5)
+    }
+
+    func read(_ log: String, in project: Project, docs: @escaping @Sendable (URL?) -> ConcurrencyGroups = { _ in .read(docs: nil) }) async throws -> ConcurrencyReport {
+        project.write(log, to: "build.log")
+        return try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: docs, using: FakeRunner())
+    }
+
+    /// The compiler writes a path as it was given; the project may be read through another spelling of its folder.
+    @Test func aPathSpelledAnotherWayStillFindsItsModule() async throws {
+        let project = project()
+        #expect(project.root.path != project.canonicalRoot, "the temporary folder needs a second spelling for this test")
+        let report = try await read(Self.log.replacing("/p/", with: project.root.path + "/"), in: project)
+        #expect(report.modules.map(\.name) == ["Kit", "App", "Feature", "not in a project"])
+    }
+
+    /// A task's header names the target it compiles, a package's included, which no project file lists.
+    @Test func theTaskHeaderNamesTheModule() async throws {
+        let report = try await read("""
+            SwiftCompile normal arm64 /pkg/Sources/Net/Net.swift (in target 'Net' from project 'Net')
+                cd /pkg
+
+            /pkg/Sources/Net/Net.swift:4:1: warning: var 'cache' is not concurrency-safe [#MutableGlobalVariable]
+
+            """, in: project())
+        #expect(report.modules.map(\.name) == ["Net"])
+    }
+
+    @Test func aLogWithWindowsLineEndingsIsRead() async throws {
+        let project = project()
+        let report = try await read(Self.log.replacing("/p/", with: project.canonicalRoot + "/").replacing("\n", with: "\r\n"), in: project)
+        #expect(report.count == 5)
+    }
+
+    /// What carries no group is counted among the Swift diagnostics only: a clang warning has a flag, not a group.
+    @Test func onlySwiftDiagnosticsCountAsUngrouped() async throws {
+        let report = try await read("""
+            /p/Legacy.m:3:1: warning: 'oldAPI' is deprecated [-Wdeprecated-declarations]
+            /p/Kit.swift:9:16: warning: stored property 'box' has non-Sendable type 'Box'
+
+            """, in: project())
+        #expect(report.ungrouped == 1)
+    }
+
+    /// The groups come from the docs of the Xcode the log was built with, which may not be the selected one.
+    @Test func theGroupsAreThoseOfTheXcodeTheLogNames() async throws {
+        let asked = Mutex<URL?>(nil)
+        _ = try await read("""
+                /Applications/Xcode-26.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kit
+            /p/Kit.swift:1:12: warning: var 'x' is not concurrency-safe [#MutableGlobalVariable]
+
+            """, in: project()) { xcode in
+            asked.withLock { $0 = xcode }
+            return .read(docs: nil)
+        }
+        #expect(asked.withLock { $0 } == URL(fileURLWithPath: "/Applications/Xcode-26.4.app"))
+    }
+
+    /// `--changed` with no change git can read says so, rather than calling the whole build the branch's.
+    @Test func changedLinesGitCantReadAreSaid() async throws {
+        let project = project()
+        project.write(Self.log.replacing("/p/", with: project.canonicalRoot + "/"), to: "build.log")
+        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil) }, onlyChanged: true, using: FakeRunner())
+        #expect(report.inChangedLines == nil)
+        #expect(report.changeUnread != nil)
     }
 }

@@ -16,7 +16,9 @@ struct CompilerDiagnostic: Sendable, Hashable {
     static func parse(_ line: Substring) -> CompilerDiagnostic? {
         // By hand rather than with a pattern, and only on a line that can hold one: a clean build's log has hundreds of
         // thousands of lines (docs/findings.md, *Concurrency diagnostics*).
-        guard holds(warningBytes, in: line.utf8) || holds(errorBytes, in: line.utf8), let mark = marks.lazy.compactMap({ mark in line.range(of: mark.text).map { (range: $0, isError: mark.isError) } }).first else { return nil }
+        // The earliest mark is the diagnostic's: its message may hold another.
+        guard holds(warningBytes, in: line.utf8) || holds(errorBytes, in: line.utf8),
+              let mark = marks.compactMap({ mark in line.range(of: mark.text).map { (range: $0, isError: mark.isError) } }).min(by: { $0.range.lowerBound < $1.range.lowerBound }) else { return nil }
         // `<file>:<line>` or `<file>:<line>:<column>` before it, the file perhaps holding spaces or colons.
         var head = line[..<mark.range.lowerBound]
         guard let lastColon = head.lastIndex(of: ":") else { return nil }
@@ -41,16 +43,24 @@ struct CompilerDiagnostic: Sendable, Hashable {
     /// Whether the bytes hold `needle`, compared byte by byte: `String.contains` walks grapheme boundaries, the cost of
     /// reading a log, and neither needle repeats its own start.
     static func holds(_ needle: [UInt8], in bytes: Substring.UTF8View) -> Bool {
+        end(of: needle, in: bytes) != nil
+    }
+
+    /// Where the bytes' first `needle` ends, compared byte by byte as `holds` does.
+    static func end(of needle: [UInt8], in bytes: Substring.UTF8View) -> Substring.UTF8View.Index? {
         var matched = 0
-        for byte in bytes {
+        var index = bytes.startIndex
+        while index < bytes.endIndex {
+            let byte = bytes[index]
+            index = bytes.index(after: index)
             if byte == needle[matched] {
                 matched += 1
-                if matched == needle.count { return true }
+                if matched == needle.count { return index }
             } else {
                 matched = byte == needle[0] ? 1 : 0
             }
         }
-        return false
+        return nil
     }
 
     /// What follows a diagnostic's place, as a compiler writes it.

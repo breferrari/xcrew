@@ -62,7 +62,8 @@ public enum Space {
         return .init(text: "\(counted(sizes.count, noun)) \(what): \(SpaceReport.size(bytes))\(then)", bytes: bytes)
     }
 
-    static func counted(_ count: Int, _ noun: String) -> String {
+    /// `1 module`, `2 modules`: a count with its noun, plural past one.
+    public static func counted(_ count: Int, _ noun: String) -> String {
         "\(count) \(noun)\(count == 1 ? "" : "s")"
     }
 

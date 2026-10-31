@@ -706,7 +706,7 @@ struct TestbedConcurrencyTests {
         let log = try String(contentsOf: Testbed.root.appending(path: "captures/concurrency/\(capture)"), encoding: .utf8)
         let copy = root.appending(path: "build.log")
         try log.replacing("/testbed/concurrency", with: ProjectLayout.canonical(root)).write(to: copy, atomically: true, encoding: .utf8)
-        return try await ConcurrencyReport.read(log: copy, project: Project(root: root), groups: .read(docs: nil), using: FakeRunner())
+        return try await ConcurrencyReport.read(log: copy, project: Project(root: root), groups: { _ in .read(docs: nil) }, using: FakeRunner())
     }
 
     @Test(arguments: ["xcodebuild-warnings.log", "build_sim.log"])
@@ -751,19 +751,24 @@ struct InstalledGroupDocsTests {
     }
 }
 
-/// The selected Xcode's group docs, when it ships them.
+/// The group docs of the Xcode builds use, as the command finds it: `DEVELOPER_DIR`, else `xcode-select`'s, when it
+/// ships them.
 enum InstalledGroupDocs {
     static let folder: URL? = {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
-        process.arguments = ["-p"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardInput = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        process.waitUntilExit()
-        let developer = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        let folder = URL(fileURLWithPath: developer).appending(path: "Toolchains/XcodeDefault.xctoolchain/usr/share/doc/swift/diagnostics")
+        var developer = ProcessInfo.processInfo.environment["DEVELOPER_DIR"]
+        if developer == nil {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
+            process.arguments = ["-p"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardInput = FileHandle.nullDevice
+            guard (try? process.run()) != nil else { return nil }
+            process.waitUntilExit()
+            developer = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let developer, let app = Xcodes.app(holding: developer) else { return nil }
+        let folder = ConcurrencyGroups.docs(in: app)
         return FileManager.default.fileExists(atPath: folder.path) ? folder : nil
     }()
 }

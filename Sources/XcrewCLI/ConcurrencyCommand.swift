@@ -2,7 +2,8 @@ import Foundation
 import XcrewCore
 
 /// A build's Swift concurrency diagnostics by the compiler's own groups and by module, from its log: MobileBuildMCP's
-/// newest build or test log for the project, as `xcrew why` reads, or the one `--log` names.
+/// newest build or test log for the project, as `xcrew why` reads, or the one `--log` names. Which groups are about
+/// concurrency comes from the docs of the Xcode the log names, else the selected one.
 struct ConcurrencyCommand: Command {
     let name = "concurrency"
     let valuedOptions: Set<String> = ["log"]
@@ -15,10 +16,10 @@ struct ConcurrencyCommand: Command {
             invocation.print(WhyCommand.noLog)
             return 1
         }
-        let docs = await Xcodes.selected(on: context.machine).map { ConcurrencyGroups.docs(in: URL(fileURLWithPath: $0.path)) }
+        let selected = await Xcodes.selected(on: context.machine).map { URL(fileURLWithPath: $0.path) }
         let report: ConcurrencyReport
         do {
-            report = try await ConcurrencyReport.read(log: URL(fileURLWithPath: log), project: context.project, groups: .read(docs: docs), onlyChanged: invocation.arguments.has("changed"), using: context.runner)
+            report = try await ConcurrencyReport.read(log: URL(fileURLWithPath: log), project: context.project, groups: { named in .read(docs: (named ?? selected).map(ConcurrencyGroups.docs(in:))) }, onlyChanged: invocation.arguments.has("changed"), using: context.runner)
         } catch {
             invocation.print("xcrew: couldn't read \(log)")
             return 1
@@ -32,16 +33,17 @@ struct ConcurrencyCommand: Command {
     }
 
     func words(_ report: ConcurrencyReport, changedOnly: Bool) -> [String] {
-        let plural = { (count: Int, word: String) in "\(count) \(word)\(count == 1 ? "" : "s")" }
-        let scope = changedOnly ? " in lines the branch changed" : ""
+        let counted = Space.counted
+        let scope = changedOnly && report.changeUnread == nil ? " in lines the branch changed" : ""
         var lines: [String] = []
+        if let unread = report.changeUnread { lines.append("The branch's changed lines couldn't be read (\(unread)), so this is the whole log.") }
         if report.count == 0 {
             lines.append("No Swift concurrency diagnostics\(scope).")
         } else {
-            let errors = report.errors > 0 ? " (\(plural(report.errors, "error")))" : ""
-            lines.append("\(plural(report.count, "Swift concurrency diagnostic"))\(errors)\(scope) in \(plural(report.modules.count, "module")):")
+            let errors = report.errors > 0 ? " (\(counted(report.errors, "error")))" : ""
+            lines.append("\(counted(report.count, "Swift concurrency diagnostic"))\(errors)\(scope) in \(counted(report.modules.count, "module")):")
             for group in report.groups {
-                let modules = group.modules.sorted { ($1.value, $0.key) < ($0.value, $1.key) }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
+                let modules = group.modules.map { "\($0.name) \($0.count)" }.joined(separator: ", ")
                 lines.append("  \(group.name) \(group.count)\(group.title.map { " (\($0))" } ?? ""): \(modules)")
             }
         }
@@ -49,11 +51,14 @@ struct ConcurrencyCommand: Command {
             lines.append("\(changed) of them \(changed == 1 ? "is" : "are") in lines this branch changed.")
         }
         if report.ungrouped > 0 {
-            lines.append("\(plural(report.ungrouped, "diagnostic")) \(report.ungrouped == 1 ? "carries" : "carry") no compiler group, so \(report.ungrouped == 1 ? "it isn't" : "they aren't") counted: only \(report.ungrouped == 1 ? "its" : "their") text would say what \(report.ungrouped == 1 ? "it's" : "they're") about.")
+            let one = report.ungrouped == 1
+            lines.append("\(counted(report.ungrouped, "Swift diagnostic"))\(scope) \(one ? "carries" : "carry") no compiler group, so \(one ? "it isn't" : "they aren't") counted: only \(one ? "its" : "their") text would say what \(one ? "it's" : "they're") about.")
         }
+        if let unread = report.projectUnread { lines.append("Modules come from the log's task headers alone: \(unread).") }
         lines.append(report.groupsFromDocs
-            ? "Which groups are about concurrency comes from the selected Xcode's own group docs."
-            : "Which groups are about concurrency comes from their names: the selected Xcode's group docs weren't found.")
+            ? "Which groups are about concurrency comes from the group docs of the Xcode that built it\(report.xcode.map { " (\($0))" } ?? "")."
+            : "Which groups are about concurrency comes from their names: no group docs were found for the Xcode that built it.")
+        lines.append("A build that compiled only some files logs only theirs.")
         return lines
     }
 }

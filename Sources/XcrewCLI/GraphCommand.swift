@@ -39,7 +39,7 @@ struct GraphCommand: Command {
 
     func words(_ graph: ModuleGraph) -> [String] {
         if let unread = graph.unread { return ["The workspace couldn't be read: \(unread)"] }
-        var lines = ["\(graph.modules.count) module\(graph.modules.count == 1 ? "" : "s"), as the projects declare them:"]
+        var lines = ["\(Space.counted(graph.modules.count, "module")), as the projects declare them:"]
         for module in graph.modules {
             let dependencies = module.dependencies.isEmpty ? "depends on nothing" : "depends on \(module.dependencies.joined(separator: ", "))"
             let tests = module.tests.isEmpty ? "" : "; tested by \(module.tests.joined(separator: ", "))"

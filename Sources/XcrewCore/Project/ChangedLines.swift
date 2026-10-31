@@ -10,8 +10,13 @@ enum ChangedLines {
         guard !warned.isEmpty, let changed = await of(warned, in: change, project: project, using: runner) else { return nil }
         return warnings.filter { warning in
             guard let path = warning.path, let line = warning.line else { return false }
-            return changed[path]?.contains { $0.contains(line) } == true
+            return holds(changed, path: path, line: line)
         }
+    }
+
+    /// Whether the change holds a file's line, by `of`'s answer.
+    static func holds(_ changed: [String: [ClosedRange<Int>]], path: String, line: Int) -> Bool {
+        changed[path]?.contains { $0.contains(line) } == true
     }
 
     /// The changed lines of each of `paths` the change holds, by the path as given; an untracked file counts whole.
