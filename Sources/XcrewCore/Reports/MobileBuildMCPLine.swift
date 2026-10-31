@@ -105,6 +105,12 @@ enum MobileBuildMCPLine {
     }
 
     /// `❌ 2 tests failed, 959 passed, 1 skipped (⏱️ 47.4s)`, the run's summary line.
+    /// `✅ Test succeeded.` with no count: what a test run whose filter matched no test answers with (docs/findings.md,
+    /// *Test reports from the two servers*). A run that ran tests counts them, `✅ 1 test passed, 0 failed, 0 skipped`.
+    static func isUncountedSuccess(_ line: String) -> Bool {
+        line.hasPrefix("✅ Test succeeded")
+    }
+
     static func isSummary(_ line: String) -> Bool {
         line.contains(#/^(❌|✅) \d+ tests? /#)
     }

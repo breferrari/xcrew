@@ -84,7 +84,8 @@ public struct ToolOutput: Sendable {
     /// Keeps the summary to one line.
     static let maxDetail = 100
     static let testsDidNotRun = "build failed, tests didn't run"
-    /// A test run whose counts are all 0 reports SUCCEEDED; it's usually a filter that matched nothing.
+    /// A test run whose counts are all 0, or whose text counts none, reports SUCCEEDED; it's usually a filter that matched
+    /// nothing.
     static let noTestsRan = "no tests ran"
 
     public var summary: Summary {
@@ -130,7 +131,7 @@ public struct ToolOutput: Sendable {
         switch shape {
         case let .mobileBuildMCPJSON(result): result.testTotal
         case let .xcodeMCPJSON(result): result.testTotal
-        case let .mobileBuildMCPText(text): text.counts?.sum
+        case let .mobileBuildMCPText(text): text.counts?.sum ?? (text.ranNoTests ? 0 : nil)
         case .unrecognized: nil
         }
     }

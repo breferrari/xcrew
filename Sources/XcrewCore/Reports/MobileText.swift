@@ -189,7 +189,13 @@ struct MobileText: Sendable {
         }
     }
 
+    /// A test run that says it succeeded and counts no test: none ran, as with a filter that matched none.
+    var ranNoTests: Bool {
+        isTestRun && !lines.contains(where: \.isSummary) && lines.contains { MobileBuildMCPLine.isUncountedSuccess($0.text) }
+    }
+
     var summary: ToolOutput.Summary? {
+        if ranNoTests { return ToolOutput.Summary(ok: false, detail: ToolOutput.noTestsRan) }
         if let line = summaryLine, let counts = MobileBuildMCPLine.counts(in: line.text) {
             return counts.summary(succeeded: line.text.hasPrefix("✅"), failing: lines.lazy.compactMap(\.failing).first?.test.shown)
         }
