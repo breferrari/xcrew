@@ -20,14 +20,12 @@ import Testing
         return pipe.fileHandleForReading
     }
 
-    /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives.
+    /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives. Read to its end, it
+    /// would be complete, its writer closing it after 30 seconds: not timed, since a busy test run's own wait dwarfs this.
     @Test func anInputLeftOpenIsReadUntilItGoesQuiet() async throws {
-        let clock = ContinuousClock()
-        let started = clock.now
         let input = await StandardInput.read(pipe(writing: [#"{"cwd":"/project"}"#], gap: 0, closeAfter: 30), idleFor: .milliseconds(500))
         #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
-        #expect(!input.isComplete)
-        #expect(clock.now - started < .seconds(10), "waited for the caller to close stdin")
+        #expect(!input.isComplete, "waited for the caller to close stdin")
     }
 
     /// A writer still sending is read to its end, however long it takes, as long as it doesn't go quiet.
@@ -43,15 +41,17 @@ import Testing
         #expect(input.isComplete)
     }
 
-    /// `xcrew hook session-start < event.json`: a file always ends, so it's read at once.
+    /// `xcrew hook session-start < event.json`: a file always ends, so it's read at once, not after an idle wait. Timed,
+    /// since time is all that tells them apart: a read that waited would take at least the minute's idle wait, and 30
+    /// seconds is over twice the longest a busy CI run held an awaited call (13 s; docs/findings.md, *Stopping a program*).
     @Test func aFileIsReadAtOnce() async throws {
         let file = FileManager.default.temporaryDirectory.appending(path: "xcrew-stdin-\(UUID().uuidString).json")
         try Data(#"{"cwd":"/project"}"#.utf8).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
         let clock = ContinuousClock()
         let started = clock.now
-        let input = await StandardInput.read(try FileHandle(forReadingFrom: file), idleFor: .seconds(5))
+        let input = await StandardInput.read(try FileHandle(forReadingFrom: file), idleFor: .seconds(60))
         #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
-        #expect(clock.now - started < .seconds(2), "waited on a file for end of file")
+        #expect(clock.now - started < .seconds(30), "waited on a file for end of file")
     }
 }

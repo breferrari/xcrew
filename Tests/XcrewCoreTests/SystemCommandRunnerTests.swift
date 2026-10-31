@@ -16,40 +16,38 @@ import Testing
         #expect(runner.which("sh") == "/bin/sh")
     }
 
+    /// What stopping guarantees, not how fast: a busy test run's own wait for threads dwarfs a 200 ms timeout. A run with
+    /// no timeout would end with the child's own status, and one that didn't stop it would leave it running.
     @Test func aProgramThatOutlivesItsTimeoutIsStopped() async {
-        // A run that waited for the child would take its full 30 seconds; stopping it at the
-        // timeout returns far sooner, with seconds to spare for a loaded CI runner.
         let duration = "30.\(Int.random(in: 100_000...999_999))"
-        let clock = ContinuousClock()
-        let started = clock.now
         let result = await runner.run(["/bin/sleep", duration], stdin: nil, timeout: .milliseconds(200))
         #expect(result.status == 124)
-        #expect(clock.now - started < .seconds(10), "waited for the child instead of stopping it")
         #expect(await runner.run("/usr/bin/pgrep", "-f", "sleep \(duration)").status == 1, "the child is still running")
     }
 
+    /// The shell's background sleep inherits stdout and, ignoring SIGTERM, outlives the shell: `terminate` stops the
+    /// shell's process group, which a plain background child would leave with (docs/findings.md, *Stopping a program*). A
+    /// run that waited for its pipe would return only once the sleep ended: still running when the run returns, it wasn't
+    /// waited for.
     @Test func aGrandchildHoldingAPipeDoesntOutlastTheTimeout() async {
-        // The shell's background sleep inherits stdout and outlives the SIGTERM the shell gets.
         let duration = "30.\(Int.random(in: 100_000...999_999))"
-        let clock = ContinuousClock()
-        let started = clock.now
-        let result = await runner.run(["/bin/sh", "-c", "sleep \(duration) & wait"], stdin: nil, timeout: .milliseconds(200))
-        _ = await runner.run("/usr/bin/pkill", "-f", "sleep \(duration)")
+        let result = await runner.run(["/bin/sh", "-c", "(trap '' TERM; exec sleep \(duration)) & wait"], stdin: nil, timeout: .seconds(2))
+        let stillRunning = await runner.run("/usr/bin/pgrep", "-f", "sleep \(duration)").status == 0
+        _ = await runner.run("/usr/bin/pkill", "-9", "-f", "sleep \(duration)")
         #expect(result.status == 124)
-        #expect(clock.now - started < .seconds(10), "waited for the grandchild's pipe")
+        #expect(stillRunning, "waited for the grandchild's pipe")
     }
 
+    /// The shell exits at once, and its background sleep keeps stdout open. A long time limit: the wait after exit is a
+    /// moment's grace, not what's left of the limit, so the sleep is still running when the run returns.
     @Test func aGrandchildLeftRunningDoesntHoldUpAFinishedProgram() async {
-        // The shell exits at once, and its background sleep keeps stdout open.
         let duration = "30.\(Int.random(in: 100_000...999_999))"
-        let clock = ContinuousClock()
-        let started = clock.now
-        // A long time limit: the wait after exit is a moment's grace, not what's left of the limit.
         let result = await runner.run(["/bin/sh", "-c", "echo ready; sleep \(duration) &"], stdin: nil, timeout: .seconds(60))
+        let stillRunning = await runner.run("/usr/bin/pgrep", "-f", "sleep \(duration)").status == 0
         _ = await runner.run("/usr/bin/pkill", "-f", "sleep \(duration)")
         #expect(result.status == 0)
         #expect(result.stdout == "ready\n")
-        #expect(clock.now - started < .seconds(10), "waited for the grandchild's pipe")
+        #expect(stillRunning, "waited for the grandchild's pipe")
     }
 
     @Test func largeOutputDoesNotDeadlock() async {
