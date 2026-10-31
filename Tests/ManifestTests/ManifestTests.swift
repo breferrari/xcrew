@@ -155,6 +155,16 @@ import Testing
         for key in keys { #expect(type.contains(" \(key)?:") || type.contains(" \(key):"), "cli.ts's Passed doesn't name `\(key)`") }
     }
 
+    /// Every option the mod sends `xcrew report` is one the command takes: one it doesn't is a usage error, which the mod
+    /// reads as a report it couldn't get, and the ledger records nothing.
+    @Test func everyOptionTheModSendsReportIsOneItTakes() throws {
+        let body = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export function reportArgs\([^)]*\): string\[\] \{\n([^\n]*)\n\}/)?.1)
+        let sent = body.matches(of: /'--([a-z-]+)'/).map { String($0.1) }
+        #expect(!sent.isEmpty)
+        let command = ReportCommand()
+        for option in sent { #expect(command.flags.contains(option) || command.valuedOptions.contains(option), "report doesn't take --\(option)") }
+    }
+
     /// Every field of a failure the CLI reports is one the mod's type for it names: a field it doesn't name is one the
     /// ledger and the pane never read.
     @Test func theModsFailureTypeNamesEachFieldTheCLIReports() throws {

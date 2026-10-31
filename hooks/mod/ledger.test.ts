@@ -96,6 +96,20 @@ test('a run that a red was written during asks for its passed tests, and turns t
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
+test('a red turns green from another tool of the same scheme whose results list it as passed', async ($, on) => {
+  project(on, [FAILED, PASSED])
+  await callTool($, 'mcp__xcode__RunAllTests')
+  await callTool($, 'mcp__xcode__RunSomeTests')
+  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
+})
+
+test('a green an older xcrew inferred from a run\'s selection is read as still red', async ($, on) => {
+  const at = Date.UTC(2026, 9, 30, 11, 0)
+  const entry = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', green: { scope: 'test_sim › AppTests', at }, last: at }
+  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [entry], updated: at } } })
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+})
+
 test('a red test a passing run doesn\'t list as passed stays red, though the run selected its class', async ($, on) => {
   // The field case: a test deleted since its red, then a run of its class, whose results don't hold it.
   project(on, [FAILED, { ok: true, detail: '4 passed', passed: [{ test: 'GreetingTests/testBye' }, { test: 'GreetingTests/testWave' }] }])

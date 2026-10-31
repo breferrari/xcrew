@@ -1,6 +1,6 @@
 import type { Failure, Head, Passed, Repetition } from './cli'
 import { dayAndTime } from './format'
-import { scopeParts } from './context'
+import { schemeOfScope, scopeParts } from './context'
 import { isStale } from './timing'
 
 /**
@@ -19,7 +19,7 @@ export type LedgerRun = { scope: string; at: number }
  * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, when a run last
  * wrote it, and its target, from the result bundle, when the report named one.
  */
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun; last: number; flaky?: Flakiness; target?: string }
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun & { listed?: true }; last: number; flaky?: Flakiness; target?: string }
 
 /** A flaky mark: the counts of the repeated run that found the test flaky, and that run's scope and time (absent in a mark kept before they were). */
 export type Flakiness = { failed: number; runs: number; scope?: string; at?: number }
@@ -43,10 +43,18 @@ export function ledgerKey(head: Head): string {
   return `${LEDGER_PREFIX}${head.root} @ ${label(head, false)}`
 }
 
-/** A ledger as stored, or none: a value in another shape is ignored rather than trusted. */
+/** A ledger as stored, or none: a value in another shape is ignored rather than trusted. A green
+ * not marked `listed` was inferred from a run's selection by an older xcrew, and could name a test that run never
+ * ran: it's read as still red, to turn green again from a run that lists it.
+ */
 export function ledgerOf(stored: unknown): Ledger | undefined {
   const ledger = stored as Ledger | undefined
-  return Array.isArray(ledger?.entries) && typeof ledger?.updated === 'number' ? ledger : undefined
+  if (!Array.isArray(ledger?.entries) || typeof ledger?.updated !== 'number') return undefined
+  return { ...ledger, entries: ledger.entries.map(entry => (entry.green && !entry.green.listed ? withoutGreen(entry) : entry)) }
+}
+
+function withoutGreen({ green: _, ...entry }: LedgerEntry): LedgerEntry {
+  return entry
 }
 
 /**
@@ -58,12 +66,12 @@ export function covers(passed: string, failed: string): boolean {
 }
 
 /**
- * Whether a run of `scope` passed `entry`'s test: its results list the test as passed, under the same tool and scheme
- * as the run it fails in now, and in the target the report named for it when both name one. A Swift Testing name is
+ * Whether a run of `scope` passed `entry`'s test: its results list the test as passed, under the same scheme as the run
+ * it fails in now, whichever tool ran it, and in the target the report named for it when both name one. A Swift Testing name is
  * the same test with its `()` or without. A selection that would reach the test is no evidence: the test may be gone.
  */
 export function passes(scope: string, passed: readonly Passed[], entry: LedgerEntry): boolean {
-  if (scopeParts(scope).base !== scopeParts(entry.failing).base) return false
+  if (schemeOfScope(scope) !== schemeOfScope(entry.failing)) return false
   const test = bare(entry.test)
   return passed.some(each => bare(each.test) === test && (each.target === undefined || entry.target === undefined || each.target === entry.target))
 }
@@ -105,7 +113,7 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
     }
     const cleared = !entry.flaky || repeated.get(entry.test)?.verdict === 'passed'
     const isGreen = !entry.green && cleared && run.passed !== undefined && passes(run.scope, run.passed, entry)
-    return isGreen ? { ...entry, green: { scope: run.scope, at: run.at }, last: run.at } : entry
+    return isGreen ? { ...entry, green: { scope: run.scope, at: run.at, listed: true }, last: run.at } : entry
   })
   for (const test of failing) {
     if (entries.some(entry => entry.test === test)) continue

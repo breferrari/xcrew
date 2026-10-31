@@ -8,7 +8,7 @@ import { callTool, runCommand, stubCli, type CliCall } from './testing'
 const TOOL = 'mcp__xcrew__evidence'
 const NOW = Date.UTC(2026, 9, 30, 12, 0)
 const BLOCK = '## Evidence\n\nTests this branch took from red to green:\n- `GreetingTests/testHello`: failed in `test_sim`, then passed in `test_sim`.\n\nImages to attach (for you, not the PR):\n- `GreetingTests/testHello`, images from its failing run:\n  /cache/images/run/GreetingTests/testHello/failure.png'
-const ENTRY = { test: 'GreetingTests/testHello', red: { scope: 'test_sim', at: NOW - 3_600_000, message: 'XCTAssertEqual failed', bundle: '/runs/red.xcresult' }, failing: 'test_sim', green: { scope: 'test_sim', at: NOW - 60_000 }, last: NOW - 60_000 }
+const ENTRY = { test: 'GreetingTests/testHello', red: { scope: 'test_sim', at: NOW - 3_600_000, message: 'XCTAssertEqual failed', bundle: '/runs/red.xcresult' }, failing: 'test_sim', green: { scope: 'test_sim', at: NOW - 60_000, listed: true }, last: NOW - 60_000 }
 
 /** A session on feat/evidence in /work/App, whose store holds that branch's ledger and a test scope run here. */
 function session(on: On, answer: string | Error | { stdout: string; stderr: string }, reports: Partial<Report>[] = [], options: { branch?: string | Error; ledger?: unknown } = {}) {
@@ -78,7 +78,7 @@ test('when the branch can\'t be named, the evidence says its ledger couldn\'t be
 })
 
 test('a red-to-green test no run has written for weeks is still evidence, as the ledger still lists it', async ($, on) => {
-  const old = { ...ENTRY, red: { ...ENTRY.red, at: NOW - 20 * 24 * 3_600_000 }, green: { scope: 'test_sim', at: NOW - 15 * 24 * 3_600_000 }, last: NOW - 15 * 24 * 3_600_000 }
+  const old = { ...ENTRY, red: { ...ENTRY.red, at: NOW - 20 * 24 * 3_600_000 }, green: { scope: 'test_sim', at: NOW - 15 * 24 * 3_600_000, listed: true }, last: NOW - 15 * 24 * 3_600_000 }
   const seen = session(on, BLOCK, [], { ledger: { entries: [old], updated: NOW - 15 * 24 * 3_600_000 } })
   await ask($)
   const sent = JSON.parse(seen.calls.find(call => call.args[0] === 'evidence')?.stdin ?? '{}') as { ledger?: unknown[] }
