@@ -1,7 +1,7 @@
 #!/bin/sh
 # Rewrites hooks/mod/replays.ts: each raw MobileBuildMCP capture of the test bed as the mod gets it, and what `xcrew report`
-# answers for it with no result bundle to read. TestbedReplayTests writes it and holds each answer to the CLI and to
-# MobileBuildMCP's own counts, so a changed golden shows in the diff.
+# answers for it, with xcresulttool's answers about its result bundle read from the test bed. TestbedReplayTests writes
+# it and holds each answer to the CLI and to MobileBuildMCP's own counts, so a changed golden shows in the diff.
 # scripts/replays.sh [<test bed>]   the test bed defaults to XCREW_TESTBED, else the clone beside this repository
 set -eu
 exec < /dev/null

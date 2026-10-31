@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import { replays } from './replays'
-import { callTool, stubCli, type CliCall } from './testing'
+import { callTool, mapStore, stubCli, type CliCall } from './testing'
 
 /**
  * Real MobileBuildMCP test runs from the test bed, as the mod gets them: each result's text, with the CLI answering what
@@ -18,12 +18,15 @@ const BAND = {
   props: { hasSurvey: false, isWorking: true, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
 } as const
 
-/** A session whose test_sim answers `replay`'s text each time, and whose CLI reports on it as the golden says. */
-function session(on: On, replay: Replay): { toasts: string[]; cli: CliCall[] } {
-  const project = (args: readonly string[]) => ({ isGenerated: false, ...(args.includes('--profiles') ? { scheme: 'App' } : {}) })
-  const seen = { toasts: [] as string[], cli: stubCli(on, { reports: [replay.report], phase: () => ({}), project }) }
+/** A session on a branch whose test_sim answers `replay`'s text each time, and whose CLI reports on it as the golden says. */
+function session(on: On, replay: Replay): { toasts: string[]; cli: CliCall[]; store: Map<string, unknown> } {
+  const project = (args: readonly string[]) => ({
+    isGenerated: false,
+    ...(args.includes('--profiles') ? { scheme: 'App' } : {}),
+    ...(args.includes('--branch') ? { root: '/work/App', branch: 'feat/replay' } : {}),
+  })
+  const seen = { toasts: [] as string[], cli: stubCli(on, { reports: [replay.report], phase: () => ({}), project }), store: mapStore(on) }
   const clock = mock.clock(on)
-  mock.store(on)
   on('session.surfaces', () => ({ value: ['terminal'] }))
   on('ui.toast', (_, e) => {
     seen.toasts.push(e.text)
@@ -83,3 +86,23 @@ for (const name of ['swift-testing', 'profile'] as const) {
     expect(last[last.indexOf('--expected') + 1]).toBe('1')
   })
 }
+
+test('the serial run\'s failures enter the ledger under the target its result bundle names', async ($, on) => {
+  const { store } = session(on, replays.serial)
+  await callTool($, TEST_SIM)
+  const ledger = store.get('ledger./work/App @ feat/replay') as { entries: { test: string; target?: string }[] } | undefined
+  expect(ledger?.entries.map(entry => [entry.test, entry.target])).toEqual([['ProbeTests/testFails', 'FeatureTests'], ['ProbeTests/testFlaky', 'FeatureTests']])
+})
+
+test('the serial run\'s expected failure reaches Claude as a note beside the result', async ($, on) => {
+  session(on, replays.serial)
+  const result = await callTool($, TEST_SIM)
+  expect(result.context).toContain('xcrew: 1 test also ran as an expected failure (XCTExpectFailure): ProbeTests/testExpectedFailure(). They count as neither passed nor failed in the result: 5 tests ran in all.')
+})
+
+/** The known-issue note's wording is held by its own tests; here, only that it names the test. */
+test('the shapes run\'s known issue reaches Claude as a note beside the result', async ($, on) => {
+  session(on, replays.shapes)
+  const result = await callTool($, TEST_SIM)
+  expect(result.context?.some(note => note.includes('ShapesTests/knownIssue()'))).toBe(true)
+})
