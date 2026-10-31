@@ -26,7 +26,7 @@ import XcrewTestSupport
 
     /// No real result either server gave reads as unread: the test for a handle is that the text has nothing of the
     /// server's own, not that it says no outcome, so a passing text result or a format change stays a result.
-    @Test(arguments: ["mobileTestsFailedUnlocated", "mobileTestsBuildFailed", "xcodeBuildPassed", "xcodeBuildFailed", "xcodeTestsPassed", "xcodeTestsFailed", "xcodeTestsBuildFailed"])
+    @Test(arguments: ["mobileTestsFailedUnlocated", "xcodeBuildPassed", "xcodeBuildFailed", "xcodeTestsPassed", "xcodeTestsFailed", "xcodeTestsBuildFailed"])
     func noCapturedResultIsUnread(_ name: String) async throws {
         let url = try #require(Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures/Reports"))
         let text = try String(contentsOf: url, encoding: .utf8)
@@ -37,7 +37,7 @@ import XcrewTestSupport
     }
 
     /// Nor does a real MobileBuildMCP result, as text or as its JSON.
-    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"), arguments: ["build_sim", "swift-testing", "serial", "shapes", "profile", "empty-filter", "timing"])
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"), arguments: ["build_sim", "swift-testing", "serial", "shapes", "profile", "empty-filter", "timing", "test-build-failed"])
     func noRawResultIsUnread(_ name: String) async throws {
         for text in [try Raw.text(name), try Raw.json(name)] {
             for kind in [Report.Kind.build, .test] {
