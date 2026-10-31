@@ -157,6 +157,22 @@ enum MobileBuildMCPLine {
         message.firstMatch(of: #/\.swift:\d+: ((?:Fatal error|Precondition failed|Assertion failed): .*)$/#).map { String($0.1) }
     }
 
+    /// The prefix a line of the xctest process's log carries: `2026-10-30 18:11:11.785287+0100 xctest[29418:1065289] `.
+    static var xctestPrefix: Regex<Substring> { #/^\d{4}-\d{2}-\d{2} [\d:.]+[+-]\d{4} xctest\[\d+:\d+\] /# }
+
+    /// A Swift runtime error the run lists, with its place, `Swift/ContiguousArrayBuffer.swift:695: Fatal error: …`, and
+    /// without the xctest log's prefix when it has one.
+    static func placedRuntimeError(_ message: String) -> String? {
+        let unprefixed = message.replacing(xctestPrefix, with: "")
+        return runtimeError(unprefixed) == nil ? nil : unprefixed
+    }
+
+    /// A Swift runtime error the xctest process itself printed, behind its log's prefix, with its place.
+    static func xctestRuntimeError(_ message: String) -> String? {
+        guard message.firstMatch(of: xctestPrefix) != nil else { return nil }
+        return placedRuntimeError(message)
+    }
+
     /// `Errors (3):`, the head of a failing build's error list, and where its count is written.
     static func errorCount(in line: String) -> (range: Range<String.Index>, count: Int)? {
         line.firstMatch(of: #/^Errors \((\d+)\):/#).flatMap { match in Int(match.1).map { (match.range, $0) } }

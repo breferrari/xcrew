@@ -212,16 +212,24 @@ struct MobileText: Sendable {
         return nil
     }
 
-    /// `✗ Suite / test: message` or `✗ message`, each maybe followed by its `/path:line`. With one crashed test, the
-    /// Swift runtime error the run lists for it under Errors, plainly and behind the xctest log's prefix, is that test's,
-    /// and its crash note's, not a failure of its own; any other error stays.
+    /// With one crashed test, its own Swift runtime error, with its place: the one the xctest process printed, which the
+    /// run lists once behind the xctest log's prefix and once plainly. A runtime error stops the test before XCTest
+    /// records a message, so its crash note carries it. Another runtime error, from another process or place, isn't it.
+    var crashedTestsError: String? {
+        let crashed = Set(lines.compactMap(\.failing).filter { FailureNotes.isCrash($0.message) }.map(\.test))
+        guard crashed.count == 1 else { return nil }
+        return lines.lazy.compactMap(\.entry).filter { $0.failing == nil }.compactMap { MobileBuildMCPLine.xctestRuntimeError($0.text) }.first
+    }
+
+    /// `✗ Suite / test: message` or `✗ message`, each maybe followed by its `/path:line`. The crashed test's own runtime
+    /// error, in either of its spellings, is its crash note's, not a failure of its own; any other error stays.
     var failures: [ToolOutput.Failure] {
         var failures: [ToolOutput.Failure] = []
         var seen: Set<TestID> = []
-        let crashed = Set(lines.compactMap(\.failing).filter { FailureNotes.isCrash($0.message) }.map(\.test))
+        let crashedTestsError = crashedTestsError
         for (index, line) in lines.enumerated() {
             guard let entry = line.entry, !entry.isExcerpt else { continue }
-            if crashed.count == 1, entry.failing == nil, MobileBuildMCPLine.runtimeError(entry.text) != nil { continue }
+            if let crashedTestsError, entry.failing == nil, MobileBuildMCPLine.placedRuntimeError(entry.text) == crashedTestsError { continue }
             let location = location(after: index).map { "\(ToolOutput.basename($0.path)):\($0.line)" }
             if let failing = entry.failing {
                 // It lists a failing test twice, once with its location; the first is kept.

@@ -30,4 +30,15 @@ struct CrashErrorTests {
         #expect(!failures.contains { ($0.title + $0.message).contains("Fatal error: Index out of range") }, "\(failures)")
         #expect(failures.filter(\.isTest).map(\.title) == ["CrashTests/testOutOfRange"])
     }
+
+    /// A second runtime error, at another place, is another process's or another file's, not the crashed test's: it
+    /// stays listed though one test crashed. Built from the real error's line, its file and line moved
+    /// (docs/findings.md, *A real test run's result*).
+    @Test func anotherRuntimeErrorBesideACrashStaysListed() throws {
+        let other = "  ✗ /testbed/field/Modules/Feature/Sources/Greeting.swift:15: Fatal error: Index out of range\n\n"
+        let text = try Field.text("crash").replacingOccurrences(of: "Errors (2):\n\n", with: "Errors (3):\n\n" + other)
+        let failures = ToolOutput(text: text, server: .mobileBuildMCP, isError: true).failures
+        #expect(failures.filter { !$0.isTest }.map { $0.title + ": " + $0.message } == ["/testbed/field/Modules/Feature/Sources/Greeting.swift:15: Fatal error: Index out of range"], "\(failures)")
+        #expect(failures.filter(\.isTest).map(\.title) == ["CrashTests/testOutOfRange"])
+    }
 }
