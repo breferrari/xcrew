@@ -12,6 +12,12 @@ enum Field {
         return try #require(try? String(contentsOf: url, encoding: .utf8), "the test bed has no captures/field/\(name).txt, at \(url.path)")
     }
 
+    /// A file beside the captures, as `xcresulttool`'s answer about a scenario's bundle: `crash.ips`.
+    static func file(_ name: String) throws -> String {
+        let url = Testbed.root.appending(path: "captures/field/\(name)")
+        return try #require(try? String(contentsOf: url, encoding: .utf8), "the test bed has no captures/field/\(name), at \(url.path)")
+    }
+
     static func output(_ name: String, isError: Bool = false) throws -> ToolOutput {
         ToolOutput(text: try text(name), server: .mobileBuildMCP, isError: isError)
     }

@@ -197,35 +197,10 @@ func failingRunText(passing: Int) -> String {
         #expect(ResultBundle.path(in: ToolOutput(text: Captured.text("mobileTestsFailedUnlocated"), server: .mobileBuildMCP), home: Captured.home) == "\(Captured.workspace)/result-bundles/test_sim_1.xcresult")
     }
 
-    @Test func aFailingTestsDetailsGiveItsFileAndLine() {
-        #expect(ResultBundle.sourceLocation(details: Captured.text("xcresultFailureDetails")) == "/Users/dev/App/Tests/FormatterTests.swift:7")
-        #expect(ResultBundle.sourceLocation(details: Captured.text("xcresultCrashDetails")) == nil)
+    @Test func anAnswerThatIsNoneOfThemGivesNothing() {
         #expect(ResultBundle.sourceLocation(details: "not json") == nil)
-    }
-
-    @Test func aCrashLogGivesTheExceptionAndTopFrames() {
-        #expect(ResultBundle.crashSummary(log: Captured.text("crashLog")) == [
-            "crashed: EXC_BREAKPOINT (SIGTRAP)",
-            "libswiftCore.dylib  closure #1 in closure #1 in _assertionFailure(_:_:file:line:flags:)",
-            "libswiftCore.dylib  _assertionFailure(_:_:file:line:flags:)",
-            "AppTests  implicit closure #1 in FormatterTests.test_crash()",
-            "AppTests  partial apply for implicit closure #1 in FormatterTests.test_crash()",
-            "libXCTestSwiftSupport.dylib  closure #1 in XCTAssertEqual<A>(_:_:_:file:line:)",
-        ])
         #expect(ResultBundle.crashSummary(log: "not a crash log") == nil)
-    }
-
-    @Test func theTestListGivesEachSkippedTestAndWhy() {
-        let skips = ResultBundle.skippedTests(listing: Captured.text("xcresultTestsWithSkip"))
-        #expect(skips.map(\.test) == [TestID(suite: "FormatterTests", name: "test_skipped")])
-        #expect(skips.first?.skip == .init(reason: "waiting on the new API", seconds: 0))
         #expect(ResultBundle.skippedTests(listing: "not json").isEmpty)
-    }
-
-    /// Without the test list, which API the tests used is unknown, so the note names both.
-    @Test func expectedFailuresAreNamedWithTheTrueTotal() {
-        #expect(ResultBundle.expectedFailuresNote(summary: Captured.text("xcresultSummaryWithExpectedFailures"))
-            == "xcrew: 2 tests also ran as expected failures (XCTExpectFailure or withKnownIssue). They count as neither passed nor failed in the result: 961 tests ran in all.")
         #expect(ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":3,"passedTests":3,"expectedFailures":0}"#) == nil)
         #expect(ResultBundle.expectedFailuresNote(summary: "not json") == nil)
     }
@@ -538,8 +513,7 @@ func failingRunText(passing: Int) -> String {
 }
 
 @Suite struct LiveCheckFollowUpTests {
-    @Test func theTestListNamesEachExpectedFailure() {
-        #expect(ResultBundle.expectedFailures(listing: Captured.text("xcresultTestsWithExpectedFailures")) == ["FormatterTests/test_knownBug()", "FormatterTests/test_rounding()"])
+    @Test func aListingThatIsNoneGivesNoExpectedFailure() {
         #expect(ResultBundle.expectedFailures(listing: "not json").isEmpty)
     }
 

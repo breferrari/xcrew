@@ -554,6 +554,11 @@ The test bed's `scripts/generate.sh xcode-mcp` takes the Xcode MCP's real answer
 - `mobileTestLogFailed` is a crashing run's log. `field/crash` keeps no log: its text names the log only in its file tree, which the step doesn't read. A raw capture of that crash, whose step keeps the log the JSON names, would replace it.
 - `fixtures.ts`'s `mobileSessionDefaults` and `mobileProfileSwitched` are `session_show_defaults` and `session_set_defaults` answers. Raw captures of those two calls, which need no simulator, would replace them.
 
+**`xcresulttool`'s**, in `Tests/XcrewCoreTests/Fixtures/Reports/`. The test bed keeps its real answers beside its captures (`captures/field/` and `captures/raw/`, `<name>.summary.json`, `<name>.tests.json`, `<name>.details.<test>.json`, and `field/crash.ips`), so the tests that read one answer alone read those, and `xcresultSummaryWithExpectedFailures` and `xcresultTestsWithExpectedFailures` went. The rest answer for the tests of a hand-kept MobileBuildMCP text and stay with it:
+
+- `xcresultCrashDetails`, `crashLog` and `xcresultTestsWithSkip` answer for `mobileTestsCrashedAndSkipped`'s crash and skip, and go with it, once a raw capture with `showTestTiming` on holds that run and its bundle's answers.
+- `xcresultFailureDetails` answers for `mobileTestsFailedUnlocated`'s failure with no place, and goes with it.
+
 ## A failed snapshot test's images
 
 A failing snapshot test's message says the render doesn't match, and at most where the reference and the new render are; the difference image exists only in the result bundle. Read October 30, 2026: swift-snapshot-testing 1.19.7 attaches `reference`, `failure` and `difference` images on a failure (`UIImage.swift`, `NSImage.swift`; under Swift Testing through `Attachment.record`), and iOSSnapshotTestCase 8.0.0 attaches `Reference Image`, `Failed Image` and `Diffed Image` (`FBSnapshotTestCase.m`). `xcresulttool export attachments` (Xcode 27.2) writes each attachment with a `manifest.json` naming its `exportedFileName`, `suggestedHumanReadableName` and `isAssociatedWithFailure`.

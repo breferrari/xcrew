@@ -57,12 +57,4 @@ struct RawResultTests {
         #expect(json["testCases"] as? String == "per-test list left out to keep this result short; the counts above are complete, and the full result is in /saved.txt")
         #expect(try Raw.jsonOutput("build_sim").compactTestResult(savedPath: "/saved.txt") == nil)
     }
-
-    @Test func expectedFailuresReachClaudeAsANote() async throws {
-        let runner = FakeRunner(responses: [
-            "xcrun xcresulttool get test-results summary --path \(Self.bundle) --compact": .init(status: 0, stdout: Captured.text("xcresultSummaryWithExpectedFailures")),
-        ])
-        let report = await Report.make(kind: .test, output: try Raw.output("swift-testing"), home: Captured.home, runner: runner)
-        #expect(report.notes.first?.hasPrefix("xcrew: 2 tests also ran as expected failures") == true)
-    }
 }
