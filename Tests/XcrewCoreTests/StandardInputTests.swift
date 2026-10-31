@@ -20,8 +20,9 @@ import Testing
         return pipe.fileHandleForReading
     }
 
-    /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives. Read to its end, it
-    /// would be complete, its writer closing it after 30 seconds: not timed, since a busy test run's own wait dwarfs this.
+    /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives. Its writer closes it
+    /// only after 30 seconds, so a read that waited for end of file would be complete (docs/findings.md, *Timing an
+    /// awaited call in a test*).
     @Test func anInputLeftOpenIsReadUntilItGoesQuiet() async throws {
         let input = await StandardInput.read(pipe(writing: [#"{"cwd":"/project"}"#], gap: 0, closeAfter: 30), idleFor: .milliseconds(500))
         #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
@@ -43,7 +44,7 @@ import Testing
 
     /// `xcrew hook session-start < event.json`: a file always ends, so it's read at once, not after an idle wait. Timed,
     /// since time is all that tells them apart: a read that waited would take at least the minute's idle wait, and 30
-    /// seconds is over twice the longest a busy CI run held an awaited call (13 s; docs/findings.md, *Stopping a program*).
+    /// seconds is over twice the longest a busy CI run held an awaited call (13 s; docs/findings.md, *Timing an awaited call in a test*).
     @Test func aFileIsReadAtOnce() async throws {
         let file = FileManager.default.temporaryDirectory.appending(path: "xcrew-stdin-\(UUID().uuidString).json")
         try Data(#"{"cwd":"/project"}"#.utf8).write(to: file)

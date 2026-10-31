@@ -16,8 +16,8 @@ import Testing
         #expect(runner.which("sh") == "/bin/sh")
     }
 
-    /// What stopping guarantees, not how fast: a busy test run's own wait for threads dwarfs a 200 ms timeout. A run with
-    /// no timeout would end with the child's own status, and one that didn't stop it would leave it running.
+    /// What stopping guarantees, not how fast (docs/findings.md, *Timing an awaited call in a test*): a run with no timeout
+    /// would end with the child's own status, and one that didn't stop it would leave it running.
     @Test func aProgramThatOutlivesItsTimeoutIsStopped() async {
         let duration = "30.\(Int.random(in: 100_000...999_999))"
         let result = await runner.run(["/bin/sleep", duration], stdin: nil, timeout: .milliseconds(200))
@@ -25,10 +25,9 @@ import Testing
         #expect(await runner.run("/usr/bin/pgrep", "-f", "sleep \(duration)").status == 1, "the child is still running")
     }
 
-    /// The shell's background sleep inherits stdout and, ignoring SIGTERM, outlives the shell: `terminate` stops the
-    /// shell's process group, which a plain background child would leave with (docs/findings.md, *Stopping a program*). A
-    /// run that waited for its pipe would return only once the sleep ended: still running when the run returns, it wasn't
-    /// waited for.
+    /// The shell's background sleep inherits stdout and ignores SIGTERM. `terminate` signals the shell's whole process
+    /// group, so only a child that ignores it outlives the stop (docs/findings.md, *Stopping a program*). A run that waited
+    /// for the pipe would return only after the sleep ended, so the sleep still running shows it didn't wait.
     @Test func aGrandchildHoldingAPipeDoesntOutlastTheTimeout() async {
         let duration = "30.\(Int.random(in: 100_000...999_999))"
         let result = await runner.run(["/bin/sh", "-c", "(trap '' TERM; exec sleep \(duration)) & wait"], stdin: nil, timeout: .seconds(2))
