@@ -73,11 +73,9 @@ import XcrewTestSupport
             """)
     }
 
-    /// A run log's last xcodebuild verdict, and the result bundle it names: what a task with no result to read still says.
-    @Test func aRunLogSaysItsOutcomeAndBundle() throws {
-        let log = try Self.fixture("mobileTestLogFailed")
-        #expect(RunLog.outcome(of: log, kind: .test) == false)
-        #expect(RunLog.resultBundle(in: log) == "/work/App/DerivedData/result-bundles/test_sim_2026-10-30T17-11-06-750Z_pid29308_97473835.xcresult")
+    /// A run log's last xcodebuild verdict: what a task with no result to read still says. A real log's is in
+    /// `TimingRunTests`.
+    @Test func aRunLogSaysItsOutcome() throws {
         #expect(RunLog.outcome(of: "Build settings from command line:\n\n** BUILD SUCCEEDED **\n", kind: .build) == true)
         #expect(RunLog.outcome(of: "CompileSwift normal arm64 App.swift\n", kind: .build) == nil)
     }

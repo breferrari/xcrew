@@ -106,8 +106,7 @@ import XcrewTestSupport
     /// test's failed assertion, or a run that succeeded with no tests, says nothing of it.
     /// The run that succeeded is marked an error here, so it's the errors, not the outcome, that keep the pin out.
     @Test(arguments: [
-        (fixture("mobileTestsFailed"), Report.Kind.test),
-        ("\n🧪 Test\n\n✅ Test succeeded. (⏱️ 3.4s)\n  └ Files:\n     └── ~/Library/Developer/MobileBuildMCP/workspaces/App-0000/logs/test_sim.log — Build Logs", .test),
+        ("\n🧪 Test\n\n✅ Test succeeded. (⏱️ 3.4s)\n  └ Files:\n     └── ~/Library/Developer/MobileBuildMCP/workspaces/App-0000/logs/test_sim.log — Build Logs", Report.Kind.test),
     ])
     func aFailureOfTheCodeSaysNothingOfThePin(_ text: String, kind: Report.Kind) async throws {
         #expect(try await pinNote(context(pin: "25.0\n"), text: text, kind: kind) == nil)
@@ -116,6 +115,11 @@ import XcrewTestSupport
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aTypeErrorInTheCodeSaysNothingOfThePin() async throws {
         #expect(try await pinNote(context(pin: "25.0\n"), text: try Field.text("type-error"), kind: .build) == nil)
+    }
+
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aFailedAssertionSaysNothingOfThePin() async throws {
+        #expect(try await pinNote(context(pin: "25.0\n"), text: try Raw.text("serial"), kind: .test) == nil)
     }
 
     /// The errors another SDK or toolchain gives: a module another Swift compiled, a deployment target or SDK the
@@ -154,12 +158,15 @@ import XcrewTestSupport
     }
 
     /// Only a test run whose build failed reads the build log: a failed test's log holds the app's own output.
-    @Test func aFailedTestsBuildLogIsntRead() async throws {
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aFailedTestsBuildLogIsntRead() async throws {
         let mismatched = context(pin: "25.0\n")
-        let log = mismatched.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/sample-0000/logs/test_sim.log")
+        let artifacts = ((try Raw.capture("serial")["structuredContent"] as? [String: Any])?["data"] as? [String: Any])?["artifacts"] as? [String: Any]
+        let named = try #require((artifacts?["buildLogPath"] as? String)?.replacingOccurrences(of: "~/", with: ""), "the serial run names its log")
+        let log = mismatched.machine.home.appending(path: named)
         try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "network error: SDK \"iphonesimulator26.5\" cannot be located.\n".write(to: log, atomically: true, encoding: .utf8)
-        #expect(try await pinNote(mismatched, text: Self.fixture("mobileTestsFailed"), kind: .test) == nil)
+        #expect(try await pinNote(mismatched, text: try Raw.text("serial"), kind: .test) == nil)
     }
 
     /// The report names the pin its note is about, for the mod to name each pin once a session.

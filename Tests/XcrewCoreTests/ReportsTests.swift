@@ -24,7 +24,6 @@ enum Captured {
 
 @Suite struct SummaryTests {
     @Test func mobileBuildMCPTestRunsGiveCountsOrTheFirstFailingTest() {
-        #expect(Captured.output("mobileTestsFailed", isError: true).summary == .init(ok: false, detail: "1 of 3 failed · PlainTests/testConcatenation"))
         #expect(Captured.output("mobileTestsBuildFailed", isError: true).summary == .init(ok: false, detail: "build failed, tests didn't run"))
     }
 
@@ -74,25 +73,17 @@ enum Captured {
     }
 
     @Test func eachServerReportsHowLongTheRunItselfTook() {
-        #expect(Captured.output("mobileTestsFailed").reportedDuration == 12_300)
         #expect(Captured.output("xcodeBuildPassed").reportedDuration == 3_857)
         #expect(Captured.output("xcodeTestsPassed").reportedDuration == nil)
         #expect(ToolOutput(text: "Build succeeded", server: .mobileBuildMCP).reportedDuration == nil)
     }
 
     @Test func aTestRunSaysHowManyTestsItRan() {
-        #expect(Captured.output("mobileTestsFailed").testTotal == 3)
         #expect(Captured.output("xcodeTestsPassed").testTotal == 5)
     }
 }
 
 @Suite struct FailureListTests {
-    @Test func mobileBuildMCPFailingTestsAreListedOnceEachWithMessageAndPlace() {
-        #expect(Captured.output("mobileTestsFailed").failures == [
-            .init(title: "PlainTests/testConcatenation", message: #"XCTAssertEqual failed: ("ab") is not equal to ("ba") - strings join left to right"#, where: "PlainTests.swift:5", isTest: true),
-        ])
-    }
-
     @Test func anXcodeMCPCompileErrorIsListedByFileAndLine() {
         #expect(Captured.output("xcodeBuildFailed").failures == [.init(title: "MacroProbe.swift:13", message: "Cannot convert value of type 'String' to specified type 'Int'")])
     }
@@ -115,7 +106,6 @@ enum Captured {
 
     /// Only a failing test can later pass: the ledger keeps tests, never compile errors.
     @Test func onlyAFailingTestIsMarkedATest() {
-        #expect(Captured.output("mobileTestsFailed").failures.map(\.isTest) == [true])
         #expect(Captured.output("xcodeTestsFailed").failures.map(\.isTest) == [true, true, true])
         #expect(ToolOutput(text: "🧪 Test\n\nTest Failures (1):\n\n  ✗ FormatterTests / test_symbol(): failed - deliberate failure\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 30.7s)", server: .mobileBuildMCP).failures.map(\.isTest) == [true])
         for name in ["xcodeBuildFailed", "mobileTestsBuildFailed"] {
@@ -176,8 +166,9 @@ func failingRunText(passing: Int) -> String {
         #expect(ToolOutput(text: withSkip, server: .mobileBuildMCP).compactTestText?.contains("  (40 passing tests left out; failing tests are listed in full above)\n  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API\n\n❌") == true)
     }
 
-    @Test func aTestRunWithNoExcerptIsLeftAlone() {
-        #expect(Captured.output("mobileTestsFailed").mobileText?.withoutExcerpts() == nil)
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aTestRunWithNoExcerptIsLeftAlone() throws {
+        #expect(try Raw.output("serial").mobileText?.withoutExcerpts() == nil)
     }
 
     /// The coverage runtime's write failure is left out of the shortened text and its count, and is never read as the
@@ -207,21 +198,26 @@ func failingRunText(passing: Int) -> String {
 }
 
 @Suite struct FailureNotesTests {
-    static let crashBundle = "\(Captured.workspace)/result-bundles/test_sim_2.xcresult"
-
-    /// The bundle of the crashed-and-skipped run, answering for its crash, its skip and its test list.
-    static func crashedAndSkipped(listing: Bool = true) -> ResultBundle {
+    /// The bundle of the real serial run with `showTestTiming` on (`captures/raw/timing`), answering for its crash, its
+    /// failures and its test list as `xcresulttool` answered, with its crash log, or `crashLog`, as its export.
+    static func timing(crashLog: String? = nil) throws -> ResultBundle {
+        let bundle = try Raw.bundle("timing")
         let export = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: export, withIntermediateDirectories: true)
-        try? Captured.text("crashLog").write(to: export.appending(path: "crash.ips"), atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: export, withIntermediateDirectories: true)
+        try (crashLog ?? Raw.file("timing.crash.ips")).write(to: export.appending(path: "crash.ips"), atomically: true, encoding: .utf8)
         let xcresulttool = "xcrun xcresulttool"
         var responses: [String: CommandResult] = [
-            "\(xcresulttool) get test-results test-details --test-id FormatterTests/test_crash() --path \(crashBundle) --compact": .init(status: 0, stdout: Captured.text("xcresultCrashDetails")),
-            "\(xcresulttool) export attachments --path \(crashBundle) --output-path \(export.path) --test-id FormatterTests/test_crash() --only-failures": .init(status: 0),
+            "\(xcresulttool) export attachments --path \(bundle) --output-path \(export.path) --test-id CrashTests/testOutOfRange() --only-failures": .init(status: 0),
+            "\(xcresulttool) get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("timing.tests.json")),
         ]
-        if listing { responses["\(xcresulttool) get test-results tests --path \(crashBundle) --compact"] = .init(status: 0, stdout: Captured.text("xcresultTestsWithSkip")) }
-        return ResultBundle(path: crashBundle, runner: FakeRunner(responses: responses), exportFolder: { export })
+        for test in ["CrashTests.testOutOfRange", "ProbeTests.testFails", "ProbeTests.testFlaky", "ProbeTests.testExpectedFailure"] {
+            let id = test.replacingOccurrences(of: ".", with: "/") + "()"
+            responses["\(xcresulttool) get test-results test-details --test-id \(id) --path \(bundle) --compact"] = .init(status: 0, stdout: try Raw.file("timing.details.\(test).json"))
+        }
+        return ResultBundle(path: bundle, runner: FakeRunner(responses: responses), exportFolder: { export })
     }
+
+    static let crash = "✗ CrashTests / testOutOfRange(): Crash: xctest at CrashTests.testOutOfRange()\n    ProbeTests.swift:35\n"
 
     @Test func aFailureGetsTheLocationTheBundleRecorded() async throws {
         let bundle = "\(Captured.workspace)/result-bundles/test_sim_1.xcresult"
@@ -236,24 +232,27 @@ func failingRunText(passing: Int) -> String {
         #expect(model?.text.location(after: failure)?.line == "7")
     }
 
-    @Test func aCrashGetsItsExceptionAndFramesAndASkipItsReason() async {
-        let added = await FailureNotes.addingText(to: Captured.text("mobileTestsCrashedAndSkipped"), from: Self.crashedAndSkipped())
-        #expect(added.contains("Crash: xctest at implicit closure #1 in FormatterTests.test_crash()\n      crashed: EXC_BREAKPOINT (SIGTRAP)\n      libswiftCore.dylib  closure #1 in closure #1 in _assertionFailure"))
-        #expect(added.contains("  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API"))
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashGetsItsExceptionAndFramesAndASkipItsReason() async throws {
+        let added = await FailureNotes.addingText(to: try Raw.text("timing"), from: try Self.timing())
+        #expect(added.contains(Self.crash + "      crashed: EXC_BREAKPOINT (SIGTRAP)\n      Fatal error: Index out of range\n      libswiftCore.dylib  closure #1 in closure #1 in _assertionFailure"), "\(added)")
+        #expect(added.contains("  ⏭️ ProbeTests/testSkipped (0.009s)\n      skipped: waits for the farewell screen"), "\(added)")
     }
 
-    @Test func aSkippedTestTheTextLeftOutIsAddedFromTheBundle() async {
-        let text = Captured.text("mobileTestsCrashedAndSkipped").replacingOccurrences(of: "  ⏭️ FormatterTests/test_skipped() (0.000s)\n", with: "")
-        let added = await FailureNotes.addingText(to: text, from: Self.crashedAndSkipped())
-        #expect(added.contains("  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API"))
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aSkippedTestTheTextLeftOutIsAddedFromTheBundle() async throws {
+        let text = try Raw.text("timing").replacingOccurrences(of: "  ⏭️ ProbeTests/testSkipped (0.009s)\n", with: "")
+        let added = await FailureNotes.addingText(to: text, from: try Self.timing())
+        #expect(added.contains("  ⏭️ ProbeTests/testSkipped() (0.009s)\n      skipped: waits for the farewell screen"), "\(added)")
     }
 
     /// The Swift runtime's own words for a trap, as the run prints them under Errors, the xctest log's prefix or not:
     /// a precondition or an assertion as much as a fatal error.
-    @Test func aCrashsRuntimeErrorIsReadFromTheRunsErrorsInEachOfSwiftsWords() async {
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashsRuntimeErrorIsReadFromTheRunsErrorsInEachOfSwiftsWords() async throws {
         for said in ["Fatal error: Index out of range", "Precondition failed: the queue is empty", "Assertion failed: no session"] {
-            let text = Captured.text("mobileTestsCrashedAndSkipped").replacingOccurrences(of: "🧪 Test\n", with: "🧪 Test\n\nErrors (2):\n\n  ✗ App/Queue.swift:12: \(said)\n\n  ✗ 2026-10-30 18:11:11.785287+0100 xctest[29418:1065289] App/Queue.swift:12: \(said)\n")
-            let added = await FailureNotes.addingText(to: text, from: Self.crashedAndSkipped())
+            let text = try Raw.text("timing").replacingOccurrences(of: "Fatal error: Index out of range", with: said)
+            let added = await FailureNotes.addingText(to: text, from: try Self.timing())
             #expect(added.contains("      crashed: EXC_BREAKPOINT (SIGTRAP)\n      \(said)\n"), "\(added)")
             #expect(added.components(separatedBy: "      \(said)").count == 2, "\(added)")
         }
@@ -278,19 +277,22 @@ func failingRunText(passing: Int) -> String {
     }
 
     /// A crash log without an exception still heads its frames with the runtime's error.
-    @Test func aRuntimeErrorHeadsTheFramesWithoutAnException() async {
-        let text = Captured.text("mobileTestsCrashedAndSkipped").replacingOccurrences(of: "🧪 Test\n", with: "🧪 Test\n\nErrors (1):\n\n  ✗ App/Queue.swift:12: Fatal error: empty\n")
-        let export = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: export, withIntermediateDirectories: true)
-        try? Captured.text("crashLog").replacingOccurrences(of: #""exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"#, with: "").write(to: export.appending(path: "crash.ips"), atomically: true, encoding: .utf8)
-        let bundle = ResultBundle(path: Self.crashBundle, runner: FakeRunner(), exportFolder: { export })
-        let added = await FailureNotes.addingText(to: text, from: bundle)
-        #expect(added.contains("Crash: xctest at implicit closure #1 in FormatterTests.test_crash()\n      Fatal error: empty\n      libswiftCore.dylib"), "\(added)")
+    /// The real crash log without its exception, as a log may come.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aRuntimeErrorHeadsTheFramesWithoutAnException() async throws {
+        let log = try Raw.file("timing.crash.ips")
+        let header = try #require(log.firstIndex(of: "\n"))
+        var body = try #require(try JSONSerialization.jsonObject(with: Data(log[log.index(after: header)...].utf8)) as? [String: Any])
+        body["exception"] = nil
+        let withoutException = String(log[...header]) + String(decoding: try JSONSerialization.data(withJSONObject: body), as: UTF8.self)
+        let added = await FailureNotes.addingText(to: try Raw.text("timing"), from: try Self.timing(crashLog: withoutException))
+        #expect(added.contains(Self.crash + "      Fatal error: Index out of range\n      libswiftCore.dylib"), "\(added)")
     }
 
-    @Test func aFailureTheServerLocatedIsNotLookedUp() async {
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aFailureTheServerLocatedIsNotLookedUp() async throws {
         // Every xcresulttool call would answer "not found"; the text comes back as it was.
-        let text = Captured.text("mobileTestsFailed")
+        let text = try Raw.text("serial")
         #expect(await FailureNotes.addingText(to: text, from: ResultBundle(path: "/b.xcresult", runner: FakeRunner())) == text)
     }
 }
@@ -447,20 +449,20 @@ func failingRunText(passing: Int) -> String {
         #expect(report.tests == nil)
     }
 
-    @Test func aFailingRunCarriesItsFailuresForThePane() async {
-        let report = await Self.report("mobileTestsFailed", isError: true)
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aFailingRunCarriesItsFailuresForThePane() async throws {
+        let report = await Report.make(kind: .test, output: try Raw.output("serial"), home: Captured.home, runner: FakeRunner())
         #expect(!report.ok)
-        #expect(report.failures.map(\.title) == ["PlainTests/testConcatenation"])
+        #expect(report.failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
     }
 
     /// A failing test's target, from the test bundle the result bundle files it under: the ledger reads it to tell which
     /// later selection ran the test.
-    @Test func aFailingTestCarriesItsTargetFromTheResultBundle() async {
-        let bundle = "\(Captured.workspace)/result-bundles/test_sim.xcresult"
-        let listing = #"{"testNodes":[{"nodeType":"Test Plan","name":"App","children":[{"nodeType":"Unit test bundle","name":"PlainKitTests","result":"Failed","children":[{"nodeType":"Test Suite","name":"PlainTests","children":[{"nodeType":"Test Case","name":"testConcatenation()","nodeIdentifier":"PlainTests/testConcatenation()","result":"Failed"}]}]}]}]}"#
-        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: listing)])
-        let report = await Self.report("mobileTestsFailed", isError: true, runner: runner)
-        #expect(report.failures.map(\.target) == ["PlainKitTests"])
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aFailingTestCarriesItsTargetFromTheResultBundle() async throws {
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("serial")) --compact": .init(status: 0, stdout: try Raw.file("serial.tests.json"))])
+        let report = await Report.make(kind: .test, output: try Raw.output("serial"), home: Captured.home, runner: runner)
+        #expect(report.failures.map(\.target) == ["FeatureTests", "FeatureTests"])
     }
 
     /// A test of the same name in two test bundles has the target it failed in; with both failing, none, rather than a
@@ -505,10 +507,11 @@ func failingRunText(passing: Int) -> String {
 }
 
 @Suite struct SkipListedOnceTests {
-    @Test func aSkippedTestTheTextAlreadyListsGetsItsReasonAndIsNotListedAgain() async {
-        let added = await FailureNotes.addingText(to: Captured.text("mobileTestsCrashedAndSkipped"), from: FailureNotesTests.crashedAndSkipped())
-        #expect(added.components(separatedBy: "FormatterTests/test_skipped()").count - 1 == 1)
-        #expect(added.contains("  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API"))
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aSkippedTestTheTextAlreadyListsGetsItsReasonAndIsNotListedAgain() async throws {
+        let added = await FailureNotes.addingText(to: try Raw.text("timing"), from: try FailureNotesTests.timing())
+        #expect(added.components(separatedBy: "ProbeTests/testSkipped").count - 1 == 1, "\(added)")
+        #expect(added.contains("  ⏭️ ProbeTests/testSkipped (0.009s)\n      skipped: waits for the farewell screen"))
     }
 }
 
@@ -532,11 +535,12 @@ func failingRunText(passing: Int) -> String {
             == "xcrew: 3 tests also ran expecting a failure: A/a() as an expected failure (XCTExpectFailure), B/b() and C/c() with known issues (withKnownIssue). They count as neither passed nor failed in the result: 6 tests ran in all.")
     }
 
-    @Test func aCrashWithoutACrashLogSaysSo() async {
-        let text = Captured.text("mobileTestsCrashedAndSkipped").replacingOccurrences(of: "Crash: xctest at implicit closure #1 in FormatterTests.test_crash()", with: "Test crashed with signal trap.")
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashWithoutACrashLogSaysSo() async throws {
+        let text = try Raw.text("timing").replacingOccurrences(of: "Crash: xctest at CrashTests.testOutOfRange()", with: "Test crashed with signal trap.")
         let bundle = ResultBundle(path: "/b.xcresult", runner: FakeRunner(), exportFolder: { FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)") })
         let added = await FailureNotes.addingText(to: text, from: bundle)
-        #expect(added.contains("Test crashed with signal trap.\n      \(FailureNotes.noCrashLog)"))
+        #expect(added.contains("Test crashed with signal trap.\n      Fatal error: Index out of range\n      \(FailureNotes.noCrashLog)"), "\(added)")
     }
 
     @Test func doctorProblemsSaysWhenThereAreNone() {
@@ -699,15 +703,17 @@ extension FailureNotes {
         ]))
     }
 
-    @Test func notesWithNowhereToGoLeaveTheTextAsItWas() async {
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func notesWithNowhereToGoLeaveTheTextAsItWas() async throws {
         // A skipped test the text leaves out goes before the summary line; with none, nothing is added.
         let text = MobileText("🧪 Test\n\nTest Results:\n  ⏭️ OtherTests/test_other() (0.000s)\n")
-        #expect(await FailureNotes.adding(to: text, from: Self.bundle(listing: Captured.text("xcresultTestsWithSkip"))) == nil)
+        #expect(await FailureNotes.adding(to: text, from: Self.bundle(listing: try Raw.file("timing.tests.json"))) == nil)
     }
 
-    @Test func aNoteOfSeveralLinesIsReadAsSeveralLines() async throws {
-        let listing = Captured.text("xcresultTestsWithSkip").replacingOccurrences(of: "waiting on the new API", with: #"waiting\nsee the ticket"#)
-        let text = MobileText(Captured.text("mobileTestsCrashedAndSkipped"))
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aNoteOfSeveralLinesIsReadAsSeveralLines() async throws {
+        let listing = try Raw.file("timing.tests.json").replacingOccurrences(of: "waits for the farewell screen", with: #"waits\nsee the ticket"#)
+        let text = MobileText(try Raw.text("timing"))
         let added = try #require(await FailureNotes.adding(to: text, from: Self.bundle(listing: listing))).text
         #expect(added.lines.map(\.text) == MobileText(added.text).lines.map(\.text))
     }

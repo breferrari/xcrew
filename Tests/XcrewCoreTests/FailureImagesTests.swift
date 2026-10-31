@@ -153,11 +153,12 @@ import XcrewTestSupport
 
     /// A crash's log is read from the export of the failure's own attachments, not every attachment the test made:
     /// that one is small, and holds the failure's crash log alone.
-    @Test func aCrashedTestsLogComesFromItsFailuresOwnAttachments() async {
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashedTestsLogComesFromItsFailuresOwnAttachments() async throws {
         let runner = RecordingRunner()
         let bundle = ResultBundle(path: Self.bundle, runner: runner)
-        _ = await FailureNotes.addingText(to: Captured.text("mobileTestsCrashedAndSkipped"), from: bundle, keepingImagesIn: URL(fileURLWithPath: "/nonexistent/images"))
-        let exports = runner.calls.withLock { $0 }.filter { $0.contains("export attachments") && $0.contains("--test-id FormatterTests/test_crash()") }
+        _ = await FailureNotes.addingText(to: try Raw.text("timing"), from: bundle, keepingImagesIn: URL(fileURLWithPath: "/nonexistent/images"))
+        let exports = runner.calls.withLock { $0 }.filter { $0.contains("export attachments") && $0.contains("--test-id CrashTests/testOutOfRange()") }
         #expect(exports.count == 2, "\(exports)")
         #expect(exports.contains { $0.hasSuffix("--only-failures") }, "\(exports)")
     }
