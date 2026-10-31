@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 @testable import XcrewCLI
-import XcrewCore
+@testable import XcrewCore
 import XcrewTestSupport
 
 /// MobileBuildMCP's text for a run whose filter matched no test says only "Test succeeded": no test ran, which is a fact,
