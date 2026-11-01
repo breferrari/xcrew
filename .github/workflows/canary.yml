@@ -15,7 +15,7 @@ jobs:
   canary:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Installs follow the latest release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -40,13 +40,13 @@ jobs:
       - name: Claude Code still updates a plugin that follows a branch by its version
         run: scripts/stable-follows.sh 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       # The test bed's fixtures, at the commit CI pins: bump it there and here together.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-testbed
           ref: 9d4578796bb7957d246317ee631084b8d0c4a389 # v0.8.19
           path: xcrew-testbed
       # The README's images, at the commit it pins, as in ci.yml.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-assets
           ref: d2c755f9a2bd6ba7031e376c7617ec850f9609d6 # v0.3.0

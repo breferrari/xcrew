@@ -25,7 +25,7 @@ jobs:
       code: ${{ steps.diff.outputs.code }}
       distribution: ${{ steps.diff.outputs.distribution }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # Markdown alone skips the jobs below, which then report as skipped and satisfy the
@@ -63,15 +63,15 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # The test bed's fixtures, at the commit these tests expect: bump the SHA on purpose, with the tag beside it.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-testbed
           ref: 9d4578796bb7957d246317ee631084b8d0c4a389 # v0.8.19
           path: xcrew-testbed
       # The README's images, at the commit it pins: bump the SHA there and here together, with the tag beside it.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-assets
           ref: d2c755f9a2bd6ba7031e376c7617ec850f9609d6 # v0.3.0
@@ -94,15 +94,15 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # The test bed's fixtures, at the commit these tests expect: bump the SHA on purpose, with the tag beside it.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-testbed
           ref: 9d4578796bb7957d246317ee631084b8d0c4a389 # v0.8.19
           path: xcrew-testbed
       # The README's images, at the commit it pins: bump the SHA there and here together, with the tag beside it.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-assets
           ref: d2c755f9a2bd6ba7031e376c7617ec850f9609d6 # v0.3.0
@@ -129,7 +129,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: lts/*
@@ -148,9 +148,9 @@ jobs:
     env:
       XCREW_ASSETS: ${{ github.workspace }}/xcrew-assets
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # The README's images, at the commit it pins: bump the SHA there and here together, with the tag beside it.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-assets
           ref: d2c755f9a2bd6ba7031e376c7617ec850f9609d6 # v0.3.0
@@ -177,7 +177,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: ShellCheck
         run: shellcheck bin/xcrew libexec/* mcs/*.sh mcs/checks/*.sh scripts/*.sh
 
