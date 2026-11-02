@@ -46,8 +46,14 @@ import XcrewTestSupport
         #!/bin/sh
         echo hash >> "\(hashLog.path)"
         # Stands for an edit saved while the sources are being hashed.
-        # Its time is set a second on, as an edit saved after hashing began would have it, rather than waited for.
-        if [ -n "${EDIT_DURING_HASH:-}" ]; then edited="\(root.appending(path: "Sources/xcrew/main.swift").path)"; echo "// edited" >> "$edited"; touch -A 01 "$edited"; fi
+        # The sources are read in whole first, so the hash is of them as they were; then the edit lands, a second on, as
+        # one saved after hashing began would. In that order every time: no wait decides it.
+        if [ -n "${EDIT_DURING_HASH:-}" ]; then
+          read_in=$(mktemp)
+          cat > "$read_in"
+          edited="\(root.appending(path: "Sources/xcrew/main.swift").path)"; echo "// edited" >> "$edited"; touch -A 01 "$edited"
+          exec /usr/bin/shasum "$@" < "$read_in"
+        fi
         exec /usr/bin/shasum "$@"
         """, to: "fakebin/shasum", executable: true)
     }
