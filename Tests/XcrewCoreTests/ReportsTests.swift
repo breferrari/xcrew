@@ -685,30 +685,41 @@ func failingRunText(passing: Int) -> String {
 }
 
 @Suite struct LookupConcurrencyTests {
-    /// Answers each xcresulttool call after a short wait, and records the most it saw at once.
-    final class SlowRunner: CommandRunning, @unchecked Sendable {
-        private let lock = NSLock()
+    /// Answers each xcresulttool call once another is running beside it, the first time, so lookups that run at once
+    /// always overlap, with no wait on time; records the most it saw at once. Lookups made one at a time never meet: the
+    /// first waits for good, and the test's time limit ends it.
+    actor Rendezvous: CommandRunning {
         private var running = 0
-        private var peak = 0
-        var mostAtOnce: Int { lock.withLock { peak } }
+        private(set) var mostAtOnce = 0
+        private var met = false
+        private var waiting: CheckedContinuation<Void, Never>?
 
         func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-            lock.withLock { running += 1; peak = max(peak, running) }
-            try? await Task.sleep(for: .milliseconds(30))
-            lock.withLock { running -= 1 }
+            running += 1
+            mostAtOnce = max(mostAtOnce, running)
+            if !met {
+                if running >= 2 {
+                    met = true
+                    waiting?.resume()
+                    waiting = nil
+                } else {
+                    await withCheckedContinuation { waiting = $0 }
+                }
+            }
+            running -= 1
             return CommandResult(status: 0, stdout: "{}")
         }
 
-        func which(_ name: String) -> String? { nil }
+        nonisolated func which(_ name: String) -> String? { nil }
     }
 
-    @Test func aRunWithManyFailuresLooksThemUpAFewAtATime() async {
+    @Test(.timeLimit(.minutes(1))) func aRunWithManyFailuresLooksThemUpAFewAtATime() async {
         let failures = (1...10).map { "  ✗ Suite / test_\($0)(): failed\n" }.joined(separator: "\n")
         let text = "🧪 Test\n\nTest Failures (10):\n\n\(failures)\n❌ 10 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
-        let runner = SlowRunner()
+        let runner = Rendezvous()
         _ = await FailureNotes.addingText(to: text, from: ResultBundle(path: "/b.xcresult", runner: runner))
-        #expect(runner.mostAtOnce > 1)
-        #expect(runner.mostAtOnce <= FailureNotes.mostAtOnce)
+        #expect(await runner.mostAtOnce > 1)
+        #expect(await runner.mostAtOnce <= FailureNotes.mostAtOnce)
     }
 }
 

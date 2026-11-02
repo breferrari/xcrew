@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import XcrewTestSupport
 
 /// Runs the real `bin/xcrew` against a copy of the repository's layout, with a fake `swift` that
 /// records each build and produces a stand-in binary.
@@ -8,6 +9,8 @@ import Testing
     let cache: URL
     let log: URL
     let hashLog: URL
+    /// Each `sleep` the shim makes, by a stand-in on the PATH that logs it and then sleeps.
+    let sleepLog: URL
     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
     init() throws {
@@ -16,6 +19,7 @@ import Testing
         cache = base.appending(path: "cache")
         log = base.appending(path: "builds.log")
         hashLog = base.appending(path: "hashes.log")
+        sleepLog = base.appending(path: "sleeps.log")
         try FileManager.default.createDirectory(at: root.appending(path: "bin"), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: repository.appending(path: "bin/xcrew"), to: root.appending(path: "bin/xcrew"))
         try write("// swift-tools-version:6.0\n", to: "Package.swift")
@@ -26,6 +30,8 @@ import Testing
         #!/bin/sh
         echo build >> "\(log.path)"
         [ -n "${BUILD_SECONDS:-}" ] && sleep "$BUILD_SECONDS"
+        # Held until the test writes a line to this FIFO: the build is still going when the test says.
+        [ -n "${HOLD_BUILD:-}" ] && read -r _ < "$HOLD_BUILD"
         [ -n "${FAIL_BUILD:-}" ] && { echo "compile error" >&2; exit 1; }
         while [ $# -gt 0 ]; do [ "$1" = --scratch-path ] && scratch="$2"; shift; done
         mkdir -p "$scratch/release"
@@ -33,12 +39,15 @@ import Testing
         chmod +x "$scratch/release/xcrew"
         """
         try write(fakeSwift, to: "fakebin/swift", executable: true)
+        // Logs each wait, so a test asserts how often the shim waited rather than how long it took.
+        try write("#!/bin/sh\necho \"$*\" >> \"\(sleepLog.path)\"\nexec /bin/sleep \"$@\"\n", to: "fakebin/sleep", executable: true)
         // Counts the hashing of the sources, the cost a second run should skip.
         try write("""
         #!/bin/sh
         echo hash >> "\(hashLog.path)"
         # Stands for an edit saved while the sources are being hashed.
-        if [ -n "${EDIT_DURING_HASH:-}" ]; then sleep 1; echo "// edited" >> "\(root.appending(path: "Sources/xcrew/main.swift").path)"; fi
+        # Its time is set a second on, as an edit saved after hashing began would have it, rather than waited for.
+        if [ -n "${EDIT_DURING_HASH:-}" ]; then edited="\(root.appending(path: "Sources/xcrew/main.swift").path)"; echo "// edited" >> "$edited"; touch -A 01 "$edited"; fi
         exec /usr/bin/shasum "$@"
         """, to: "fakebin/shasum", executable: true)
     }
@@ -196,11 +205,36 @@ extension ShimTests {
 extension ShimTests {
     /// At session start the session hook and the mod both start the shim; after an update only one may build.
     @Test func twoFirstRunsAtOnceBuildOnce() async throws {
-        async let first = shim("help", environment: ["BUILD_SECONDS": "1"])
-        async let second = shim("help", environment: ["BUILD_SECONDS": "1"])
-        let runs = try await [first, second]
+        let hold = cache.deletingLastPathComponent().appending(path: "hold")
+        let fifo = Process()
+        fifo.executableURL = URL(fileURLWithPath: "/usr/bin/mkfifo")
+        fifo.arguments = [hold.path]
+        try await Self.runToEnd(fifo)
+        // The first run's build is held; the second starts only once it is, and the build is let go only once the second
+        // waits on the lock, so the two always overlap.
+        async let first = shim("help", environment: ["HOLD_BUILD": hold.path])
+        try await until { builds == 1 }
+        let secondDone = Flag()
+        let second = Task {
+            let run = try await shim("help")
+            secondDone.set()
+            return run
+        }
+        // The second waits on the lock, or, with no lock, builds and finishes: either ends the wait, and the build is let go.
+        try await until { lines(in: sleepLog) > 0 || secondDone.isSet }
+        let writer = try FileHandle(forWritingTo: hold)
+        try writer.write(contentsOf: Data("go\n".utf8))
+        try writer.close()
+        let runs = try await [first, second.value]
+        #expect(lines(in: sleepLog) > 0, "the second run didn't wait on the first's build")
         #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
         #expect(builds == 1)
+    }
+
+    /// Waits for `condition`, which another process makes true, checking it often; a hang guard ends the wait.
+    func until(_ condition: () -> Bool) async throws {
+        for _ in 0..<50_000 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(condition(), "never came true")
     }
 }
 
@@ -211,11 +245,10 @@ extension ShimTests {
         let lock = cache.appending(path: ".lock")
         try FileManager.default.createDirectory(at: lock, withIntermediateDirectories: true)
         try "999999".write(to: lock.appending(path: "pid"), atomically: true, encoding: .utf8)
-        let started = Date()
         let run = try await shim("help")
         #expect(run.status == 0 && run.output.hasPrefix("ran help"))
-        // The failure is a ten-minute wait; a minute is far from it and safe when the suite runs in parallel.
-        #expect(Date().timeIntervalSince(started) < 60)
+        // Cleared at once: the shim never waited on the lock.
+        #expect(lines(in: sleepLog) == 0)
         #expect(!FileManager.default.fileExists(atPath: lock.path))
     }
 }
