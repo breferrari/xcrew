@@ -15,6 +15,7 @@
 - A red test that the newest run of its scope didn't run, as one deleted or renamed since it failed, says so in the ledger and the evidence block, rather than reading as still failing.
 - `xcrew project`'s usage no longer names `--xcuserstate`, which it doesn't take. Keeping a failed test's images no longer measures every image kept in the last two weeks: each run's size is recorded once.
 - `/xcrew doctor` runs its checks once, not twice: its report and the problems on the line above the prompt come from the same run.
+- Following a long test run's log costs less each second: what xcrew keeps between reads is a quarter of its size for a large suite, and it no longer reads the log's start and end again each time.
 - A test marked flaky that a plain test run fails starts its passes in a row over. Before, it kept them, and could turn green although it had failed since its last pass.
 - A test marked flaky reads "passed 0 of the 4 needed in repeated runs since", saying that only a repeated run's passes count, so a single pass no longer reads as a wrong count. The ledger, the card, `/xcrew flaky` and the evidence block say it alike.
 

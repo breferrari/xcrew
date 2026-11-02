@@ -22,6 +22,31 @@ import XcrewTestSupport
         try handle.write(contentsOf: Data(text.utf8))
     }
 
+    /// The scheme the log's invocation names and its latest verdict are kept with the reading, so a tick reads neither
+    /// again from the log: the invocation's next line may come in a later read.
+    @Test func aReadingKeepsTheSchemeAndTheLatestVerdict() throws {
+        let project = Project.temporary()
+        project.write("Command line invocation:\n", to: "test_sim_1.log")
+        let log = project.root.appending(path: "test_sim_1.log")
+        let first = try #require(LogReading.reading(log, after: nil))
+        #expect(first.scheme == nil)
+        try append("    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme App -destination id=0000\n\n** TEST BUILD SUCCEEDED **\n" + Self.start + Self.passed("testOne"), to: log)
+        let second = try #require(LogReading.reading(log, after: first))
+        #expect(second.scheme == "App")
+        #expect(second.verdict == "** TEST BUILD SUCCEEDED **")
+        try append("** TEST EXECUTE SUCCEEDED **\n", to: log)
+        #expect(LogReading.reading(log, after: second)?.verdict == "** TEST EXECUTE SUCCEEDED **")
+    }
+
+    /// A kept reading holds no test's name: its size, read and written each tick, grows by a number a test, not a name.
+    @Test func aKeptReadingHoldsNoTestsName() throws {
+        let project = Project.temporary()
+        project.write(Self.start + (0..<50).map { Self.passed("testSomethingWithAFairlyDescriptiveName\($0)") }.joined(), to: "test_sim_1.log")
+        let reading = try #require(LogReading.reading(project.root.appending(path: "test_sim_1.log"), after: nil))
+        let kept = String(decoding: try JSONEncoder().encode(reading), as: UTF8.self)
+        #expect(!kept.contains("testSomethingWithAFairlyDescriptiveName"))
+    }
+
     /// The bytes read before are changed under the reading: only what was appended since counts.
     @Test func aReadingReadsOnlyWhatWasAppended() throws {
         let project = Project.temporary()
