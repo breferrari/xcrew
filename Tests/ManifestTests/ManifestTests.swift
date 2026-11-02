@@ -318,6 +318,17 @@ import Testing
         #expect(routing.contains("run the whole suite"))
     }
 
+    /// Each session's MobileBuildMCP serves its own checkout: the routing rules say another checkout gets a session of its
+    /// own, set up there, and that a run started from Bash, the `mobilebuildmcp` CLI's included, is followed by nothing.
+    @Test func theRoutingRulesSendAnotherCheckoutToItsOwnSessionAndNameTheCLI() throws {
+        let routing = try text("context/routing.md")
+        let checkout = try #require(routing.split(separator: "\n").first { $0.contains("claude --worktree <name>") }, "no line names a worktree's own session")
+        #expect(checkout.contains("/xcrew:setup"))
+        let bash = try #require(routing.split(separator: "\n").first { $0.contains("through Bash") })
+        #expect(bash.contains("`mobilebuildmcp`"), "\(bash)")
+        #expect(bash.contains("no timing, ledger or line above the prompt"), "\(bash)")
+    }
+
     /// The routing rules tell Claude the evidence tool exists when it writes a pull request's body, by the name it's
     /// registered under, and that its block, headed as the CLI heads it, is offered, never put in unasked; images only
     /// with the person's agreement.
@@ -896,7 +907,7 @@ import Testing
     @Test func routingKeepsClaudeOffDerivedDataAndOnTheEnabledTools() throws {
         let routing = try text("context/routing.md")
         #expect(routing.contains("- **DerivedData:** never delete it unless the person asks."))
-        let bash = try #require(routing.split(separator: "\n").first { $0.hasPrefix("- **`xcodebuild` and `simctl` through Bash:**") })
+        let bash = try #require(routing.split(separator: "\n").first { $0.hasPrefix("- **`xcodebuild`, `simctl` and the `mobilebuildmcp` CLI through Bash:**") })
         let named = Set(bash.matches(of: /`([a-z]+_[a-z_]+)`/).map { String($0.1) })
         #expect(!named.isEmpty)
         #expect(named.isSubset(of: Set(ConfigRenderer.simEnvTools)), "\(named.subtracting(ConfigRenderer.simEnvTools).sorted())")

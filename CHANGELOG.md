@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The session's routing rules say a git worktree gets a session of its own, `claude --worktree <name>` set up there with `/xcrew:setup`, since each session's MobileBuildMCP serves its own checkout, and that a build or test run from Bash, the `mobilebuildmcp` CLI's included, gets no timing, ledger or line above the prompt.
 - A build or test run Claude Code moves to the background stays on the line above the prompt, going, with its time, gauge and phase and marked as in the background, until its log's verdict or its notification ends it. A run whose log stops with neither leaves after a minute and a half. Before, it showed `no result yet` and dropped off while it went on.
 - A test run moved to the background whose result Claude Code saved for its size reaches Claude shortened: its build warnings are counted and pointed to in the saved file, with its errors, failures and counts kept. Before, a run with hundreds of warnings came back as MobileBuildMCP's whole result, about 120,000 characters.
 - `xcrew space` says its sizes are decimal, as Finder counts them, and the doctor's storage check gives its total in `du -h`'s GiB too, so the two read alike. Either says when a build is writing to a workspace as it's measured. The dry run `xcrew space` suggests starts with test products, counted in bundles with their size each, and names DerivedData apart, since it costs a cold build; the doctor gives the total and the class that takes the most, and names `xcrew space` for the rest.
