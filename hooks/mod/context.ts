@@ -181,7 +181,12 @@ export function isRepeatedRun(input: Record<string, unknown>): boolean {
  * once each. What the loop budget counts.
  */
 export function isFullSuiteRun(tool: XcodeTool, input: Record<string, unknown>): boolean {
+  return selectedTests(input).length === 0 && runsAllOfScope(tool, input)
+}
+
+/** Whether a test run ran every test its scope names, once: none skipped, narrowed or repeated by another option. */
+export function runsAllOfScope(tool: XcodeTool, input: Record<string, unknown>): boolean {
   const extraArgs = Array.isArray(input.extraArgs) ? (input.extraArgs as unknown[]) : []
   const narrows = extraArgs.some(arg => typeof arg === 'string' && NARROWING_OR_REPEATING.includes(arg))
-  return selectedTests(input).length === 0 && !narrows && !isRepeatedRun(input) && runsWholeScope(tool, input)
+  return !narrows && !isRepeatedRun(input) && runsWholeScope(tool, input)
 }

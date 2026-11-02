@@ -9,7 +9,7 @@ import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
-import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, observeSession, xcodeStarted } from './context'
+import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, runsAllOfScope, lost, namesScheme, observe, observeSession, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
@@ -295,7 +295,7 @@ export const register: Register = on => {
     // The runs before this one are its own scheme's, read again when its log named another than the one worked out; a run
     // whose log named none is measured against the usual time it was shown with.
     const { passed: earlier, failed: earlierFailed } = key === undefined || key === estimate ? { passed: estimated, failed: estimatedFailed } : await earlierRuns($, key, started)
-    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
+    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), allOfScope: runsAllOfScope(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
         // A run whose log is followed stays on the band, going, until its log or its notification ends it.
@@ -478,7 +478,7 @@ export const register: Register = on => {
 }
 
 /** A finished build, test or run call, as its ending is recorded. */
-type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; toolUseId?: string; by?: string }
+type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; allOfScope: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
 type Backgrounded = Ending & { startedAt: number; repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
@@ -500,7 +500,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
   await quietly(() => recordRun($, scope, outcome.ok, outcome.failures, outcome.cause))
   // Only what the CLI read goes in the ledger: without it, or from a log's verdict alone, the outcome says no test's own.
   const readTests = kind === 'test' && isRead && !outcome.isVerdictOnly
-  if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, repeated: outcome.repeated ?? [], ...(outcome.passed ? { passed: outcome.passed } : {}), bundle: outcome.bundle })
+  if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, repeated: outcome.repeated ?? [], ...(outcome.passed ? { passed: outcome.passed } : {}), bundle: outcome.bundle, ...(run.allOfScope ? {} : { narrowed: true as const }) })
   // A failed run may have stopped early: its count is no total for the next run's.
   if (key !== undefined && outcome.ok && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
   saveCard($)

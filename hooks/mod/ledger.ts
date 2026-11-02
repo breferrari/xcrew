@@ -32,9 +32,10 @@ export type Ledger = { entries: LedgerEntry[]; updated: number }
 
 /**
  * A finished test run, as the ledger reads it. `passed`: the tests its results list as passed, each with the test bundle
- * the result bundle files it under when it names one; absent when the CLI couldn't read them.
+ * the result bundle files it under when it names one; absent when the CLI couldn't read them. `narrowed`: the run left some
+ * of its scope's tests out on purpose, by a skip, a test plan or a configuration, or repeated them.
  */
-export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; repeated?: readonly Repetition[]; passed?: readonly Passed[]; bundle?: string }
+export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; repeated?: readonly Repetition[]; passed?: readonly Passed[]; bundle?: string; narrowed?: true }
 
 /** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
 export function label(head: Head, isShort: boolean): string {
@@ -85,7 +86,7 @@ export function passes(scope: string, passed: readonly Passed[], entry: LedgerEn
 
 /** Whether a run of `scope` would have run a red of `failing`'s: the same scheme, and its whole suite, or a selection holding each of the red run's own. */
 export function wouldRun(scope: string, failing: string): boolean {
-  if (schemeOfScope(scope) !== schemeOfScope(failing)) return false
+  if (schemeOfScope(scope) === '' || schemeOfScope(scope) !== schemeOfScope(failing)) return false
   if (isWholeScope(scope)) return true
   const selected = new Set(scopeParts(scope).selections)
   const reds = scopeParts(failing).selections
@@ -157,7 +158,7 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
     // goes once no run has failed it for as long as the history is kept. The Xcode MCP's list stops at 100 results, and a
     // run that passed nothing, as a failed build, lists none.
     const listsWhole = run.bundle !== undefined && (run.passed?.length ?? 0) > 0
-    const isUnseen = read && !ranIt && listsWhole && wouldRun(run.scope, entry.failing)
+    const isUnseen = read && !ranIt && listsWhole && !run.narrowed && wouldRun(run.scope, entry.failing)
     return isUnseen ? { ...updated, unseen: { scope: run.scope, at: run.at } } : updated
   })
   for (const test of failing) {

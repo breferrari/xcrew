@@ -61,6 +61,8 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
 
 const LEDGER = 'mcp__xcrew__ledger'
 const run = (tool: Engine, selection?: string) => callTool(tool, 'mcp__MobileBuildMCP__test_sim', selection ? { extraArgs: [`-only-testing:${selection}`] } : {})
+/** A run of the `App` scheme, of `selection` or its whole suite, with `args` besides. */
+const runApp = (tool: Engine, selection?: string, args: string[] = []) => callTool(tool, 'mcp__MobileBuildMCP__test_sim', { scheme: 'App', extraArgs: [...(selection ? [`-only-testing:${selection}`] : []), ...args] })
 const ledgerText = async (tool: Engine) => String((await callTool(tool, LEDGER)).result ?? '')
 
 test('a test that fails and then passes in the same scope is listed red, then green, with both runs', async ($, on) => {
@@ -101,29 +103,46 @@ test('a run that a red was written during asks for its passed tests, and turns t
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
+/** A run that left some of its scope's tests out on purpose, by a test plan or a skip, says nothing of a red it left out. */
+test('a narrowed run says nothing of a red it left out', async ($, on) => {
+  project(on, [FAILED, LEFT_OUT, LEFT_OUT])
+  await runApp($)
+  await runApp($, undefined, ['-testPlan', 'UnitOnly'])
+  await runApp($, undefined, ['-skip-testing:AppTests/GreetingTests'])
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+})
+
+/** Runs whose scheme was never learned may be of different schemes: one says nothing of another's red. */
+test('a run of an unknown scheme says nothing of a red it left out', async ($, on) => {
+  project(on, [FAILED, LEFT_OUT])
+  await run($)
+  await run($)
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+})
+
 /** A red test the newest run in its scope didn't run, as one deleted since it failed, says so until it runs again. */
 test('a red test the newest run in its scope left out says so, until a run lists it', async ($, on) => {
   project(on, [FAILED, LEFT_OUT, FAILED])
-  await run($, 'AppTests/GreetingTests')
-  await run($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
   expect(await ledgerText($)).toMatch(new RegExp(`- ${TEST}: red .*: XCTAssertEqual failed: .*; not in the newest run of its scope, \\w{3} \\d+ \\d\\d:\\d\\d$`, 'm'))
-  await run($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
   expect(await ledgerText($)).not.toContain('not in the newest run')
 })
 
 /** The whole suite left out a red from a selection of it: as clear a sign as any that the test is gone. */
 test('a whole-suite run that leaves out a red from a selection says so', async ($, on) => {
   project(on, [FAILED, LEFT_OUT])
-  await run($, 'AppTests/GreetingTests')
-  await run($)
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($)
   expect(await ledgerText($)).toContain('not in the newest run of its scope')
 })
 
 /** A run that selected other tests says nothing of a red it never selected. */
 test('a run of another selection says nothing of a red it never selected', async ($, on) => {
   project(on, [FAILED, LEFT_OUT])
-  await run($, 'AppTests/GreetingTests')
-  await run($, 'AppTests/FarewellTests')
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/FarewellTests')
   expect(await ledgerText($)).not.toContain('not in the newest run')
 })
 
@@ -131,21 +150,21 @@ test('a run of another selection says nothing of a red it never selected', async
  * build's, is no sign a red is gone: only a whole list, from a result bundle, is. */
 test('a run without a whole list of its passed tests says nothing of a red it left out', async ($, on) => {
   project(on, [FAILED, PASSED_OTHERS, { ok: false, passed: [], bundle: '/runs/build.xcresult' }])
-  await run($, 'AppTests/GreetingTests')
-  await run($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
   expect(await ledgerText($)).not.toContain('not in the newest run')
-  await run($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
   expect(await ledgerText($)).not.toContain('not in the newest run')
 })
 
 /** A later run that lists the red as passed ran it, though one pass doesn't turn a flaky test green: the note goes. */
 test('a run that passes a flaky red without greening it ends the note', async ($, on) => {
   project(on, [FAILED, MIXED, LEFT_OUT, PASSED], { flaky: [MARKED(0)] })
-  await run($, 'AppTests/GreetingTests/testHello')
-  await repeat($)
-  await run($, 'AppTests/GreetingTests/testHello')
+  await runApp($, 'AppTests/GreetingTests/testHello')
+  await runApp($, 'AppTests/GreetingTests/testHello', ['-test-iterations', '5', '-test-repetition-relaunch-enabled', 'YES'])
+  await runApp($, 'AppTests/GreetingTests/testHello')
   expect(await ledgerText($)).toContain('not in the newest run')
-  await run($, 'AppTests/GreetingTests/testHello')
+  await runApp($, 'AppTests/GreetingTests/testHello')
   const text = await ledgerText($)
   expect(text).toContain(`Still red (1):\n- ${TEST} (flaky`)
   expect(text).not.toContain('not in the newest run')
@@ -154,9 +173,9 @@ test('a run that passes a flaky red without greening it ends the note', async ($
 /** A red test left out of a run and then passed is green, with nothing said of the run that left it out. */
 test('a red test a run left out and a later run passes reads only as green', async ($, on) => {
   project(on, [FAILED, LEFT_OUT, PASSED])
-  await run($, 'AppTests/GreetingTests')
-  await run($, 'AppTests/GreetingTests')
-  await run($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
   const text = await ledgerText($)
   expect(text).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
   expect(text).not.toContain('not in the newest run')
