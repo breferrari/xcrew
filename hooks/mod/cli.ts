@@ -12,6 +12,17 @@ export type Failure = FailureList['items'][number]
 /** A repeated test as `xcrew report` counts it, with its verdict: the CLI decides flaky or real, the mod only keeps it. */
 export type Repetition = { test: string; failed: number; passed: number; runs: number; verdict: 'flaky' | 'real' | 'passed' | 'none' }
 
+/**
+ * A flaky mark as `xcrew flaky` answers it after a repeated run: the failures and runs of the repeated runs up to its
+ * last failure, the passes in a row since, the passes needed, and whether it has them. The CLI works them out.
+ */
+export type FlakyMark = { test: string; failed: number; runs: number; passes: number; needed: number; settled: boolean }
+
+/** `xcrew flaky`'s marks, or none when it couldn't answer. */
+export function flakyMarksOf(answer: unknown): FlakyMark[] | undefined {
+  return Array.isArray(answer) ? (answer as FlakyMark[]) : undefined
+}
+
 /** A test a run's results list as passed (`xcrew report --passed`), with the test bundle it ran in when the CLI names one. */
 export type Passed = { test: string; target?: string }
 

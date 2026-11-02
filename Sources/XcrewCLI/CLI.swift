@@ -15,6 +15,7 @@ public enum CLI {
         EvidenceCommand(),
         PhaseCommand(),
         RunsCommand(),
+        FlakyCommand(),
         ProjectCommand(),
         XcodeSkillsCommand(),
         XcodeCommand(),

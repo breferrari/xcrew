@@ -1,4 +1,4 @@
-import type { Failure, Head, Passed, Repetition } from './cli'
+import type { Failure, FlakyMark, Head, Passed, Repetition } from './cli'
 import { dayAndTime } from './format'
 import { schemeOfScope, scopeParts } from './context'
 import { isStale } from './timing'
@@ -21,8 +21,12 @@ export type LedgerRun = { scope: string; at: number }
  */
 export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun & { listed?: true }; last: number; flaky?: Flakiness; target?: string }
 
-/** A flaky mark: the counts of the repeated run that found the test flaky, and that run's scope and time (absent in a mark kept before they were). */
-export type Flakiness = { failed: number; runs: number; scope?: string; at?: number }
+/**
+ * A flaky mark: the failures and runs of the repeated runs up to its last failure, and the repeated run that found the
+ * test flaky, its scope and time (absent in a mark kept before they were). With the CLI's answer, the passes in a row
+ * since, the passes needed and whether it has them; absent in a mark kept before, or when the CLI couldn't answer.
+ */
+export type Flakiness = { failed: number; runs: number; scope?: string; at?: number; passes?: number; needed?: number; settled?: boolean }
 
 export type Ledger = { entries: LedgerEntry[]; updated: number }
 
@@ -95,16 +99,21 @@ export function isWholeScope(scope: string): boolean {
  *   results the CLI couldn't read turns nothing green.
  * - An entry no run has written for as long as the history is kept is dropped.
  */
-export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
+export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: readonly FlakyMark[]): Ledger {
   const failed = new Map(run.failures.filter(failure => failure.isTest).map(failure => [failure.title, failure]))
-  // The CLI's verdict on each repeated test. A flaky test stays red, marked so, until a repeated run passes it every
-  // time; one run passing it is no evidence. A test failing every run is a real failure, flaky no longer.
+  // The CLI's verdict on each repeated test, and its marks after the run. A flaky test stays red, marked so, until the
+  // CLI says its passes in a row are enough; one run passing it is no evidence. A test failing every run is a real
+  // failure, flaky no longer.
   const repeated = new Map((run.repeated ?? []).map(test => [test.test, test]))
+  const marked = new Map((marks ?? []).map(mark => [mark.test, mark]))
   const failing = new Set([...failed.keys(), ...[...repeated.values()].filter(test => test.verdict === 'flaky' || test.verdict === 'real').map(test => test.test)])
-  const flakyAfter = (test: string, before?: LedgerEntry['flaky']) => {
-    const verdict = repeated.get(test)
-    if (verdict?.verdict === 'flaky') return { failed: verdict.failed, runs: verdict.runs, scope: run.scope, at: run.at }
-    return verdict?.verdict === 'real' ? undefined : before
+  const flakyAfter = (test: string, before?: Flakiness): Flakiness | undefined => {
+    const verdict = repeated.get(test)?.verdict
+    if (verdict === 'real') return undefined
+    const mark = marked.get(test)
+    const counts = mark ? { failed: mark.failed, runs: mark.runs, passes: mark.passes, needed: mark.needed, settled: mark.settled } : undefined
+    if (verdict === 'flaky') return { ...(counts ?? { failed: repeated.get(test)?.failed ?? 0, runs: repeated.get(test)?.runs ?? 0 }), scope: run.scope, at: run.at }
+    return before && counts ? { ...before, ...counts } : before
   }
   const entries = (ledger?.entries ?? []).filter(entry => !isStale(entry.last, run.at)).map((entry): LedgerEntry => {
     if (failing.has(entry.test)) {
@@ -112,9 +121,11 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun): Ledger {
       const target = failed.get(entry.test)?.target ?? entry.target
       return { test: entry.test, red: entry.red, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) }
     }
-    const cleared = !entry.flaky || repeated.get(entry.test)?.verdict === 'passed'
+    const flaky = flakyAfter(entry.test, entry.flaky)
+    const updated = flaky === entry.flaky ? entry : { ...entry, ...(flaky ? { flaky } : {}), last: run.at }
+    const cleared = !flaky || (repeated.get(entry.test)?.verdict === 'passed' && flaky.settled === true)
     const isGreen = !entry.green && cleared && run.passed !== undefined && passes(run.scope, run.passed, entry)
-    return isGreen ? { ...entry, green: { scope: run.scope, at: run.at, listed: true }, last: run.at } : entry
+    return isGreen ? { ...updated, green: { scope: run.scope, at: run.at, listed: true }, last: run.at } : updated
   })
   for (const test of failing) {
     if (entries.some(entry => entry.test === test)) continue
@@ -166,9 +177,13 @@ export function flakyText(ledger: Ledger | undefined, head: Head): string {
   const foundAt = (entry: FlakyEntry) => entry.flaky.at ?? entry.last
   const flaky = (ledger?.entries ?? []).filter((entry): entry is FlakyEntry => entry.flaky !== undefined).sort((a, b) => foundAt(b) - foundAt(a))
   if (flaky.length === 0) return `No test is marked flaky on ${name}.`
-  const line = (entry: FlakyEntry) =>
-    `- ${entry.test}: ${flakyCounts(entry.flaky)}, in ${entry.flaky.scope ?? entry.failing}${entry.green ? `; passed every run of a repeated run since, in ${entry.green.scope}` : ''}`
-  return [`Flaky on ${name} (${count(flaky.length)}):`, ...flaky.map(line)].join('\n')
+  const since = (entry: FlakyEntry) => {
+    if (entry.flaky.needed === undefined) return entry.green ? `; passed every run of a repeated run since, in ${entry.green.scope}` : ''
+    return `; ${passedSince(entry.flaky)}${entry.green ? `, the last in ${entry.green.scope}` : ''}`
+  }
+  const line = (entry: FlakyEntry) => `- ${entry.test}: ${flakyCounts(entry.flaky)}, in ${entry.flaky.scope ?? entry.failing}${since(entry)}`
+  const caveat = flaky.some(entry => entry.flaky.needed !== undefined) ? [PASSES_NEEDED] : []
+  return [`Flaky on ${name} (${count(flaky.length)}):`, ...flaky.map(line), ...caveat].join('\n')
 }
 
 function count(tests: number): string {
@@ -194,9 +209,22 @@ export const LEDGER_TOOL_NAME = 'mcp__xcrew__ledger'
 
 export const LEDGER_UNAVAILABLE = "The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out. Run `/xcrew doctor`."
 
-/** ` (flaky: failed 2 of 5 runs)` for a test marked flaky, and nothing otherwise: the ledger and the card say it alike. */
+/**
+ * ` (flaky: failed 2 of 5 runs; passed 5 of the 6 needed since)` for a test marked flaky, without the passes when the
+ * CLI hasn't counted them, and nothing otherwise: the ledger and the card say it alike.
+ */
 export function flakyLabel(entry: LedgerEntry): string {
-  return entry.flaky ? ` (flaky: ${flakyCounts(entry.flaky)})` : ''
+  if (!entry.flaky) return ''
+  return ` (flaky: ${flakyCounts(entry.flaky)}${entry.flaky.needed === undefined ? '' : `; ${passedSince(entry.flaky)}`})`
+}
+
+/** What the passes needed are, said once where they're listed. */
+export const PASSES_NEEDED = 'Passes needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.'
+
+/** `passed 5 of the 6 needed since`, or once it has them, `passed 10 in a row since, of 6 needed`. */
+function passedSince(flaky: Flakiness): string {
+  const passes = flaky.passes ?? 0
+  return flaky.settled ? `passed ${passes} in a row since, of ${flaky.needed} needed` : `passed ${passes} of the ${flaky.needed} needed since`
 }
 
 /** `failed 2 of 5 runs`: how a flaky mark's counts read wherever it's shown. */

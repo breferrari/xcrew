@@ -47,6 +47,26 @@ import XcrewTestSupport
         #expect(text.attach == nil)
     }
 
+    /// A flaky test says how many of the passes in a row it needs it has, still red, and how many it passed once green,
+    /// with what the number needed means said once.
+    @Test func aFlakyTestSaysThePassesItNeeds() async throws {
+        let counted = { (passes: Int, settled: Bool) in #","flaky":{"failed":1,"runs":5,"passes":\#(passes),"needed":14,"settled":\#(settled)}"# }
+        let red = Self.entry("Suite/testFlaky", green: false).replacingOccurrences(of: #","last""#, with: counted(10, false) + #","last""#)
+        let green = Self.entry("Suite/testFixed").replacingOccurrences(of: #","last""#, with: counted(14, true) + #","last""#)
+        let text = try #require(await Self.pack(try Self.input([green, red])))
+        #expect(text.block == """
+            ## Evidence
+
+            Tests this branch took from red to green:
+            - `Suite/testFixed`: failed in `test_sim · App` ("failed"), then passed in `test_sim · App`. Its images aren't known: its failing run was recorded before xcrew kept the run's result bundle. Flaky: it failed 1 of 5 runs, then passed 14 in a row, of 14 needed.
+
+            Still red:
+            - `Suite/testFlaky`: "failed", flaky, failing 1 of 5 runs, passed 10 of the 14 needed since
+
+            Passes needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.
+            """)
+    }
+
     /// The images of a red-to-green test's failing run, read again from its result bundle: named in the block by a label
     /// the person replaces, listed with their paths only outside it.
     @Test func aRedToGreenTestsImagesAreListedOutsideTheBlock() async throws {

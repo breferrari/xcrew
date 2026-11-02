@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -930,7 +930,11 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   const head = headOf(await answer($, ['project', '--branch'], 10_000))
   if (!head) return
   const key = ledgerKey(head)
-  await $.store.set(key, afterTestRun(ledgerOf(await $.store.get(key)), run))
+  const ledger = ledgerOf(await $.store.get(key))
+  // A repeated run's flaky marks are the CLI's to work out, from the marks kept and the run's repeated tests.
+  const kept = (ledger?.entries ?? []).flatMap(entry => (entry.flaky ? [{ test: entry.test, failed: entry.flaky.failed, runs: entry.flaky.runs, passes: entry.flaky.passes ?? 0 }] : []))
+  const marks = run.repeated?.length ? flakyMarksOf(await answer($, ['flaky'], 10_000, JSON.stringify({ marks: kept, repeated: run.repeated }))) : undefined
+  await $.store.set(key, afterTestRun(ledger, run, marks))
   const others = (await $.store.keys()).filter(stored => stored.startsWith(LEDGER_PREFIX) && stored !== key)
   const stored = Object.fromEntries(await Promise.all(others.map(async other => [other, await $.store.get(other)] as const)))
   await Promise.all(staleLedgers(stored, run.at).map(stale => quietly(() => $.store.delete(stale))))
