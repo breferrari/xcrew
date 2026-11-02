@@ -340,7 +340,7 @@ test('one app keeps one mark: after its dependencies change, the install stays i
 test('an edit to a spec the XcodeGen spec includes marks the project, and other YAML only asks', async ($, on) => {
   mock.store(on)
   const included = '/work/App/targets/App.yml'
-  const calls = stubCli(on, { project: args => ({ isGenerated: true, ...(args.includes(included) ? { generate: 'xcodegen generate', app: '' } : {}) }) })
+  const calls = stubCli(on, { project: args => ({ isGenerated: true, readsYaml: true, ...(args.includes(included) ? { generate: 'xcodegen generate', app: '' } : {}) }) })
   on('tool.call', () => ({ result: {}, text: 'done' }))
   await callTool($, 'Edit', { file_path: '/work/App/.github/workflows/ci.yml', old_string: 'a', new_string: 'b' })
   expect((await build($)).deny).toBeUndefined()
@@ -348,4 +348,50 @@ test('an edit to a spec the XcodeGen spec includes marks the project, and other 
   expect((await build($)).deny).toContain('`xcodegen generate`')
   // The CLI decides for every YAML file: a spec can include another by any name.
   expect(calls.filter(call => call.args.includes('--manifest')).map(call => call.args.at(-1))).toEqual(['/work/App/.github/workflows/ci.yml', included])
+})
+
+/** Two YAML edits in a project whose CLI answers `project` with `answered`, and the CLI's `project` calls they made. */
+async function yamlEdits($: Parameters<typeof callTool>[0], on: On, answered: { isGenerated: boolean }): Promise<string[][]> {
+  mock.store(on)
+  const calls = stubCli(on, { project: () => answered })
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+  await callTool($, 'Edit', { file_path: '/work/App/.github/workflows/ci.yml', old_string: 'a', new_string: 'b' })
+  await callTool($, 'Write', { file_path: '/work/App/docs/config.yaml', content: 'x' })
+  const asked = calls.filter(call => call.args[0] === 'project').map(call => [...call.args])
+  expect((await build($)).deny).toBeUndefined()
+  return asked
+}
+
+test('in a Tuist project, a YAML edit asks the CLI once a session whether the project reads YAML, and nothing more', async ($, on) => {
+  expect(await yamlEdits($, on, { isGenerated: true })).toEqual([['project']])
+})
+
+test('in a project nothing generates, a YAML edit asks the CLI once a session whether the project reads YAML, and nothing more', async ($, on) => {
+  expect(await yamlEdits($, on, { isGenerated: false })).toEqual([['project']])
+})
+
+test('after a generate, a project XcodeGen now generates has its YAML edits read', async ($, on) => {
+  mock.store(on)
+  let readsYaml = false
+  const calls = stubCli(on, { project: args => ({ isGenerated: readsYaml, ...(readsYaml ? { readsYaml } : {}), ...(args.includes('--manifest') ? { generate: 'xcodegen generate', app: '' } : {}) }) })
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+  await callTool($, 'Edit', { file_path: '/work/App/project.yml', old_string: 'a', new_string: 'b' })
+  readsYaml = true
+  await callTool($, 'Bash', { command: 'xcodegen generate' })
+  await callTool($, 'Edit', { file_path: '/work/App/project.yml', old_string: 'b', new_string: 'c' })
+  expect(calls.filter(call => call.args.includes('--manifest')).map(call => call.args.at(-1))).toEqual(['/work/App/project.yml'])
+})
+
+test('a CLI that couldn\'t say whether the project reads YAML is asked again at the next YAML edit', async ($, on) => {
+  mock.store(on)
+  let fails = true
+  const calls = stubCli(on, { project: args => {
+    if (fails && args.length === 1) throw new Error('timed out')
+    return { isGenerated: true, readsYaml: true, ...(args.includes('--manifest') ? { generate: 'xcodegen generate', app: '' } : {}) }
+  } })
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+  await callTool($, 'Edit', { file_path: '/work/App/project.yml', old_string: 'a', new_string: 'b' })
+  fails = false
+  await callTool($, 'Edit', { file_path: '/work/App/project.yml', old_string: 'b', new_string: 'c' })
+  expect(calls.filter(call => call.args.includes('--manifest')).map(call => call.args.at(-1))).toEqual(['/work/App/project.yml'])
 })

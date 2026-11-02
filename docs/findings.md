@@ -340,7 +340,7 @@ XcodeGen reads every spec its spec includes, so an edit to one marks the project
   - A number resolves to neither a Bool nor a String, so the flag keeps its default, true.
 - A disabled include is never read (`.filter(\.enable)` comes before the file is loaded). `${NAME}` in a spec, an include's path among them, expands from the variables the loader is given: the environment.
 
-xcrew reads only the top-level `include` key, in those documented forms, with no YAML dependency. It resolves includes the same way. An include whose path holds a variable, or whose `enable` isn't a literal, is left out, since it depends on the environment at generate time. JSON specs are out of scope: detection doesn't find a `project.json`, and the mod doesn't ask about a JSON spec a YAML spec includes. The CLI tests pin each case. Since a spec can include another by any name, the mod asks the CLI about every YAML file edited.
+xcrew reads only the top-level `include` key, in those documented forms, with no YAML dependency. It resolves includes the same way. An include whose path holds a variable, or whose `enable` isn't a literal, is left out, since it depends on the environment at generate time. JSON specs are out of scope: detection doesn't find a `project.json`, and the mod doesn't ask about a JSON spec a YAML spec includes. The CLI tests pin each case. Since a spec can include another by any name, the mod asks the CLI about every YAML file edited in a project XcodeGen generates, and about none elsewhere: a CI workflow's edit in any other project started two CLI calls for nothing.
 
 ## The red-to-green ledger
 

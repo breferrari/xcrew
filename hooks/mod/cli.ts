@@ -134,6 +134,11 @@ export function isGeneratedOf(answer: unknown): boolean {
   return (answer as { isGenerated?: boolean } | undefined)?.isGenerated === true
 }
 
+/** Whether the project's generator reads YAML, as XcodeGen does; false when the CLI can't say. */
+export function readsYamlOf(answer: unknown): boolean {
+  return (answer as { readsYaml?: boolean } | undefined)?.readsYaml === true
+}
+
 /** The scheme MobileBuildMCP builds with when a call names none, as `xcrew project --profiles` answers. */
 export function profileSchemeOf(answer: unknown): string | undefined {
   const scheme = (answer as { scheme?: unknown } | undefined)?.scheme

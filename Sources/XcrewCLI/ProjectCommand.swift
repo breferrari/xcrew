@@ -25,6 +25,9 @@ struct ProjectCommand: Command {
         /// With `--xcode`, when Xcode hosts MobileBuildMCP's server: the profile active at its start, whose scheme it
         /// writes Xcode's selection over, `(default)` for the global defaults; the `xcuserstate` it reads; and whether it
         /// follows that file after its start.
+        /// Whether the generator reads YAML, as XcodeGen's spec and the specs it includes are: the mod asks about a YAML
+        /// edit only then.
+        var readsYaml: Bool?
         var activeProfile: String?
         var xcodeState: String?
         var followsXcode: Bool?
@@ -57,6 +60,7 @@ struct ProjectCommand: Command {
         let layout = project.layout(.anywhereButHome)
         let nearest = layout.generator
         var answer = Answer(isGenerated: nearest != nil)
+        if nearest?.generator == .xcodeGen { answer.readsYaml = true }
         if let manifest = invocation.arguments["manifest"], let nearest {
             let found = layout.command(after: Self.file(manifest, in: project), nearest: nearest)
             (answer.generate, answer.app) = (found?.command, found?.manifests.path)
