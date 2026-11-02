@@ -70,10 +70,12 @@ settle() {
     esac
     if gh pr checks "$1" 2>/dev/null | grep -q fail; then echo "release: #$1 failed CI" >&2; return 1; fi
     if [ "$(date +%s)" -ge "$deadline" ]; then
-      # Off before the other pull requests' auto-merge comes back, so none merges ahead of it.
+      # The other pull requests stay paused, so none merges ahead of it while it waits for the person.
       gh pr merge "$1" --disable-auto >/dev/null 2>&1 || true
-      echo "release: #$1 hasn't merged in $((wait / 60)) minutes of CI; its auto-merge is off, so nothing merges ahead of it" >&2
+      echo "release: #$1 hasn't merged in $((wait / 60)) minutes of CI; its auto-merge is off" >&2
       echo "release: once its checks pass, merge it with: gh pr merge $1 --squash, then run: scripts/release.sh $version" >&2
+      for pr in $paused; do echo "release: auto-merge stays off on #$pr until then; turn it back on with: gh pr merge $pr --auto --squash" >&2; done
+      paused=""
       return 1
     fi
     sleep 10

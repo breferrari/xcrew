@@ -712,7 +712,7 @@ The first run builds the CLI. The shim used to say "about 10 s" with no measurem
 
 Each CI job and step that can hang, the release script's waits and the canary's fetches stop at a deadline of their own rather than at GitHub's six hours or never. Each file names its row here, which holds its number; a ManifestTest holds each to its row and each row to the rule. The rule: three times the slowest measured, rounded up to whole minutes and at least 5 for a job or step (`timeout-minutes` takes minutes; the floor keeps a job measured at seconds clear of one slow runner start), at least 300 seconds for a script's wait, and up to the next 10 seconds for a fetch. Jobs, steps and runs were measured on November 2, 2026 from the GitHub API, over the last successful runs of each workflow, from each one's start to its end, and a run from its creation to its last update. The fetches were timed from a Mac on macOS 27.2 on a home connection, not from a runner.
 
-| Deadline | Slowest | Sample | Deadline |
+| What | Slowest | Sample | Deadline |
 |---|---|---|---|
 | `ci.yml changes` | 21 s | 30 | 5 min |
 | `ci.yml swift` | 199 s | 30 | 10 min |
@@ -729,7 +729,7 @@ Each CI job and step that can hang, the release script's waits and the canary's 
 | `canary.yml sosumi curl` | 0.46 s | 3 | 10 s |
 | `readme-images.sh curl` | 0.75 s | 30 | 10 s |
 
-`release.sh settle` is a release pull request's CI run, and its deadline starts over whenever the script brings the branch up to date, which runs CI again. `release.sh release run` covers the run appearing after the tag's push and finishing: GitHub records no time for the push, so the run's own duration, under the floor, stands for both. A wait that ends says how to resume, and the merge wait turns off the release pull request's auto-merge first, so nothing merges ahead of it once the other pull requests' auto-merge comes back.
+`release.sh settle` is a release pull request's CI run, and its deadline starts over whenever the script brings the branch up to date, which runs CI again. `release.sh release run` covers the run appearing after the tag's push and finishing: GitHub records no time for the push, so the run's own duration, under the floor, stands for both. A wait that ends says how to resume, and the merge wait turns off the release pull request's auto-merge and leaves the other pull requests paused, naming the command that turns each back on, so none merges ahead of the release while it waits for the person.
 
 ## Tried and rejected
 
