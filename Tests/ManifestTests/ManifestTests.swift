@@ -1125,6 +1125,15 @@ import Testing
         }
     }
 
+    /// The shim's cleanup tells a build by its folder's name, the key it hashes to: the pattern names as many hex
+    /// characters as the key keeps, or a build would never match and none would go.
+    @Test func theShimsCleanupMatchesTheKeysLength() throws {
+        let shim = try text("bin/xcrew")
+        let kept = try #require(shim.firstMatch(of: /\| shasum \| cut -c1-(\d+)\)/)?.1, "bin/xcrew no longer cuts its key from shasum")
+        let pattern = try #require(shim.firstMatch(of: /(?m)^ *keyform="([^"]*)"$/)?.1, "bin/xcrew names no build pattern")
+        #expect(pattern.matches(of: /\$hex/).count == Int(kept), "the build pattern names \(pattern.matches(of: /\$hex/).count) characters, the key keeps \(kept)")
+    }
+
     /// Everything xcrew keeps that nothing uses any more goes after one age: the shim's unused builds and root keys, the
     /// mod's history, a failed test's images, the card, and a session's stamp no session end removed. Each prunes its own;
     /// the age is one choice.

@@ -209,6 +209,26 @@ extension ShimTests {
 }
 
 extension ShimTests {
+    /// The cleanup removes builds alone: xcrew's own folders beside them, as `sessions/` and `images/`, prune their own
+    /// entries, and a folder's date moves only when an entry is added or removed, so an old one may still hold what's in use.
+    @Test func aRebuildRemovesOnlyOldBuildsNotXcrewsOtherFolders() async throws {
+        _ = try await shim("help")
+        let old = Date(timeIntervalSinceNow: -15 * 86_400)
+        let stale = cache.appending(path: "0123456789abcdef")
+        let others = ["sessions", "images", "cards", "phases"].map { cache.appending(path: $0) }
+        for folder in [stale] + others {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: folder.path)
+        }
+        try write("print(4)\n", to: "Sources/xcrew/main.swift")
+        _ = try await shim("help")
+        let left = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path))
+        #expect(!left.contains(stale.lastPathComponent))
+        for folder in others { #expect(left.contains(folder.lastPathComponent), "\(folder.lastPathComponent) went with the old builds") }
+    }
+}
+
+extension ShimTests {
     /// At session start the session hook and the mod both start the shim; after an update only one may build.
     @Test func twoFirstRunsAtOnceBuildOnce() async throws {
         let hold = cache.deletingLastPathComponent().appending(path: "hold")
