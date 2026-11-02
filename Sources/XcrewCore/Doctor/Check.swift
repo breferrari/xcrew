@@ -85,11 +85,11 @@ public protocol Check: Sendable {
     /// `<area>/<name>`. Stable: mcs and scripts address a check by it.
     var id: String { get }
     var title: String { get }
-    /// Whether it calls out to the network, which the session-start `doctor --problems` leaves out.
+    /// Whether it calls out to the network, which `doctor --problems`, the mod's read, leaves out. No check does now.
     var reachesNetwork: Bool { get }
-    /// Whether it starts a server of its own, which the session-start `doctor --problems` leaves out as well.
+    /// Whether it starts a server of its own, which `doctor --problems` leaves out as well. No check does now.
     var startsAServer: Bool { get }
-    /// Whether it walks a tree of files, too slow for every prompt, which `doctor --problems` leaves out as well.
+    /// Whether it walks a tree of files, which `doctor --problems` leaves out as well. No check does now.
     var walksFiles: Bool { get }
     func run(_ context: CheckContext) async -> CheckResult
 }
@@ -99,7 +99,7 @@ extension Check {
     public var startsAServer: Bool { false }
     public var walksFiles: Bool { false }
 
-    /// Whether the session-start and after-prompt `doctor --problems` runs it: not when it calls the network, starts a
-    /// server or walks files.
+    /// Whether `doctor --problems`, which the mod runs at session start, after setup and when asked, runs it: not when it
+    /// calls the network, starts a server or walks files.
     public var isOnPrompt: Bool { !(reachesNetwork || startsAServer || walksFiles) }
 }

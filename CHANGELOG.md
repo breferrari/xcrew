@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `mcs doctor` no longer offers `defaults write … IDEAllowUnauthenticatedAgents` as the fix for "Claude Code approved in Xcode", which approved nothing; its MobileBuildMCP version fix is the CLI's own, `brew upgrade mobilebuildmcp`. The README, SECURITY.md and the reference skill now describe the doctor as it is: no network request, no storage scan.
 - `xcrew/briefing-current` passes as "the running xcrew's", without a version, so the README's sample doctor report stays true across releases.
 
 ## 0.13.0 — 2026-11-02

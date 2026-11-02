@@ -52,7 +52,7 @@ supplementaryDoctorChecks:
     name: MobileBuildMCP 2.7.1 or newer
     section: xcrew
     command: mcs/checks/mobilebuildmcp--version.sh
-    fixCommand: "brew upgrade getsentry/xcodebuildmcp/mobilebuildmcp"
+    fixCommand: "brew upgrade mobilebuildmcp"
   - type: shellScript
     name: No old xcodebuildmcp on PATH
     section: xcrew
@@ -85,7 +85,6 @@ supplementaryDoctorChecks:
     name: Claude Code approved in Xcode
     section: xcrew
     command: mcs/checks/xcode-mcp--claude-approved.sh
-    fixCommand: "defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO"
   - type: shellScript
     name: This session has the running xcrew's rules
     section: xcrew
