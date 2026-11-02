@@ -49,14 +49,19 @@ export function ledgerKey(head: Head): string {
 
 /** A ledger as stored, or none: a value in another shape is ignored rather than trusted. A green
  * not marked `listed` was inferred from a run's selection by an older xcrew, and could name a test that run never
- * ran; its red is long over, so the entry is left out, and the ledger rebuilds from new runs. An entry that isn't an
- * object is left out too.
+ * ran; its red is long over, so the entry is left out, and the ledger rebuilds from new runs. One marked flaky keeps its
+ * mark and its red, without the green: one clean repeated run turned it green then, short of the passes it needs. An
+ * entry that isn't an object is left out too.
  */
 export function ledgerOf(stored: unknown): Ledger | undefined {
   const ledger = stored as Ledger | undefined
   if (!Array.isArray(ledger?.entries) || typeof ledger?.updated !== 'number') return undefined
   const entries = ledger.entries.filter((entry): entry is LedgerEntry => typeof entry === 'object' && entry !== null)
-  return { ...ledger, entries: entries.filter(entry => !entry.green || entry.green.listed) }
+  return { ...ledger, entries: entries.flatMap(entry => (!entry.green || entry.green.listed ? [entry] : entry.flaky ? [withoutGreen(entry)] : [])) }
+}
+
+function withoutGreen({ green: _, ...entry }: LedgerEntry): LedgerEntry {
+  return entry
 }
 
 /**

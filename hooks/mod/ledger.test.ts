@@ -117,6 +117,14 @@ test('a green an older xcrew inferred from a run\'s selection is left out, and i
   expect(text).not.toContain(TEST)
 })
 
+/** A flaky test an older xcrew turned green after one clean repeated run still needs its passes: it stays, red, marked. */
+test('a flaky test an older xcrew turned green is kept red with its mark', async ($, on) => {
+  const at = Date.UTC(2026, 9, 30, 11, 0)
+  const inferred = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', flaky: { failed: 2, runs: 5 }, green: { scope: 'test_sim › AppTests', at }, last: at }
+  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [inferred], updated: at } } })
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs): red`)
+})
+
 /** With only inferred greens left, no red waits for a run's passed tests, so none are asked for. */
 test('a ledger whose only entries an older xcrew turned green asks a test run for no passed tests', async ($, on) => {
   const at = Date.UTC(2026, 9, 30, 11, 0)
