@@ -230,7 +230,8 @@ import Testing
     /// The routing rules guard DerivedData, deleted only when the person asks, and a harm guard holds anything else of the
     /// person's alike. A text that hands Claude a command deleting a folder of theirs or stopping a process that may be
     /// their build says it's theirs to agree to, right before the command, which ends the text so nothing of the
-    /// sentence around it is copied into it.
+    /// sentence around it is copied into it. The commands matched are docs/findings.md's *Commands that remove the
+    /// person's data*.
     @Test func aCommandThatRemovesOrStopsThePersonsWorkIsTheirsToAgreeTo() throws {
         #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
         let condition = /so it's the person's to agree to:\s+/

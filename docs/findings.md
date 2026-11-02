@@ -708,6 +708,19 @@ On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac acce
 
 The first run builds the CLI. The shim used to say "about 10 s" with no measurement behind it. Two cold first builds, `bin/xcrew --version` with an empty Xcrew cache, both on October 29, 2026, under Swift 6.4.2 (Xcode 27.2 beta 3): a fresh Mac took 15.4 s wall clock (`swift build` reported 11.5 s); a contributor's M1 Max (macOS 27.0.1, APFS, Swift's own caches warm) took 13.5 to 14.4 s over three runs (12.0 to 12.4 s). The shim states a range both support, and the README repeats it.
 
+## Commands that remove the person's data
+
+A text xcrew tells Claude that gives a command removing or overwriting something of the person's says what's lost and that it's the person's to agree to, right before the command, which ends the text, so nothing of the sentence around it is copied into it. The routing rules' harm guard has DerivedData deleted only when the person asks; the same holds for their folders, builds, simulators, tools and settings. The commands checked for, as `ManifestTests` matches them in every text it lists as told to Claude:
+
+- `rm` with a recursive flag, in any order of flags (`rm -r`, `rm -rf`, `rm -fr`, `rm -R`);
+- `kill`, `killall`, `pkill`;
+- `simctl delete`, `simctl erase`;
+- `uninstall` (`xcodes uninstall`, `brew uninstall`, `npm uninstall`);
+- `defaults write`, `defaults delete`;
+- `--delete` (MobileBuildMCP's purge) and `--force` where it replaces with no copy kept.
+
+The sweep of November 2, 2026 found and gave the condition to the module cache's `rm -rf`, a held build database's `kill`, the leftover `.xcodebuildmcp/` folder's `rm -r`, the three `simctl delete` offers, `xcrew space`'s purge note and `xcodes uninstall` (and its DerivedData line, a dry run, the cost beside it), the doctor's `brew uninstall` and `npm uninstall` of the old XcodeBuildMCP, the unsigned-agents `defaults write`, and `xcode-skills --force`, which deletes the project's own skills. It left as they are: `setup --force`, which keeps a backup of what it replaces; the purge's and the runtimes' `--dry-run` commands, which delete nothing; `echo <version> > .xcode-version`, offered only where no pin file is; the README, which the person reads, not Claude. A command added with a pattern not here has no test holding it: add its pattern here and to the test.
+
 ## Deadlines
 
 Each CI job and step that can hang, the release script's waits and the canary's fetches stop at a deadline of their own rather than at GitHub's six hours or never. Each file names its row here, which holds its number; a ManifestTest holds each to its row and each row to the rule. The rule: three times the slowest measured, rounded up to whole minutes and at least 5 for a job or step (`timeout-minutes` takes minutes; the floor keeps a job measured at seconds clear of one slow runner start), at least 300 seconds for a script's wait, and up to the next 10 seconds for a fetch. Jobs, steps and runs were measured on November 2, 2026 from the GitHub API, over the last successful runs of each workflow, from each one's start to its end, and a run from its creation to its last update. The fetches were timed from a Mac on macOS 27.2 on a home connection, not from a runner.
