@@ -228,6 +228,49 @@ import XcrewTestSupport
         #expect(Self.unitCall("scheme: 'true'\nconfiguration: null\nbundleId: ~\nplatform:\nuseLatestOS: True") == [#"session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"true","useLatestOS":true}"#])
     }
 
+    /// The session defaults read as MobileBuildMCP reads them, by the installed MobileBuildMCP's own YAML library
+    /// (`utils/project-config.js` parses the config with `yaml`), run with the Node it ships, wherever it's installed:
+    /// each profile's keys and values alike, YAML's nulls left out, over every shape the reader takes.
+    @Test(.enabled(if: RunLogWorkspaceTests.mobileBuildMCP != nil))
+    func theProfilesAreReadAsTheInstalledMobileBuildMCPReadsThem() async throws {
+        let libexec = try #require(RunLogWorkspaceTests.mobileBuildMCP)
+        let yaml = """
+        schemaVersion: 1
+        sessionDefaultsProfiles:
+            'my: app': # the app
+                scheme: App # the app's own
+                derivedDataPath: /build/Some Tool With A Long Name/That Wraps
+                  Onto The Next Line/DerivedData
+                extraArgs:
+                - '-a'
+                - "-b" # second
+        # the unit tests
+            unit:
+                scheme: 'true'
+                configuration: null
+                bundleId: ~
+                platform:
+                useLatestOS: True
+                extraArgs: [-a, '-b']
+                env: {LOG: quiet}
+            empty:
+                extraArgs: []
+                env: {}
+        activeSessionDefaultsProfile: unit # the default
+
+        """
+        let script = "const y = require(process.argv[1]); const c = y.parse(require('fs').readFileSync(0, 'utf8')); console.log(JSON.stringify(c.sessionDefaultsProfiles))"
+        let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, libexec.appending(path: "node_modules/yaml").path], stdin: Data(yaml.utf8), timeout: .seconds(30))
+        let upstream = try #require(try JSONSerialization.jsonObject(with: Data(ran.stdout.utf8)) as? [String: [String: Any]], "MobileBuildMCP's yaml gave \(ran.stdout) \(ran.stderr)")
+        let theirs = upstream.mapValues { $0.filter { !($0.value is NSNull) } }
+        let ours = Dictionary(uniqueKeysWithValues: ConfigRenderer.sessions(in: yaml).profiles.map { ($0.name, LiveDefaults.defaults($0.lines, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone"))) })
+        #expect(Set(ours.keys) == Set(theirs.keys))
+        for (name, values) in theirs {
+            #expect(NSDictionary(dictionary: ours[name] ?? [:]) == NSDictionary(dictionary: values), "profile \(name): xcrew reads \(ours[name] ?? [:]), MobileBuildMCP's yaml \(values)")
+        }
+        #expect(ConfigRenderer.profiles(in: yaml).active == "unit")
+    }
+
     @Test func globalDefaultsAreOneCallWithoutAProfile() {
         let yaml = "schemaVersion: 1\nsessionDefaults:\n  projectPath: '/abs/App.xcodeproj'\n  simulatorName: 'iPhone 17'\n"
         #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone")) == [#"session_set_defaults {"projectPath":"/abs/App.xcodeproj","simulatorName":"iPhone 17"}"#])
