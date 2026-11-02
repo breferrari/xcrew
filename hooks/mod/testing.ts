@@ -79,6 +79,8 @@ export function stubCli(
     runs?: () => unknown
     /** What `xcrew flaky` answers for the marks and repeated run the mod pipes in: the marks after the run. */
     flaky?: (stdin: string | undefined) => unknown
+    /** What `xcrew gone` answers for the folders it's asked about, or the Error it fails with. */
+    gone?: (folders: readonly string[]) => unknown
     noBuild?: boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
   } = {},
@@ -94,6 +96,8 @@ export function stubCli(
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
     const runs = args[0] === 'runs' ? answers.runs?.() : undefined
     if (runs instanceof Error) throw runs
+    const gone = args[0] === 'gone' ? answers.gone?.(args.slice(1)) : undefined
+    if (gone instanceof Error) throw gone
     // The commands that print text rather than JSON.
     const printing = new Map<string, () => string | Error | { stdout: string; stderr: string } | undefined>([['look', () => answers.look?.(args)], ['evidence', () => answers.evidence?.(e.init?.stdin)]])
     if (args[0] === 'setup' && !args.includes('--choices')) printing.set('setup', () => String(answers.setup?.(args) ?? ''))
@@ -116,6 +120,7 @@ export function stubCli(
       : args[0] === 'runs' ? (runs ?? [])
       : args[0] === 'flaky' ? (answers.flaky?.(e.init?.stdin) ?? null)
       : args[0] === 'session' ? (answers.session?.(e.init?.stdin) ?? {})
+      : args[0] === 'gone' ? (gone ?? null)
       : null
     )
     const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : (printed ?? JSON.stringify(answer))

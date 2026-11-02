@@ -48,6 +48,13 @@ export function ledgerKey(head: Head): string {
   return `${LEDGER_PREFIX}${head.root} @ ${label(head, false)}`
 }
 
+/** The checkout a stored ledger's key names: up to its last ` @ `, as the label after it, a branch's name or `commit <sha>`, holds no ` @ `. */
+export function ledgerRoot(key: string): string | undefined {
+  if (!key.startsWith(LEDGER_PREFIX)) return undefined
+  const at = key.lastIndexOf(' @ ')
+  return at < 0 ? undefined : key.slice(LEDGER_PREFIX.length, at)
+}
+
 /** A ledger as stored, or none: a value in another shape is ignored rather than trusted. A green
  * not marked `listed` was inferred from a run's selection by an older xcrew, and could name a test that run never
  * ran; its red is long over, so the entry is left out, and the ledger rebuilds from new runs. One marked flaky keeps its

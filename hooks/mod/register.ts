@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -12,7 +12,7 @@ import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, runsAllOfScope, lost, namesScheme, observe, observeSession, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
-import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
+import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerRoot, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { drawsForm, type FormElements, formTree, NO_FORM, PICK_KEYS, setupArgs, setupFact, startingPicks, WROTE } from './form'
 import { afterFullRun, type Crossing, loopNote } from './loop'
@@ -443,6 +443,7 @@ export const register: Register = on => {
     void quietly(() => readXcodeStart($))
     // The card is saved from the history as it's left: fresh, and this version's.
     void quietly(() => pruneHistory($)).then(() => saveCard($))
+    void quietly(() => pruneGone($))
     return started
   })
   // A `/clear` or a `/resume` fires no session start, the process going on under another conversation: that one starts
@@ -890,17 +891,45 @@ async function dropScope($: EngineInterface, key: string): Promise<void> {
  */
 async function pruneHistory($: EngineInterface): Promise<void> {
   const [keys, now] = await Promise.all([$.store.keys(), $.clock.now()])
-  const scopes = new Set<string>()
-  for (const stored of keys) {
-    const prefix = SCOPE_PREFIXES.find(candidate => stored.startsWith(candidate))
-    if (prefix) scopes.add(stored.slice(prefix.length))
-  }
-  await Promise.all([...scopes].map(async key => {
+  await Promise.all([...storedScopes(keys)].map(async key => {
     const [runs, failed, updated] = await Promise.all([historyKey(key), failedKey(key), updatedKey(key)].map(name => $.store.get(name)))
     const isEmpty = (!Array.isArray(runs) || runs.length === 0) && (!Array.isArray(failed) || failed.length === 0)
     if (keyParts(key) && !isEmpty && !isStale(updated, now)) return
     await dropScope($, key)
   }))
+}
+
+/** The scopes the store holds a key of, each once, by the key without its prefix. */
+function storedScopes(keys: readonly string[]): Set<string> {
+  const scopes = new Set<string>()
+  for (const stored of keys) {
+    const prefix = SCOPE_PREFIXES.find(candidate => stored.startsWith(candidate))
+    if (prefix) scopes.add(stored.slice(prefix.length))
+  }
+  return scopes
+}
+
+/**
+ * Drops the scopes and ledgers of checkouts that are gone, as a worktree removed since, as the CLI finds them: each
+ * checkout asked about once, apart from the card, which covers only the session's own; nothing when the CLI can't say.
+ */
+async function pruneGone($: EngineInterface): Promise<void> {
+  const keys = await $.store.keys()
+  const scopes = [...storedScopes(keys)].flatMap(key => {
+    const root = keyParts(key)?.root
+    return root ? [{ key, root }] : []
+  })
+  const ledgers = keys.flatMap(key => {
+    const root = ledgerRoot(key)
+    return root ? [{ key, root }] : []
+  })
+  const roots = [...new Set([...scopes, ...ledgers].map(entry => entry.root))]
+  if (roots.length === 0) return
+  const gone = new Set(goneOf(await answer($, ['gone', ...roots], 10_000)))
+  await Promise.all([
+    ...scopes.filter(entry => gone.has(entry.root)).map(entry => dropScope($, entry.key)),
+    ...ledgers.filter(entry => gone.has(entry.root)).map(entry => quietly(() => $.store.delete(entry.key))),
+  ])
 }
 
 /** Counts a full-suite run toward the loop budget: the runs that crossed it, when this one did. */

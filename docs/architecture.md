@@ -11,7 +11,7 @@ All behaviour lives in a dependency-free Swift package. Everything else is a thi
 | Entry point | Calls |
 | --- | --- |
 | Plugin hooks (`hooks/hooks.json`) | `bin/xcrew hook session-start` and `hook session-end` |
-| Mod (`hooks/mod/`) | `report`, `phase`, `project`, `doctor`, `runs`, `card`, `session`, `note`, `flaky`, `affected`, `look`, `evidence`, `setup` and `xcode`, through `cli.ts`, on the build `bin/xcrew --binary-path` names |
+| Mod (`hooks/mod/`) | `report`, `phase`, `project`, `doctor`, `runs`, `card`, `session`, `note`, `flaky`, `gone`, `affected`, `look`, `evidence`, `setup` and `xcode`, through `cli.ts`, on the build `bin/xcrew --binary-path` names |
 | Skills (`skills/`) | `xcrew setup`, `xcrew project --setup`, `xcrew doctor`, which the plugin puts on Claude's `PATH` |
 | mcs (`techpack.yaml`) | `mcs/configure.sh` → `xcrew setup`; `mcs/checks/*.sh` → `xcrew doctor --check <id>` |
 
