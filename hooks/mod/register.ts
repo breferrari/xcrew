@@ -400,7 +400,13 @@ export const register: Register = on => {
       // One run of the checks gives the report and the band's problems: a problem fixed since leaves the band.
       const args = ['doctor', '--text-and-problems', ...(session ? ['--session', session] : [])]
       const both = textAndProblemsOf(await answer($, args, 120_000))
-      if (!both) return { text: await cliText($, ['doctor', ...(session ? ['--session', session] : [])]) }
+      // A doctor that couldn't run isn't run again here: the band reads it on the next prompt, as after any failed read.
+      if (!both) {
+        doctorOnNextPrompt = true
+        return { text: couldntRun(args, 'no answer') }
+      }
+      // An older read still going would land after this one: it's waited for first.
+      await reading?.catch(() => undefined)
       await quietly(() => applyProblems($, both.problems))
       return { text: both.text }
     }

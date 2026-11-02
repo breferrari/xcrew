@@ -314,3 +314,19 @@ test('after setup, a doctor read already in flight is followed by a fresh one', 
   expect(await ui.find({ type: 'Text', text: /restart Claude Code to load it/ })).toBeDefined()
   await ui.unmount()
 })
+
+/** A doctor that can't run, as while the CLI builds, isn't run again: the report says so, and the band reads it next prompt. */
+test('/xcrew doctor that gets no answer says so without running the checks again', async ($, on) => {
+  let fails = false
+  const { calls, clock } = sessionWith(on, [PIN], () => fails)
+  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  fails = true
+  const before = calls.length
+  const ran = await runCommand($, 'xcrew', 'doctor')
+  expect(String(ran.text)).toContain("couldn't run")
+  // The CLI's own wrapper may ask its shim once more; nothing runs the doctor in another form.
+  const after = calls.slice(before).filter(call => call.args[0] === 'doctor')
+  expect(after.length).toBeGreaterThan(0)
+  expect(after.every(call => call.args.includes('--text-and-problems'))).toBe(true)
+})

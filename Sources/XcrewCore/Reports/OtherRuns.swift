@@ -29,8 +29,9 @@ public enum OtherRuns {
             guard ProjectLayout.canonicalPath(root) != here, FileManager.default.fileExists(atPath: root),
                   let log = RunLog.find(since: now.addingTimeInterval(-quietFor), project: URL(fileURLWithPath: root), home: machine.home, named: { $0.firstMatch(of: runLog) != nil }),
                   let tool = log.lastPathComponent.firstMatch(of: runLog).map({ String($0.1) }) else { return nil }
-            guard RunLog.outcome(of: RunLog.end(ofLogAt: log.path), kind: tool.hasPrefix("test") ? .test : .build) == nil else { return nil }
-            return Run(worktree: URL(fileURLWithPath: top).lastPathComponent, tool: tool, phase: RunLog.phase(ofLogAt: log, expectedTests: nil, keptIn: RunLog.readings(on: machine)))
+            let followed = RunLog.follow(logAt: log, expectedTests: nil, kind: tool.hasPrefix("test") ? .test : .build, keptIn: RunLog.readings(on: machine))
+            guard followed?.outcome == nil else { return nil }
+            return Run(worktree: URL(fileURLWithPath: top).lastPathComponent, tool: tool, phase: followed?.phase)
         }.sorted { $0.worktree < $1.worktree }
     }
 }

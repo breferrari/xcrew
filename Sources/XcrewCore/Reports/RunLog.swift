@@ -43,9 +43,6 @@ public enum RunLog {
         machine.cacheFolder.appending(path: "phases")
     }
 
-    /// How much of a log's end holds its latest lines, nearly always.
-    static let tailBytes = 64 * 1024
-
     /// A short phase for the band, or nil before the first task. `expectedTests` is the last run's total. From the
     /// end of the tests' build until testing starts, the phase is testing, with no count (docs/findings.md, *Test progress
     /// in a run's log*). No count for a build: xcodebuild starts work on nearly every module early, and prints no line
@@ -220,18 +217,20 @@ public enum RunLog {
 }
 
 extension RunLog {
-    /// Whether the log's run succeeded, by the last verdict xcodebuild printed (`** BUILD SUCCEEDED **`,
-    /// `** TEST EXECUTE FAILED **`); nil before it printed one, when that verdict is neither, as for a run interrupted,
-    /// and for a test run when it isn't its tests' own, as after building for testing.
-    /// The scheme the run built, from the `Command line invocation:` MobileBuildMCP's log opens with: the line after it is
-    /// xcodebuild's command, `-scheme Feature` or `-scheme "My App"`.
-    /// How many of a log's first lines its invocation is looked for in: it heads the log.
+    /// How many of a log's first lines its invocation's heading is looked for in: it heads the log.
     static let invocationWithin = 64
 
+    /// The scheme the run built, from the `Command line invocation:` MobileBuildMCP's log opens with: the line after it is
+    /// xcodebuild's command, `-scheme Feature` or `-scheme "My App"`.
     public static func scheme(in log: String) -> String? {
         let lines = log.split(separator: "\n", maxSplits: invocationWithin, omittingEmptySubsequences: false)
         guard let heading = lines.firstIndex(where: { $0.hasPrefix("Command line invocation:") }), heading + 1 < lines.count else { return nil }
-        guard let match = lines[heading + 1].firstMatch(of: /\s-scheme\s+(?:"([^"]+)"|(\S+))/) else { return nil }
+        return scheme(inInvocation: lines[heading + 1])
+    }
+
+    /// The scheme xcodebuild's command line names: `-scheme Feature` or `-scheme "My App"`.
+    static func scheme(inInvocation line: some StringProtocol) -> String? {
+        guard let match = String(line).firstMatch(of: /\s-scheme\s+(?:"([^"]+)"|(\S+))/) else { return nil }
         return String(match.1 ?? match.2 ?? "")
     }
 
@@ -256,12 +255,6 @@ extension RunLog {
         if kind == .test, !verdict.hasPrefix("** TEST ") || verdict.hasPrefix("** TEST BUILD ") { return nil }
         if kind == .run { return verdict.hasSuffix(" FAILED **") ? false : nil }
         return verdict.hasSuffix(" SUCCEEDED **") ? true : verdict.hasSuffix(" FAILED **") ? false : nil
-    }
-
-    /// The last `tailBytes` of the log at `url`, where a running log's latest lines are; empty when it can't be read.
-    public static func tail(ofLogAt url: URL) -> String {
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return "" }
-        return String(decoding: data.suffix(tailBytes), as: UTF8.self)
     }
 
     /// How much of a finished log's end holds its verdict and the result bundle it names, with a long list of failing

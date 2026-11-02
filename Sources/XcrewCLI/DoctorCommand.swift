@@ -13,6 +13,10 @@ struct DoctorCommand: Command {
         let status: String
         let id: String
         let message: String
+
+        init(_ entry: Doctor.Entry) {
+            (status, id, message) = (entry.result.status.tag.lowercased(), entry.check.id, entry.result.message)
+        }
     }
 
     let name = "doctor"
@@ -47,8 +51,8 @@ struct DoctorCommand: Command {
         }
         if invocation.arguments.has("text-and-problems") {
             let ran = await Doctor.run(Doctor.checks, in: context)
-            let problems = context.project.isApplePlatformProject ? Doctor.problems(ran.filter(\.check.isOnPrompt)).filter { !$0.result.isOffThePrompt } : []
-            let both = TextAndProblems(text: Self.lines(ran).joined(separator: "\n"), problems: problems.map { JSONLine(status: $0.result.status.tag.lowercased(), id: $0.check.id, message: $0.result.message) })
+            let problems = context.project.isApplePlatformProject ? Self.onTheBand(Doctor.problems(ran.filter(\.check.isOnPrompt))) : []
+            let both = TextAndProblems(text: Self.lines(ran).joined(separator: "\n"), problems: problems.map(JSONLine.init))
             invocation.print(String(decoding: try JSONEncoder.sorted.encode(both), as: UTF8.self))
             return 0
         }
@@ -60,9 +64,9 @@ struct DoctorCommand: Command {
         let checks = Doctor.checks.filter { !onlyProblems || $0.isOnPrompt }
         let ran = await Doctor.run(checks, in: context)
         let problems = onlyProblems ? Doctor.problems(ran) : []
-        let entries = onlyProblems ? problems.filter { !$0.result.isOffThePrompt } : ran
+        let entries = onlyProblems ? Self.onTheBand(problems) : ran
         if invocation.arguments.has("json") {
-            let lines = entries.map { JSONLine(status: $0.result.status.tag.lowercased(), id: $0.check.id, message: $0.result.message) }
+            let lines = entries.map(JSONLine.init)
             invocation.print(String(decoding: try JSONEncoder.sorted.encode(lines), as: UTF8.self))
             return onlyProblems ? 0 : Doctor.worst(entries).rawValue
         }
@@ -70,6 +74,11 @@ struct DoctorCommand: Command {
         let kept = problems.filter(\.result.isOffThePrompt).map(\.check.id)
         (onlyProblems ? Doctor.problemsText(lines: lines, kept: kept) : lines).forEach(invocation.print)
         return onlyProblems ? 0 : Doctor.worst(entries).rawValue
+    }
+
+    /// The problems the line above the prompt shows: those not kept off it.
+    static func onTheBand(_ problems: [Doctor.Entry]) -> [Doctor.Entry] {
+        problems.filter { !$0.result.isOffThePrompt }
     }
 
     /// Each result as the report prints it: its tag, its check's id, and its message, aligned.

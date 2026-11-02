@@ -52,16 +52,13 @@ struct LogReading: Codable, Equatable, Sendable {
         let whole = appended.lastIndex(of: newline).map { $0 + 1 } ?? appended.startIndex
         var isFirst = offset == 0
         for line in appended[..<whole].dropLast().split(separator: newline, omittingEmptySubsequences: false) where whole > appended.startIndex {
-            if scheme == nil, headLines < RunLog.invocationWithin {
+            if scheme == nil, headLines < RunLog.invocationWithin || awaitsInvocation {
                 let text = String(decoding: line, as: UTF8.self)
-                if awaitsInvocation { scheme = RunLog.scheme(in: "Command line invocation:\n" + text) }
+                if awaitsInvocation { scheme = RunLog.scheme(inInvocation: text) }
                 awaitsInvocation = !awaitsInvocation && text.hasPrefix("Command line invocation:")
                 headLines += 1
             }
-            if line.first == UInt8(ascii: "*") {
-                let text = String(decoding: line, as: UTF8.self).trimmingCharacters(in: .whitespaces)
-                if text.hasPrefix("** "), text.hasSuffix(" **") { verdict = text }
-            }
+            if let found = Self.verdict(in: line) { verdict = found }
             if line.isEmpty { isFirst = false; continue }
             if start != .none || line.first.map(Self.mayBegin) == true {
                 read(line: String(decoding: line, as: UTF8.self)[...], isFirst: isFirst)
@@ -71,6 +68,14 @@ struct LogReading: Codable, Equatable, Sendable {
         if let found = Self.lastStep(in: appended[..<whole]) { step = found }
         offset += UInt64(whole - appended.startIndex)
         pending = whole < appended.endIndex ? String(decoding: appended[whole...], as: UTF8.self) : nil
+        if let pending, let found = Self.verdict(in: Data(pending.utf8)[...]) { verdict = found }
+    }
+
+    /// A `** … **` verdict, as xcodebuild writes one, its line trimmed; nil for any other line.
+    static func verdict(in line: Data.SubSequence) -> String? {
+        guard line.contains(UInt8(ascii: "*")) else { return nil }
+        let text = String(decoding: line, as: UTF8.self).trimmingCharacters(in: .whitespaces)
+        return text.hasPrefix("** ") && text.hasSuffix(" **") ? text : nil
     }
 
     /// The first bytes of the lines read before testing starts: `Test Suite '`, `Testing started`, `◇ Test run started.`

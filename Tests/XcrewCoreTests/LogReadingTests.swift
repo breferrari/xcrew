@@ -38,6 +38,27 @@ import XcrewTestSupport
         #expect(LogReading.reading(log, after: second)?.verdict == "** TEST EXECUTE SUCCEEDED **")
     }
 
+    /// A test's name is kept as its 64-bit FNV-1a hash, the published test vector's for "a".
+    @Test func aTestsNameIsKeptAsItsFNV1aHash() {
+        #expect(TestProgress.key("a") == 0xaf63_dc4c_8601_ec8c)
+    }
+
+    /// The invocation's heading may be the last of the first 64 lines: the line after it still names the scheme.
+    @Test func anInvocationOnTheSixtyFifthLineIsRead() throws {
+        let project = Project.temporary()
+        project.write(String(repeating: "note\n", count: 63) + "Command line invocation:\n    xcodebuild test -scheme App\n", to: "test_sim_1.log")
+        #expect(LogReading.reading(project.root.appending(path: "test_sim_1.log"), after: nil)?.scheme == "App")
+    }
+
+    /// A verdict still being written, its line unended, or written indented, is the run's verdict.
+    @Test func aVerdictUnendedOrIndentedIsRead() throws {
+        let project = Project.temporary()
+        project.write(Self.start + "** TEST EXECUTE SUCCEEDED **", to: "test_sim_1.log")
+        #expect(LogReading.reading(project.root.appending(path: "test_sim_1.log"), after: nil)?.verdict == "** TEST EXECUTE SUCCEEDED **")
+        project.write(Self.start + "  ** BUILD FAILED **\n", to: "build_sim_1.log")
+        #expect(LogReading.reading(project.root.appending(path: "build_sim_1.log"), after: nil)?.verdict == "** BUILD FAILED **")
+    }
+
     /// A kept reading holds no test's name: its size, read and written each tick, grows by a number a test, not a name.
     @Test func aKeptReadingHoldsNoTestsName() throws {
         let project = Project.temporary()
