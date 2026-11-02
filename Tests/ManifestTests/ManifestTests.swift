@@ -766,6 +766,28 @@ import Testing
         #expect(changes.contains(/if \[ "\$EVENT" = push \]; then\n\s+code=true\n\s+distribution=true\n/))
     }
 
+    /// A hung job stops at a deadline of its own, not at GitHub's six hours, and each says where its number comes from: a
+    /// comment beside it naming the measured duration it's taken from (docs/findings.md, *Deadlines*).
+    @Test func everyJobHasADeadlineWithItsBasis() throws {
+        for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml", ".github/workflows/release.yml"] {
+            let text = try text(workflow)
+            let jobs = try #require(text.firstMatch(of: /(?s)\njobs:\n(.*)/)).output.1
+            let names = jobs.matches(of: /(?m)^  ([a-z][a-z-]*):$/).map { String($0.output.1) }
+            #expect(!names.isEmpty, "\(workflow)")
+            for name in names {
+                let body = try #require(jobs.firstMatch(of: try Regex("(?s)\n?  \(name):\n(.*?)(?=\n  [a-z][a-z-]*:\n|\\z)"))).output[1].substring ?? ""
+                #expect(body.contains(/\n    timeout-minutes: \d+ +# 3 × the slowest/), "\(workflow): \(name) has no deadline with its basis")
+            }
+        }
+    }
+
+    /// The release script's waits end at a deadline too, each with its basis beside it.
+    @Test func theReleaseScriptsWaitsHaveDeadlines() throws {
+        let script = try text("scripts/release.sh")
+        #expect(script.matches(of: /deadline=\$\(\(\$\(date \+%s\) \+ \d+\)\) +# 3 × the slowest/).count == 3, "release.sh's three waits should each set a deadline with its basis")
+        #expect(!script.contains("gh run watch"), "gh run watch waits with no deadline")
+    }
+
     /// Every job that builds Swift says which toolchain it used, so a failure on CI names the compiler that said no.
     @Test func everySwiftJobLogsItsToolchain() throws {
         for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml"] {

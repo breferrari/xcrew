@@ -57,6 +57,7 @@ for pr in $paused; do gh pr merge "$pr" --disable-auto >/dev/null; done
 
 # Merges a pull request once it's green, bringing it up to date whenever main moves ahead of it.
 settle() {
+  deadline=$(($(date +%s) + 741))  # 3 × the slowest of 30 CI runs on a pull request, 247 s (measured 2026-11-02)
   while :; do
     state=$(gh pr view "$1" --json state,mergeStateStatus -q '.state + " " + .mergeStateStatus')
     case $state in
@@ -66,6 +67,7 @@ settle() {
       *BEHIND) gh pr update-branch "$1" >/dev/null 2>&1 || true ;;
     esac
     if gh pr checks "$1" 2>/dev/null | grep -q fail; then echo "release: #$1 failed CI" >&2; return 1; fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then echo "release: #$1 hasn't merged in 13 minutes; once it has, run: scripts/release.sh $version" >&2; return 1; fi
     sleep 10
   done
 }
@@ -102,11 +104,19 @@ if [ -z "$tagged" ]; then
 fi
 
 run=""
+# GitHub records no time for the tag's push, so the wait for its run takes the run's own margin.
+deadline=$(($(date +%s) + 72))  # 3 × the slowest of 30 release runs, 24 s (measured 2026-11-02)
 while [ -z "$run" ]; do
+  if [ "$(date +%s)" -ge "$deadline" ]; then echo "release: no release run started for v$version; once one has, run: scripts/release.sh $version" >&2; exit 1; fi
   sleep 5
   run=$(gh run list --workflow release.yml --branch "v$version" --limit 1 --json databaseId -q '.[0].databaseId')
 done
-if ! gh run watch "$run" --exit-status >/dev/null; then
+deadline=$(($(date +%s) + 72))  # 3 × the slowest of 30 release runs, 24 s (measured 2026-11-02)
+until [ "$(gh run view "$run" --json status -q .status)" = completed ]; do
+  if [ "$(date +%s)" -ge "$deadline" ]; then echo "release: the release run for v$version hasn't finished; see it with: gh run view $run, then run: scripts/release.sh $version" >&2; exit 1; fi
+  sleep 5
+done
+if [ "$(gh run view "$run" --json conclusion -q .conclusion)" != success ]; then
   echo "release: the release workflow refused v$version, so installs stay on the last release (stable is unmoved)." >&2
   echo "release: read why with: gh run view $run --log-failed" >&2
   echo "release: if a rerun can pass, run: gh run rerun $run, then scripts/release.sh $version" >&2

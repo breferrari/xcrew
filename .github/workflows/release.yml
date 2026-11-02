@@ -10,6 +10,7 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 1  # 3 × the slowest of 30 successful runs, 14 s (measured 2026-11-02), in whole minutes
     permissions:
       contents: write
       checks: read

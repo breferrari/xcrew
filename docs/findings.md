@@ -708,6 +708,27 @@ On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac acce
 
 The first run builds the CLI. The shim used to say "about 10 s" with no measurement behind it. Two cold first builds, `bin/xcrew --version` with an empty Xcrew cache, both on October 29, 2026, under Swift 6.4.2 (Xcode 27.2 beta 3): a fresh Mac took 15.4 s wall clock (`swift build` reported 11.5 s); a contributor's M1 Max (macOS 27.0.1, APFS, Swift's own caches warm) took 13.5 to 14.4 s over three runs (12.0 to 12.4 s). The shim states a range both support, and the README repeats it.
 
+## Deadlines
+
+Each CI job, the canary step that waits on a server's log line, and the release script's three waits stop at a deadline of their own rather than at GitHub's six hours or never. Each deadline is three times the slowest duration measured, written beside it with its sample. Jobs and steps are rounded up to whole minutes, which `timeout-minutes` takes, and the script's waits are counted in seconds. Measured on November 2, 2026 from the GitHub API, over the last 30 successful runs of each workflow (10 for the canary, which runs daily), from each job's and step's start and end.
+
+| What | Slowest | Deadline |
+|---|---|---|
+| ci: Changes | 21 s | 2 min |
+| ci: Swift package | 199 s | 10 min |
+| ci: Swift package, oldest toolchain | 192 s | 10 min |
+| ci: Plugin and mod | 107 s | 6 min |
+| ci: Distribution (23 runs) | 207 s | 11 min |
+| ci: Shell scripts | 48 s | 3 min |
+| ci: CI | 19 s | 1 min |
+| canary | 328 s | 17 min |
+| canary: MobileBuildMCP still accepts the config | 19 s | 1 min |
+| release | 14 s | 1 min |
+| release.sh: a release pull request's CI run, created to last update | 247 s | 741 s |
+| release.sh: the release run, created to last update | 24 s | 72 s |
+
+GitHub records no time for a tag's push, so the wait for the release run to appear takes the run's own deadline. Every wait that ends says how to resume: `release.sh` picks up where it stopped. The canary's and `readme-images.sh`'s `curl --max-time` is three times the slowest answer measured from a Mac, not from a runner (Sosumi's `initialize` 0.46 s over 3; the README's images 0.75 s over 30 fetches), rounded up to the next 10 seconds. A test holds every job and the script's waits to a deadline with its basis beside it.
+
 ## Tried and rejected
 
 | Option | Why not |
