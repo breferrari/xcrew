@@ -10,7 +10,12 @@ struct MissingSimulator: MachineCause {
         // shows nothing.
         let catalog = await SimulatorCatalog.load(using: failure.runner)
         guard !catalog.devices.isEmpty, !catalog.names.contains(name) else { return nil }
-        return "no simulator here is named \(name), which the build asked for. /xcrew:setup writes the profiles again with simulators that are installed"
+        return Self.explanation(missing: name)
+    }
+
+    /// What's said of a build that asked for `name`, which no simulator here has.
+    static func explanation(missing name: String) -> String {
+        "no simulator here is named \(name), which the build asked for. /xcrew:setup writes the profiles again with simulators that are installed"
     }
 
     /// The simulator name the build asked for, from the destination specifier under the error.
