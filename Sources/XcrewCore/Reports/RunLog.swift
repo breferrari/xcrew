@@ -207,6 +207,24 @@ public enum RunLog {
             .filter { $0.1 >= since }.sorted { $0.1 > $1.1 }.map(\.0)
     }
 
+    /// The logs in the project's own workspace folder, each with when it was last written, read with the listing.
+    static func dated(in folder: String = "logs", project: URL, home: URL) -> [(url: URL, modified: Date)] {
+        let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
+        return Set([project.path, ProjectLayout.canonical(project)].map(workspaceKey(root:))).flatMap { key in
+            let items = (try? FileManager.default.contentsOfDirectory(at: workspaces.appending(path: key).appending(path: folder), includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+            return items.compactMap { item -> (url: URL, modified: Date)? in
+                guard !item.lastPathComponent.contains("parser-debug"), let modified = (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return nil }
+                return (item, modified)
+            }
+        }
+    }
+
+    /// A time as MobileBuildMCP stamps a log's name, `2026-11-01T23-59-00-000Z`: UTC, fixed width, so two stamps compare
+    /// as text as their times do.
+    static func stamp(_ date: Date) -> String {
+        date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)).replacingOccurrences(of: ":", with: "-").replacingOccurrences(of: ".", with: "-")
+    }
+
     /// The items of the project's own workspace folder that `matches` names.
     static func candidates(in folder: String = "logs", project: URL, home: URL, named matches: (String) -> Bool) -> [URL] {
         let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")

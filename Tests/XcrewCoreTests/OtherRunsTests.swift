@@ -77,11 +77,10 @@ import XcrewTestSupport
         #expect(try await overlapped(worktrees: ["feature"], from: 300, prefix: "App") == ["feature"])
     }
 
-    /// The run went from the call's start for the server's own duration when it gives one, else until the report was asked.
-    @Test func theRunsTimeIsItsDurationFromItsStart() {
-        let asked = Date(timeIntervalSince1970: 2_000)
-        #expect(OtherRuns.window(since: 1_000_000, durationMs: 30_000, asked: asked) == (Date(timeIntervalSince1970: 1_000), Date(timeIntervalSince1970: 1_030)))
-        #expect(OtherRuns.window(since: 1_000_000, durationMs: nil, asked: asked) == (Date(timeIntervalSince1970: 1_000), asked))
+    /// A time is stamped as MobileBuildMCP names a log, so the two compare as text: a log named in the same millisecond
+    /// as the run's end compares equal, and so opened no earlier than it.
+    @Test func aTimeIsStampedAsMobileBuildMCPNamesALog() {
+        #expect(RunLog.stamp(Date(timeIntervalSince1970: 1_793_577_540.25)) == "2026-11-01T23-59-00-250Z")
     }
 
     static let testing = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\nTest Case '-[AppTests.GreetingTests testHello]' started.\n"

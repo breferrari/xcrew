@@ -77,6 +77,8 @@ export function stubCli(
     session?: (stdin: string | undefined) => unknown
     /** What `xcrew runs` answers each time: the other worktrees' runs, or the Error it fails with. */
     runs?: () => unknown
+    /** What `xcrew runs --overlapped` answers, for its arguments: the worktrees whose run went meanwhile; a promise answers later. */
+    overlapped?: (args: readonly string[]) => unknown
     /** What `xcrew flaky` answers for the marks and repeated run the mod pipes in: the marks after the run. */
     flaky?: (stdin: string | undefined) => unknown
     /** What `xcrew gone` answers for the folders it's asked about, or the Error it fails with. */
@@ -94,7 +96,7 @@ export function stubCli(
     calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
     if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
-    const runs = args[0] === 'runs' ? answers.runs?.() : undefined
+    const runs = args[0] === 'runs' && !args.includes('--overlapped') ? answers.runs?.() : undefined
     if (runs instanceof Error) throw runs
     const gone = args[0] === 'gone' ? answers.gone?.(args.slice(1)) : undefined
     if (gone instanceof Error) throw gone
@@ -117,6 +119,7 @@ export function stubCli(
       : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
       : args[0] === 'setup' ? (answers.setup?.(args) ?? null)
       : args[0] === 'note' ? { notes: answers.notes?.(args, e.init?.stdin) ?? [] }
+      : args[0] === 'runs' && args.includes('--overlapped') ? ((await answers.overlapped?.(args)) ?? [])
       : args[0] === 'runs' ? (runs ?? [])
       : args[0] === 'flaky' ? (answers.flaky?.(e.init?.stdin) ?? null)
       : args[0] === 'session' ? (answers.session?.(e.init?.stdin) ?? {})

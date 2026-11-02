@@ -58,8 +58,6 @@ export type Report = {
   concurrency?: { count: number; note: string }
   /** Read with a run's log: the scheme it names, which keys a backgrounded run whose log came late. */
   scheme?: string
-  /** Told the run's start: the other worktrees whose xcodebuild run went meanwhile, which keep this run out of the usual time. */
-  overlapped?: string[]
 }
 
 /**
@@ -246,6 +244,11 @@ export function headOf(answer: unknown): Head | undefined {
 
 /** A file a generator writes: the manifest to edit instead, and the command that regenerates it. */
 export type Generated = { manifest: string; generate: string }
+
+/** The other worktrees whose run went meanwhile, as `xcrew runs --overlapped` answers; none when it couldn't say. */
+export function overlappedOf(answer: unknown): string[] {
+  return Array.isArray(answer) ? answer.filter((name): name is string => typeof name === 'string') : []
+}
 
 /** The manifest to edit instead of a generated file and the command that regenerates it, when `xcrew project --generated` named one. */
 export function generatedOf(answer: unknown): Generated | undefined {
