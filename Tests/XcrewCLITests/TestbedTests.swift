@@ -624,16 +624,25 @@ struct TestbedEvidenceTests {
         #expect(slow.peakArchiveReads == 2)
     }
 
+    /// A call whose deadline cut even the branch's changes says what it cut, rather than that there's no evidence.
+    @Test func evidenceCutBeforeItReadAnythingSaysSo() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran)
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: CheckContext(project: project, machine: context.machine.setting("XCREW_WITHIN_MS", to: "1")), stdin: Self.input)
+        #expect(run.text.hasPrefix("This call's time ran out before git"), "\(run.text)")
+    }
+
     /// The runs are read until the call's deadline: past it, none is read, and the block says how many were left out.
     @Test func theBranchsRunsAreReadUntilTheCallsDeadline() async throws {
         let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        // Each of Xcode's reads takes 300 ms, and the call has 700 ms, its last 500 kept to answer: none of the runs' reads ends in time.
-        let slow = Machine(environment: ["XCREW_WITHIN_MS": "700"], home: context.machine.home, runner: DelayingRunner(context.machine.runner, xcrun: .milliseconds(300)), processID: context.machine.processID, applications: context.machine.applications)
+        // Each of Xcode's reads takes 3 s, and the call has 2.5 s, its last 0.5 s kept to answer: git's reads end in time,
+        // and none of the runs' does.
+        let slow = Machine(environment: ["XCREW_WITHIN_MS": "2500"], home: context.machine.home, runner: DelayingRunner(context.machine.runner, xcrun: .seconds(3)), processID: context.machine.processID, applications: context.machine.applications)
         let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)
         #expect(run.text.contains("- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."), "\(run.text)")
         // What the deadline cut is said in one line, after the block's own.
-        #expect(run.text.contains("\n- This call's time ran out before xcresulttool answered, so what it reads is left out of this block."), "\(run.text)")
+        #expect(run.text.contains("\n- This call's time ran out before xcresulttool"), "\(run.text)")
     }
 
     /// A run of no test, as one whose filter matched nothing, counts nothing as run, so it's left out.

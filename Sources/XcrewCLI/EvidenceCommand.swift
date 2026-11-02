@@ -15,11 +15,13 @@ struct EvidenceCommand: Command {
             throw UsageError(description: "evidence reads the mod's ledger as JSON on stdin")
         }
         let context = CheckContext(project: invocation.context.project, machine: invocation.context.machine.pooled())
-        guard let pack = await EvidencePack.make(input, project: context.project, machine: context.machine, open: { ResultBundle(path: $0, runner: context.runner) }) else {
-            invocation.print(Self.nothing)
+        let pack = await EvidencePack.make(input, project: context.project, machine: context.machine, open: { ResultBundle(path: $0, runner: context.runner) })
+        let cut = (invocation.context.machine.runner as? DeadlineRunner).flatMap { DeadlineRunner.leftOut($0.cut, of: pack == nil ? "this answer" : "this block") }
+        guard let pack else {
+            // Nothing to say may be all the deadline let it find: then that's what it says.
+            invocation.print(cut ?? Self.nothing)
             return 0
         }
-        let cut = (invocation.context.machine.runner as? DeadlineRunner).flatMap { DeadlineRunner.leftOut($0.cut, of: "this block") }
         invocation.print(pack.block + (cut.map { "\n- " + $0 } ?? ""))
         if let attach = pack.attach { invocation.print("\n" + attach) }
         return 0
