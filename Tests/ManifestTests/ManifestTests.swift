@@ -1243,6 +1243,18 @@ import Testing
         for value in ["app", "unit-tests", "ui-tests", "xcrew", "edited", "other"] { #expect(block.contains("'\(value)'"), "\(value)") }
     }
 
+    /// The setup form tells Claude what setup printed by the lines' starts: the `session_set_defaults` calls and the
+    /// restart line. Each start the mod reads is what setup prints.
+    @Test func theFormReadsSetupsCallsAndRestartLineByTheirStarts() throws {
+        let form = try text("hooks/mod/form.ts")
+        let call = try #require(form.firstMatch(of: /export const CALL_START = '([^']*)'/)?.1, "form.ts names no CALL_START")
+        let restart = try #require(form.firstMatch(of: /export const RESTART_START = '([^']*)'/)?.1, "form.ts names no RESTART_START")
+        #expect(try #require(LiveDefaults.call(["scheme": "App"])).hasPrefix(String(call)))
+        #expect(SetupCommand.restartLine.hasPrefix(String(restart)))
+        let reader = try #require(form.firstMatch(of: /export function setupFact[\s\S]*?\n}/)?.0, "form.ts has no setupFact")
+        #expect(reader.contains("CALL_START") && reader.contains("RESTART_START"), "setupFact no longer reads the lines by these starts")
+    }
+
     /// The form tells a write by the line setup prints when it wrote the config.
     @Test func theFormKnowsSetupsWroteLine() throws {
         let line = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const WROTE = '([^']*)'/)?.1)
