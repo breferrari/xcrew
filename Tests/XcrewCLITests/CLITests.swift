@@ -424,6 +424,17 @@ import XcrewTestSupport
         #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
     }
 
+    /// The report and the band's problems from one run of the checks, for `/xcrew doctor`: the text `doctor` prints, and
+    /// the problems `doctor --problems --json` gives, alike.
+    @Test func theReportAndTheProblemsComeFromOneRun() async throws {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let both = try #require(try JSONSerialization.jsonObject(with: Data(await Run("doctor", "--text-and-problems", context: .fake(project: project)).text.utf8)) as? [String: Any])
+        let text = await Run("doctor", context: .fake(project: project)).text
+        let problems = try JSONSerialization.jsonObject(with: Data(await Run("doctor", "--problems", "--json", context: .fake(project: project)).text.utf8)) as? [[String: String]]
+        #expect(both["text"] as? String == text)
+        #expect((both["problems"] as? [[String: String]]).map { $0.map(NSDictionary.init) } == problems.map { $0.map(NSDictionary.init) })
+    }
+
     @Test func problemsAsJSONGiveEachChecksStatusIdAndMessage() async throws {
         let project = Project.temporary(containing: ["App.xcworkspace"])
         let run = await Run("doctor", "--problems", "--json", context: .fake(project: project))

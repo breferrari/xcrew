@@ -98,7 +98,7 @@ test('a warning leaves the band two minutes after it first shows, with nothing e
 
 test('a failure stays until the doctor, run again, finds it fixed', async ($, on) => {
   const problems = [NOT_APPROVED]
-  const { clock } = sessionWith(on, problems)
+  const { clock, calls } = sessionWith(on, problems)
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -109,9 +109,13 @@ test('a failure stays until the doctor, run again, finds it fixed', async ($, on
   await submitPrompt($, 'build it')
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: /isn't approved/ })).toBeDefined()
+  const doctorRuns = () => calls.filter(call => call.args[0] === 'doctor').length
+  const before = doctorRuns()
   await runCommand($, 'xcrew', 'doctor')
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: /isn't approved/ })).toBeUndefined()
+  // One run of the checks gives both the report and the band's problems.
+  expect(doctorRuns() - before).toBe(1)
   await ui.unmount()
 })
 

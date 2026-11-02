@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -395,11 +395,14 @@ export const register: Register = on => {
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
     if (subcommand === 'doctor') {
-      // Asked for, the doctor's problems are read again for the band: a problem fixed since leaves it.
-      void loadProblems($, true).catch(() => undefined)
       // Named, the session is the one the doctor's session checks read, as a process the mod starts isn't told it.
       const session = await quietly(() => $.session.id())
-      return { text: await cliText($, ['doctor', ...(session ? ['--session', session] : [])]) }
+      // One run of the checks gives the report and the band's problems: a problem fixed since leaves the band.
+      const args = ['doctor', '--text-and-problems', ...(session ? ['--session', session] : [])]
+      const both = textAndProblemsOf(await answer($, args, 120_000))
+      if (!both) return { text: await cliText($, ['doctor', ...(session ? ['--session', session] : [])]) }
+      await quietly(() => applyProblems($, both.problems))
+      return { text: both.text }
     }
     if (subcommand === 'xcode') return { text: await cliText($, ['xcode']) }
     if (subcommand === 'history') return { text: await history($) }
@@ -995,7 +998,13 @@ async function readProblems($: EngineInterface): Promise<void> {
     if (!retriedRead) (retriedRead = true), (doctorOnNextPrompt = true)
     return
   }
-  found = problemsOf(answered)
+  await applyProblems($, problemsOf(answered), now)
+}
+
+/** The doctor's problems, as one of its runs found them, on the band. */
+async function applyProblems($: EngineInterface, problems: Problem[], at?: number): Promise<void> {
+  const now = at ?? (await $.clock.now())
+  found = problems
   seenAt = noticed(found, seenAt, now)
   await showVisibleProblems($)
   // New warnings were all found now, so one redraw ends their time together.

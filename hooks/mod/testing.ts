@@ -108,7 +108,7 @@ export function stubCli(
     const answer = await (
       args[0] === 'report' ? ((reports.length > 1 ? reports.shift() : reports[0]) ?? {})
       : args[0] === 'phase' ? (answers.phase?.(args) ?? {})
-      : args[0] === 'doctor' ? (answers.problems ?? [])
+      : args[0] === 'doctor' ? (args.includes('--text-and-problems') ? { text: 'the doctor\'s report', problems: answers.problems ?? [] } : (answers.problems ?? []))
       : args[0] === 'project' ? ((typeof answers.project === 'function' ? answers.project(args) : answers.project) ?? { isGenerated: false })
       : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
       : args[0] === 'setup' ? (answers.setup?.(args) ?? null)
