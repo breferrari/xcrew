@@ -251,6 +251,7 @@ import Testing
             Report.selectedNoneNote(discovered: 2, plan: nil),
             FlakyMark.neededMeaning,
             FailureNotes.noCrashLog,
+            FailureNotes.noCrashLogAlone,
             FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
             ResultBundle.noRepetitionsNote,
             ResultBundle.repetitionsNote([.init(test: "S/t", failed: 2, passed: 3, runs: 5, verdict: .flaky), .init(test: "S/u", failed: 5, passed: 0, runs: 5, verdict: .real)]) ?? "",

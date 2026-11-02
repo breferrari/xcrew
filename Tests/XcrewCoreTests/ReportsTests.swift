@@ -584,6 +584,47 @@ func failingRunText(passing: Int) -> String {
         #expect(added.contains("Test crashed with signal trap.\n      Fatal error: Index out of range\n      \(FailureNotes.noCrashLog)"), "\(added)")
     }
 
+    /// The `timing` capture cut to its crashed test alone, as a run filtered with `-only-testing` to that test gives it:
+    /// its other failures and results left out, and its summary counting the one test.
+    static func crashedAlone() throws -> String {
+        let text = try Raw.text("timing").replacingOccurrences(of: "Crash: xctest at CrashTests.testOutOfRange()", with: "Test crashed with signal trap.")
+        let failures = try #require(text.range(of: "\n  ✗ ProbeTests / testFails:"))
+        let summary = try #require(text.range(of: "❌ 3 tests failed, 1 passed, 1 skipped"))
+        return String(text[..<failures.lowerBound]) + "\n" + "❌ 1 test failed, 0 passed, 0 skipped" + String(text[summary.upperBound...])
+    }
+
+    /// The crash's note, under the crash and its error, from `text` and a bundle whose summary is `summary`.
+    static func crashNote(_ text: String, summary: String) async -> String {
+        let bundle = ResultBundle(path: "/b.xcresult", runner: FakeRunner(responses: ["xcrun xcresulttool get test-results summary --path /b.xcresult --compact": .init(status: 0, stdout: summary)]), exportFolder: { FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)") })
+        return await FailureNotes.addingText(to: text, from: bundle)
+    }
+
+    static let alone = "Test crashed with signal trap.\n      Fatal error: Index out of range\n      no crash log came with this run, though it ran this test alone; under parallel testing each runner is on a clone of the simulator, and `-parallel-testing-enabled NO` in `extraArgs` turns it off"
+
+    /// A crash in a run whose bundle counts that one test: running it alone was done, so the note names what wasn't.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashThatRanAloneWithoutACrashLogNamesParallelTesting() async throws {
+        let added = await Self.crashNote(try Self.crashedAlone(), summary: #"{"totalTestCount":1,"passedTests":0,"failedTests":1,"skippedTests":0,"expectedFailures":0}"#)
+        #expect(added.contains(Self.alone), "\(added)")
+    }
+
+    /// MobileBuildMCP's summary leaves expected failures out, so a crash beside one reads as a run of one test there; the
+    /// bundle counts both.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashBesideAnExpectedFailureDidntRunAlone() async throws {
+        let added = await Self.crashNote(try Self.crashedAlone(), summary: #"{"totalTestCount":2,"passedTests":0,"failedTests":1,"skippedTests":0,"expectedFailures":1}"#)
+        #expect(added.contains("Fatal error: Index out of range\n      \(FailureNotes.noCrashLog)"), "\(added)")
+    }
+
+    /// A run that discovered more tests than the bundle counts didn't run its crashed test alone: the crash kept the rest
+    /// from running.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashThatKeptOthersFromRunningDidntRunAlone() async throws {
+        let text = try Self.crashedAlone().replacingOccurrences(of: "🧪 Test\n", with: "🧪 Test\n\nDiscovered 3 test(s):\n   CrashTests/testOutOfRange\n   CrashTests/testLater\n   CrashTests/testLast\n")
+        let added = await Self.crashNote(text, summary: #"{"totalTestCount":1,"passedTests":0,"failedTests":1,"skippedTests":0,"expectedFailures":0}"#)
+        #expect(added.contains("Fatal error: Index out of range\n      \(FailureNotes.noCrashLog)"), "\(added)")
+    }
+
     @Test func doctorProblemsSaysWhenThereAreNone() {
         #expect(Doctor.problemsText(lines: []) == ["No problems."])
         #expect(Doctor.problemsText(lines: ["warn  a/b  c"]) == ["warn  a/b  c"])
