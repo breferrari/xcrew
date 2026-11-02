@@ -129,6 +129,56 @@ import XcrewTestSupport
         #expect(CIXcodes.named(in: project).map { "\($0.line) \($0.version)" } == ["4 26.5", "5 26.5", "6 26.5", "7 26.5"])
     }
 
+    /// A workflow selecting its Xcode through a local composite action, two levels down, as a field repository's main CI
+    /// does: `uses: ./…` is followed into the action's `action.yml`, wherever it's kept, and its bare `xcodes select`
+    /// reads the pin. An input passed through names no version. Field shape, names neutralised.
+    @Test func aLocalCompositeActionIsFollowedToTheXcodeItSelects() {
+        let project = Project.temporary()
+        project.write("26.4\n", to: ".xcode-version")
+        project.write("""
+            jobs:
+              build:
+                steps:
+                  - name: Set up
+                    uses: ./.github/workflows/actions/build-setup
+            """, to: ".github/workflows/main.yml")
+        project.write("""
+            runs:
+              using: "composite"
+              steps:
+                - name: Choose Xcode
+                  uses: ./.github/workflows/actions/pick-xcode
+                  with:
+                    xcode-version: ${{ inputs.xcode-version }}
+            """, to: ".github/workflows/actions/build-setup/action.yml")
+        project.write("""
+            runs:
+              using: "composite"
+              steps:
+                - id: choose
+                  shell: bash
+                  run: |
+                    if [[ -z "${{ inputs.xcode-version }}" ]]; then
+                      if [[ -f ".xcode-version" ]]; then
+                        sudo xcodes select
+                      fi
+                    else
+                      sudo xcodes select '${{ inputs.xcode-version }}'
+                    fi
+            """, to: ".github/workflows/actions/pick-xcode/action.yml")
+        #expect(CIXcodes.named(in: project).map { "\($0.file):\($0.line) \($0.version)" } == [".github/workflows/actions/pick-xcode/action.yml:9 26.4"])
+    }
+
+    /// An action that uses itself, or another that uses it back, is read once.
+    @Test func actionsThatUseEachOtherAreReadOnce() {
+        let project = Project.temporary()
+        project.write("26.4\n", to: ".xcode-version")
+        project.write("steps:\n  - uses: ./.github/actions/a\n", to: ".github/workflows/ci.yml")
+        project.write("runs:\n  steps:\n    - uses: ./.github/actions/b\n    - run: xcodes select\n", to: ".github/actions/a/action.yml")
+        project.write("runs:\n  steps:\n    - uses: ./.github/actions/a\n", to: ".github/actions/b/action.yaml")
+        #expect(CIXcodes.named(in: project).map { "\($0.file):\($0.line) \($0.version)" } == [".github/actions/a/action.yml:4 26.4"])
+    }
+
     /// A pin file outside the project, not a file, or holding no version, names nothing; an explicit Xcode on the same line
     /// still does.
     @Test func onlyAVersionInAFileOfTheProjectCounts() {
