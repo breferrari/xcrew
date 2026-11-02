@@ -8,6 +8,7 @@
 - A run that names no scheme is recorded under the scheme its log names, with its duration, test total and failed runs, when Claude Code moved it to the background before its log appeared, or it ended before xcrew read its log. A notification whose result can't be read falls back on that log. Before, both runs recorded nothing.
 - Tests that xcrew 0.11.0 or earlier recorded as red then green leave the ledger, rather than showing under "Still red" until a run lists them as passed. One marked flaky stays red with its mark, as it still needs its passes. The ledger rebuilds from new runs.
 - The doctor no longer asks for a restart that isn't needed, or says a session's rules weren't given, when the two things a session records as it starts were written at once.
+- A long result Claude Code saved to a file stays saved when xcrew trims its warnings, rather than coming back whole into the conversation; one that's short once trimmed still comes back.
 - A test marked flaky that a plain test run fails starts its passes in a row over. Before, it kept them, and could turn green although it had failed since its last pass.
 - A test marked flaky reads "passed 0 of the 4 needed in repeated runs since", saying that only a repeated run's passes count, so a single pass no longer reads as a wrong count. The ledger, the card, `/xcrew flaky` and the evidence block say it alike.
 
