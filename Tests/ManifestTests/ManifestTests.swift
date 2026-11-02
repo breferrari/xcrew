@@ -281,8 +281,9 @@ import Testing
         let pinMissing = XcodeSnapshot(installed: [new], selected: new, open: [], pin: ("25.0", ".xcode-version"), launch: nil, isServing: false, ci: [])
         let xcodeNotes: [String] = XcodeFailureNotes.notes(unpinned) + XcodeFailureNotes.notes(pinStarted)
             + [XcodePinCheck.failureNote(pinMissing, hasXcodes: true), XcodePinCheck.failureNote(pinStarted, hasXcodes: true)].compactMap { $0 }
-        try #require(xcodeNotes.count == 5, "each snapshot no longer gives the note it's built for: \(xcodeNotes)")
-        let machineNotes: [String] = [ClosedConnection.note, UnsignedAgents.accepted, Why.prefix]
+        let expected = ["xcrew: several Xcodes are installed", "xcrew: the Xcode MCP works through the open", "xcrew: CI uses Xcode", "xcrew: builds use", "xcrew: MobileBuildMCP started without the project's pin"]
+        try #require(xcodeNotes.count == expected.count && expected.allSatisfy { start in xcodeNotes.contains { $0.hasPrefix(start) } }, "each snapshot no longer gives the note it's built for: \(xcodeNotes)")
+        let machineNotes: [String] = [ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
         let modTools: [String] = try Self.modTools.map { try toolDescription($0.constant, in: $0.file) }
         let texts: [String] = briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + xcodeNotes + machineNotes + modTools
         var sentences: [String] = []
