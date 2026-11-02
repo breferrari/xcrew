@@ -94,12 +94,13 @@ struct ChangedLineCoverage: Sendable, Equatable {
         return found
     }
 
-    /// The files only test targets build, left out: a run filtered to some tests builds no other test target, so its
-    /// file being outside the coverage says nothing. Read from an Xcode project's own targets, as `xcrew graph --owner`
-    /// reads them, only when there are files to say anything of. A file an exception set may move keeps its place, as
-    /// does every file of a project whose targets can't be read, a plain Swift package's among them.
+    /// The files only test targets build, left out: a test target's own files are no code under test, so their being
+    /// outside the coverage says nothing. Read from an Xcode project's own targets, as `xcrew graph --owner` reads
+    /// them, only when there are files to say anything of and the budget hasn't passed: the reading can't be stopped
+    /// once started. A file an exception set may move keeps its place, as does one no target lists and every file of a
+    /// project whose targets can't be read, a plain Swift package's among them.
     static func withoutTestFiles(_ files: [String], of project: Project) -> [String] {
-        guard !files.isEmpty, case let .success(graph) = WorkspaceGraph.read(project) else { return files }
+        guard !files.isEmpty, !Task.isCancelled, case let .success(graph) = WorkspaceGraph.read(project) else { return files }
         return files.filter { file in
             let built = graph.builders(of: file)
             return built.isExcepted || built.targets.isEmpty || !built.targets.allSatisfy { graph.targets[$0]?.isTest == true }
