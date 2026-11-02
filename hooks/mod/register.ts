@@ -494,13 +494,14 @@ type Ending = { tool: string; scope: string; key?: string; earlierFailed: readon
 type Backgrounded = Ending & { startedAt: number; repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
 
 /**
-  * Records how a run ended: its time in the history, apart when it failed and not at all when it overlapped another checkout's run, its failures, the ledger when the CLI read the run (`isRead`) and
+ * Records how a run ended: its time in the history, apart when it failed and not at all, nor compared with the usual
+ * time, when it overlapped another checkout's run, which shared the Mac; its failures, the ledger when the CLI read the run (`isRead`) and
  * read more than a log's verdict, the card, its row and the band; the loop note, when a full run crossed the budget.
  */
 async function recordEnding($: EngineInterface, run: Ending, outcome: Report, isRead: boolean, ended: number, elapsed: number): Promise<string | undefined> {
   const { tool, scope, key, kind, earlier, earlierFailed } = run
-  // A run that overlapped another checkout's shared the Mac: its time says nothing of a run on its own.
-  if (key !== undefined && !outcome.overlapped?.length) {
+  const overlapped = (outcome.overlapped?.length ?? 0) > 0
+  if (key !== undefined && !overlapped) {
     // A failed run's time is kept apart: one that fails early would pull the usual time down. Both lists are written as
     // read when the run began, so a scope gone stale starts over whichever way the run ended.
     const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
@@ -515,7 +516,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
   // A failed run may have stopped early: its count is no total for the next run's.
   if (key !== undefined && outcome.ok && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
   saveCard($)
-  const ending = endingOf(outcome, ended, elapsed, earlier)
+  const ending = endingOf(outcome, ended, elapsed, overlapped ? [] : earlier)
   const requestId = run.toolUseId
   if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
   await showEnding($, tool, ending, run.usesBand, run.by)

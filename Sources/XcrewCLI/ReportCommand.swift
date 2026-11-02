@@ -24,9 +24,11 @@ struct ReportCommand: Command {
         let listsPassed = invocation.arguments.has("passed")
         var report: Report
         let given = invocation.arguments["log"]
+        let since = invocation.arguments["since"].flatMap(Double.init)
+        let asked = Date()
         var found: String?
         if given == nil, let tool = invocation.arguments["tool"] {
-            guard let since = invocation.arguments["since"].flatMap(Double.init).flatMap({ Int(exactly: $0.rounded(.down)) }) else { throw UsageError(description: "report --tool needs --since, in milliseconds") }
+            guard let since = since.flatMap({ Int(exactly: $0.rounded(.down)) }) else { throw UsageError(description: "report --tool needs --since, in milliseconds") }
             found = await RunLog.first(tool: tool, since: since, project: invocation.context.project.root, machine: machine)?.path
         }
         let log = given ?? found
@@ -40,8 +42,9 @@ struct ReportCommand: Command {
             report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         }
         if let log { report.scheme = RunLog.scheme(ofLogAt: URL(fileURLWithPath: log)) }
-        if let since = invocation.arguments["since"].flatMap(Double.init) {
-            let overlapped = await OtherRuns.overlapped(project: invocation.context.project, machine: machine, from: Date(timeIntervalSince1970: since / 1000), to: Date())
+        if let since {
+            let went = OtherRuns.window(since: since, durationMs: report.durationMs, asked: asked)
+            let overlapped = await OtherRuns.overlapped(project: invocation.context.project, machine: machine, from: went.from, to: went.to)
             if !overlapped.isEmpty { report.overlapped = overlapped }
         }
         let encoded = try JSONEncoder.sorted.encode(report)

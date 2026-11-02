@@ -111,6 +111,14 @@ test("a run that overlapped another checkout's run is kept out of the usual time
   expect(store.get(failedKey(scopeKey('/work/App', 'BuildProject')))).toEqual([])
 })
 
+/** A run that overlapped another checkout's isn't measured against the usual time either: it's shown by its own time. */
+test("a run that overlapped another checkout's run isn't compared with the usual time", async ($, on) => {
+  const { clock, toasts } = session(on, { took: [60_000, 90_000], reports: [{ ok: true }, { ok: true, overlapped: ['feature'] }] })
+  await start($, clock)
+  for (let run = 0; run < 2; run += 1) await callTool($, 'mcp__xcode__BuildProject')
+  expect(toasts.at(-1)).toBe('✓ BuildProject · 1:30')
+})
+
 /** The report is told when the run started, to read which other checkouts' runs went meanwhile. */
 test("the report is told the run's start", async ($, on) => {
   const { clock, cli } = session(on, { took: [60_000] })
