@@ -308,6 +308,14 @@ import Testing
         return name
     }
 
+    /// A worktree is set up with one command, in the briefing, the setup skill and the line above the prompt alike.
+    @Test func aWorktreeIsSetUpWithOneCommandEverywhere() throws {
+        let worktreeLine = try #require(try text("context/routing.md").split(separator: "\n").first { $0.contains("claude --worktree") })
+        #expect(worktreeLine.contains("`\(Worktree.setupCommand)`"), "\(worktreeLine)")
+        #expect(!worktreeLine.contains("/xcrew:setup"), "\(worktreeLine)")
+        #expect(try text("skills/setup/SKILL.md").contains("`\(Worktree.setupCommand)`"))
+    }
+
     /// The routing rules send Claude to the affected tool before a full test run, by its name, with the guarantee it
     /// gives and when to run everything; the hook answering it matches the name it's registered under.
     @Test func theRoutingRulesAskTheAffectedToolAndNameItsGuarantee() throws {
@@ -323,7 +331,7 @@ import Testing
     @Test func theRoutingRulesSendAnotherCheckoutToItsOwnSessionAndNameTheCLI() throws {
         let routing = try text("context/routing.md")
         let checkout = try #require(routing.split(separator: "\n").first { $0.contains("claude --worktree <name>") }, "no line names a worktree's own session")
-        #expect(checkout.contains("/xcrew:setup"))
+        #expect(checkout.contains("`\(Worktree.setupCommand)`"), "\(checkout)")
         let bash = try #require(routing.split(separator: "\n").first { $0.contains("through Bash") })
         #expect(bash.contains("`mobilebuildmcp`"), "\(bash)")
         #expect(bash.contains("no timing, ledger or line above the prompt"), "\(bash)")
