@@ -402,15 +402,17 @@ export const register: Register = on => {
     void quietly(() => pruneHistory($)).then(() => saveCard($))
     return started
   })
-  // A `/clear` fires no session start: the next conversation starts over here, and its first prompt reads the doctor,
-  // since a CLI call can't finish within this event's bound.
-  on('session.end', { reason: 'clear' }, async ($, e, next) => {
-    startOver()
-    doctorAfterClear = true
-    return next(e)
-  })
-  // The one unmatched prompt hook. The doctor is read here only on the first prompt after a `/clear`: what it checks,
-  // what xcrew needs to run, a prompt doesn't change, so it runs at session start, after setup, and when asked.
+  // A `/clear` or a `/resume` fires no session start, the process going on under another conversation: that one starts
+  // over here, and its first prompt reads the doctor, since a CLI call can't finish within this event's bound.
+  for (const reason of ['clear', 'resume'] as const) {
+    on('session.end', { reason }, async ($, e, next) => {
+      startOver()
+      doctorOnNextPrompt = true
+      return next(e)
+    })
+  }
+  // The one unmatched prompt hook. The doctor is read here only on the first prompt after a `/clear` or `/resume`: what
+  // it checks, what xcrew needs to run, a prompt doesn't change, so it runs at session start, after setup, and when asked.
   on('prompt.submit', async ($, e, next) => {
     // A config the form wrote is told once: the session's MobileBuildMCP still runs on the old one. A read first, so
     // a prompt writes nothing when there's nothing to tell.
@@ -418,8 +420,8 @@ export const register: Register = on => {
       await quietly(() => update($, wroteConfigState, () => false))
       e = withContext(e, SETUP_FACT)
     }
-    if (doctorAfterClear) {
-      doctorAfterClear = false
+    if (doctorOnNextPrompt) {
+      doctorOnNextPrompt = false
       void loadProblems($).catch(() => undefined)
     }
     void (async () => {
@@ -860,8 +862,8 @@ async function branchLedger($: EngineInterface): Promise<{ head?: Head; ledger?:
   return { head, ...(ledger ? { ledger } : {}) }
 }
 
-/** Whether the first prompt after a `/clear` is still to read the doctor. */
-let doctorAfterClear = false
+/** Whether the first prompt after a `/clear` or a `/resume` is still to read the doctor. */
+let doctorOnNextPrompt = false
 
 /** Forgets what the conversation was told: a new one's warnings show again, and the pin is named again. */
 function startOver(): void {

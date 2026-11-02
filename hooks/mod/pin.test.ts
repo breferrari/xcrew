@@ -45,6 +45,15 @@ test('a cleared conversation names the pin again', async ($, on) => {
   expect(await build($)).toContain(PIN)
 })
 
+test('a resumed conversation names the pin again, and one the person left doesn\'t', async ($, on) => {
+  session(on, [FAILED])
+  expect(await build($)).toContain(PIN)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'before', resume: { id: 'before' } })
+  expect(await build($)).not.toContain(PIN)
+  await $.session.end({ reason: 'resume', sessionId: 'before', resume: { id: 'before' } })
+  expect(await build($)).toContain(PIN)
+})
+
 test('a pin is named once a session, though its note words it another way', async ($, on) => {
   const restart = "xcrew: MobileBuildMCP started without the project's pin, Xcode 26.5 (.xcode-version), so it builds with Xcode 27.2: a different SDK may be the cause. Restart Claude Code to build with the pin."
   session(on, [FAILED, { ...FAILED, pinNote: restart }])
