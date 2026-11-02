@@ -204,6 +204,33 @@ test('a pass of the whole suite on the same tool and scheme turns a selection\'s
   expect(await ledgerText($)).toMatch(new RegExp(`- ${TEST}: red .* in test_sim › AppTests: .*; green .* in test_sim$`, 'm'))
 })
 
+test('a test that fails again shows its newest message, keeping the date of its first red', async ($, on) => {
+  const again: Partial<Report> = { ok: false, failures: [{ title: TEST, message: 'XCTAssertEqual failed: ("Hey") is not equal to ("Hello")', where: 'GreetingTests.swift:9', isTest: true }] }
+  const { clock } = project(on, [FAILED, again])
+  await run($)
+  const firstRed = /red (\w{3} \d+)/.exec(await ledgerText($))?.[1]
+  await clock.advance(DAY_MS)
+  await run($)
+  const text = await ledgerText($)
+  expect(text).toContain('("Hey") is not equal to ("Hello")')
+  expect(text).not.toContain('("Hi")')
+  expect(firstRed).toBeDefined()
+  expect(/red (\w{3} \d+)/.exec(text)?.[1]).toBe(firstRed)
+})
+
+test('a flaky test that then fails every run reads as a real failure', async ($, on) => {
+  project(on, [
+    { ok: false, repeated: [{ test: TEST, failed: 2, passed: 3, runs: 5, verdict: 'flaky' }] },
+    { ok: false, repeated: [{ test: TEST, failed: 5, passed: 0, runs: 5, verdict: 'real' }] },
+  ])
+  await run($, 'AppTests/GreetingTests/testHello')
+  expect(await ledgerText($)).toContain('failed some of its repeated runs')
+  await run($, 'AppTests/GreetingTests/testHello')
+  const text = await ledgerText($)
+  expect(text).toContain('failed every run, a real failure')
+  expect(text).not.toContain('failed some of its repeated runs')
+})
+
 test('a test that fails again after its green is red again, keeping its first red', async ($, on) => {
   const { clock } = project(on, [FAILED, PASSED, FAILED])
   await run($)
