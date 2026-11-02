@@ -67,13 +67,30 @@ public struct FailureImages: Sendable, Equatable {
         }
     }
 
-    /// Removes each run's images kept longer than `keptDays`.
-    static func prune(in folder: URL) {
+    /// How much the kept images may take: a UI suite's snapshots run to megabytes a failure.
+    static let keptBytes = 200 * 1024 * 1024
+
+    /// Removes each run's images kept longer than `keptDays`, then the oldest runs' while all of them take more than
+    /// `limit`; the newest run's stay whatever their size.
+    static func prune(in folder: URL, keepingAtMost limit: Int = keptBytes) {
         let runs = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
         let oldest = Date.now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
-        for run in runs where (try? run.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now < oldest {
-            try? FileManager.default.removeItem(at: run)
+        let dated = runs.map { (run: $0, written: (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now) }
+        var kept: [(run: URL, bytes: Int)] = []
+        for (run, written) in dated.sorted(by: { $0.written < $1.written }) {
+            if written < oldest { try? FileManager.default.removeItem(at: run) } else { kept.append((run, size(of: run))) }
         }
+        var total = kept.reduce(0) { $0 + $1.bytes }
+        for (run, bytes) in kept.dropLast() where total > limit {
+            try? FileManager.default.removeItem(at: run)
+            total -= bytes
+        }
+    }
+
+    /// The bytes of every file below `folder`.
+    static func size(of folder: URL) -> Int {
+        let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.fileSizeKey])
+        return (files?.allObjects as? [URL] ?? []).reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }
     }
 
     /// Image formats Claude's Read shows, by extension: those Claude takes as images.

@@ -271,3 +271,32 @@ extension ShimTests {
         #expect(builds == 2)
     }
 }
+
+extension ShimTests {
+    /// An installed plugin builds once a version: its 200 MB scratch folder speeds no later build, so it goes. A
+    /// development clone keeps its own for the next edit's build.
+    @Test func aPluginInstallsBuildLeavesNoScratchFolder() async throws {
+        _ = try await shim("help")
+        #expect(!FileManager.default.fileExists(atPath: cache.appending(path: "build").path))
+        #expect(builds == 1)
+    }
+
+    @Test func aGitCheckoutKeepsItsScratchFolder() async throws {
+        try FileManager.default.createDirectory(at: root.appending(path: ".git"), withIntermediateDirectories: true)
+        _ = try await shim("help")
+        #expect(FileManager.default.fileExists(atPath: cache.appending(path: "build/release/xcrew").path))
+    }
+
+    /// Each plugin version is a new checkout path with its own stamp: a stamp no build has written for two weeks goes at
+    /// the next build, and this checkout's stays.
+    @Test func aStampNoBuildHasWrittenForTwoWeeksGoes() async throws {
+        let stale = cache.appending(path: "roots/plugins/cache/xcrew/0.8.1.key")
+        try FileManager.default.createDirectory(at: stale.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "0000000000000000\n".write(to: stale, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -15 * 86_400)], ofItemAtPath: stale.path)
+        _ = try await shim("help")
+        #expect(!FileManager.default.fileExists(atPath: stale.path))
+        let current = cache.appending(path: "roots" + (try await Self.physicalPath(root)) + ".key")
+        #expect(FileManager.default.fileExists(atPath: current.path))
+    }
+}
