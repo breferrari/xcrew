@@ -228,6 +228,31 @@ import XcrewTestSupport
         #expect(Self.unitCall("scheme: 'true'\nconfiguration: null\nbundleId: ~\nplatform:\nuseLatestOS: True") == [#"session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"true","useLatestOS":true}"#])
     }
 
+    /// A key whose value is on the lines below may carry a comment on its own line: its list or map is still read.
+    @Test func aKeyWithACommentAndItsValueBelowIsRead() {
+        #expect(Self.unitCall("scheme: 'App'\nenv: # launch vars\n  FOO: bar\nextraArgs: # flags\n- -quiet") == [#"session_set_defaults {"createIfNotExists":true,"env":{"FOO":"bar"},"extraArgs":["-quiet"],"profile":"unit","scheme":"App"}"#])
+    }
+
+    /// A profile's name may hold a colon, as `app:debug`: it's a profile of its own, not more of the one above it.
+    @Test func aProfileNamedWithAColonIsAProfile() {
+        let yaml = "schemaVersion: 1\nsessionDefaultsProfiles:\n  app:\n    scheme: 'App'\n  app:debug:\n    scheme: 'AppDebug'\nactiveSessionDefaultsProfile: app:debug\n"
+        #expect(ConfigRenderer.profiles(in: yaml).names == ["app", "app:debug"])
+        #expect(ConfigRenderer.schemeToBuild(in: yaml) == "AppDebug")
+        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone")) == [
+            #"session_set_defaults {"createIfNotExists":true,"profile":"app","scheme":"App"}"#,
+            #"session_set_defaults {"createIfNotExists":true,"profile":"app:debug","scheme":"AppDebug"}"#,
+        ])
+    }
+
+    /// A long value wrapped onto the next line, as MobileBuildMCP's `yaml.stringify` writes one past 80 columns, is
+    /// read whole in a map, in a list, and as a profile's setting.
+    @Test func aWrappedValueIsReadWholeEverywhere() {
+        let body = "scheme: My App Scheme With A Name Long Enough\n  To Wrap\nenv:\n  LONG: a value long enough that it wraps\n    onto the next line\nextraArgs:\n- -an-argument long enough that it wraps\n  onto the next line"
+        #expect(Self.unitCall(body) == [#"session_set_defaults {"createIfNotExists":true,"env":{"LONG":"a value long enough that it wraps onto the next line"},"extraArgs":["-an-argument long enough that it wraps onto the next line"],"profile":"unit","scheme":"My App Scheme With A Name Long Enough To Wrap"}"#])
+        let yaml = "schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n" + body.split(separator: "\n").map { "    " + $0 }.joined(separator: "\n") + "\nactiveSessionDefaultsProfile: unit\n"
+        #expect(ConfigRenderer.schemeToBuild(in: yaml) == "My App Scheme With A Name Long Enough To Wrap")
+    }
+
     /// The session defaults read as MobileBuildMCP reads them, by the installed MobileBuildMCP's own YAML library
     /// (`utils/project-config.js` parses the config with `yaml`), run with the Node it ships, wherever it's installed:
     /// each profile's keys and values alike, YAML's nulls left out, over every shape the reader takes.
@@ -256,6 +281,14 @@ import XcrewTestSupport
             empty:
                 extraArgs: []
                 env: {}
+            app:debug: # a colon in the name
+                env: # launch vars
+                    FOO: bar
+                    LONG: a value long enough that it wraps
+                      onto the next line
+                extraArgs: # flags
+                - -an-argument long enough that it wraps
+                  onto the next line
         activeSessionDefaultsProfile: unit # the default
 
         """

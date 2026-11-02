@@ -48,11 +48,8 @@ public enum ConfigRenderer {
     /// reads them.
     public static func profiles(in yaml: String) -> (names: [String], withScheme: Set<String>, active: String?) {
         let profiles = sessions(in: yaml).profiles
-        let withScheme = profiles.filter { $0.lines.contains { !$0.hasPrefix(" ") && key(of: $0) == "scheme" } }.map(\.name)
-        let active = yaml.components(separatedBy: .newlines).lazy
-            .filter { !$0.hasPrefix(" ") && key(of: $0) == "activeSessionDefaultsProfile" }
-            .compactMap { scalar(rest(of: $0)) }.first { !isNull($0) }?.value
-        return (profiles.map(\.name), Set(withScheme), active)
+        let withScheme = profiles.filter { entries($0.lines).contains { $0.key == "scheme" } }.map(\.name)
+        return (profiles.map(\.name), Set(withScheme), topLevel("activeSessionDefaultsProfile", in: yaml))
     }
 
     /// The scheme MobileBuildMCP builds with when a call names none, by `hasSchemeToBuild`'s rule: the active profile's,
@@ -80,16 +77,13 @@ public enum ConfigRenderer {
         } else {
             lines = sessions.global
         }
-        return lines?.lazy.filter { !$0.hasPrefix(" ") && Self.key(of: $0) == key }
-            .compactMap { scalar(rest(of: $0)) }.first { !isNull($0) && !$0.value.isEmpty }?.value
+        return lines.flatMap { value(of: key, among: $0) }
     }
 
     /// Whether the config turns off MobileBuildMCP's following of Xcode's scheme selection after its start
     /// (`disableXcodeAutoSync: true` at the top level).
     public static func disablesXcodeAutoSync(in yaml: String) -> Bool {
-        yaml.split(whereSeparator: \.isNewline).contains { line in
-            !line.hasPrefix(" ") && ["true", "True", "TRUE"].contains(value(of: "disableXcodeAutoSync", in: line) ?? "")
-        }
+        ["true", "True", "TRUE"].contains(topLevel("disableXcodeAutoSync", in: yaml) ?? "")
     }
 
     /// Whether MobileBuildMCP has a scheme to build with: the active profile's, since a named profile stands alone, or
@@ -97,17 +91,7 @@ public enum ConfigRenderer {
     public static func hasSchemeToBuild(in yaml: String) -> Bool {
         let profiles = profiles(in: yaml)
         if let active = profiles.active { return profiles.withScheme.contains(active) }
-        var inDefaults = false
-        for raw in yaml.split(whereSeparator: \.isNewline) {
-            let trimmed = raw.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-            if !raw.hasPrefix(" ") {
-                inDefaults = trimmed == "sessionDefaults:"
-            } else if inDefaults, trimmed.hasPrefix("scheme:"), !trimmed.dropFirst("scheme:".count).trimmingCharacters(in: .whitespaces).isEmpty {
-                return true
-            }
-        }
-        return false
+        return setting("scheme", profile: globalProfile, in: yaml) != nil
     }
 
     /// Every list a config holds, by the path of keys to it (`customWorkflows.sim-env`), block or flow style, at any
@@ -156,13 +140,17 @@ public enum ConfigRenderer {
         values(of: ["simulatorId:"], in: yaml)
     }
 
-    /// The simulator names a config's profiles reference, each once.
     /// The debugger backend a config sets at its top level, which setup keeps when it writes the config again.
     public static func debuggerBackend(in yaml: String) -> String? {
-        yaml.split(whereSeparator: \.isNewline).first { $0.hasPrefix("debuggerBackend:") }
-            .map { unquoted($0.dropFirst("debuggerBackend:".count).trimmingCharacters(in: .whitespaces)) }
+        topLevel("debuggerBackend", in: yaml)
     }
 
+    /// A config's top-level setting, read as `entries` reads a block; nil when it's null, empty or absent.
+    static func topLevel(_ key: String, in yaml: String) -> String? {
+        value(of: key, among: yaml.components(separatedBy: .newlines))
+    }
+
+    /// The simulator names a config's profiles reference, each once.
     public static func simulatorNames(in yaml: String) -> [String] {
         values(of: ["simulatorName:"], in: yaml)
     }
@@ -205,7 +193,6 @@ public enum ConfigRenderer {
         "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
     }
 
-    /// A YAML scalar's text: single-quoted as xcrew writes it, double-quoted as a person may, or plain.
     /// The config without its session defaults, global or by profile, and the active profile's name: what only a
     /// restart loads into a running MobileBuildMCP.
     public static func serverPart(of yaml: String) -> String {
@@ -221,6 +208,7 @@ public enum ConfigRenderer {
         return kept.joined(separator: "\n")
     }
 
+    /// A YAML scalar's text: single-quoted as xcrew writes it, double-quoted as a person may, or plain.
     static func unquoted(_ value: String) -> String {
         guard value.count >= 2, let quote = value.first, quote == "'" || quote == "\"", value.last == quote else { return value }
         let text = String(value.dropFirst().dropLast())
