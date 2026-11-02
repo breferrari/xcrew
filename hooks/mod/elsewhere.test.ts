@@ -49,12 +49,19 @@ async function bandLines($: Engine): Promise<string[]> {
   return lines
 }
 
+/** Whether the elsewhere line is the band's last: after it come only its own label and runs, in that order. */
+function isLast(lines: string[]): boolean {
+  const at = lines.findIndex(line => line.startsWith('elsewhere: '))
+  const own = lines[at] ?? ''
+  return at >= 0 && at === lines.length - 3 && lines[at + 1] === 'elsewhere: ' && own === `elsewhere: ${lines[at + 2]}`
+}
+
 async function start($: Engine, clock: { settle: () => Promise<void> }) {
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   await clock.settle()
 }
 
-test("another worktree's run shows as a fact on a dim line of its own", async ($, on) => {
+test("another worktree's run shows as a fact on a line of its own, only its label dim", async ($, on) => {
   const { clock } = session(on, [[FEATURE]])
   await start($, clock)
   await submitPrompt($, 'go on')
@@ -62,7 +69,9 @@ test("another worktree's run shows as a fact on a dim line of its own", async ($
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const line = await ui.find({ type: 'Text', text: /^elsewhere: / })
   expect(line?.text).toBe('elsewhere: feature · test_sim · testing 120 of 959')
-  expect(line?.props.color).toBe('subtle')
+  expect(line?.props.color).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /^elsewhere:\s*$/ }))?.props.color).toBe('subtle')
+  expect((await ui.find({ type: 'Text', text: /^feature · test_sim/ }))?.props.color).toBeUndefined()
   await ui.unmount()
 })
 
@@ -80,7 +89,7 @@ test('the line sits below a problem the band ranks first', async ($, on) => {
   await submitPrompt($, 'go on')
   await clock.settle()
   const lines = await bandLines($)
-  expect(lines.findIndex(line => line.startsWith('elsewhere: '))).toBe(lines.length - 1)
+  expect(isLast(lines)).toBe(true)
   expect(lines.join('')).toContain("Claude Code isn't approved in Xcode")
 })
 
@@ -93,7 +102,7 @@ test("the line sits below this session's run while it goes", async ($, on) => {
   await clock.settle()
   const lines = await bandLines($)
   expect(lines.join('')).toContain('build_sim')
-  expect(lines.findIndex(line => line.startsWith('elsewhere: '))).toBe(lines.length - 1)
+  expect(isLast(lines)).toBe(true)
   release()
   await running
 })
