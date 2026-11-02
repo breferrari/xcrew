@@ -45,9 +45,7 @@ public struct FailureImages: Sendable, Equatable {
             let destination = folder.appending(path: image.name)
             return (try? FileManager.default.moveItem(at: image.file, to: destination)) != nil ? destination.path : nil
         }
-        guard !kept.isEmpty else { return nil }
-        record(run)
-        return FailureImages(paths: kept, folder: folder.path)
+        return kept.isEmpty ? nil : FailureImages(paths: kept, folder: folder.path)
     }
 
     /// A test's attachments as an export's `manifest.json` lists them.
@@ -81,10 +79,10 @@ public struct FailureImages: Sendable, Equatable {
     static func prune(in folder: URL, keepingAtMost limit: Int = keptBytes, now: Date = .now) {
         let runs = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
         let oldest = now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
-        let dated = runs.map { (run: $0, written: (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now) }
+        let dated = runs.map { (run: $0, written: (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? now) }
         var kept: [(run: URL, bytes: Int)] = []
         for (run, written) in dated.sorted(by: { $0.written < $1.written }) {
-            if written < oldest { try? FileManager.default.removeItem(at: run) } else { kept.append((run, recordedSize(of: run, written: written))) }
+            if written < oldest { try? FileManager.default.removeItem(at: run) } else { kept.append((run, recordedSize(of: run))) }
         }
         var total = kept.reduce(0) { $0 + $1.bytes }
         for (run, bytes) in kept.dropLast() where total > limit {
@@ -93,27 +91,22 @@ public struct FailureImages: Sendable, Equatable {
         }
     }
 
-    /// A run's size as its record says, or measured and recorded when it has none, its folder's date put back as it was:
-    /// the date is the run's age.
-    static func recordedSize(of run: URL, written: Date) -> Int {
-        if let recorded = (try? String(contentsOf: run.appending(path: sizeRecord), encoding: .utf8)).flatMap({ Int($0) }) { return recorded }
-        let bytes = record(run)
+    /// A run's size as its record says, or measured and recorded when it has none.
+    static func recordedSize(of run: URL) -> Int {
+        (try? String(contentsOf: run.appending(path: sizeRecord), encoding: .utf8)).flatMap { Int($0) } ?? record(run)
+    }
+
+    /// Measures the bytes a run's kept files take, its record left out, and records them; the bytes. Its folder's date is
+    /// put back as it was, since the date is the run's age. Each writer to a run calls it once its writes are done, never
+    /// two at once on one run, as a measure taken before another's write would record too few.
+    @discardableResult
+    public static func record(_ run: URL) -> Int {
+        guard let written = (try? run.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return 0 }
+        let files = FileManager.default.enumerator(at: run, includingPropertiesForKeys: [.fileSizeKey])?.allObjects as? [URL] ?? []
+        let bytes = files.filter { $0.lastPathComponent != sizeRecord }.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }
+        try? Data(String(bytes).utf8).write(to: run.appending(path: sizeRecord), options: .atomic)
         try? FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: run.path)
         return bytes
-    }
-
-    /// Measures a run's images and records the bytes they take; the bytes.
-    @discardableResult
-    static func record(_ run: URL) -> Int {
-        let bytes = size(of: run) - ((try? run.appending(path: sizeRecord).resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
-        try? Data(String(bytes).utf8).write(to: run.appending(path: sizeRecord), options: .atomic)
-        return bytes
-    }
-
-    /// The bytes of every file below `folder`.
-    static func size(of folder: URL) -> Int {
-        let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.fileSizeKey])
-        return (files?.allObjects as? [URL] ?? []).reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }
     }
 
     /// Image formats Claude's Read shows, by extension: those Claude takes as images.

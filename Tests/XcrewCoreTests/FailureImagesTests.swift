@@ -56,17 +56,18 @@ import XcrewTestSupport
         #expect(try run.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == written)
     }
 
-    /// Keeping a test's images records its run's size, measured over that run alone.
-    @Test func keepingImagesRecordsTheRunsSize() throws {
-        let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-keep-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let export = root.appending(path: "export")
-        try FileManager.default.createDirectory(at: export, withIntermediateDirectories: true)
-        try Self.png.write(to: export.appending(path: "a.png"))
-        try Data(#"[{"testIdentifier":"CardTests/testCard()","attachments":[{"exportedFileName":"a.png","suggestedHumanReadableName":"Reference_0_ABC.png"}]}]"#.utf8).write(to: export.appending(path: "manifest.json"))
-        let run = root.appending(path: "images/run0")
-        _ = try #require(FailureImages.keep(of: TestID(xcresultID: "CardTests/testCard()"), from: export, in: run))
-        #expect(try String(contentsOf: run.appending(path: FailureImages.sizeRecord), encoding: .utf8) == String(Self.png.count))
+    /// Recording a run's size measures its files, its record left out, and leaves its folder's date, its age, as it was.
+    @Test func recordingARunsSizeLeavesItsAge() throws {
+        let run = FileManager.default.temporaryDirectory.appending(path: "xcrew-record-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: run) }
+        try FileManager.default.createDirectory(at: run.appending(path: "Suite/test"), withIntermediateDirectories: true)
+        try Data(count: 40).write(to: run.appending(path: "Suite/test/shot.png"))
+        try Data("999".utf8).write(to: run.appending(path: FailureImages.sizeRecord))
+        let written = Date(timeIntervalSince1970: 1_793_613_600)
+        try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: run.path)
+        #expect(FailureImages.record(run) == 40)
+        #expect(try String(contentsOf: run.appending(path: FailureImages.sizeRecord), encoding: .utf8) == "40")
+        #expect(try run.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == written)
     }
 
     static let bundle = "/runs/test_sim_1.xcresult"
@@ -108,6 +109,7 @@ import XcrewTestSupport
         cache.appending(path: "images/test_sim_1/CardTests/testCard/\(name)").path
     }
 
+    /// The run's size is recorded once the images are kept: three images of the PNG header's 12 bytes, 36.
     @Test func aFailedTestsImagesAreListedReferenceThenFailureThenDifference() async throws {
         // Swift Testing numbers each image 0, in no set order; the exported names carry no extension.
         let (cache, bundle, images) = try Self.export([
@@ -127,6 +129,7 @@ import XcrewTestSupport
             """), "\(added)")
         #expect(FileManager.default.contents(atPath: Self.kept(cache, "difference_0_D.png")) == Self.png)
         #expect(!added.contains("Complete Issue Description"))
+        #expect(try String(contentsOf: cache.appending(path: "images/test_sim_1/\(FailureImages.sizeRecord)"), encoding: .utf8) == "36")
     }
 
     @Test func iOSSnapshotTestCaseNamesSortTheSameWay() async throws {
