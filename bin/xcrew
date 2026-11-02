@@ -66,8 +66,11 @@ if [ ! -x "$binary" ]; then
     # checkout keeps it for the next edit's.
     [ -e "$root/.git" ] || rm -rf "$cache/build"
     # Builds no checkout has run for two weeks go. Another checkout's current build stays: the
-    # installed plugin and a development clone each keep theirs instead of rebuilding in turn.
-    find "$cache" -mindepth 1 -maxdepth 1 -type d ! -name build ! -name .lock ! -name roots ! -name "$key" -mtime +14 -exec rm -rf {} + 2>/dev/null || true
+    # installed plugin and a development clone each keep theirs instead of rebuilding in turn. A build
+    # is a folder named by a key, 16 hex characters as above; xcrew's other folders prune their own.
+    hex='[0-9a-f]'
+    built="$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex"
+    find "$cache" -mindepth 1 -maxdepth 1 -type d -name "$built" ! -name "$key" -mtime +14 -exec rm -rf {} + 2>/dev/null || true
     # So do the stamps of checkouts no build has hashed for two weeks, as each plugin version's path is
     # a new checkout; one still in use is hashed again on its next run.
     find "$cache/roots" -type f -name '*.key' -mtime +14 -delete 2>/dev/null || true
