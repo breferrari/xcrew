@@ -15,7 +15,7 @@ function engine(on: On, outputs: Record<string, string> = {}) {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('process.run', (_, e) => {
     // The shim's `--if-built` runs the build that's there; a command's run is the same with or without it.
-    const argv = withoutIfBuilt(e.argv)
+    const argv = [e.argv[0] ?? '', ...withoutIfBuilt(e.argv.slice(1))]
     // The session start's own look for problems, and its read of Xcode's selection, aren't a command's run.
     if (!argv.includes('--problems') && !argv.includes('--xcode')) runs.push(argv)
     return { value: { exitCode: 0, stdout: outputs[argv[1] ?? ''] ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }

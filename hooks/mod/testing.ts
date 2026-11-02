@@ -46,9 +46,9 @@ type ProjectAnswer = { isGenerated: boolean; readsYaml?: boolean; setup?: string
  */
 export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number; spawned?: true; ifBuilt?: true }
 
-/** A command's arguments as the shim runs them, without `--if-built`, which only asks it to run a build that's there. */
+/** A command's arguments as the shim runs them, without a leading `--if-built`, which only asks it to run a build that's there. */
 export function withoutIfBuilt(args: readonly string[]): readonly string[] {
-  return args.filter(argument => argument !== '--if-built')
+  return args[0] === '--if-built' ? args.slice(1) : args
 }
 
 /**

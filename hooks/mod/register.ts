@@ -688,18 +688,25 @@ async function build($: EngineInterface, timeoutMs: number): Promise<string | un
  */
 function buildInBackground($: EngineInterface): Promise<string | null> {
   building ??= (async () => {
+    const child = $.process.spawn({ argv: [shimPath($.plugin.root), '--binary-path'], env: { XCREW_ROOT: $.plugin.root } })
+    // The stream rejects its first pull when the child can't start; that alone leaves calls to build as before.
+    let piece: Awaited<ReturnType<typeof child.next>>
+    try {
+      piece = await child.next()
+    } catch {
+      cannotSpawn = true
+      return null
+    }
+    cannotSpawn = false
     let printed = ''
-    for await (const piece of $.process.spawn({ argv: [shimPath($.plugin.root), '--binary-path'], env: { XCREW_ROOT: $.plugin.root } })) if (piece.stream === 'stdout') printed += piece.text
+    for (; !piece.done; piece = await child.next()) if (piece.value.stream === 'stdout') printed += piece.value.text
     const named = namedBuild(printed)
     if (named === null) return null
     const at = await $.clock.now()
     await update($, buildState, () => ({ path: named, at }))
     return named
   })()
-    .catch(() => {
-      cannotSpawn = true
-      return null
-    })
+    .catch(() => null)
     .finally(() => {
       building = undefined
     })
@@ -714,7 +721,7 @@ function buildInBackground($: EngineInterface): Promise<string | null> {
  */
 async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string): Promise<Ran> {
   const binary = await build($, timeoutMs).catch(() => undefined)
-  if (binary === STILL_BUILDING) throw new Error('the CLI is still building for this version; ask again in a moment')
+  if (binary === STILL_BUILDING) throw new Error('the CLI is still being built for this version')
   if (binary) {
     const startedAt = await $.clock.now()
     try {
