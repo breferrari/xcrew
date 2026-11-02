@@ -10,6 +10,7 @@
 - The doctor no longer asks for a restart that isn't needed, or says a session's rules weren't given, when the two things a session records as it starts were written at once.
 - A long result Claude Code saved to a file stays saved when xcrew shortens it but it's still long. Before, any change xcrew made, as trimming its warnings, put the whole result back into the conversation.
 - After `xcrew setup`, a running MobileBuildMCP gets the profiles as the config holds them, as MobileBuildMCP itself reads a config edited by hand or rewritten by it. Before, a quoted profile name made it create a second profile, a comment line dropped the profiles after it, a long path wrapped onto the next line was cut short, and a path written from the project root carried a `/./`.
+- `xcrew setup` and the doctor no longer ask for a restart when only the profiles changed in a config with a comment line among them.
 - A test marked flaky that a plain test run fails starts its passes in a row over. Before, it kept them, and could turn green although it had failed since its last pass.
 - A test marked flaky reads "passed 0 of the 4 needed in repeated runs since", saying that only a repeated run's passes count, so a single pass no longer reads as a wrong count. The ledger, the card, `/xcrew flaky` and the evidence block say it alike.
 

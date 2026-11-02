@@ -107,6 +107,13 @@ import XcrewTestSupport
         #expect(ConfigRenderer.serverPart(of: yaml) == "schemaVersion: 1\nenabledWorkflows:\n  - simulator\ndebuggerBackend: lldb-cli\nshowTestTiming: true\n")
     }
 
+    /// A comment line ends no section: one between the profiles leaves them out of the server part with it, so a change
+    /// to them asks for no restart. One among the server settings stays, as before.
+    @Test func aCommentLineEndsNoSection() {
+        let yaml = "schemaVersion: 1\n# the tool groups\nenabledWorkflows:\n  - simulator\nsessionDefaultsProfiles:\n  unit:\n    scheme: 'App'\n# the app\n  app:\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit\nshowTestTiming: true\n"
+        #expect(ConfigRenderer.serverPart(of: yaml) == "schemaVersion: 1\n# the tool groups\nenabledWorkflows:\n  - simulator\nshowTestTiming: true\n")
+    }
+
     /// The server marker moves only when the server part does: a new simulator or scheme leaves it where it was.
     @Test func theServerMarkerMovesOnlyWithTheServerPart() throws {
         let project = Project.temporary()
