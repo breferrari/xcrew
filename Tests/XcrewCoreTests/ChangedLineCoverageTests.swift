@@ -35,13 +35,20 @@ import XcrewTestSupport
             count.map { #"{"executionCount":\#($0),"isExecutable":true,"line":\#(index + 4)}"# } ?? #"{"isExecutable":false,"line":\#(index + 4)}"#
         }
         var responses = FakeRunner.branch(at: project.root, changed: ["Sources/Cart/Cart.swift", "Sources/Cart/CartView.swift", "README.md"] + changed, diffed: ["\(ProjectLayout.canonical(project.root))/Sources/Cart/Cart.swift"], diff: "+++ Sources/Cart/Cart.swift\n@@ -3,0 +4,4 @@\n")
-        responses.merge([
-            // Without coverage, xccov says "No coverage data in result bundle" and fails.
-            "xcrun xccov view --archive --file-list --json \(bundle)": coverage ? .init(status: 0, stdout: #"[\#(([cart] + extra).map { #""\#($0.replacingOccurrences(of: "/", with: "\\/"))""# }.joined(separator: ","))]"#) : .init(status: 1),
-            "xcrun xccov view --archive --file \(cart) --json \(bundle)": .init(status: 0, stdout: #"{"\#(cart)":[\#(lines.joined(separator: ","))]}"#),
-        ]) { _, new in new }
-        if let report { responses["xcrun xccov view --report --json \(bundle)"] = .init(status: 0, stdout: report) }
+        responses["xcrun xccov view --archive --file \(cart) --json \(bundle)"] = .init(status: 0, stdout: #"{"\#(cart)":[\#(lines.joined(separator: ","))]}"#)
+        responses[Self.availability(bundle)] = .init(status: 0, stdout: Self.available(coverage: coverage))
+        // Without coverage, xccov says "No coverage data in result bundle" and fails.
+        responses["xcrun xccov view --report --json \(bundle)"] = coverage ? .init(status: 0, stdout: report ?? Self.report([("Cart.framework", 2, [cart] + extra)])) : .init(status: 1)
         return FakeRunner(responses: responses)
+    }
+
+    static func availability(_ bundle: String) -> String {
+        "xcrun xcresulttool get content-availability --path \(bundle) --compact"
+    }
+
+    /// `xcresulttool get content-availability --compact`'s answer, as Xcode 27.2 gave it on November 2, 2026.
+    static func available(coverage: Bool) -> String {
+        #"{"hasCoverage":\#(coverage),"hasDiagnostics":true,"hasTestResults":true,"logs":["action"]}"#
     }
 
     func project() -> Project {
@@ -52,7 +59,7 @@ import XcrewTestSupport
         return project
     }
 
-    func note(_ project: Project, _ runner: FakeRunner) async throws -> String? {
+    func note(_ project: Project, _ runner: any CommandRunning) async throws -> String? {
         let report = await Report.make(kind: .test, output: try Raw.output("swift-testing"), home: Captured.home, runner: runner, project: project)
         return report.notes.first { $0.contains("changed line") || $0.contains("changed file") }
     }
@@ -78,14 +85,13 @@ import XcrewTestSupport
         #expect(try await note(project, runner) == nil)
     }
 
-    /// The archive can name one file in two spellings, as the build was started and as the file system spells it.
+    /// The report can name one file in two spellings, as the build was started and as the file system spells it.
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aFileListedInTwoSpellingsCountsOnce() async throws {
         let project = project()
         var runner = run(project)
         let cart = "\(project.root.path)/Sources/Cart/Cart.swift", real = "\(ProjectLayout.canonical(project.root))/Sources/Cart/Cart.swift"
-        let escaped = { (path: String) in path.replacingOccurrences(of: "/", with: "\\/") }
-        runner.responses["xcrun xccov view --archive --file-list --json \(Self.bundle)"] = .init(status: 0, stdout: #"["\#(escaped(cart))","\#(escaped(real))"]"#)
+        runner.responses["xcrun xccov view --report --json \(Self.bundle)"] = .init(status: 0, stdout: Self.report([("Cart.framework", 2, [cart]), ("Cart.app", 2, [real])]))
         runner.responses["xcrun xccov view --archive --file \(real) --json \(Self.bundle)"] = runner.responses["xcrun xccov view --archive --file \(cart) --json \(Self.bundle)"]
         #expect(try await note(project, runner) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
     }
@@ -194,6 +200,50 @@ import XcrewTestSupport
         #expect(try await note(project, run(project, coverage: false)) == nil)
     }
 
+    /// A bundle that says it holds no coverage asks nothing of `xccov`, whose start alone takes over half a second.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aBundleWithoutCoverageAsksNothingOfXccov() async throws {
+        let project = project()
+        var runner = run(project)
+        runner.responses[Self.availability(Self.bundle)] = .init(status: 0, stdout: Self.available(coverage: false))
+        let recording = RecordingRunner(runner)
+        #expect(try await note(project, recording) == nil)
+        #expect(!recording.asked.contains { $0.hasPrefix("xcrun xccov") }, "\(recording.asked)")
+    }
+
+    /// With coverage, `xccov` is asked for its report and each changed file's lines, never the archive's file list: the
+    /// report names the same files.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func theReportAloneNamesTheFilesCovered() async throws {
+        let project = project()
+        let recording = RecordingRunner(run(project))
+        #expect(try await note(project, recording) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
+        #expect(!recording.asked.contains { $0.contains("--file-list") }, "\(recording.asked)")
+    }
+
+    /// A bundle that can't say whether it holds coverage has its report read all the same.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aBundleThatCantSayHasItsReportRead() async throws {
+        let project = project()
+        var runner = run(project)
+        runner.responses[Self.availability(Self.bundle)] = .init(status: 64)
+        #expect(try await note(project, runner) == "xcrew: 2 of 3 changed lines that can run ran in this test run. Not run: Cart.swift:6. 1 changed file isn't in this run's coverage: CartView.swift.")
+    }
+
+    /// `hasCoverage` is read from `content-availability`'s answer; an answer without it, or none, says nothing.
+    @Test func contentAvailabilitySaysWhetherThereIsCoverage() async {
+        let answers: [(CommandResult, Bool?)] = [
+            (.init(status: 0, stdout: Self.available(coverage: true)), true),
+            (.init(status: 0, stdout: Self.available(coverage: false)), false),
+            (.init(status: 0, stdout: #"{"logs":["action"]}"#), nil),
+            (.init(status: 64), nil),
+        ]
+        for (answer, expected) in answers {
+            let runner = FakeRunner(responses: [Self.availability("/b.xcresult"): answer])
+            #expect(await ResultBundle(path: "/b.xcresult", runner: runner).holdsCoverage() == expected, "\(answer)")
+        }
+    }
+
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func aBuildHasNoNote() async throws {
         let project = project()
@@ -202,18 +252,18 @@ import XcrewTestSupport
     }
 }
 
-/// xccov's answers on a bundle the canary makes fresh with the newest Xcode (`scripts/coverage-shape.sh`): their shape
-/// isn't documented, so a change shows up here, not as a note that's silently empty.
+/// xcresulttool's and xccov's answers on a bundle the canary makes fresh with the newest Xcode
+/// (`scripts/coverage-shape.sh`): xccov's shape isn't documented, so a change shows up here, not as a note that's
+/// silently empty.
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["XCREW_COVERAGE_BUNDLE"] != nil, "no fresh bundle"))
 struct LiveCoverageShapeTests {
     @Test func xccovStillAnswersInTheShapeXcrewReads() async throws {
         let bundle = ResultBundle(path: ProcessInfo.processInfo.environment["XCREW_COVERAGE_BUNDLE"] ?? "", runner: SystemCommandRunner())
-        let files = await bundle.coveredFiles()
-        let file = try #require(files.first, "no file in the coverage archive")
-        let lines = ChangedLineCoverage.lines(await bundle.coverage(of: file))
-        #expect(lines?.values.contains(true) == true, "no line of \(file) read as run: \(String(describing: lines))")
+        #expect(await bundle.holdsCoverage() == true, "xcresulttool's content-availability doesn't say the bundle holds coverage")
         let targets = CoverageTarget.targets(in: await bundle.coverageReport())
         #expect(targets.contains { $0.isTests && !$0.files.isEmpty }, "no test bundle with its files in xccov's report: \(targets)")
-        #expect(targets.contains { $0.files.contains { ProjectLayout.canonicalPath($0.path) == ProjectLayout.canonicalPath(file) } }, "\(file) isn't in any target of xccov's report: \(targets)")
+        let file = try #require(targets.flatMap(\.files).first?.path, "no file in xccov's report: \(targets)")
+        let lines = ChangedLineCoverage.lines(await bundle.coverage(of: file))
+        #expect(lines?.values.contains(true) == true, "no line of \(file) read as run: \(String(describing: lines))")
     }
 }

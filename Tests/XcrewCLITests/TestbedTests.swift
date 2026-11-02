@@ -331,7 +331,8 @@ struct TestbedCoverageTests {
         let project = Project(root: root)
         var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
         responses.merge([
-            "xcrun xccov view --archive --file-list --json \(Self.bundle)": .init(status: 0, stdout: try captured("file-list.json", in: root)),
+            "xcrun xcresulttool get content-availability --path \(Self.bundle) --compact": .init(status: 0, stdout: try captured("content-availability.json", in: root)),
+            "xcrun xccov view --report --json \(Self.bundle)": .init(status: 0, stdout: reportHolding(try captured("file-list.json", in: root))),
             "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(Self.bundle)": .init(status: 0, stdout: try captured("Pricing.json", in: root)),
         ]) { _, new in new }
         let runner = FakeRunner(responses: responses)
@@ -358,7 +359,6 @@ struct TestbedFieldCoverageTests {
         let greeting = "Modules/Feature/Sources/Greeting.swift"
         var responses = FakeRunner.branch(at: root, changed: [greeting, "Modules/Feature/Tests/ProbeTests.swift"], diffed: ["\(ProjectLayout.canonical(root))/\(greeting)"], diff: "+++ \(greeting)\n@@ -0,0 +1,12 @@\n")
         responses.merge([
-            "xcrun xccov view --archive --file-list --json \(Self.bundle)": .init(status: 0, stdout: try captured("coverage.files.json")),
             "xcrun xccov view --archive --file \(root.path)/\(greeting) --json \(Self.bundle)": .init(status: 0, stdout: try captured("coverage.Greeting.json")),
             "xcrun xccov view --report --json \(Self.bundle)": .init(status: 0, stdout: try captured("coverage.report.json")),
         ]) { _, new in new }
@@ -492,7 +492,8 @@ struct TestbedEvidenceTests {
         }
         responses.merge([
             "git -C \(root.path) log -1 --format=%ct": .init(status: 0, stdout: "\(Int(committed.timeIntervalSince1970))\n"),
-            "xcrun xccov view --archive --file-list --json \(bundle.path)": .init(status: 0, stdout: try captured("file-list.json")),
+            "xcrun xcresulttool get content-availability --path \(bundle.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
+            "xcrun xccov view --report --json \(bundle.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
             "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(bundle.path)": .init(status: 0, stdout: try captured("Pricing.json")),
         ]) { _, new in new }
         return (project, CheckContext.fake(FakeRunner(responses: responses), project: project))
@@ -929,4 +930,12 @@ struct TestbedRawTests {
     @Test func aSecondConfigurationStopsTheCount() throws {
         #expect(RunLog.phase(ofLogAt: Self.raw.appending(path: "configurations.log"), expectedTests: 3) == "testing")
     }
+}
+
+/// xccov's report for a run whose archive lists `fileList` (`xccov view --archive --file-list --json`'s answer): one
+/// reached target holding every file, since the capture keeps the archive's list and not the report.
+private func reportHolding(_ fileList: String) -> String {
+    let files = (try? JSONDecoder().decode([String].self, from: Data(fileList.utf8))) ?? []
+    let listed = files.map { #"{"path":"\#($0)"}"# }.joined(separator: ",")
+    return #"{"targets":[{"name":"App.app","coveredLines":1,"executableLines":1,"files":[\#(listed)]}]}"#
 }

@@ -45,7 +45,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
         }
     }
 
-    /// The changed-line coverage of a run whose archive holds `covered`: only its files named like a changed file are
+    /// The changed-line coverage of a run whose report names `covered`: only its files named like a changed file are
     /// resolved, since an app's archive can list thousands. Nothing when the change is empty, or when git can't diff it
     /// or xccov can't give a file's counts, which would make a count up.
     /// With the run's `targets`, a test bundle's files are left out, and a target the run didn't reach is said once
@@ -137,14 +137,17 @@ struct ChangedLineCoverage: Sendable, Equatable {
     }
 
     /// What a test run's coverage says of the lines a branch changed, within `budget`: nothing when the run gathered no
-    /// coverage. The change is asked for only once there's coverage to read it against.
+    /// coverage. A bundle that says it holds none asks nothing of `xccov`, whose start alone takes over half a second;
+    /// otherwise the change is read while `xccov`'s report, which names every file the archive holds, is.
     static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
         await within(budget) {
-            let covered = await bundle.coveredFiles()
-            guard !covered.isEmpty else { return nil }
-            async let report = bundle.coverageReport()
-            guard let listed = await change() else { return nil }
-            return await of(covered, in: listed, targets: CoverageTarget.targets(in: await report), bundle: bundle, project: project, using: runner)
+            guard await bundle.holdsCoverage() != false else { return nil }
+            async let listed = change()
+            let targets = CoverageTarget.targets(in: await bundle.coverageReport())
+            var seen = Set<String>()
+            let covered = targets.flatMap { $0.files.map(\.path) }.filter { seen.insert($0).inserted }
+            guard !covered.isEmpty, let change = await listed else { return nil }
+            return await of(covered, in: change, targets: targets, bundle: bundle, project: project, using: runner)
         }
     }
 

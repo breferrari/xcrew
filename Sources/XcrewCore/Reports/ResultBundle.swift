@@ -307,10 +307,10 @@ public struct ResultBundle: Sendable {
 
     // MARK: Asking xccov
 
-    /// The files the coverage archive holds, spelled as the build was started; none when the run gathered no coverage,
-    /// which the scheme, its test plan or `-enableCodeCoverage YES` turns on.
-    func coveredFiles() async -> [String] {
-        Self.parse(await xccov(["--file-list", "--json"])) as? [String] ?? []
+    /// Whether the run gathered coverage, which the scheme, its test plan or `-enableCodeCoverage YES` turns on, as
+    /// `xcresulttool get content-availability` says (Xcode 16.3 and later); nothing when it can't say.
+    func holdsCoverage() async -> Bool? {
+        (Self.parse(await xcresulttool(["get", "content-availability", "--path", path, "--compact"])) as? [String: Any])?["hasCoverage"] as? Bool
     }
 
     /// Each target's files and how many of its lines ran, as `xccov view --report --json` gives them; empty when it can't.
