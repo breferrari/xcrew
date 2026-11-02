@@ -56,10 +56,16 @@ test('other servers are not Xcode tools', () => {
 
 test('a file a generator may read is recognised by its name, in any case, and other files are not', () => {
   // The names ProjectLayout gives Tuist's markers and manifests and XcodeGen's spec, and Tuist's own folder.
-  for (const path of ['/a/Tuist.swift', '/a/Project.swift', '/a/Workspace.swift', '/a/project.yml', '/a/ios/PROJECT.SWIFT', '/a/Tuist/ProjectDescriptionHelpers/Targets.swift', '/a/Tuist/Package.swift', 'Project.swift', '/a/targets/App.yml', '/a/specs/Shared.YAML']) {
+  for (const path of ['/a/Tuist.swift', '/a/Project.swift', '/a/Workspace.swift', '/a/ios/PROJECT.SWIFT', '/a/Tuist/ProjectDescriptionHelpers/Targets.swift', '/a/Tuist/Package.swift', 'Project.swift']) {
     expect([path, mayBeManifest(path)]).toEqual([path, true])
   }
-  for (const path of ['/a/ContentView.swift', '/a/MyProject.swift', '/a/project.yml.orig', '/a/Tuistery/Package.swift', '/a/Package.swift']) expect([path, mayBeManifest(path)]).toEqual([path, false])
+  for (const path of ['/a/ContentView.swift', '/a/MyProject.swift', '/a/project.yml.orig', '/a/Tuistery/Package.swift', '/a/Package.swift']) expect([path, mayBeManifest(path, true)]).toEqual([path, false])
+})
+
+test('a YAML file may be read only where the project\'s generator reads YAML', () => {
+  for (const path of ['/a/project.yml', '/a/targets/App.yml', '/a/specs/Shared.YAML', '/a/.github/workflows/ci.yml']) {
+    expect([path, mayBeManifest(path, true), mayBeManifest(path)]).toEqual([path, true, false])
+  }
 })
 
 test('a shell command that regenerates the project is recognised, alone or among others', () => {

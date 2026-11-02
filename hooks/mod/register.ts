@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -22,7 +22,7 @@ import { mostSerious, noticed, visible, WARNING_FOR_MS } from './problems'
 import { afterGenerate, editedNote, isUndone, isUndoneAfterRefusal, letThroughNote, marked, marksOf, refusal, refusalAfterUndo, refused, UNDONE_NOTE, withoutUndone } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, FAILED_PREFIX, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
-import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
+import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, isYaml, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -116,11 +116,12 @@ export const register: Register = on => {
       }
     }
     // What the file held before its first edit since the last generate, so an edit undone later can be told; read only
-    // for a name a manifest may have.
-    const isFirstEdit = path !== undefined && mayBeManifest(path) && !marksOf(await quietly(() => read($, staleState))).some(mark => path in (mark.files ?? {}))
+    // for a name a manifest may have: a YAML file's only in a project whose generator reads YAML.
+    const mayBe = path !== undefined && mayBeManifest(path, isYaml(path) && (await quietly(() => readsYaml($))) === true)
+    const isFirstEdit = path !== undefined && mayBe && !marksOf(await quietly(() => read($, staleState))).some(mark => path in (mark.files ?? {}))
     const before = isFirstEdit ? hashOf(await answer($, ['project', '--hash', path], 10_000)) : undefined
     const result = await next(e)
-    if (path === undefined || result.deny !== undefined || result.isError || !mayBeManifest(path)) return result
+    if (path === undefined || result.deny !== undefined || result.isError || !mayBe) return result
     const edit = manifestEditOf(await answer($, ['project', '--manifest', path], 10_000))
     if (!edit) return result
     if (!(await markStale($, stale => marked(stale, edit, { path, before: before ?? null })))) return result
@@ -435,6 +436,7 @@ export const register: Register = on => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
     if (e.tool !== 'Bash') return result
+    if (runsSetup(e.command) || runsGenerate(e.command)) yamlRead = undefined
     if (runsSetup(e.command)) afterSetup($)
     if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, stale => afterGenerate(stale, e.command))
     return result
@@ -607,6 +609,18 @@ async function answer($: EngineInterface, args: string[], timeoutMs = 60_000, st
 
 function runPhase($: EngineInterface, tool: string, since: number, expectedTests: number | undefined, log: string | undefined) {
   return answer($, phaseArgs(tool, since, expectedTests, log), 10_000).then(phaseOf)
+}
+
+/** Whether the project's generator reads YAML, asked once a session and again after setup or a generate. */
+let yamlRead: Promise<boolean> | undefined
+
+function readsYaml($: EngineInterface): Promise<boolean> {
+  yamlRead ??= answer($, ['project'], 10_000).then(answered => {
+    // An answer the CLI couldn't give is asked again next time.
+    if (answered === undefined) yamlRead = undefined
+    return readsYamlOf(answered)
+  })
+  return yamlRead
 }
 
 async function isGeneratedProject($: EngineInterface): Promise<boolean> {
@@ -871,6 +885,7 @@ function startOver(): void {
   sessionProfileSchemes = new Map()
   found = []
   pinsNamed.clear()
+  yamlRead = undefined
   agentDescriptions.clear()
   concurrencyGiven.clear()
   seenAt = {}

@@ -665,6 +665,13 @@ import XcrewTestSupport
         #expect(await Run("project", context: .fake(project: project)).text == #"{"isGenerated":true}"#)
     }
 
+    /// Only XcodeGen's project reads YAML; Tuist's and a project nothing generates don't say it.
+    @Test func anXcodeGenProjectSaysItReadsYaml() async {
+        #expect(await Run("project", context: .fake(project: Project.temporary(containing: ["ios/project.yml"]))).text == #"{"isGenerated":true,"readsYaml":true}"#)
+        #expect(await Run("project", context: .fake(project: Project.temporary(containing: ["Tuist.swift", "ci.yml"]))).text == #"{"isGenerated":true}"#)
+        #expect(await Run("project", context: .fake(project: Project.temporary(containing: ["App.xcodeproj", "ci.yml"]))).text == #"{"isGenerated":false}"#)
+    }
+
     @Test func aTuistProjectWithoutItsWorkspaceSaysToGenerateIt() async {
         let project = Project.temporary(containing: [".git", "Tuist.swift", "Projects/Feature/Feature.xcodeproj"])
         #expect(await Run("project", "--setup", context: .fake(project: project)).text == #"{"containerProblem":"no workspace beside the manifests in the project root yet: generate it first, or pass --container","isGenerated":true}"#)
@@ -724,7 +731,7 @@ import XcrewTestSupport
     @Test func aManifestMayBeNamedFromTheRoot() async {
         let project = Project.temporary(containing: ["ios/project.yml"])
         let text = await Run("project", "--manifest", "ios/project.yml", context: .fake(project: project)).text
-        #expect(text == #"{"app":"ios","generate":"xcodegen generate --spec ios/project.yml","isGenerated":true}"#)
+        #expect(text == #"{"app":"ios","generate":"xcodegen generate --spec ios/project.yml","isGenerated":true,"readsYaml":true}"#)
     }
 
     /// A module's manifest within reach of the walk still belongs to the app whose `Tuist.swift` is above it: generating the
@@ -764,7 +771,7 @@ import XcrewTestSupport
         project.write("settings: {}\n", to: "ios/common.yml")
         for spec in ["ios/targets/App.yml", "ios/targets/shared/base.yml", "ios/common.yml", "shared.yml"] {
             let text = await Run("project", "--manifest", project.root.appending(path: spec).path, context: .fake(project: project)).text
-            #expect(text == #"{"app":"ios","generate":"xcodegen generate --spec ios/project.yml","isGenerated":true}"#, "\(spec)")
+            #expect(text == #"{"app":"ios","generate":"xcodegen generate --spec ios/project.yml","isGenerated":true,"readsYaml":true}"#, "\(spec)")
         }
     }
 
@@ -777,7 +784,7 @@ import XcrewTestSupport
         shared.write("settings: {}\n", to: "specs/inner.yml")
         for spec in ["specs/base.yml", "specs/inner.yml"] {
             let text = await Run("project", "--manifest", shared.root.appending(path: spec).path, context: .fake(project: project)).text
-            #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true}"#, "\(spec)")
+            #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true,"readsYaml":true}"#, "\(spec)")
         }
     }
 
@@ -790,7 +797,7 @@ import XcrewTestSupport
         project.write("include:\n  - path: x/common.yml\n    relativePaths: false\n", to: "y/next.yml")
         project.write("settings: {}\n", to: "x/inner.yml")
         let text = await Run("project", "--manifest", project.root.appending(path: "x/inner.yml").path, context: .fake(project: project)).text
-        #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true}"#)
+        #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true,"readsYaml":true}"#)
     }
 
     @Test func aYAMLFileNoSpecIncludesRegeneratesNothing() async {
@@ -801,11 +808,11 @@ import XcrewTestSupport
         project.write("include: a.yml\n", to: "Unrelated/other.yml")
         for file in [".github/workflows/ci.yml", "Unrelated/other.yml"] {
             let text = await Run("project", "--manifest", project.root.appending(path: file).path, context: .fake(project: project)).text
-            #expect(text == #"{"isGenerated":true}"#, "\(file)")
+            #expect(text == #"{"isGenerated":true,"readsYaml":true}"#, "\(file)")
         }
         // A cycle back to the spec ends, with every spec in it counted.
         let text = await Run("project", "--manifest", project.root.appending(path: "a.yml").path, context: .fake(project: project)).text
-        #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true}"#)
+        #expect(text == #"{"app":"","generate":"xcodegen generate","isGenerated":true,"readsYaml":true}"#)
     }
 
     /// Claude may edit another project's manifests from this one: that changes nothing this project builds.
