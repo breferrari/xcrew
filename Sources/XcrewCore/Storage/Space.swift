@@ -247,7 +247,7 @@ public enum Space {
     /// data, the person's call, said before the command, which `SpaceReport` prints on the line below.
     static func devicesLine(devices: Int, bytes: Int, unavailable: Int) -> SpaceReport.Line {
         let text = "\(counted(devices, "device")): \(SpaceReport.size(bytes)) of data"
-            + (unavailable > 0 ? ", \(unavailable) unavailable. Deleting the unavailable ones loses the apps installed on them and their data, so it's the person's to agree to:" : "")
+            + (unavailable > 0 ? ", \(unavailable) unavailable. Deleting the unavailable \(unavailable == 1 ? "one" : "ones") \(SimulatorDelete.loses(unavailable == 1 ? "it" : "them")):" : "")
         return .init(text: text, bytes: bytes, command: unavailable > 0 ? "xcrun simctl delete unavailable" : nil)
     }
 

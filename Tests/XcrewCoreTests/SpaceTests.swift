@@ -166,7 +166,7 @@ import XcrewTestSupport
 
     @Test func devicesAreTotalledAndTheUnavailableCounted() async throws {
         let text = try await report().text
-        #expect(text.contains("  5 devices: 2.4 GB of data, 1 unavailable. Deleting the unavailable ones loses the apps installed on them and their data, so it's the person's to agree to:\n      xcrun simctl delete unavailable\n"), "\(text)")
+        #expect(text.contains("  5 devices: 2.4 GB of data, 1 unavailable. Deleting the unavailable one loses the apps installed on it and their data, so it's the person's to agree to:\n      xcrun simctl delete unavailable\n"), "\(text)")
     }
 
     /// The selected and the pinned Xcode are never offered for uninstalling, and nothing is offered without `xcodes`.

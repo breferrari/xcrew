@@ -130,6 +130,6 @@ public enum WorktreeSimulator {
     /// it: deleting this one, which loses the apps on it and their data, the person's call, said before the command.
     static func reused(name: String, label: String, udid: String, fresh: Bool) -> String {
         "xcrew: this worktree uses simulator `\(name)` (\(label)), made for it earlier"
-            + (fresh ? ". Setup makes a fresh one once it's deleted, which loses the apps installed on it and their data, so it's the person's to agree to: `xcrun simctl delete \(udid)`" : "")
+            + (fresh ? ". Once it's deleted, running this setup again makes a fresh one; the delete \(SimulatorDelete.loses("it")): `xcrun simctl delete \(udid)`" : "")
     }
 }

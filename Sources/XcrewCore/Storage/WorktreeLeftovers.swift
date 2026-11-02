@@ -29,6 +29,6 @@ enum WorktreeLeftovers {
     /// before the command, which ends the text.
     static func leftovers(named: String, udids: [String]) -> String {
         let them = udids.count == 1 ? "it" : "them"
-        return "\(named). Deleting \(them) loses the apps installed on \(them) and their data, so it's the person's to agree to: `xcrun simctl delete \(udids.joined(separator: " "))`"
+        return "\(named). Deleting \(them) \(SimulatorDelete.loses(them)): `xcrun simctl delete \(udids.joined(separator: " "))`"
     }
 }

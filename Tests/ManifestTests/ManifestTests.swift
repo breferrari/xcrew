@@ -235,7 +235,7 @@ import Testing
         #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
         let condition = /so it's the person's to agree to:\s+/
         let removing = try toldWhole().filter { $0.contains(/\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill |simctl (?:delete|erase) )/) }
-        #expect(removing.count >= 6, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
+        #expect(removing.count >= 7, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
         for text in removing {
             let command = try #require(text.firstMatch(of: condition), "no condition before the command: \(text)").range.upperBound
             #expect(!text[command...].contains(". ") && !text.hasSuffix("."), "the command doesn't end the text: \(text)")
