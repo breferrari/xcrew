@@ -5,11 +5,17 @@ import type { Elements } from './band'
 /** What Claude reads once after the person writes a config with the form: the session's MobileBuildMCP still has the old one. */
 export const SETUP_FACT = 'The person wrote a new MobileBuildMCP config with /xcrew setup; MobileBuildMCP reads it when Claude Code next starts.'
 
+/** How a call setup prints for a running MobileBuildMCP starts, after its indent (`LiveDefaults.call`). */
+export const CALL_START = 'session_set_defaults '
+
+/** How the line setup prints starts when the config changed what MobileBuildMCP reads only at its start (`SetupCommand.restartLine`). */
+export const RESTART_START = 'xcrew: restart Claude Code'
+
 /** What Claude reads once after the form wrote a config, from what setup printed. */
 export function setupFact(written: readonly string[]): string {
-  const calls = written.map(line => line.trim()).filter(line => line.startsWith('session_set_defaults '))
+  const calls = written.map(line => line.trim()).filter(line => line.startsWith(CALL_START))
   if (calls.length === 0) return SETUP_FACT
-  const restarts = written.some(line => line.startsWith('xcrew: restart Claude Code'))
+  const restarts = written.some(line => line.startsWith(RESTART_START))
   return [
     "The person wrote a new MobileBuildMCP config with /xcrew setup. This session's MobileBuildMCP takes its session defaults through these calls, one each:",
     ...calls,

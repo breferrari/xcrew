@@ -175,9 +175,13 @@ struct SetupCommand: Command {
                 calls.forEach { invocation.print("  " + $0) }
             }
             let serverChanged = (try? FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date).map { $0 >= began } ?? false
-            if serverChanged { invocation.print("xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it") }
+            if serverChanged { invocation.print(Self.restartLine) }
         }
     }
+
+    /// The line setup prints when the config changed what a running MobileBuildMCP reads only at its start; the setup form
+    /// reads it by its start.
+    static let restartLine = "xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it"
 
     /// The config names this Mac's simulators by ID, and DerivedData may live beside it, so it never belongs in the
     /// repository: kept out through the exclude file every worktree of it shares.
