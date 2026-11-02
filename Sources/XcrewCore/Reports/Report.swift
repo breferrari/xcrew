@@ -186,16 +186,19 @@ public struct Report: Sendable, Equatable, Codable {
             guard let project, !readSummary.ok else { return nil }
             return await Why.note(for: read, home: home, project: project, runner: runner)
         }()
-        async let pinNote: String? = {
+        // Which Xcode builds, for a failed MobileBuildMCP build or test whose errors another SDK or toolchain gives: the pin's
+        // note, which the mod names once a session, and the notes on CI's Xcode, a pin to suggest, and the open Xcode.
+        async let xcodeFacts: (pin: String?, notes: [String]) = {
             // MobileBuildMCP builds with the Xcode the pin decides; the Xcode MCP, with whichever is open.
-            guard read.server == .mobileBuildMCP, let project, let machine, !readSummary.ok, project.xcodePin != nil else { return nil }
+            guard read.server == .mobileBuildMCP, let project, let machine, !readSummary.ok else { return (nil, []) }
             let errors = read.reportedErrors.map(\.message)
             // A test run whose build failed lists only that; the compiler's errors are in the build log it names. A failed
             // test's log holds the app's own output, so it isn't read.
             let buildFailed = kind == .test && !read.failures.contains(where: \.isTest) && errors.contains { $0.hasPrefix("Failed to build") }
             let logged = { buildFailed ? read.buildLog(home: home).flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { BuildLog.errors(in: $0).map(\.message) } ?? [] : [] }
-            guard errors.contains(where: XcodePinCheck.mayBeTheToolchain) || logged().contains(where: XcodePinCheck.mayBeTheToolchain) else { return nil }
-            return XcodePinCheck.failureNote(await XcodeSnapshot.take(of: project, on: machine), hasXcodes: machine.runner.which("xcodes") != nil)
+            guard errors.contains(where: XcodePinCheck.mayBeTheToolchain) || logged().contains(where: XcodePinCheck.mayBeTheToolchain) else { return (nil, []) }
+            let xcodes = await XcodeSnapshot.take(of: project, on: machine)
+            return (XcodePinCheck.failureNote(xcodes, hasXcodes: machine.runner.which("xcodes") != nil), XcodeFailureNotes.notes(xcodes))
         }()
         async let concurrency: ConcurrencySummary? = {
             // MobileBuildMCP's result lists each diagnostic once: one listing fewer than the note's count can't hold that
@@ -258,6 +261,9 @@ public struct Report: Sendable, Equatable, Codable {
         // A run that failed because of the Mac says so first: its errors would read as the code's.
         if let why = await why { notes.insert(why, at: 0) }
 
+        // Which Xcode builds, where it can explain the failure.
+        notes += await xcodeFacts.notes
+
         // A failing test's target, from the run's test list, which skips and expected failures read too. A test the list
         // counts passed, such as a retry that passed, is no failure, though MobileBuildMCP's text lists it.
         let listing = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { await bundle.tests() } else { "" }
@@ -288,8 +294,8 @@ public struct Report: Sendable, Equatable, Codable {
             passed: passedTests,
             isUnread: isUnread ? true : nil,
             bundle: bundle?.path,
-            pinNote: await pinNote,
-            pin: await pinNote == nil ? nil : project?.xcodePin.map { "\($0.version) (\($0.file))" },
+            pinNote: await xcodeFacts.pin,
+            pin: await xcodeFacts.pin == nil ? nil : project?.xcodePin.map { "\($0.version) (\($0.file))" },
             backgroundTask: isUnread ? Self.backgroundTask(in: final.text) : nil,
             cause: await why,
             concurrency: await concurrency

@@ -364,8 +364,8 @@ import XcrewTestSupport
     @Test func theProjectChecksSkipOutsideAnApplePlatformProject() async {
         // Following "run /xcrew:setup" there would write a MobileBuildMCP config into a project with nothing to build.
         let run = await Run("doctor")
-        #expect(run.output.contains("skip  mobilebuildmcp/project-config      not an Apple project"))
-        #expect(run.output.contains("skip  mobilebuildmcp/simulators          not an Apple project"))
+        #expect(run.output.contains { $0.hasPrefix("skip  mobilebuildmcp/project-config ") && $0.hasSuffix(" not an Apple project") }, "\(run.output)")
+        #expect(run.output.contains { $0.hasPrefix("skip  mobilebuildmcp/simulators ") && $0.hasSuffix(" not an Apple project") }, "\(run.output)")
         let inside = await Run("doctor", context: .fake(project: .temporary(containing: ["App.xcodeproj"])))
         #expect(inside.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/project-config") })
     }
