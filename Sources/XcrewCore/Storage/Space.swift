@@ -19,8 +19,17 @@ public enum Space {
         let folder = await derivedData
         async let derived = xcodeDerivedData(in: folder, live: live, machine: machine)
         async let others = others(derivedData: folder, machine: machine)
-        let parts: [SpaceReport.Part?] = [await mobile, await derived, await runtimes, await devices, await xcodes, await others]
+        async let worktrees = worktreePart(CheckContext(project: project, machine: machine))
+        let parts: [SpaceReport.Part?] = [await mobile, await derived, await runtimes, await devices, await worktrees, await xcodes, await others]
         return SpaceReport(parts: parts.compactMap(\.self))
+    }
+
+    /// The simulators `setup --worktree` made: those left behind, each with the command that removes it, or that none is.
+    /// None when the project isn't in git or setup recorded none.
+    static func worktreePart(_ context: CheckContext) async -> SpaceReport.Part? {
+        let found = await WorktreeLeftovers.run(context)
+        guard found.status != .skip else { return nil }
+        return SpaceReport.Part(title: "Simulators setup made for worktrees", lines: [SpaceReport.Line(text: found.message)])
     }
 
     // MARK: MobileBuildMCP
@@ -93,7 +102,9 @@ public enum Space {
         guard let report = await StorageReport.read(.all, using: machine.runner) else { return SpaceReport.notRead(title, by: "mobilebuildmcp purge --report") }
         let grouped = ProjectWorkspaces.grouped(report, origins: await ProjectWorkspaces.origins(of: report, live: await live.value, home: machine.home))
         let processes = grouped.live.isEmpty ? ProcessList(ps: "") : await ProcessList.load(using: machine.runner)
-        var lines: [SpaceReport.Line] = grouped.live.flatMap { workspace, checkout in
+        // This project's workspaces against their budget, first.
+        var lines: [SpaceReport.Line] = grouped.live.isEmpty ? [] : [.init(text: StorageBudget.line(grouped.live, machine: machine, processes: processes))]
+        lines += grouped.live.flatMap { workspace, checkout in
             workspaceLines(workspace, name: URL(fileURLWithPath: checkout.root).lastPathComponent, root: checkout.root, newest: workspace.classes.values.compactMap(\.newest).max().map { SpaceReport.age(of: $0, now: now) },
                            bundles: bundles(in: workspace, home: machine.home), isBuilding: isBuilding(into: workspace, processes: processes, home: machine.home))
         }

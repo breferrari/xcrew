@@ -97,6 +97,7 @@ import XcrewTestSupport
         let text = try await report().text
         #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes testProducts,logs,resultBundles,stateTransients\n  App's DerivedData, 77.9 MB, costs a cold build to make again\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData\n"), "\(text)")
         #expect(text.hasPrefix(SpaceReport.unitsNote + "\n\n"), "\(text)")
+        #expect(text.contains("MobileBuildMCP\n  this project's MobileBuildMCP workspaces take 81.5 MB (77.7 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)\n"), "\(text)")
         #expect(text.contains("  Each `--dry-run` lists what it would delete; with `--delete` in its place and `--confirm delete-mobilebuildmcp-storage`, it deletes.\n"), "\(text)")
     }
 

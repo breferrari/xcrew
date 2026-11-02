@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The doctor no longer scans the disk: this project's MobileBuildMCP storage against its budget, and the simulators a removed worktree left behind, are in `xcrew space`, which shows them when you ask.
 - The line above the prompt no longer runs the doctor again every 30 seconds after a prompt: the doctor runs at session start, after setup, and when `/xcrew doctor` asks, which also clears a problem fixed since.
 - A Swift Testing run through a test plan of several configurations counts its tests through the first configuration and then says `testing`, rather than counting past its total as `testing · 10 done`.
 - The doctor's worktree-simulator check says "none of those made for this repository's worktrees is left" once every simulator setup made for them is deleted, rather than "0 made …, each still there".
