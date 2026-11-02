@@ -219,7 +219,8 @@ public enum RunLog {
 }
 
 extension RunLog {
-    /// How many of a log's first lines its invocation's heading is looked for in: it heads the log.
+    /// How many of a log's first lines its invocation's heading is looked for in: it heads the log (docs/findings.md, *How
+    /// much of the log is read for the scheme*).
     static let invocationWithin = 64
 
     /// The scheme the run built, from the `Command line invocation:` MobileBuildMCP's log opens with: the line after it is
@@ -236,7 +237,8 @@ extension RunLog {
         return String(match.1 ?? match.2 ?? "")
     }
 
-    /// The scheme a log names, read from its first part only: the invocation is at its top.
+    /// The scheme a log names, read from its first 64 KB only: the invocation is at its top, and `-scheme` comes before
+    /// the test filters (docs/findings.md, *How much of the log is read for the scheme*).
     public static func scheme(ofLogAt url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
