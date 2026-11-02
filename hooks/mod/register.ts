@@ -22,6 +22,7 @@ import { mostSerious, noticed, visible, WARNING_FOR_MS } from './problems'
 import { afterGenerate, editedNote, isUndone, isUndoneAfterRefusal, letThroughNote, marked, marksOf, refusal, refusalAfterUndo, refused, UNDONE_NOTE, withoutUndone } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, FAILED_PREFIX, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
+import { keptTimings, SLOW_PRECALL_MS, type Step, TIMINGS_KEY, timingsText } from './timings'
 import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, isYaml, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
@@ -74,9 +75,12 @@ export const register: Register = on => {
   on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const parsed = parseTool(e.tool)
     const target = parsed && (forwardedTool(parsed, e as unknown as Record<string, unknown>) ?? parsed)
+    const checkedFrom = await quietly(() => $.clock.now())
     const stored = target && buildsProject(target) ? await quietly(() => read($, staleState)) : undefined
     // Edits undone since leave the manifests as the last generate read them: those marks go.
     const dropped = stored ? await dropUndone($, stored) : undefined
+    const checkedTo = await quietly(() => $.clock.now())
+    if (e.tool_use_id && checkedFrom !== undefined && checkedTo !== undefined) staleChecks.set(e.tool_use_id, checkedTo - checkedFrom)
     const stale = dropped?.stale
     const generates = marksOf(stale).map(mark => mark.generate)
     if (!stale || generates.length === 0) return next(e)
@@ -152,13 +156,25 @@ export const register: Register = on => {
     const target = describe(parsed, e as unknown as Record<string, unknown>)
     const label = labelOf(name, target)
     const input = e as unknown as Record<string, unknown>
+    // How long each awaited step before the call took, kept when they add up to a second or more (`/xcrew timings`).
+    const waitedFrom = await quietly(() => $.clock.now())
+    const steps: Step[] = []
+    const step = async <T>(stepName: string, work: () => Promise<T>): Promise<T> => {
+      const from = await quietly(() => $.clock.now())
+      try {
+        return await work()
+      } finally {
+        const to = await quietly(() => $.clock.now())
+        if (from !== undefined && to !== undefined) steps.push({ name: stepName, ms: to - from })
+      }
+    }
     // Durations and test totals are kept per repository, scheme and test selection, not only per tool. A MobileBuildMCP
     // call that names no scheme is kept under the scheme its log names; the one worked out from Xcode's selection at the
     // server's start or the profile only picks the usual time and test total until then. Without a log, it's kept nowhere.
-    if (parsed.server === 'MobileBuildMCP' && input.scheme === undefined) await quietly(() => readXcodeStart($))
+    if (parsed.server === 'MobileBuildMCP' && input.scheme === undefined) await step('readXcodeStart', () => quietly(() => readXcodeStart($)))
     const needsScheme = parsed.server === 'MobileBuildMCP' && !namesScheme(parsed, input)
-    const fallbackScheme = needsScheme ? await profileScheme($) : undefined
-    const root = await sessionRoot($)
+    const fallbackScheme = needsScheme ? await step('profileScheme', () => profileScheme($)) : undefined
+    const root = await step('sessionRoot', () => sessionRoot($))
     const estimate = needsScheme && fallbackScheme === undefined ? undefined : scopeKey(root, historyOf(parsed, input, fallbackScheme))
     let scope = historyOf(parsed, input, fallbackScheme)
     let key = needsScheme ? undefined : estimate
@@ -168,21 +184,21 @@ export const register: Register = on => {
     }
 
     const started = await quietly(() => $.clock.now())
-    const { passed: estimated, failed: estimatedFailed } = await earlierRuns($, estimate, started)
+    const { passed: estimated, failed: estimatedFailed } = await step('earlierRuns', () => earlierRuns($, estimate, started))
     const usual = estimated.length > 0 ? average(estimated) : undefined
-    const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
+    const usesBand = drawsBand((await step('surfaces', () => quietly(() => $.session.surfaces()))) ?? [])
     // While this run goes, the other worktrees' runs are read too, so the line under it stays current.
     if (usesBand) void quietly(() => followElsewhere($))
     // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
     const followsLog = parsed.server === 'MobileBuildMCP'
-    let expectedTests = followsLog && estimate !== undefined ? ((await quietly(() => $.store.get(testsKey(estimate)))) as number | undefined) : undefined
-    const writesLog = followsLog && (await quietly(() => $.store.get(logsKey(name)))) === true
+    let expectedTests = followsLog && estimate !== undefined ? ((await step('store', () => quietly(() => $.store.get(testsKey(estimate))))) as number | undefined) : undefined
+    const writesLog = followsLog && (await step('store', () => quietly(() => $.store.get(logsKey(name))))) === true
     // The usual time is the server's own, which leaves out a pre-build hook; for a tool that logs,
     // the gauge starts when the log appears, before which the run itself hasn't begun.
     let measuredFrom = writesLog ? undefined : started
     let following: Following = {}
-    const by = await quietly(() => agentDescription($, e.agentId))
-    if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }), ...(by === undefined ? {} : { by }) }))
+    const by = await step('agentDescription', () => quietly(() => agentDescription($, e.agentId)))
+    if (usesBand && started !== undefined) await step('startRun', () => quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }), ...(by === undefined ? {} : { by }) })))
     // Moved to the background, the call answers with a handle while its run goes on: its log is followed until it ends.
     let inBackground = false
     const readPhase = async (since: number): Promise<Phase> => {
@@ -239,6 +255,7 @@ export const register: Register = on => {
       ticker?.cancel()
       if (!usesBand) void quietly(() => $.ui.status(undefined))
     }
+    void keepWait($, name, waitedFrom, steps, e.tool_use_id)
     const result = await next(e).catch(async (error: unknown) => {
       stopFollowing()
       if (usesBand) await quietly(() => update($, runState, () => null))
@@ -379,6 +396,7 @@ export const register: Register = on => {
       return { text: await openFailures($) }
     }
     if (subcommand === 'setup') return { text: await openForm($) }
+    if (subcommand === 'timings') return { text: timingsText(await quietly(() => $.store.get(TIMINGS_KEY))) }
     if (subcommand === 'close') {
       await dismissFailedRun($)
       return { text: await closeFailures($) }
@@ -891,6 +909,25 @@ async function branchLedger($: EngineInterface): Promise<{ head?: Head; ledger?:
   if (!head) return {}
   const ledger = ledgerOf(await $.store.get(ledgerKey(head)))
   return { head, ...(ledger ? { ledger } : {}) }
+}
+
+/** How long the stale-build guard took before each call, by its tool use id, until the timed hook keeps it. */
+const staleChecks = new Map<string, number>()
+
+/**
+ * Keeps a call's wait before it reached its server when it came to a second or more: the steps timed, the guard's check
+ * before them, and the rest as `other`. Bookkeeping: never awaited by the call.
+ */
+async function keepWait($: EngineInterface, tool: string, from: number | undefined, steps: Step[], id: string | undefined): Promise<void> {
+  const checked = id === undefined ? undefined : staleChecks.get(id)
+  if (id !== undefined) staleChecks.delete(id)
+  const to = await quietly(() => $.clock.now())
+  if (from === undefined || to === undefined || to - from + (checked ?? 0) < SLOW_PRECALL_MS) return
+  const timed = steps.reduce((total, step) => total + step.ms, 0)
+  const all = [...(checked ? [{ name: 'staleCheck', ms: checked }] : []), ...steps, ...(to - from > timed ? [{ name: 'other', ms: to - from - timed }] : [])]
+  const merged = Object.entries(all.reduce<Record<string, number>>((byName, step) => ({ ...byName, [step.name]: (byName[step.name] ?? 0) + step.ms }), {})).map(([name, ms]) => ({ name, ms }))
+  const kept = keptTimings(await quietly(() => $.store.get(TIMINGS_KEY)), { tool, at: from, steps: merged })
+  await quietly(() => $.store.set(TIMINGS_KEY, kept))
 }
 
 /** Whether the first prompt after a `/clear` or a `/resume` is still to read the doctor. */
