@@ -77,47 +77,19 @@ test('a test that fails and then passes in the same scope is listed red, then gr
   expect(text).not.toContain('Still red')
 })
 
-test("a run's report has what's left of its 10 s once the ledger is read again after its result", async ($, on) => {
-  let slow = false
-  let release = () => {}
-  const holdFirst = new Promise<void>(resolve => {
-    release = resolve
-  })
-  // The branch read after the held run's result takes 4 s.
-  const { calls, clock } = project(on, [FAILED, FAILED], {
-    holdFirst,
-    beforeBranch: async () => {
-      if (!slow) return
-      slow = false
-      await clock.advance(4_000)
-    },
-  })
-  const first = run($, 'AppTests')
-  // Another run ends meanwhile and writes a red, so the held run reads the ledger again once its result is back.
-  await run($, 'AppTests')
-  await clock.advance(6_000)
-  slow = true
-  release()
-  await first
-  expect(calls.filter(call => call.args[0] === 'report').map(call => call.timeoutMs)).toEqual([10_000, 6_000])
-})
-
-test("a ledger read that doesn't answer holds a run's result no longer than its 10 s", async ($, on) => {
+test("a ledger read that doesn't answer takes none of the report's 10 s", async ($, on) => {
   let stuck = false
-  const { clock } = project(on, [PASSED], { beforeBranch: () => (stuck ? new Promise<void>(() => {}) : Promise.resolve()) })
+  const { calls, clock } = project(on, [PASSED], { beforeBranch: () => (stuck ? new Promise<void>(() => {}) : Promise.resolve()) })
   await run($, 'AppTests')
   // Past the time a branch read is shared, so the next run reads it again, and that read never answers.
   await clock.advance(6_000)
   stuck = true
-  let answered = false
-  const call = run($, 'AppTests').then(result => {
-    answered = true
-    return result
-  })
-  await clock.advance(9_000)
-  expect(answered).toBe(false)
-  await clock.advance(1_000)
-  expect((await call).result).toBeDefined()
+  // The result waits for nothing of the ledger's: with no time passing, it comes back.
+  await run($, 'AppTests')
+  // Not knowing whether a red waits, it asks for the passed tests, and the report has its whole 10 s.
+  const report = calls.filter(call => call.args[0] === 'report').at(-1)
+  expect(report?.timeoutMs).toBe(10_000)
+  expect(report?.args).toContain('--passed')
 })
 
 test('a test run asks the CLI for its passed tests only while its branch has a red waiting', async ($, on) => {

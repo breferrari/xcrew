@@ -636,7 +636,7 @@ struct TestbedEvidenceTests {
     @Test func theBranchsRunsAreReadUntilTheCallsDeadline() async throws {
         let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        // Each of Xcode's reads takes 3 s, and the call has 2.5 s, its last 0.5 s kept to answer: git's reads end in time,
+        // Each of Xcode's reads takes 3 s, and the call has 2.5 s, its last 1.5 s kept to answer: git's reads end in time,
         // and none of the runs' does.
         let slow = Machine(environment: ["XCREW_WITHIN_MS": "2500"], home: context.machine.home, runner: DelayingRunner(context.machine.runner, xcrun: .seconds(3)), processID: context.machine.processID, applications: context.machine.applications)
         let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)

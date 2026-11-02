@@ -86,6 +86,8 @@ export function stubCli(
     doctorFails?: () => boolean
     /** The report can't be read: the CLI timed out, or the shim couldn't build. */
     reportFails?: () => boolean
+    /** The report runs past its time limit on this clock, and is stopped there. */
+    reportTimesOut?: { advance: (ms: number) => Promise<void> }
     /** A function may answer later, as a CLI that takes its time does. */
     project?: ProjectAnswer | ((args: readonly string[]) => ProjectAnswer | Promise<ProjectAnswer>)
     /** What `xcrew note` answers, for its arguments and what the mod pipes in. */
@@ -131,6 +133,10 @@ export function stubCli(
     if (ifBuilt && (answers.noBuild || answers.built?.() === false)) return { value: { exitCode: 75, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
+    if (args[0] === 'report' && answers.reportTimesOut) {
+      await answers.reportTimesOut.advance(timeoutMs ?? 30_000)
+      throw new Error('timed out')
+    }
     const asksOverlap = args[0] === 'runs' && args.includes('--overlapped')
     const runs = args[0] === 'runs' && !asksOverlap ? answers.runs?.() : undefined
     if (runs instanceof Error) throw runs

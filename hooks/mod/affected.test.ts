@@ -116,6 +116,22 @@ test('the affected tests asked while the CLI is still being built say so, not th
   expect(await asked).toBe("xcrew couldn't say yet which tests the changes can break: the CLI is still being built for this version.")
 })
 
+test('the affected tests whose 10 s ran out say so, not that the whole suite covers the changes', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+  stubCli(on, {
+    affected: async () => {
+      await clock.advance(10_000)
+      throw new Error('timed out')
+    },
+  })
+  expect(await ask($)).toBe("xcrew couldn't say yet which tests the changes can break: the call's time ran out before the CLI answered.")
+})
+
 test('session start registers exactly the ledger, affected, look and evidence tools, once each', async ($, on) => {
   const seen = session(on, {})
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })

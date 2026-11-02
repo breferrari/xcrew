@@ -42,6 +42,23 @@ import XcrewTestSupport
         #expect(cancelled.cut.isEmpty)
     }
 
+    /// A command stopped at its own limit, shorter than what was left, isn't named as cut, though its output held it
+    /// until past the deadline.
+    @Test func aCommandItsOwnLimitStoppedIsntNamed() async {
+        let clock = Mutex(Self.start)
+        let runner = DeadlineRunner(TimingRunner(answer: .timedOut, after: { clock.withLock { $0 = $0.addingTimeInterval(4) } }), deadline: Self.start.addingTimeInterval(3), now: { clock.withLock { $0 } })
+        _ = await runner.run(["git", "diff"], stdin: nil, timeout: .seconds(2))
+        #expect(runner.cut.isEmpty)
+    }
+
+    /// The line on a cut says what each program's answer would have added, the note left out, in one sentence.
+    @Test func whatACutLeftOutIsNamedByItsNote() {
+        #expect(DeadlineRunner.leftOut(["xccov"]) == "This call's time ran out before xccov answered, so the changed lines' coverage is left out of this result.")
+        #expect(DeadlineRunner.leftOut(["xcresulttool", "xccov"], of: "this block", leadIn: "xcrew: ") == "xcrew: this call's time ran out before xcresulttool and xccov answered, so what the run's result bundle adds and the changed lines' coverage are left out of this block.")
+        #expect(DeadlineRunner.leftOut(["git", "simctl"]) == "This call's time ran out before git and simctl answered, so what the branch changed and what simctl reads are left out of this result.")
+        #expect(DeadlineRunner.leftOut([]) == nil)
+    }
+
     /// What the CLI keeps to answer outlasts the time a stopped command's output is waited for, so a cut command can't
     /// hold the answer past the caller's limit.
     @Test func theTimeKeptToAnswerOutlastsAStoppedCommandsGrace() {

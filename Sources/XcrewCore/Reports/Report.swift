@@ -190,7 +190,7 @@ public struct Report: Sendable, Equatable, Codable {
             guard let project, let bundle, (bundleCounts?.ran ?? read.testTotal) != 0 else { return nil }
             // Behind the report's other reads in the pool: within the call's time, what failed is read first.
             let behind = CommandPool.lane(of: runner, 1)
-            return await ChangedLineCoverage.of(ResultBundle(path: bundle.path, runner: behind), change: { await change.value() }, project: project, using: behind)
+            return await ChangedLineCoverage.of(ResultBundle(path: bundle.path, runner: behind, exportFolder: bundle.exportFolder), change: { await change.value() }, project: project, using: behind)
         }()
         async let why: String? = {
             guard let project, !readSummary.ok else { return nil }

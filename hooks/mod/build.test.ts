@@ -146,6 +146,21 @@ test("a call that waited for the background build gives its command only what's 
   expect(cli.filter(call => call.args[0] === 'project').map(call => call.timeoutMs)).toEqual([6_000, 6_000])
 })
 
+test("a report its 10 s cut says so in one line, beside the server's result", async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('session.surfaces', () => ({ value: ['vscode'] }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', () => ({ result: {}, text: 'the server\'s result' }))
+  stubCli(on, { reportTimesOut: clock })
+  const result = await callTool($, 'mcp__xcode__BuildProject')
+  expect(result.context).toContain("xcrew: its report on this result didn't answer within its 10 s, so its notes are left out.")
+})
+
 /** What xcrew adds to a tool's result has 10 s, which also goes to the CLI, to pass down to every command it starts. */
 test("a call on a tool's result has 10 s, given to the CLI too", async ($, on) => {
   const seen: { args: readonly string[]; timeoutMs?: number; within?: string }[] = []

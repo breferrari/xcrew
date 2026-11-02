@@ -62,7 +62,7 @@ import XcrewTestSupport
         let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--log", try Self.log("TEST EXECUTE FAILED"), context: .fake(runner, environment: ["XCREW_WITHIN_MS": "1"]))
         let report = try Self.json(run)
         #expect(report["failures"] as? [[String: Any]] == nil || (report["failures"] as? [[String: Any]])?.isEmpty == true)
-        #expect((report["notes"] as? [String])?.last == "xcrew: this call's time ran out before xcresulttool answered, so what it reads is left out of this result.", "\(report)")
+        #expect((report["notes"] as? [String])?.last == "xcrew: this call's time ran out before xcresulttool answered, so what the run's result bundle adds is left out of this result.", "\(report)")
     }
 
     /// The bundle the log names, read by `xcresulttool`, gives each test's result: a test run read as any other.

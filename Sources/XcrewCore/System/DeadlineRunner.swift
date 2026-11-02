@@ -18,8 +18,8 @@ public final class DeadlineRunner: CommandRunning {
     /// The time a call has when its caller names none, as when a person runs the CLI: Claude Code's own point where a
     /// command stops holding the conversation, `BASH_DEFAULT_TIMEOUT_MS`'s 120 s.
     public static let asked = Duration.seconds(120)
-    /// The limit of a command with none of its own, as a result bundle's reads: the call's deadline ends it, and a
-    /// caller with no deadline stops it where a call asked for would.
+    /// The limit of a command with none of its own, as a result bundle's reads: the call's deadline ends it first, and
+    /// a runner with no deadline, as a test's, stops it where a call asked for would.
     public static let untimed = asked
     /// Where the mod names the time a call has, in milliseconds.
     public static let variable = "XCREW_WITHIN_MS"
@@ -47,9 +47,11 @@ public final class DeadlineRunner: CommandRunning {
             note(argv)
             return .timedOut
         }
-        let answer = await base.run(argv, stdin: stdin, timeout: min(timeout, .seconds(left)))
-        // Cut only when the deadline stopped it: one that timed out with time left hit its own limit, or was cancelled.
-        if answer == .timedOut, now() >= deadline { note(argv) }
+        let limited = Duration.seconds(left) < timeout
+        let answer = await base.run(argv, stdin: stdin, timeout: limited ? .seconds(left) : timeout)
+        // Cut only when the deadline stopped it: one on its own limit, or that timed out with time left, was cancelled,
+        // however long its output held it after.
+        if answer == .timedOut, limited, now() >= deadline { note(argv) }
         return answer
     }
 
@@ -58,13 +60,20 @@ public final class DeadlineRunner: CommandRunning {
     /// The programs the deadline cut, in the order cut, each once: `xcrun`'s tool by its own name.
     public var cut: [String] { cutCommands.withLock { $0 } }
 
-    /// What a call's answer says when the deadline cut a command: which programs didn't answer in time, so what they
-    /// read is left out of `answer`, "this result" or "this block"; nil when nothing was cut. A fact, to read beside it,
-    /// after `leadIn` when one is given, as a report's note starts "xcrew: ".
+    /// What a call's answer says when the deadline cut a command: which programs didn't answer in time, and the notes
+    /// their answers add that are left out of `answer`, "this result" or "this block"; nil when nothing was cut. A fact,
+    /// to read beside it, after `leadIn` when one is given, as a report's note starts "xcrew: ".
     public static func leftOut(_ cut: [String], of answer: String = "this result", leadIn: String = "") -> String? {
         guard !cut.isEmpty else { return nil }
-        let named = cut.count == 1 ? cut[0] : cut.dropLast().joined(separator: ", ") + " and " + (cut.last ?? "")
-        return leadIn + (leadIn.isEmpty ? "This" : "this") + " call's time ran out before \(named) answered, so what \(cut.count == 1 ? "it reads is" : "they read is") left out of \(answer)."
+        let notes = cut.map { adds[$0] ?? "what \($0) reads" }
+        return leadIn + (leadIn.isEmpty ? "This" : "this") + " call's time ran out before \(listed(cut)) answered, so \(listed(notes)) \(cut.count == 1 ? "is" : "are") left out of \(answer)."
+    }
+
+    /// What each program's answer adds to a result, by the program's name; a program not here is said as "what it reads".
+    static let adds = ["xccov": "the changed lines' coverage", "xcresulttool": "what the run's result bundle adds", "git": "what the branch changed"]
+
+    static func listed(_ items: [String]) -> String {
+        items.count == 1 ? items[0] : items.dropLast().joined(separator: ", ") + " and " + (items.last ?? "")
     }
 
     /// Programs whose answer no result shows, so a cut one leaves nothing out of it: the pool's question of how many

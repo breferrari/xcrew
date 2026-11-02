@@ -42,8 +42,8 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// With the run's `targets`, a test bundle's files are left out, and a target the run didn't reach is said once
     /// rather than its changed lines one by one; a file every target holding it leaves out is left out. Only files named
     /// like a changed one are resolved, since an app's coverage can list thousands.
-    /// With `keepingTestFiles`, files outside the coverage keep those only test targets build, for a caller that leaves
-    /// them out once for many runs. Every file's counts are asked at once: the runner's pool decides how many `xccov`s
+    /// With `keepingTestFiles`, the changed files outside the coverage include those only test targets build, for a
+    /// caller that leaves them out once, across many runs. Every file's counts are asked at once: the runner's pool decides how many `xccov`s
     /// run together.
     static func of(_ covered: [String], in change: GitChanges.Change, targets: [CoverageTarget], bundle: ResultBundle, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
         guard !change.files.isEmpty else { return nil }
@@ -190,8 +190,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// What a test run's coverage says of the lines a branch changed: nothing when the run gathered no coverage, or
     /// when the call's deadline cut what it needs. A bundle that says it holds none asks nothing of `xccov`, whose start
     /// alone takes over half a second; otherwise the change is read while `xccov`'s report, which names every file the
-    /// archive holds, is. With `keepingTestFiles`, files outside the coverage keep those only test targets build, for a
-    /// caller that leaves them out once for many runs.
+    /// archive holds, is. `keepingTestFiles` is as `of(_:in:targets:bundle:project:using:keepingTestFiles:)` says.
     static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
         guard await bundle.holdsCoverage() != false else { return nil }
         async let listed = change()

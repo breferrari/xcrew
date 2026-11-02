@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, STILL_BUILDING_MESSAGE, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, OutOfTime, reportCutNote, StillBuilding, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -253,10 +253,15 @@ export const register: Register = on => {
       }),
     )
 
-    // Whether to ask the CLI for the run's passed tests is read while the run goes, off the path to its result, and read
-    // again at its end only when another run wrote the ledger meanwhile.
+    // Whether to ask the CLI for the run's passed tests is read while the run goes, off the path to its result. The
+    // result waits for nothing of the ledger's: when that read hasn't answered by then, or another run wrote the ledger
+    // meanwhile, a test run asks for them, which the report reads within its own time.
     const writesAtStart = ledgerWritesQueued
-    const askingPassed = asksForPassed($, kind)
+    let knownPassed: boolean | undefined
+    void asksForPassed($, kind).then(asks => {
+      knownPassed = asks
+    })
+    const listsPassed = () => kind === 'test' && ((knownPassed ?? true) || ledgerWritesQueued !== writesAtStart)
     // However the call ends, the run stops counting, unless it goes on in the background; one that failed beneath leaves
     // the band too.
     function stopFollowing() {
@@ -283,11 +288,14 @@ export const register: Register = on => {
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
     const findsScheme = needsScheme && key === undefined
-    // The result's one `ON_RESULT_MS`, from when it came back, covers the ledger's reads and the report alike.
-    const until = ended + ON_RESULT_MS
-    const listsPassed = (await answeredBy($, until, askingPassed)) || (ledgerWritesQueued !== writesAtStart && (await answeredBy($, until, asksForPassed($, kind))))
-    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, listsPassed), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], await leftUntil($, until), result.text ?? '')
+    const asked = await xcrew($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, listsPassed()), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], ON_RESULT_MS, result.text ?? '').then(
+      ran => ({ reported: answerOf(ran), cut: false }),
+      (error: unknown) => ({ reported: undefined, cut: error instanceof OutOfTime }),
+    )
+    const reported = asked.reported
     const reportedOutcome = reportOf(reported, result.isError === true)
+    // A report its time cut leaves the server's result as it came, with one line saying xcrew's notes are left out.
+    if (asked.cut) reportedOutcome.notes.push(reportCutNote(ON_RESULT_MS))
     // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
     if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
     const outcome = withConcurrencyOnce(withPinNamedOnce(reportedOutcome), scope)
@@ -303,7 +311,7 @@ export const register: Register = on => {
       if (outcome.backgroundTask) {
         // A run whose log is followed stays on the band, going, until its log or its notification ends it.
         inBackground = followsLog && ticker !== undefined
-        backgrounded.set(outcome.backgroundTask, { ...run, repeated, launches, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
+        backgrounded.set(outcome.backgroundTask, { ...run, repeated, launches, listsPassed, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
         // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
         // A call dropped stops following its log: no notification will end it now.
         for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) {
@@ -389,7 +397,7 @@ export const register: Register = on => {
   // Claude's question before a full test run: which tests the branch's changes can break.
   on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => {
     const ran = await xcrew($, affectedArgs(e as unknown as Record<string, unknown>), ON_RESULT_MS).catch((error: unknown) => (error instanceof Error ? error : undefined))
-    if (ran instanceof Error && ran.message === STILL_BUILDING_MESSAGE) return { result: affectedText(undefined, ran.message) }
+    if (ran instanceof StillBuilding || ran instanceof OutOfTime) return { result: affectedText(undefined, ran.message) }
     return { result: affectedText(answerOf(ran instanceof Error ? undefined : ran)) }
   })
   // Claude's read of the ledger, for a pull request's test plan.
@@ -498,7 +506,7 @@ export const register: Register = on => {
 type Ending = { tool: string; scope: string; key?: string; startedAt: number; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; allOfScope: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
-type Backgrounded = Ending & { repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
+type Backgrounded = Ending & { repeated: boolean; launches: boolean; listsPassed: () => boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
 
 /**
  * Records how a run ended: its failures, the ledger when the CLI read the run (`isRead`) and
@@ -575,10 +583,8 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start;
   // the Xcode MCP writes none.
   const finds = call.log === undefined && call.server === 'MobileBuildMCP'
-  // The notification's one `ON_RESULT_MS` covers the ledger's reads and the report alike.
-  const until = await quietly(async () => (await $.clock.now()) + ON_RESULT_MS)
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await answeredBy($, until, asksForPassed($, call.kind))), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
-  const reported = await answer($, args, await leftUntil($, until), text)
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, call.listsPassed()), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
+  const reported = await answer($, args, ON_RESULT_MS, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
   // A run whose log appeared only after it was moved to the background is kept under the scheme the log names.
@@ -733,22 +739,27 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
   const left = async () => {
     const ms = await leftUntil($, until, timeoutMs)
     // `$.process.run` says nothing of a limit of none: a call with no time left isn't started.
-    if (ms <= 0) throw new Error('no time was left for the CLI')
+    if (ms <= 0) throw new OutOfTime()
     return ms
   }
   const binary = await build($, await left()).catch(() => undefined)
-  if (binary === STILL_BUILDING) throw new Error(STILL_BUILDING_MESSAGE)
+  if (binary === STILL_BUILDING) throw new StillBuilding()
   if (binary) {
     const startedAt = await $.clock.now()
     const given = await left()
     try {
       return await start($, binary, args, given, stdin)
     } catch (error) {
-      if (ranOutOfTime(startedAt, await $.clock.now(), given)) throw error
+      if (ranOutOfTime(startedAt, await $.clock.now(), given)) throw new OutOfTime()
       await update($, buildState, () => null)
     }
   }
-  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], await left(), stdin)
+  const given = await left()
+  const startedAt = await quietly(() => $.clock.now())
+  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], given, stdin).catch(async (error: unknown) => {
+    const now = await quietly(() => $.clock.now())
+    throw startedAt !== undefined && now !== undefined && ranOutOfTime(startedAt, now, given) ? new OutOfTime() : error
+  })
 }
 
 /**
@@ -783,27 +794,9 @@ async function showEndingOf($: EngineInterface, startedAt: number, ending: NonNu
 }
 
 /** What's left of the time until `until`; `otherwise` when the clock can't say. */
-async function leftUntil($: EngineInterface, until: number | undefined, otherwise = ON_RESULT_MS): Promise<number> {
+async function leftUntil($: EngineInterface, until: number | undefined, otherwise: number): Promise<number> {
   const now = until === undefined ? undefined : await quietly(() => $.clock.now())
   return until === undefined || now === undefined ? otherwise : Math.max(0, until - now)
-}
-
-/** What `promise` answers by `until`, else false, which a clock that won't time the wait answers at once. */
-async function answeredBy($: EngineInterface, until: number | undefined, promise: Promise<boolean>): Promise<boolean> {
-  const left = await leftUntil($, until)
-  let timer: { cancel: () => void } | undefined
-  const answered = await Promise.race([
-    promise,
-    new Promise<boolean>(resolve => {
-      try {
-        timer = $.clock.after(left, () => resolve(false))
-      } catch {
-        resolve(false)
-      }
-    }),
-  ])
-  timer?.cancel()
-  return answered
 }
 
 /** The CLI's JSON answer, or nothing when it couldn't run or said something else. */
