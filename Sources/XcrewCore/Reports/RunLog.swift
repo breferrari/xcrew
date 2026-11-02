@@ -238,7 +238,7 @@ extension RunLog {
     }
 
     /// The scheme a log names, read from its first 64 KB only: the invocation is at its top, and `-scheme` comes before
-    /// the test filters, within about 2 KB.
+    /// the test filters (docs/findings.md, *How much of the log is read for the scheme*).
     public static func scheme(ofLogAt url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
