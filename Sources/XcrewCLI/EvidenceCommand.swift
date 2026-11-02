@@ -14,7 +14,7 @@ struct EvidenceCommand: Command {
         guard let input = try? JSONDecoder().decode(EvidenceInput.self, from: await invocation.standardInput()) else {
             throw UsageError(description: "evidence reads the mod's ledger as JSON on stdin")
         }
-        let context = invocation.context
+        let context = CheckContext(project: invocation.context.project, machine: invocation.context.machine.pooled())
         guard let pack = await EvidencePack.make(input, project: context.project, machine: context.machine, open: { ResultBundle(path: $0, runner: context.runner) }) else {
             invocation.print(Self.nothing)
             return 0

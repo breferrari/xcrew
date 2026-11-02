@@ -19,7 +19,7 @@ struct ReportCommand: Command {
         guard let kind = invocation.arguments["kind"].flatMap(Report.Kind.init(rawValue:)) else {
             throw UsageError(description: "report needs --kind build, test or run")
         }
-        let machine = invocation.context.machine
+        let machine = invocation.context.machine.pooled()
         let repeated = invocation.arguments.has("repeated")
         let listsPassed = invocation.arguments.has("passed")
         var report: Report

@@ -36,8 +36,6 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// Changed files a run covered but that changed since it started, which it can't speak for.
     var stale: [String] = []
 
-    /// How many files' line counts are asked of `xccov` at once.
-    static let atOnce = 4
     /// How long the whole reading may take: it shares the report's time with the failures and the summary, so past this
     /// the note is dropped and the rest of the report stands.
     static let budget = Duration.seconds(45)
@@ -63,7 +61,8 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// rather than its changed lines one by one; a file every target holding it leaves out is left out. Only files named
     /// like a changed one are resolved, since an app's coverage can list thousands.
     /// With `keepingTestFiles`, files outside the coverage keep those only test targets build, for a caller that leaves
-    /// them out once for many runs.
+    /// them out once for many runs. Every file's counts are asked at once: the runner's pool decides how many `xccov`s
+    /// run together.
     static func of(_ covered: [String], in change: GitChanges.Change, targets: [CoverageTarget], bundle: ResultBundle, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
         guard !change.files.isEmpty else { return nil }
         let names = Set(change.files.map { ToolOutput.basename($0).lowercased() })
@@ -80,10 +79,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
         let changed = oneSpellingEach(listed)
         var counts: [String: [Int: Bool]?] = [:]
         await withTaskGroup(of: (String, [Int: Bool]?).self) { group in
-            for (index, (path, _)) in changed.enumerated() {
-                if index >= atOnce, let finished = await group.next() { counts[finished.0] = finished.1 }
-                group.addTask { (path, lines(await bundle.coverage(of: path))) }
-            }
+            for (path, _) in changed { group.addTask { (path, lines(await bundle.coverage(of: path))) } }
             for await (path, read) in group { counts[path] = read }
         }
         var found = ChangedLineCoverage()
