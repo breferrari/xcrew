@@ -21,6 +21,7 @@ struct WorktreeLeftoversCheck: Check {
             if !live.contains(ProjectLayout.canonicalPath(entry.worktree)) { return (device, "its worktree is gone") }
             return device.isAvailable ? nil : (device, "its runtime is gone")
         }
+        guard !ours.isEmpty else { return .pass("none of those made for this repository's worktrees is left") }
         guard !left.isEmpty else { return .pass("\(ours.count) made for this repository's worktrees, each still there") }
         let named = left.map { "`\($0.device.name)` (\($0.why))" }.joined(separator: ", ")
         let delete = "`xcrun simctl delete \(left.compactMap(\.device.udid).joined(separator: " "))`"

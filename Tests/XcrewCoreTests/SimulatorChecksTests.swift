@@ -55,6 +55,12 @@ import XcrewTestSupport
         #expect(await WorktreeLeftoversCheck().run(context) == .pass("1 made for this repository's worktrees, each still there"))
     }
 
+    /// Every simulator setup recorded is deleted since: none is left, said plainly rather than as a count of 0.
+    @Test func noneLeftOfThoseMadeIsSaidPlainly() async throws {
+        let context = try Self.leftovers([("iPhone 18 Pro", "OTHER", "Shutdown", true)], live: ["live"], recorded: [("GONE", "live")])
+        #expect(await WorktreeLeftoversCheck().run(context) == .pass("none of those made for this repository's worktrees is left"))
+    }
+
     /// Setup may have been given the worktree's folder in another letter case than git keeps; both name one folder.
     @Test func aRecordSpelledInAnotherCaseIsTheSameWorktree() async throws {
         let context = try Self.leftovers([("xcrew · App · mytree", "U1", "Shutdown", true)], live: ["MyTree"], recorded: [("U1", "mytree")])
