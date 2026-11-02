@@ -30,6 +30,7 @@ C. A clean run. Delete the probe file and run the target again. It passes, and t
 D. Doctor. Find the plugin's `bin/xcrew` (under ~/.claude/plugins/cache) and run:
    1. `xcrew doctor`: every check, quickly, with no network request.
    2. `xcrew doctor --problems`: only failures and warnings, or `No problems.`, then a `Kept off the prompt:` line naming any warning it leaves off the prompt (such as `xcode/pin`).
+   3. Run through Claude's Bash in the session, `xcrew/briefing-current` and `xcrew/mod-loaded` are `ok`; run from a terminal of your own, both skip, since no session is named.
 
 E. The CLI's shim, with the same `bin/xcrew`:
    1. `bin/xcrew --binary-path` prints the path of a built `xcrew`, and that path's `--version` is the version under test.

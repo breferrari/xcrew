@@ -6,7 +6,7 @@ description: Reference for the Xcode MCP, MobileBuildMCP and Sosumi setup xcrew 
 
 # xcrew reference
 
-The routing table reaches each session at start. This file holds what each server needs to work and what to do when it doesn't. `xcrew doctor` checks all of it and prints the fix for anything wrong.
+The routing table reaches each session at start. This file holds what each server needs to work and what to do when it doesn't. `xcrew doctor` checks what xcrew can't run without, its installation and the toolchain, and prints the fix for anything wrong.
 
 ## MobileBuildMCP
 

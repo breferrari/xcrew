@@ -1152,6 +1152,24 @@ import Testing
 
     // MARK: mcs techpack
 
+    /// A check's `fixCommand` is a fix its Swift check offers, so `mcs doctor` never runs another check's.
+    @Test func techpackFixCommandsAreTheirChecksOwn() throws {
+        let entries = try text("techpack.yaml").components(separatedBy: "  - type: shellScript").dropFirst()
+        let core = Self.repository.appending(path: "Sources/XcrewCore")
+        let files = (FileManager.default.enumerator(atPath: core.path)?.allObjects as? [String] ?? []).filter { $0.hasSuffix(".swift") }
+        let sources = try Dictionary(uniqueKeysWithValues: files.map { (($0 as NSString).lastPathComponent, try text("Sources/XcrewCore/\($0)")) })
+        for entry in entries {
+            guard let fix = entry.firstMatch(of: /fixCommand: "([^"]+)"/)?.1,
+                  let script = entry.firstMatch(of: /command: mcs\/checks\/([\w-]+)--([\w-]+)\.sh/) else { continue }
+            let id = "\(script.1)/\(script.2)"
+            let check = try #require(sources.values.first { $0.contains("let id = \"\(id)\"") }, "no check \(id)")
+            // The check's own file, and the types it names, where its message may come from.
+            let named = Set(check.matches(of: /\b([A-Z]\w+)\./).map { "\($0.1).swift" })
+            let offered = [check] + named.compactMap { sources[$0] }
+            #expect(offered.contains { $0.contains(String(fix)) }, "\(id)'s fixCommand isn't a fix its check offers: \(fix)")
+        }
+    }
+
     @Test func techpackHasEveryDoctorCheck() async throws {
         let techpack = try text("techpack.yaml")
         let listed = techpack.matches(of: /command: (mcs\/checks\/[\w.-]+\.sh)/).map { String($0.1) }
