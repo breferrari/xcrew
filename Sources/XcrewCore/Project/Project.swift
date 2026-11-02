@@ -52,6 +52,11 @@ public struct Project: Sendable, Equatable {
         ProjectLayout(self, reach: reach)
     }
 
+    /// The Xcode containers in the repository, as URLs: where the schemes and test plans a run takes are read.
+    var repositoryContainers: [URL] {
+        layout(.repository).containers.map { root.appending(path: $0) }
+    }
+
     /// `.xcworkspace` and `.xcodeproj` paths relative to the root, nearest first and workspaces first: setup's default container.
     public var xcodeContainers: [String] { layout(.anywhereButHome).containers }
 
