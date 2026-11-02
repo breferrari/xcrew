@@ -188,7 +188,9 @@ public struct Report: Sendable, Equatable, Codable {
         async let coverage: ChangedLineCoverage? = {
             // A run of no tests ran none of the changed lines, which says nothing of them.
             guard let project, let bundle, (bundleCounts?.ran ?? read.testTotal) != 0 else { return nil }
-            return await ChangedLineCoverage.of(bundle, change: { await change.value() }, project: project, using: runner)
+            // In a lane of its own, behind the failures' reads, which Claude's result waits on as much.
+            let coverageRunner = CommandPool.lane(of: runner, 1)
+            return await ChangedLineCoverage.of(ResultBundle(path: bundle.path, runner: coverageRunner), change: { await change.value() }, project: project, using: coverageRunner)
         }()
         async let why: String? = {
             guard let project, !readSummary.ok else { return nil }

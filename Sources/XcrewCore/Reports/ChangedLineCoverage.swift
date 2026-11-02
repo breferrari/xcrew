@@ -61,7 +61,8 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// rather than its changed lines one by one; a file every target holding it leaves out is left out. Only files named
     /// like a changed one are resolved, since an app's coverage can list thousands.
     /// With `keepingTestFiles`, files outside the coverage keep those only test targets build, for a caller that leaves
-    /// them out once for many runs.
+    /// them out once for many runs. Every file's counts are asked at once: the runner's pool decides how many `xccov`s
+    /// run together.
     static func of(_ covered: [String], in change: GitChanges.Change, targets: [CoverageTarget], bundle: ResultBundle, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
         guard !change.files.isEmpty else { return nil }
         let names = Set(change.files.map { ToolOutput.basename($0).lowercased() })
@@ -77,7 +78,6 @@ struct ChangedLineCoverage: Sendable, Equatable {
         guard let listed = await ChangedLines.of(candidates, in: change, project: project, using: runner) else { return nil }
         let changed = oneSpellingEach(listed)
         var counts: [String: [Int: Bool]?] = [:]
-        // Every file's counts are asked at once; the runner's pool decides how many `xccov`s run together.
         await withTaskGroup(of: (String, [Int: Bool]?).self) { group in
             for (path, _) in changed { group.addTask { (path, lines(await bundle.coverage(of: path))) } }
             for await (path, read) in group { counts[path] = read }

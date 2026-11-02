@@ -41,6 +41,11 @@ public struct Machine: Sendable {
         Machine(environment: environment.merging([name: value]) { $1 }, home: home, runner: runner, processID: processID, applications: applications, now: now)
     }
 
+    /// This machine with its commands run by `runner`.
+    public func running(_ runner: any CommandRunning) -> Machine {
+        Machine(environment: environment, home: home, runner: runner, processID: processID, applications: applications, now: now)
+    }
+
     /// A variable's value, treating an empty one as unset.
     public func value(_ name: String) -> String? {
         guard let value = environment[name], !value.isEmpty else { return nil }

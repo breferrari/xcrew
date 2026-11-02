@@ -2,13 +2,22 @@ import Foundation
 import Synchronization
 
 /// Runs at most `size` commands at once and queues the rest, for a reading that starts many heavy commands together:
-/// each `xccov` holds about 100 MB, and started all at once they crowd the Mac's cores and memory. Sized to the Mac's
-/// performance cores, past which a call's time grows (docs/findings.md, *The branch's test runs*), read when the first
-/// command comes, so a caller that starts none reads nothing.
+/// each `xccov` holds about 100 MB, and started all at once they crowd the Mac's cores and memory. Every command its
+/// caller runs goes through it, `git`'s too. It's sized to the Mac's performance cores, past which a call's time grows
+/// (docs/findings.md, *The branch's test runs*), read when the first command comes, so a caller that starts none reads
+/// nothing. A waiting command goes by its lane, a lower one first, then by when it came; one cancelled while it waits
+/// leaves the queue at once.
 public final class CommandPool: CommandRunning {
-    let base: any CommandRunning
-    let size: Once<Int>
-    private let slots = Mutex<(running: Int, waiting: [CheckedContinuation<Void, Never>])>((0, []))
+    private let base: any CommandRunning
+    private let size: Once<Int>
+    private let slots = Mutex(Slots())
+
+    /// The pool's commands running, and those waiting, each with its lane and when it came.
+    private struct Slots {
+        var running = 0
+        var waiting: [(id: Int, lane: Int, waiter: CheckedContinuation<Bool, Never>)] = []
+        var next = 0
+    }
 
     public init(_ base: any CommandRunning, size: Int) {
         self.base = base
@@ -21,9 +30,14 @@ public final class CommandPool: CommandRunning {
         self.size = Once { await Self.size(using: base) }
     }
 
-    /// The command's answer once a slot is free; one cancelled while it waited isn't started, and answers as timed out.
     public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-        await acquire(await size.value())
+        await run(argv, stdin: stdin, timeout: timeout, lane: 0)
+    }
+
+    /// The command's answer once a slot is free, its turn by `lane`; one cancelled while it waits isn't started, and
+    /// answers as timed out.
+    public func run(_ argv: [String], stdin: Data?, timeout: Duration, lane: Int) async -> CommandResult {
+        guard await acquire(await size.value(), lane: lane) else { return .timedOut }
         defer { release() }
         guard !Task.isCancelled else { return .timedOut }
         return await base.run(argv, stdin: stdin, timeout: timeout)
@@ -31,29 +45,46 @@ public final class CommandPool: CommandRunning {
 
     public func which(_ name: String) -> String? { base.which(name) }
 
-    private func acquire(_ size: Int) async {
-        await withCheckedContinuation { (waiter: CheckedContinuation<Void, Never>) in
-            let started = slots.withLock { slots in
-                guard slots.running < size else {
-                    slots.waiting.append(waiter)
-                    return false
+    /// How many commands wait for a slot.
+    var waiting: Int { slots.withLock { $0.waiting.count } }
+
+    /// Whether a slot was taken: false when the task was cancelled while it waited.
+    private func acquire(_ size: Int, lane: Int) async -> Bool {
+        let id = slots.withLock { slots in
+            defer { slots.next += 1 }
+            return slots.next
+        }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (waiter: CheckedContinuation<Bool, Never>) in
+                let answer: Bool? = slots.withLock { slots in
+                    if Task.isCancelled { return false }
+                    guard slots.running < size else {
+                        let at = slots.waiting.firstIndex { $0.lane > lane } ?? slots.waiting.endIndex
+                        slots.waiting.insert((id, lane, waiter), at: at)
+                        return nil
+                    }
+                    slots.running += 1
+                    return true
                 }
-                slots.running += 1
-                return true
+                if let answer { waiter.resume(returning: answer) }
             }
-            if started { waiter.resume() }
+        } onCancel: {
+            let waiter = slots.withLock { slots in
+                slots.waiting.firstIndex { $0.id == id }.map { slots.waiting.remove(at: $0).waiter }
+            }
+            waiter?.resume(returning: false)
         }
     }
 
     private func release() {
-        let next = slots.withLock { slots -> CheckedContinuation<Void, Never>? in
+        let next = slots.withLock { slots -> CheckedContinuation<Bool, Never>? in
             guard !slots.waiting.isEmpty else {
                 slots.running -= 1
                 return nil
             }
-            return slots.waiting.removeFirst()
+            return slots.waiting.removeFirst().waiter
         }
-        next?.resume()
+        next?.resume(returning: true)
     }
 
     /// The Mac's performance cores (`hw.perflevel0.physicalcpu`), else its active cores (`hw.activecpu`), else one.
@@ -64,11 +95,28 @@ public final class CommandPool: CommandRunning {
         }
         return 1
     }
+
+    /// `runner`'s commands in `lane` of its pool, behind lower lanes' waiting ones; a runner that isn't a pool is as it is.
+    public static func lane(of runner: any CommandRunning, _ lane: Int) -> any CommandRunning {
+        (runner as? CommandPool).map { Lane(pool: $0, lane: lane) } ?? runner
+    }
+
+    /// A pool's commands in one lane.
+    private struct Lane: CommandRunning {
+        let pool: CommandPool
+        let lane: Int
+
+        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+            await pool.run(argv, stdin: stdin, timeout: timeout, lane: lane)
+        }
+
+        func which(_ name: String) -> String? { pool.which(name) }
+    }
 }
 
 extension Machine {
     /// This machine with its commands run through a pool sized to its performance cores.
     public func pooled() -> Machine {
-        Machine(environment: environment, home: home, runner: CommandPool(sizedToCores: runner), processID: processID, applications: applications, now: now)
+        running(CommandPool(sizedToCores: runner))
     }
 }

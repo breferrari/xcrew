@@ -63,25 +63,26 @@ struct BranchCoverage: Sendable {
     }
 
     /// What the branch's runs say of `change`, within `budget`: nothing when there's no run here or none says anything, and
-    /// no run at all when every run started before every changed file's last change. A run cut off at its own limit is
-    /// left out, as is one past `budget`. The files only test targets build are left out of those outside the coverage
-    /// once, for every run read, after the reading.
+    /// no run at all when every run started before every changed file's last change. The runs are read side by side,
+    /// each in its own lane of the runner's pool, newest first, so the newest runs' commands go ahead and they finish
+    /// first; a run not read when `budget` passes is left out. The files only test targets build are left out of those
+    /// outside the coverage once, for every run read, after the reading.
     static func read(change: GitChanges.Change, project: Project, machine: Machine) async -> BranchCoverage? {
         let all = runs(project: project, home: machine.home)
         guard !all.isEmpty, let chosen = candidates(all, lastChanges: change.files.compactMap { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }) else { return nil }
         guard !chosen.isEmpty else { return BranchCoverage(sentence: "", finished: [], leftOut: 0) }
         let gathered = Gathered()
         await withTaskGroup(of: Void.self) { group in
-            // Every run is read side by side, its commands queued in the runner's pool with the others', newest first.
             group.addTask {
                 await withTaskGroup(of: Void.self) { runs in
-                    for run in chosen {
+                    for (lane, run) in chosen.enumerated() {
                         runs.addTask {
-                            let bundle = ResultBundle(path: run.path, runner: machine.runner)
-                            let reading: ChangedLineCoverage?? = ranTests(summary: await bundle.summary())
-                                ? await ChangedLineCoverage.within(ChangedLineCoverage.budget) { await ChangedLineCoverage.read(bundle, change: { change }, project: project, using: machine.runner, keepingTestFiles: true) }
-                                : .some(nil)
-                            guard !Task.isCancelled, let reading else { return }
+                            let runner = CommandPool.lane(of: machine.runner, lane)
+                            let bundle = ResultBundle(path: run.path, runner: runner)
+                            let reading: ChangedLineCoverage? = ranTests(summary: await bundle.summary())
+                                ? await ChangedLineCoverage.read(bundle, change: { change }, project: project, using: runner, keepingTestFiles: true)
+                                : nil
+                            guard !Task.isCancelled else { return }
                             let fresh = reading?.fresh(since: run.started) { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }
                             gathered.state.withLock { gathered in
                                 gathered.reached += 1
