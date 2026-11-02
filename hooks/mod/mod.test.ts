@@ -17,7 +17,8 @@ const at = (scope: string) => scopeKey('', scope)
  * profile's scheme. It has no repository root to name, so its history's keys have none.
  */
 function watch(on: On, stored: Record<string, unknown> = {}, cli: Parameters<typeof stubCli>[1] = {}): Seen {
-  const seen: Seen = { toasts: [], statuses: [], cli: stubCli(on, { project: args => ({ isGenerated: false, ...(args.includes('--profiles') ? { scheme: 'App' } : {}) }), ...cli }) }
+  // The run's log names the profile's scheme, as MobileBuildMCP's does, unless a test's own phase answers otherwise.
+  const seen: Seen = { toasts: [], statuses: [], cli: stubCli(on, { project: args => ({ isGenerated: false, ...(args.includes('--profiles') ? { scheme: 'App' } : {}) }), phase: () => ({ log: '/logs/test_sim_1.log', scheme: 'App' }), ...cli }) }
   mock.store(on, stored)
   on('ui.toast', (_, e) => {
     seen.toasts.push(e.text)
@@ -284,7 +285,7 @@ test('while a MobileBuildMCP run goes, the status line says what the CLI reads f
 
 test('a test run remembers how many tests it ran, for the next run\'s count', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, {}, { reports: [{ ok: true, tests: 3 }], phase: () => ({ log: LOG }) })
+  const seen = watch(on, {}, { reports: [{ ok: true, tests: 3 }], phase: () => ({ log: LOG, scheme: 'App' }) })
   on('tool.call', async () => {
     await clock.advance(2_000)
     return { result: {}, text: 'ok' }
@@ -298,7 +299,8 @@ test('a test run remembers how many tests it ran, for the next run\'s count', as
 
 test('a tool that has written a log before says it is preparing until this run\'s log appears', async ($, on) => {
   const clock = mock.clock(on)
-  const seen = watch(on, { 'logs.test_sim': true })
+  // This run's log never appears.
+  const seen = watch(on, { 'logs.test_sim': true }, { phase: () => ({}) })
   on('tool.call', async () => {
     await clock.advance(3_000)
     return { result: {}, text: 'ok' }

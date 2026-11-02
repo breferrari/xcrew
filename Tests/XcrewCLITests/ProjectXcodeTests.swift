@@ -29,7 +29,6 @@ import XcrewTestSupport
         #expect(answer.xcodeState == state)
         #expect(answer.followsXcode == true)
         #expect(answer.xcodeHostsServer == true)
-        #expect(await Run("project", "--xcuserstate", state, context: .fake(project: project)).text == #"{"isGenerated":false,"xcodeScheme":"Feature"}"#)
     }
 
     @Test func outsideXcodeNoSelectionIsAnswered() async throws {
@@ -40,7 +39,6 @@ import XcrewTestSupport
         #expect(await Run("project", "--xcode", context: context).text == #"{"isGenerated":false,"xcodeHostsServer":false}"#)
         // No server yet, as before Claude Code starts it: nothing is said, so the mod asks again.
         #expect(await Run("project", "--xcode", context: .fake(project: project, processID: 40)).text == #"{"isGenerated":false}"#)
-        #expect(await Run("project", "--xcuserstate", "/nonexistent/UserInterfaceState.xcuserstate", context: context).text == #"{"isGenerated":false}"#)
     }
 }
 

@@ -11,11 +11,11 @@ const mobile: { current?: string; profiles: Record<string, { scheme?: string; si
 let xcode: Target = {}
 
 /**
- * Xcode's scheme selection, when Xcode hosts MobileBuildMCP's server: written over the scheme of the profile active as
- * it's read, at the server's start and, while the server follows it, at each change. The server's own listing of its
- * defaults is newer than any of it.
+ * Xcode's scheme selection at MobileBuildMCP's server's start, when Xcode hosts it: written over the scheme of the profile
+ * active then. The server's own listing of its defaults is newer. It only picks a run's usual time until the run's log
+ * names its scheme.
  */
-const fromXcode: { active?: string; last?: string; profiles: Record<string, string>; listings: number } = { profiles: {}, listings: 0 }
+const fromXcode: { active?: string; profiles: Record<string, string>; listings: number } = { profiles: {}, listings: 0 }
 
 /**
  * Learns from one finished call's output, when it's JSON. A MobileBuildMCP session tool's answer that isn't, as 2.7.1
@@ -96,15 +96,7 @@ export function listingsSeen(): number {
  */
 export function xcodeStarted(scheme: string | undefined, activeProfile: string | undefined, listings: number): void {
   fromXcode.active = activeProfile
-  fromXcode.last = scheme
   if (scheme !== undefined && listings === fromXcode.listings) fromXcode.profiles[activeProfile ?? ''] = scheme
-}
-
-/** A selection read later: only a change is written, over the profile in use then. */
-export function xcodeSelected(scheme: string | undefined): void {
-  if (scheme === undefined || scheme === fromXcode.last) return
-  fromXcode.last = scheme
-  fromXcode.profiles[profileKey()] = scheme
 }
 
 /** Whether the call or what the session showed of the server's defaults names the scheme a run builds. */

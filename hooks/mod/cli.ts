@@ -45,10 +45,12 @@ export type Report = {
   cause?: string
   /** The run's Swift concurrency diagnostics when its log holds many: how many, and the note that gives their counts. */
   concurrency?: { count: number; note: string }
+  /** Read with a run's log: the scheme it names, which keys a backgrounded run whose log came late. */
+  scheme?: string
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */
-export type Phase = { log?: string; phase?: string }
+export type Phase = { log?: string; phase?: string; scheme?: string }
 
 /** One line of `xcrew doctor --problems --json`. */
 export type Problem = { status: 'fail' | 'warn'; id: string; message: string }

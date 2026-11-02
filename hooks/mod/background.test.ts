@@ -23,7 +23,7 @@ function notificationText(result: string, task = TASK) {
  * A session in VS Code, where an outcome comes as a toast, whose build or test answers after 2:55 with the handle. The
  * CLI answers `reports` in turn after the handle's; the run's log is `LOG`.
  */
-function session(on: On, { surface = 'vscode' as 'vscode' | 'terminal', hold, reports = [] as Partial<Report>[] }: { surface?: 'vscode' | 'terminal'; hold?: Promise<void>; reports?: Partial<Report>[] } = {}) {
+function session(on: On, { surface = 'vscode' as 'vscode' | 'terminal', hold, reports = [] as Partial<Report>[], logSeen = true }: { surface?: 'vscode' | 'terminal'; hold?: Promise<void>; reports?: Partial<Report>[]; logSeen?: boolean } = {}) {
   const toasts: string[] = []
   const clock = mock.clock(on)
   const store = mapStore(on)
@@ -39,7 +39,7 @@ function session(on: On, { surface = 'vscode' as 'vscode' | 'terminal', hold, re
   on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['as the engine draws it'] }))
   // The prompt enters as the hooks above left it.
   on('prompt.submit', (_, e) => ({ text: e.text, ...(e.context ? { context: e.context } : {}), origin: e.origin }))
-  const cli = stubCli(on, { reports: [UNREAD, ...reports], phase: () => ({ log: LOG, phase: 'testing' }), project: { isGenerated: false, root: '/work/App', branch: 'main', scheme: 'App' } })
+  const cli = stubCli(on, { reports: [UNREAD, ...reports], phase: () => (logSeen ? { log: LOG, phase: 'testing', scheme: 'App' } : {}), project: { isGenerated: false, root: '/work/App', branch: 'main', scheme: 'App' } })
   on('tool.call', async (_, e) => {
     // A test run the session holds stays live on the band until `hold` settles.
     if (hold && e.tool.endsWith('test_sim')) await hold
@@ -145,6 +145,15 @@ test('a notification keeps the times of runs that ended meanwhile', async ($, on
   await notify($, clock)
   const durations = [...store.entries()].filter(([key]) => key.startsWith('durations.')).map(([, runs]) => runs)
   expect(durations).toEqual([[175_000, 410_000]])
+})
+
+/** A log that appeared only after the call moved to the background names the scheme in the notification's report. */
+test('a run whose log the call never saw is kept under the scheme its report names', async ($, on) => {
+  const { clock, store } = session(on, { logSeen: false, reports: [{ ok: true, failures: [], notes: [], scheme: 'Feature' }] })
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  await notify($, clock)
+  const durations = [...store.entries()].filter(([key]) => key.startsWith('durations.'))
+  expect(durations.map(([key]) => key.endsWith('test_sim · Feature'))).toEqual([true])
 })
 
 /** Drawn before the notification is read, the row leaves the call to it, and says nothing yet. */

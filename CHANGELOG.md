@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A MobileBuildMCP run that names no scheme keeps its time, test count and red-to-green record under the scheme its own log says it built, so a run is never filed under a scheme xcrew guessed wrong. A run whose log never appears is shown but not recorded.
 - The ledger and the evidence block mark a test passed only when the run's results list it as passed, so a test deleted or renamed since it failed no longer shows as fixed. Before, a later run whose selection included the test was taken to have passed it. A test an older version marked fixed that way shows as failing again until a run lists it as passed.
 
 ## 0.11.0 — 2026-10-31

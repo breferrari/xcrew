@@ -42,6 +42,8 @@ public struct Report: Sendable, Equatable, Codable {
     /// The run's Swift concurrency diagnostics, when its log holds at least `ConcurrencyReport.noteAt`: apart from the
     /// notes, for the mod to decide when Claude reads it.
     public var concurrency: ConcurrencySummary?
+    /// The scheme the run's log names, when the report was read with its log: what the mod keys a backgrounded run by.
+    public var scheme: String?
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
