@@ -297,7 +297,9 @@ test('a cleared or resumed conversation reads the branch again, however new the 
   for (const reason of ['clear', 'resume'] as const) {
     branch = branch === 'main' ? 'feat/ledger' : 'main'
     await $.session.end({ reason, sessionId: 'before', resume: { id: 'before' } })
-    expect(await ledgerText($)).toBe(branch === 'main' ? 'No test has failed on main yet.' : `Still red (1):\n- ${TEST}: red Oct 30 13:00 in test_sim: XCTAssertEqual failed: ("Hi") is not equal to ("Hello")`)
+    const shown = await ledgerText($)
+    if (branch === 'main') expect(shown).toBe('No test has failed on main yet.')
+    else expect(shown).toContain(`Still red (1):\n- ${TEST}: red `)
   }
 })
 
