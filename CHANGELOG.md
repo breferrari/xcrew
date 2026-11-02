@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `xcrew/briefing-current` passes as "the running xcrew's", without a version, so the README's sample doctor report stays true across releases.
+
 ## 0.13.0 — 2026-11-02
 
 - After `xcrew setup`, a running session builds and tests with the new profiles at once: setup prints the `session_set_defaults` calls that give them to MobileBuildMCP, and the doctor asks for a restart only when the config's tool groups or server settings changed. A new worktree session needs no restart to build and test after `xcrew setup --worktree`.

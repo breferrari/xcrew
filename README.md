@@ -211,7 +211,7 @@ ok    xcode-mcp/headless-enabled         enabled
 ok    xcode-mcp/handshake                a new Xcode MCP bridge answers: xcode-tools 25464
 ok    xcode/pin                          Xcode 27.2, at /Applications/Xcode-27.2.app
 warn  xcode-mcp/claude-approved          not approved yet: have Claude call XcodeOpenWorkspace, then allow it in Xcode's dialog
-ok    xcrew/briefing-current             xcrew 0.13.0's
+ok    xcrew/briefing-current             the running xcrew's
 ok    xcrew/mod-loaded                   reported in this session
 ```
 

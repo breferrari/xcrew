@@ -13,6 +13,7 @@ struct BriefingCurrentCheck: Check {
         guard briefing == running else {
             return .warn("this session's rules are xcrew \(briefing)'s, and xcrew \(running) is running: restart Claude Code to load \(running)'s")
         }
-        return .pass("xcrew \(running)'s")
+        // No version in the pass: the README shows this line, and a version there would drift each release.
+        return .pass("the running xcrew's")
     }
 }
