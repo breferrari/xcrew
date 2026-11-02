@@ -128,7 +128,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
 
     /// The files only test targets build, left out: a test target's own files are no code under test, so their being
     /// outside the coverage says nothing. Read from an Xcode project's own targets, as `xcrew graph --owner` reads
-    /// them, only when there are files to say anything of and the budget hasn't passed: the reading can't be stopped
+    /// them, only when there are files to say anything of and the call isn't cancelled: the reading can't be stopped
     /// once started. A file an exception set may move keeps its place, as does one no target lists and every file of a
     /// project whose targets can't be read, a plain Swift package's among them.
     static func withoutTestFiles(_ files: [String], of project: Project) -> [String] {
@@ -190,7 +190,8 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// What a test run's coverage says of the lines a branch changed: nothing when the run gathered no coverage, or
     /// when the call's deadline cut what it needs. A bundle that says it holds none asks nothing of `xccov`, whose start
     /// alone takes over half a second; otherwise the change is read while `xccov`'s report, which names every file the
-    /// archive holds, is. `keepingTestFiles` as `of(_:in:targets:bundle:project:using:keepingTestFiles:)` takes it.
+    /// archive holds, is. With `keepingTestFiles`, files outside the coverage keep those only test targets build, for a
+    /// caller that leaves them out once for many runs.
     static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
         guard await bundle.holdsCoverage() != false else { return nil }
         async let listed = change()

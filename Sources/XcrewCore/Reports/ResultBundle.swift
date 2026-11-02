@@ -279,7 +279,7 @@ public struct ResultBundle: Sendable {
 
     /// What `xcresulttool` answers, or nothing. It has no limit of its own: the call's deadline, passed down, decides.
     static func xcresulttool(_ arguments: [String], runner: any CommandRunning) async -> String {
-        let ran = await runner.run(["xcrun", "xcresulttool"] + arguments, stdin: nil, timeout: DeadlineRunner.asked)
+        let ran = await runner.run(["xcrun", "xcresulttool"] + arguments, stdin: nil, timeout: DeadlineRunner.untimed)
         return ran.succeeded ? ran.stdout : ""
     }
 
@@ -326,7 +326,7 @@ public struct ResultBundle: Sendable {
 
     /// What `xccov view` answers of the bundle, or nothing. It has no limit of its own: the call's deadline decides.
     func xccov(_ arguments: [String], archive: Bool = true) async -> String {
-        let ran = await runner.run(["xcrun", "xccov", "view"] + (archive ? ["--archive"] : []) + arguments + [path], stdin: nil, timeout: DeadlineRunner.asked)
+        let ran = await runner.run(["xcrun", "xccov", "view"] + (archive ? ["--archive"] : []) + arguments + [path], stdin: nil, timeout: DeadlineRunner.untimed)
         return ran.succeeded ? ran.stdout : ""
     }
 

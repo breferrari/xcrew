@@ -73,9 +73,10 @@ export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 export type Ran = { stdout: string; stderr: string }
 
 /**
- * The time all of xcrew's work on a tool's result has, after the tool's own: 10 s, the limit for keeping a person's
- * attention on a wait (Nielsen, *Usability Engineering*, 1993, ch. 5), past which the server's own result serves
- * better than one that waits on xcrew's notes (docs/findings.md, *Deadlines inside the CLI*).
+ * The time xcrew's work around a tool call has, its reads before the call starts and all its work on the result once
+ * that's back, counted from when it came: 10 s, the limit for keeping a person's attention on a wait (Nielsen,
+ * *Usability Engineering*, 1993, ch. 5), past which the server's own result serves better than one that waits on
+ * xcrew's notes (docs/findings.md, *Deadlines inside the CLI*).
  */
 export const ON_RESULT_MS = 10_000
 
@@ -84,6 +85,9 @@ export const ON_RESULT_MS = 10_000
  * a command stops holding the conversation, `BASH_DEFAULT_TIMEOUT_MS`'s 120 s. The CLI takes the same when given none.
  */
 export const ASKED_MS = 120_000
+
+/** Why a call has no answer when its time ran out waiting for the CLI's build, which goes on. */
+export const STILL_BUILDING_MESSAGE = 'the CLI is still being built for this version'
 
 /** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
 const RECHECK_MS = 30_000

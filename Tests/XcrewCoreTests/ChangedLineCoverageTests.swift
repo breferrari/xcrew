@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import XcrewCore
 import XcrewTestSupport
@@ -173,6 +174,26 @@ import XcrewTestSupport
     func note(_ project: Project, _ runner: any CommandRunning) async throws -> String? {
         let report = await Report.make(kind: .test, output: try Raw.output("swift-testing"), home: Captured.home, runner: runner, project: project)
         return report.notes.first { $0.contains("changed line") || $0.contains("changed file") }
+    }
+
+    /// In the report's pool, its coverage reads wait behind the rest, so within the call's time what failed is read first.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func theReportsCoverageWaitsBehindItsOtherReads() async throws {
+        let project = project()
+        let held = HeldRunner(run(project))
+        let pool = CommandPool(held, size: 1)
+        let holding = Task { await pool.run(["hold"], stdin: nil, timeout: .seconds(5)) }
+        await held.started("hold")
+        let output = try Raw.output("swift-testing")
+        let report = Task { await Report.make(kind: .test, output: output, home: Captured.home, runner: pool, project: project) }
+        while pool.waiting < 2 { await Task.yield() }
+        #expect(pool.waitingLanes == [0, 1])
+        held.release("hold")
+        _ = await (holding.value, report.value)
+        let ran = held.ran
+        let summary = try #require(ran.firstIndex { $0.hasPrefix("xcrun xcresulttool get test-results summary") })
+        let availability = try #require(ran.firstIndex { $0.hasPrefix(Self.availability(Self.bundle)) })
+        #expect(summary < availability, "\(ran)")
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
@@ -422,5 +443,36 @@ struct LiveCoverageShapeTests {
         let file = try #require(targets.flatMap(\.files).first?.path, "no file in xccov's report: \(targets)")
         let lines = ChangedLineCoverage.lines(await bundle.coverage(of: file))
         #expect(lines?.values.contains(true) == true, "no line of \(file) read as run: \(String(describing: lines))")
+    }
+}
+
+/// A runner that answers as `base` does, but holds the command `hold` until released, and lists each command it ran.
+final class HeldRunner: CommandRunning {
+    let base: any CommandRunning
+    let state = Mutex<(ran: [String], held: CheckedContinuation<Void, Never>?)>(([], nil))
+    var ran: [String] { state.withLock { $0.ran } }
+
+    init(_ base: any CommandRunning) { self.base = base }
+
+    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        let line = argv.joined(separator: " ")
+        guard line == "hold" else {
+            state.withLock { $0.ran.append(line) }
+            return await base.run(argv, stdin: stdin, timeout: timeout)
+        }
+        await withCheckedContinuation { (held: CheckedContinuation<Void, Never>) in
+            state.withLock { $0.ran.append(line); $0.held = held }
+        }
+        return CommandResult(status: 0)
+    }
+
+    func which(_ name: String) -> String? { base.which(name) }
+
+    func started(_ name: String) async {
+        while !state.withLock({ $0.ran.contains(name) }) { await Task.yield() }
+    }
+
+    func release(_ name: String) {
+        state.withLock { state in defer { state.held = nil }; return state.held }?.resume()
     }
 }

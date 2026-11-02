@@ -103,6 +103,19 @@ test('the affected tests have the time a call on a result has, 10 s', async ($, 
   expect(seen.calls.find(call => call.args[0] === 'affected')?.timeoutMs).toBe(10_000)
 })
 
+test('the affected tests asked while the CLI is still being built say so, not that the whole suite covers the changes', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+  stubCli(on, { built: () => false, spawn: { held: new Promise<void>(() => {}) } })
+  const asked = ask($)
+  await clock.advance(10_000)
+  expect(await asked).toBe("xcrew couldn't say yet which tests the changes can break: the CLI is still being built for this version.")
+})
+
 test('session start registers exactly the ledger, affected, look and evidence tools, once each', async ($, on) => {
   const seen = session(on, {})
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })

@@ -122,6 +122,30 @@ test("a quick call during the background build doesn't build, doesn't stop it, a
   expect(cli.filter(call => call.args[0] === 'project').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
 })
 
+test("a call that waited for the background build gives its command only what's left of its time", async ($, on) => {
+  let finish: () => void = () => {}
+  const held = new Promise<void>(resolve => { finish = resolve })
+  let built = false
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('tool.describe', (_, e) => ({ description: e.description }))
+  on('session.surfaces', () => ({ value: ['vscode'] }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', () => ({ result: { ok: true } }))
+  const cli = stubCli(on, { built: () => built, spawn: { held }, project: () => ({ isGenerated: true }) })
+  await start($)
+  const call = callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' })
+  await clock.advance(4_000)
+  built = true
+  finish()
+  await call
+  expect(cli.filter(call => call.args[0] === 'project').map(call => call.timeoutMs)).toEqual([6_000, 6_000])
+})
+
 /** What xcrew adds to a tool's result has 10 s, which also goes to the CLI, to pass down to every command it starts. */
 test("a call on a tool's result has 10 s, given to the CLI too", async ($, on) => {
   const seen: { args: readonly string[]; timeoutMs?: number; within?: string }[] = []

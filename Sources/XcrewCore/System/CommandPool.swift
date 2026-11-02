@@ -48,6 +48,9 @@ public final class CommandPool: CommandRunning {
     /// How many commands wait for a slot, for tests that wait for a queue to form.
     var waiting: Int { slots.withLock { $0.waiting.count } }
 
+    /// The lanes of the commands that wait, in their turn, for tests that check where a caller's commands go.
+    var waitingLanes: [Int] { slots.withLock { $0.waiting.map(\.lane) } }
+
     /// Whether a slot was taken: false when the task was cancelled while it waited.
     private func acquire(_ size: Int, lane: Int) async -> Bool {
         let id = slots.withLock { slots in

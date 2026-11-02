@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, STILL_BUILDING_MESSAGE, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -283,7 +283,10 @@ export const register: Register = on => {
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
     const findsScheme = needsScheme && key === undefined
-    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], ON_RESULT_MS, result.text ?? '')
+    // The result's one `ON_RESULT_MS`, from when it came back, covers the ledger's reads and the report alike.
+    const until = ended + ON_RESULT_MS
+    const listsPassed = (await answeredBy($, until, askingPassed)) || (ledgerWritesQueued !== writesAtStart && (await answeredBy($, until, asksForPassed($, kind))))
+    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, listsPassed), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], await leftUntil($, until), result.text ?? '')
     const reportedOutcome = reportOf(reported, result.isError === true)
     // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
     if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
@@ -384,8 +387,11 @@ export const register: Register = on => {
     return row ? resultTree($.ui.resolve(e), parsed.tool, row) : next(e)
   })
   // Claude's question before a full test run: which tests the branch's changes can break.
-  // The time `/xcrew doctor` gets: the first call after an update builds the CLI.
-  on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => ({ result: affectedText(await answer($, affectedArgs(e as unknown as Record<string, unknown>), ON_RESULT_MS)) }))
+  on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => {
+    const ran = await xcrew($, affectedArgs(e as unknown as Record<string, unknown>), ON_RESULT_MS).catch((error: unknown) => (error instanceof Error ? error : undefined))
+    if (ran instanceof Error && ran.message === STILL_BUILDING_MESSAGE) return { result: affectedText(undefined, ran.message) }
+    return { result: affectedText(answerOf(ran instanceof Error ? undefined : ran)) }
+  })
   // Claude's read of the ledger, for a pull request's test plan.
   on('tool.call', { tool: LEDGER_TOOL_NAME }, async $ => ({ result: await ledgerNow($) }))
   // Claude's look at a failed UI test: the steps before the failure and the screen at it.
@@ -569,8 +575,10 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start;
   // the Xcode MCP writes none.
   const finds = call.log === undefined && call.server === 'MobileBuildMCP'
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
-  const reported = await answer($, args, ON_RESULT_MS, text)
+  // The notification's one `ON_RESULT_MS` covers the ledger's reads and the report alike.
+  const until = await quietly(async () => (await $.clock.now()) + ON_RESULT_MS)
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await answeredBy($, until, asksForPassed($, call.kind))), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
+  const reported = await answer($, args, await leftUntil($, until), text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
   // A run whose log appeared only after it was moved to the background is kept under the scheme the log names.
@@ -720,18 +728,27 @@ function buildInBackground($: EngineInterface): Promise<string | null> {
  * again, which would double the wait.
  */
 async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string): Promise<Ran> {
-  const binary = await build($, timeoutMs).catch(() => undefined)
-  if (binary === STILL_BUILDING) throw new Error('the CLI is still being built for this version')
+  // The question for the build and any wait for it come out of the call's time: its command has what's left.
+  const until = await quietly(async () => (await $.clock.now()) + timeoutMs)
+  const left = async () => {
+    const ms = await leftUntil($, until, timeoutMs)
+    // `$.process.run` says nothing of a limit of none: a call with no time left isn't started.
+    if (ms <= 0) throw new Error('no time was left for the CLI')
+    return ms
+  }
+  const binary = await build($, await left()).catch(() => undefined)
+  if (binary === STILL_BUILDING) throw new Error(STILL_BUILDING_MESSAGE)
   if (binary) {
     const startedAt = await $.clock.now()
+    const given = await left()
     try {
-      return await start($, binary, args, timeoutMs, stdin)
+      return await start($, binary, args, given, stdin)
     } catch (error) {
-      if (ranOutOfTime(startedAt, await $.clock.now(), timeoutMs)) throw error
+      if (ranOutOfTime(startedAt, await $.clock.now(), given)) throw error
       await update($, buildState, () => null)
     }
   }
-  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], timeoutMs, stdin)
+  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], await left(), stdin)
 }
 
 /**
@@ -765,6 +782,30 @@ async function showEndingOf($: EngineInterface, startedAt: number, ending: NonNu
   await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
 }
 
+/** What's left of the time until `until`; `otherwise` when the clock can't say. */
+async function leftUntil($: EngineInterface, until: number | undefined, otherwise = ON_RESULT_MS): Promise<number> {
+  const now = until === undefined ? undefined : await quietly(() => $.clock.now())
+  return until === undefined || now === undefined ? otherwise : Math.max(0, until - now)
+}
+
+/** What `promise` answers by `until`, else false, which a clock that won't time the wait answers at once. */
+async function answeredBy($: EngineInterface, until: number | undefined, promise: Promise<boolean>): Promise<boolean> {
+  const left = await leftUntil($, until)
+  let timer: { cancel: () => void } | undefined
+  const answered = await Promise.race([
+    promise,
+    new Promise<boolean>(resolve => {
+      try {
+        timer = $.clock.after(left, () => resolve(false))
+      } catch {
+        resolve(false)
+      }
+    }),
+  ])
+  timer?.cancel()
+  return answered
+}
+
 /** The CLI's JSON answer, or nothing when it couldn't run or said something else. */
 async function answer($: EngineInterface, args: string[], timeoutMs = 60_000, stdin?: string): Promise<unknown> {
   return answerOf(await xcrew($, args, timeoutMs, stdin).catch(() => undefined))
@@ -778,7 +819,7 @@ function runPhase($: EngineInterface, tool: string, launches: boolean, since: nu
 let yamlRead: Promise<boolean> | undefined
 
 function readsYaml($: EngineInterface): Promise<boolean> {
-  yamlRead ??= answer($, ['project'], 10_000).then(answered => {
+  yamlRead ??= answer($, ['project'], ON_RESULT_MS).then(answered => {
     if (answered === undefined) yamlRead = undefined
     return readsYamlOf(answered)
   })
@@ -786,7 +827,7 @@ function readsYaml($: EngineInterface): Promise<boolean> {
 }
 
 async function isGeneratedProject($: EngineInterface): Promise<boolean> {
-  return isGeneratedOf(await answer($, ['project'], 10_000))
+  return isGeneratedOf(await answer($, ['project'], ON_RESULT_MS))
 }
 
 /** A CLI command's own text, or why it couldn't run. */
@@ -958,7 +999,7 @@ async function profileScheme($: EngineInterface): Promise<string | undefined> {
   const profile = currentProfile()
   const cached = sessionProfileSchemes.get(profileKey())
   if (cached) return cached.scheme
-  const answered = await answer($, ['project', '--profiles', ...(profile === undefined ? [] : ['--profile', profile])], 10_000)
+  const answered = await answer($, ['project', '--profiles', ...(profile === undefined ? [] : ['--profile', profile])], ON_RESULT_MS)
   if (answered === undefined) return undefined
   const scheme = profileSchemeOf(answered)
   sessionProfileSchemes.set(profileKey(), scheme === undefined ? {} : { scheme })
@@ -974,7 +1015,7 @@ let xcodeSelection: Promise<{ state: string; follows: boolean } | null | undefin
 /** Reads the selection at the server's start once: a CLI that couldn't answer, or found no server yet, is asked again. */
 async function readXcodeStart($: EngineInterface): Promise<{ state: string; follows: boolean } | null | undefined> {
   const listings = listingsSeen()
-  xcodeSelection ??= answer($, ['project', '--xcode'], 10_000).then(answered => {
+  xcodeSelection ??= answer($, ['project', '--xcode'], ON_RESULT_MS).then(answered => {
     if (xcodeHostsServerOf(answered) === undefined) return undefined
     const read = xcodeSelectionOf(answered)
     if (read) xcodeStarted(read.scheme, read.activeProfile, listings)
@@ -1069,7 +1110,7 @@ const HEAD_FRESH_MS = 5_000
 async function currentHead($: EngineInterface): Promise<Head | undefined> {
   const now = await quietly(() => $.clock.now())
   if (headRead && now !== undefined && now - headRead.at < HEAD_FRESH_MS) return headRead.head
-  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  const head = headOf(await answer($, ['project', '--branch'], ON_RESULT_MS))
   if (head && now !== undefined) headRead = { at: now, head }
   return head
 }
@@ -1261,7 +1302,7 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   const ledger = ledgerOf(await $.store.get(key))
   // A repeated run's flaky marks are the CLI's to work out, from the marks kept and the run's repeated tests.
   const kept = (ledger?.entries ?? []).flatMap(entry => (entry.flaky ? [{ test: entry.test, failed: entry.flaky.failed, runs: entry.flaky.runs, passes: entry.flaky.passes ?? 0 }] : []))
-  const marks = run.repeated?.length ? flakyMarksOf(await answer($, ['flaky'], 10_000, JSON.stringify({ marks: kept, repeated: run.repeated }))) : undefined
+  const marks = run.repeated?.length ? flakyMarksOf(await answer($, ['flaky'], ON_RESULT_MS, JSON.stringify({ marks: kept, repeated: run.repeated }))) : undefined
   await $.store.set(key, afterTestRun(ledger, run, marks))
   const others = (await $.store.keys()).filter(stored => stored.startsWith(LEDGER_PREFIX) && stored !== key)
   const stored = Object.fromEntries(await Promise.all(others.map(async other => [other, await $.store.get(other)] as const)))

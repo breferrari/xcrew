@@ -11,12 +11,16 @@ public final class DeadlineRunner: CommandRunning {
     private let now: @Sendable () -> Date
     private let cutCommands = Mutex<[String]>([])
 
-    /// What the CLI keeps of its time to answer once its last command has: its whole run, start and answer, took 17 to
-    /// 25 ms (*Runs that overlap another checkout's*), and this is twenty times the slowest.
-    public static let answering = Duration.milliseconds(500)
+    /// What the CLI keeps of its time to answer once its last command has: a command the deadline stopped has its output
+    /// waited for `SystemCommandRunner.grace`, 1 s, and the CLI's whole run, start and answer, took 17 to 25 ms (*Runs
+    /// that overlap another checkout's*), twenty times which is 0.5 s more.
+    public static let answering = Duration.milliseconds(1_500)
     /// The time a call has when its caller names none, as when a person runs the CLI: Claude Code's own point where a
     /// command stops holding the conversation, `BASH_DEFAULT_TIMEOUT_MS`'s 120 s.
     public static let asked = Duration.seconds(120)
+    /// The limit of a command with none of its own, as a result bundle's reads: the call's deadline ends it, and a
+    /// caller with no deadline stops it where a call asked for would.
+    public static let untimed = asked
     /// Where the mod names the time a call has, in milliseconds.
     public static let variable = "XCREW_WITHIN_MS"
 
@@ -34,7 +38,7 @@ public final class DeadlineRunner: CommandRunning {
     }
 
     static func seconds(_ duration: Duration) -> Double {
-        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        duration / .seconds(1)
     }
 
     public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
@@ -43,9 +47,9 @@ public final class DeadlineRunner: CommandRunning {
             note(argv)
             return .timedOut
         }
-        let cutShort = Duration.seconds(left) < timeout
-        let answer = await base.run(argv, stdin: stdin, timeout: cutShort ? .seconds(left) : timeout)
-        if cutShort, answer == .timedOut { note(argv) }
+        let answer = await base.run(argv, stdin: stdin, timeout: min(timeout, .seconds(left)))
+        // Cut only when the deadline stopped it: one that timed out with time left hit its own limit, or was cancelled.
+        if answer == .timedOut, now() >= deadline { note(argv) }
         return answer
     }
 
@@ -55,11 +59,12 @@ public final class DeadlineRunner: CommandRunning {
     public var cut: [String] { cutCommands.withLock { $0 } }
 
     /// What a call's answer says when the deadline cut a command: which programs didn't answer in time, so what they
-    /// read is left out of `answer`, "this result" or "this block"; nil when nothing was cut. A fact, to read beside it.
-    public static func leftOut(_ cut: [String], of answer: String = "this result") -> String? {
+    /// read is left out of `answer`, "this result" or "this block"; nil when nothing was cut. A fact, to read beside it,
+    /// after `leadIn` when one is given, as a report's note starts "xcrew: ".
+    public static func leftOut(_ cut: [String], of answer: String = "this result", leadIn: String = "") -> String? {
         guard !cut.isEmpty else { return nil }
         let named = cut.count == 1 ? cut[0] : cut.dropLast().joined(separator: ", ") + " and " + (cut.last ?? "")
-        return "This call's time ran out before \(named) answered, so what \(cut.count == 1 ? "it reads is" : "they read is") left out of \(answer)."
+        return leadIn + (leadIn.isEmpty ? "This" : "this") + " call's time ran out before \(named) answered, so what \(cut.count == 1 ? "it reads is" : "they read is") left out of \(answer)."
     }
 
     /// Programs whose answer no result shows, so a cut one leaves nothing out of it: the pool's question of how many
@@ -70,5 +75,13 @@ public final class DeadlineRunner: CommandRunning {
         let program = argv.first == "xcrun" ? argv.dropFirst().first : argv.first
         guard let name = program.map({ URL(fileURLWithPath: $0).lastPathComponent }), !Self.unshown.contains(name) else { return }
         cutCommands.withLock { if !$0.contains(name) { $0.append(name) } }
+    }
+}
+
+extension Machine {
+    /// What this machine's call left out, as `DeadlineRunner.leftOut` says it: nil when no deadline runs its commands,
+    /// or it cut none.
+    public func leftOut(of answer: String = "this result", leadIn: String = "") -> String? {
+        (runner as? DeadlineRunner).flatMap { DeadlineRunner.leftOut($0.cut, of: answer, leadIn: leadIn) }
     }
 }
