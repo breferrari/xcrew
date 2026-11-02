@@ -439,6 +439,7 @@ export const register: Register = on => {
     await $.command.register(COMMAND)
     for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
     startOver()
+    void quietly(() => buildInBackground($))
     void loadProblems($).catch(() => undefined)
     void quietly(() => readXcodeStart($))
     // The card is saved from the history as it's left: fresh, and this version's.
@@ -618,7 +619,7 @@ function ask($: EngineInterface, question: Question): Promise<string | undefined
   return quietly(() => $.ui.ask(question.question, { options: [...question.options], header: question.header }))
 }
 
-/** Starts a program of the CLI's: the mod's one process. */
+/** Runs a program of the CLI's to its end, within `timeoutMs`: every CLI call but the session start's background build. */
 function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string) {
   return $.process.run([program, ...args], { timeoutMs, env: { XCREW_ROOT: $.plugin.root }, ...(stdin === undefined ? {} : { stdin }) })
 }
@@ -644,6 +645,20 @@ async function build($: EngineInterface, timeoutMs: number): Promise<string | un
       asking = undefined
     })
   return asking
+}
+
+/**
+ * Starts the shim on its cheapest command, `--binary-path`, not waited on and under no time limit, so a build for this
+ * version runs to its end however short the limits of the calls that wait on it (docs/findings.md, *Building after a
+ * reload*). The build it names is the one later calls run; one that names none, killed or failed, records nothing.
+ */
+async function buildInBackground($: EngineInterface): Promise<void> {
+  let printed = ''
+  for await (const piece of $.process.spawn({ argv: [shimPath($.plugin.root), '--binary-path'], env: { XCREW_ROOT: $.plugin.root } })) if (piece.stream === 'stdout') printed += piece.text
+  const named = namedBuild(printed)
+  if (named === null) return
+  const at = await $.clock.now()
+  await update($, buildState, () => ({ path: named, at }))
 }
 
 /**
