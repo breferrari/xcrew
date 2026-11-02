@@ -41,11 +41,27 @@ import XcrewTestSupport
         #expect(run.status == 0)
         #expect(Self.config(worktree) == Self.mainConfig.replacingOccurrences(of: "    derivedDataPath: '/Users/someone/DerivedData/App'\n", with: ""))
         #expect(run.output == [
-            "xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.root.path)); restart Claude Code so MobileBuildMCP reads it",
+            "xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.root.path))",
             "xcrew: left out derivedDataPath /Users/someone/DerivedData/App, which the main checkout uses: this worktree's builds go in a DerivedData of its own",
+            "xcrew: a running MobileBuildMCP takes these session defaults without a restart, one call each:",
+            #"  session_set_defaults {"createIfNotExists":true,"profile":"unit","projectPath":"\#(worktree.root.path)/App.xcodeproj","scheme":"App"}"#,
+            "xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it",
         ])
         // xcrew wrote it: a later setup may replace it, and the doctor asks for a restart.
         #expect(ConfigWriter.keeping(worktree) == nil)
+    }
+
+    /// Setup again with the server part as it was: the calls carry the change, and no restart is asked for.
+    @Test func aSecondSetupThatChangesOnlyProfilesAsksForNoRestart() async {
+        let main = Project.temporary(containing: ["App.xcodeproj"])
+        main.write(Self.mainConfig, to: ".mobilebuildmcp/config.yaml")
+        let (worktree, context) = Self.worktree(main: main)
+        _ = await Run("setup", "--worktree", context: context)
+        main.write(Self.mainConfig.replacingOccurrences(of: "scheme: 'App'", with: "scheme: 'AppTests'"), to: ".mobilebuildmcp/config.yaml")
+        let again = await Run("setup", "--worktree", "--force", context: context)
+        #expect(again.output.contains { $0.contains(#""scheme":"AppTests""#) }, "\(again.output)")
+        #expect(!again.output.contains { $0.hasPrefix("xcrew: restart") }, "\(again.output.joined(separator: " | "))")
+        _ = worktree
     }
 
     /// Like setup, it keeps `.mobilebuildmcp/` out of git, in the exclude file every worktree of the repository shares.

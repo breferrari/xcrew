@@ -40,6 +40,9 @@ public struct Project: Sendable, Equatable {
     }
     /// Marks the config as xcrew's: setup rewrites a marked config and leaves an unmarked one alone.
     public var managedMarker: URL { root.appending(path: ".mobilebuildmcp/.xcrew-managed") }
+    /// The fingerprint of the config's part a running MobileBuildMCP can't take without a restart, rewritten only when
+    /// that part changes: its time is when it last did.
+    public var serverMarker: URL { root.appending(path: ".mobilebuildmcp/.xcrew-server") }
     /// Where XcodeBuildMCP kept its config before the rename; no longer read by anything.
     public var legacyConfigFolder: URL { root.appending(path: ".xcodebuildmcp") }
     public var skillsFolder: URL { root.appending(path: ".claude/skills") }

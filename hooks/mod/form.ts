@@ -5,6 +5,18 @@ import type { Elements } from './band'
 /** What Claude reads once after the person writes a config with the form: the session's MobileBuildMCP still has the old one. */
 export const SETUP_FACT = 'The person wrote a new MobileBuildMCP config with /xcrew setup; MobileBuildMCP reads it when Claude Code next starts.'
 
+/** What Claude reads once after the form wrote a config, from what setup printed. */
+export function setupFact(written: readonly string[]): string {
+  const calls = written.map(line => line.trim()).filter(line => line.startsWith('session_set_defaults '))
+  if (calls.length === 0) return SETUP_FACT
+  const restarts = written.some(line => line.startsWith('xcrew: restart Claude Code'))
+  return [
+    "The person wrote a new MobileBuildMCP config with /xcrew setup. This session's MobileBuildMCP takes its session defaults through these calls, one each:",
+    ...calls,
+    ...(restarts ? ["Its tool groups and server settings load when Claude Code next starts; builds and tests don't wait for that."] : []),
+  ].join('\n')
+}
+
 /** What `xcrew setup` prints when it wrote the config, after its `xcrew: `. */
 export const WROTE = 'wrote .mobilebuildmcp/config.yaml'
 

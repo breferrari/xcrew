@@ -117,8 +117,9 @@ struct SetupCommand: Command {
         if !carriedKeys.isEmpty, ConfigWriter.keeping(context.project) != nil {
             notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into " + (answers.profileNames.isEmpty ? "the session defaults" : "each profile"))
         }
+        let began = Date()
         let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"))
-        Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container); restart Claude Code so MobileBuildMCP reads it"])
+        Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container)"], since: began)
         if answers.appScheme == nil {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
         }
@@ -156,7 +157,9 @@ struct SetupCommand: Command {
     }
 
     /// What became of the config: kept as it was, with what `--force` would do, or written, with `written`'s lines.
-    static func report(_ outcome: ConfigWriter.Outcome, in invocation: Invocation, written: [String]) {
+    /// What setup did with the config. Written, it names the `session_set_defaults` calls that give a running
+    /// MobileBuildMCP its session defaults, and asks for a restart only when the part those can't set changed `since`.
+    static func report(_ outcome: ConfigWriter.Outcome, in invocation: Invocation, written: [String], since began: Date) {
         switch outcome {
         case .keptEdited:
             invocation.print("xcrew: .mobilebuildmcp/config.yaml was edited after xcrew wrote it; left as is (--force replaces it, keeping a backup)")
@@ -165,6 +168,14 @@ struct SetupCommand: Command {
         case .written(let backup):
             if let backup { invocation.print("xcrew: kept the old config as \(backup.lastPathComponent)") }
             written.forEach(invocation.print)
+            let project = invocation.context.project
+            let calls = (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)).map { LiveDefaults.calls(in: $0, root: project.root) } ?? []
+            if !calls.isEmpty {
+                invocation.print("xcrew: a running MobileBuildMCP takes these session defaults without a restart, one call each:")
+                calls.forEach { invocation.print("  " + $0) }
+            }
+            let serverChanged = (try? FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date).map { $0 >= began } ?? false
+            if serverChanged { invocation.print("xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it") }
         }
     }
 
@@ -206,10 +217,11 @@ struct SetupCommand: Command {
                 for: worktreeTop, main: checkout.main, config: config, fresh: invocation.arguments.has("fresh-simulator"), record: record, using: context.runner
             )
         }
+        let began = Date()
         let outcome = try ConfigWriter.write(config, to: context.project, force: force)
-        Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path)); restart Claude Code so MobileBuildMCP reads it"]
+        Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path))"]
             + leftOut.map { "xcrew: left out \($0.key) \($0.path), which the main checkout uses: this worktree's builds go in a DerivedData of its own" }
-            + simulators)
+            + simulators, since: began)
         await Self.keepOutOfGit(in: invocation)
         return 0
     }

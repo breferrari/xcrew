@@ -250,7 +250,7 @@ Run `/xcrew doctor` first; every line that isn't `ok` names its fix. Beyond that
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Every Xcode MCP call fails with "not approved" | Xcode asks once per agent | Have Claude call `XcodeOpenWorkspace`; allow it in Xcode's dialog |
-| MobileBuildMCP has only simulator tools | No `.mobilebuildmcp/config.yaml` in the project | `/xcrew:setup`, then restart Claude Code |
+| MobileBuildMCP has only simulator tools | No `.mobilebuildmcp/config.yaml` in the project, or it was written after MobileBuildMCP started | `/xcrew:setup`, then restart Claude Code for the tool groups; builds and tests take setup's profiles at once |
 | `No such module 'UIKit'` from SourceKit | Claude Code's language server can't read Xcode projects | Ignore it; the Xcode MCP's diagnostics are the real ones |
 | A build fails with "produced malformed response" | Usually a macro plugin macOS killed. Tuist before 4.203 generated a phase that overwrites plugins in place | Upgrade Tuist to 4.203 or later and regenerate. Until then, clean the build folder and rebuild |
 | A session starts with an `xcrew: building the CLI` error | The Swift toolchain is older than 6.2, or Xcode's command-line tools aren't selected | `xcode-select -p` should point into Xcode 27; `sudo xcode-select -s /Applications/Xcode.app` |

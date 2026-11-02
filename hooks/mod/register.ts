@@ -14,7 +14,7 @@ import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAI
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
-import { drawsForm, type FormElements, formTree, NO_FORM, PICK_KEYS, SETUP_FACT, setupArgs, startingPicks, WROTE } from './form'
+import { drawsForm, type FormElements, formTree, NO_FORM, PICK_KEYS, setupArgs, setupFact, startingPicks, WROTE } from './form'
 import { afterFullRun, type Crossing, loopNote } from './loop'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
@@ -437,7 +437,7 @@ export const register: Register = on => {
     // a prompt writes nothing when there's nothing to tell.
     if ((await quietly(() => read($, wroteConfigState))) === true) {
       await quietly(() => update($, wroteConfigState, () => false))
-      e = withContext(e, SETUP_FACT)
+      e = withContext(e, setupFact((await quietly(() => read($, formState)))?.written ?? []))
     }
     if (doctorOnNextPrompt) {
       doctorOnNextPrompt = false

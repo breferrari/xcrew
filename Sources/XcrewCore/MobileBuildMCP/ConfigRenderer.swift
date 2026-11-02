@@ -241,6 +241,21 @@ public enum ConfigRenderer {
     }
 
     /// A YAML scalar's text: single-quoted as xcrew writes it, double-quoted as a person may, or plain.
+    /// The config without its session defaults, global or by profile, and the active profile's name: what only a
+    /// restart loads into a running MobileBuildMCP.
+    public static func serverPart(of yaml: String) -> String {
+        let sessionKeys: Set<Substring> = ["sessionDefaults", "sessionDefaultsProfiles", "activeSessionDefaultsProfile"]
+        var dropping = false
+        var kept: [Substring] = []
+        for line in yaml.split(separator: "\n", omittingEmptySubsequences: false) {
+            if let first = line.first, first != " ", first != "\t", first != "-" {
+                dropping = sessionKeys.contains(line.prefix { $0 != ":" })
+            }
+            if !dropping { kept.append(line) }
+        }
+        return kept.joined(separator: "\n")
+    }
+
     static func unquoted(_ value: String) -> String {
         guard value.count >= 2, let quote = value.first, quote == "'" || quote == "\"", value.last == quote else { return value }
         let text = String(value.dropFirst().dropLast())
