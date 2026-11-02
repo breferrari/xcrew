@@ -1090,3 +1090,26 @@ import XcrewTestSupport
         #expect(report.parts.first?.title == "MobileBuildMCP")
     }
 }
+
+/// The session-start and session-end hooks and the mod's doctor read keep each session's stamp.
+@Suite struct SessionStampCommandTests {
+    static let session = "5f0c1a2b-0000-4000-8000-000000000002"
+
+    @Test func theStartHookStampsItsRulesAndTheEndHookRemovesTheStamp() async {
+        let context = CheckContext.fake(project: .temporary(containing: ["App.xcodeproj"]))
+        _ = await Run("hook", "session-start", context: context, stdin: #"{"hook_event_name":"SessionStart","session_id":"\#(Self.session)","source":"startup"}"#)
+        #expect(SessionStamp.read(Self.session, on: context.machine)?.briefing == XcrewVersion.current)
+        _ = await Run("hook", "session-end", context: context, stdin: #"{"hook_event_name":"SessionEnd","session_id":"\#(Self.session)","reason":"clear"}"#)
+        #expect(SessionStamp.read(Self.session, on: context.machine) == nil)
+    }
+
+    /// The mod's read names its session: the mod is stamped before any check runs, and the checks read that session.
+    @Test func theModsDoctorReadStampsTheModFirst() async {
+        let context = CheckContext.fake(project: .temporary(containing: ["App.xcodeproj"]))
+        SessionStamp.record(Self.session, on: context.machine) { $0.briefing = "0.11.0" }
+        let run = await Run("doctor", "--problems", "--json", "--session", Self.session, context: context)
+        #expect(SessionStamp.read(Self.session, on: context.machine)?.mod == XcrewVersion.current)
+        #expect(run.text.contains("xcrew/briefing-current"), "\(run.text)")
+        #expect(!run.text.contains("xcrew/mod-loaded"), "\(run.text)")
+    }
+}

@@ -66,9 +66,16 @@ import Testing
         #expect(try hook("SessionStart").command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start"#)
     }
 
-    @Test func sessionStartIsTheOnlyCommandHook() async throws {
+    /// The command hooks are the briefing at a session's start and the stamp's removal at its end; no other.
+    @Test func theCommandHooksAreSessionStartAndSessionEnd() async throws {
         let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: Any])
-        #expect(Array(hooks.keys) == ["SessionStart"])
+        #expect(Set(hooks.keys) == ["SessionStart", "SessionEnd"])
+        #expect(try hook("SessionEnd").command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-end"#)
+    }
+
+    /// The mod-loaded check names the mcs that loads a pack's mod, as the techpack requires it.
+    @Test func techpackMinimumMCSIsTheOneTheModLoadedCheckNames() throws {
+        #expect(try text("techpack.yaml").contains("minMCSVersion: \"\(ModLoadedCheck.minMCSVersion)\""))
     }
 
     @Test func hooksLoadTheMod() async throws {

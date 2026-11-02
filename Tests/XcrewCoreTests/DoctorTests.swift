@@ -18,6 +18,7 @@ import XcrewTestSupport
         #expect(Doctor.checks.map(\.id) == [
             "mobilebuildmcp/version", "mobilebuildmcp/no-legacy-binary", "mobilebuildmcp/project-config", "mobilebuildmcp/config-loaded", "mobilebuildmcp/simulators",
             "xcode-mcp/headless-enabled", "xcode-mcp/handshake", "xcode/pin", "xcode-mcp/claude-approved",
+            "xcrew/briefing-current", "xcrew/mod-loaded",
         ])
     }
 

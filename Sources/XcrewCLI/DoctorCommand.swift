@@ -10,33 +10,41 @@ struct DoctorCommand: Command {
     }
 
     let name = "doctor"
-    let valuedOptions: Set<String> = ["check"]
+    let valuedOptions: Set<String> = ["check", "session"]
     let flags: Set<String> = ["list", "problems", "json"]
     let usage = [
         "doctor [--check ID]   run the health checks (exit: 1 failed, 2 warned, 3 every check skipped, else 0)",
         "doctor --list         list the check ids",
+        "doctor --session ID   (mod) record that the mod is loaded in session ID first, and check that session",
         "doctor --problems     only what failed or warned, worst first, or \"No problems.\", then the checks kept off the prompt; nothing outside an Apple-platform project (exit 0)",
         "doctor --json         the same, as JSON: each check's status, id and message (the mod reads it)",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
+        // The mod's read names its session: the mod is stamped first, so no check of this run can find it missing, and
+        // the checks read that session, which a process the mod starts isn't told.
+        var context = invocation.context
+        if let session = invocation.arguments["session"] {
+            SessionStamp.record(session, on: context.machine) { $0.mod = XcrewVersion.current }
+            context = CheckContext(project: context.project, machine: context.machine.setting("CLAUDE_CODE_SESSION_ID", to: session))
+        }
         if invocation.arguments.has("list") {
             Doctor.checks.forEach { invocation.print("\($0.id)\t\($0.title)") }
             return 0
         }
         if let id = invocation.arguments["check"] {
             guard let check = Doctor.check(id: id) else { throw UsageError(description: "unknown check '\(id)' (doctor --list)") }
-            let result = await check.run(invocation.context)
+            let result = await check.run(context)
             invocation.print(result.message)
             return result.status.rawValue
         }
         // The mod shows these on the band; outside an Apple project every project check would fail.
         let onlyProblems = invocation.arguments.has("problems")
-        if onlyProblems, !invocation.context.project.isApplePlatformProject { return 0 }
+        if onlyProblems, !context.project.isApplePlatformProject { return 0 }
         // It runs at session start and after prompts, so it runs only the checks on the prompt (`isOnPrompt`), and leaves out the results the
         // line above the prompt doesn't show.
         let checks = Doctor.checks.filter { !onlyProblems || $0.isOnPrompt }
-        let ran = await Doctor.run(checks, in: invocation.context)
+        let ran = await Doctor.run(checks, in: context)
         let problems = onlyProblems ? Doctor.problems(ran) : []
         let entries = onlyProblems ? problems.filter { !$0.result.isOffThePrompt } : ran
         if invocation.arguments.has("json") {

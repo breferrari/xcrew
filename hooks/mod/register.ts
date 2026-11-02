@@ -930,11 +930,14 @@ async function keepWait($: EngineInterface, tool: string, from: number | undefin
   await quietly(() => $.store.set(TIMINGS_KEY, kept))
 }
 
-/** Whether the first prompt after a `/clear` or a `/resume` is still to read the doctor. */
+/** Whether the next prompt is still to read the doctor: the first after a `/clear` or a `/resume`, or after a failed read. */
 let doctorOnNextPrompt = false
+/** Whether a failed doctor read has had its one retry in this session. */
+let retriedRead = false
 
 /** Forgets what the conversation was told: a new one's warnings show again, and the pin is named again. */
 function startOver(): void {
+  retriedRead = false
   sessionRootRead = undefined
   headRead = undefined
   sessionProfileSchemes = new Map()
@@ -965,9 +968,15 @@ function loadProblems($: EngineInterface, fresh = false): Promise<void> {
 
 async function readProblems($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
-  const answered = await answer($, ['doctor', '--problems', '--json'])
-  // A doctor that couldn't run says nothing about what's fixed: the band stays as it was.
-  if (answered === undefined) return
+  // Named, the session is where the CLI records the mod as loaded, before its checks run.
+  const session = await quietly(() => $.session.id())
+  const answered = await answer($, ['doctor', '--problems', '--json', ...(session ? ['--session', session] : [])])
+  // A doctor that couldn't run says nothing about what's fixed: the band stays as it was. Its first failure in a session
+  // is tried once more on the next prompt, so the mod is still recorded as loaded.
+  if (answered === undefined) {
+    if (!retriedRead) (retriedRead = true), (doctorOnNextPrompt = true)
+    return
+  }
   found = problemsOf(answered)
   seenAt = noticed(found, seenAt, now)
   await showVisibleProblems($)

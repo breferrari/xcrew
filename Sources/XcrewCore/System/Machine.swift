@@ -33,6 +33,11 @@ public struct Machine: Sendable {
         value("XCREW_CACHE").map { URL(fileURLWithPath: $0) } ?? home.appending(path: "Library/Caches/xcrew")
     }
 
+    /// This machine with `name` set to `value` in its environment.
+    public func setting(_ name: String, to value: String) -> Machine {
+        Machine(environment: environment.merging([name: value]) { $1 }, home: home, runner: runner, processID: processID, applications: applications)
+    }
+
     /// A variable's value, treating an empty one as unset.
     public func value(_ name: String) -> String? {
         guard let value = environment[name], !value.isEmpty else { return nil }
