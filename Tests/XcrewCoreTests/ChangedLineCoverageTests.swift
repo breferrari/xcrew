@@ -17,10 +17,22 @@ import XcrewTestSupport
     @Test func aReadingPastItsBudgetIsDropped() async {
         let slow = await ChangedLineCoverage.within(.milliseconds(50)) {
             try? await Task.sleep(for: .seconds(30))
-            return ChangedLineCoverage(ran: 1)
+            return ChangedLineCoverage(lines: ["/a": [1: true]])
         }
         #expect(slow == nil)
-        #expect(await ChangedLineCoverage.within(.seconds(30)) { ChangedLineCoverage(ran: 1) } == ChangedLineCoverage(ran: 1))
+        #expect(await ChangedLineCoverage.within(.seconds(30)) { ChangedLineCoverage(lines: ["/a": [1: true]]) } == ChangedLineCoverage(lines: ["/a": [1: true]]))
+    }
+
+    /// Across a branch's runs, a changed line ran when any run ran it; a file is outside the coverage, and a target
+    /// unreached, only when it is in every run.
+    @Test func runsMergeIntoWhatAnyOfThemRan() {
+        let first = ChangedLineCoverage(lines: ["/p/Cart.swift": [4: true, 6: false, 7: true]], outside: ["/p/A.swift", "/p/B.swift"], unreached: [.init(target: "Feature", files: 1)])
+        let second = ChangedLineCoverage(lines: ["/p/Cart.swift": [4: false, 6: true, 7: false], "/p/Pay.swift": [2: false]], outside: ["/p/A.swift"], unreached: [])
+        let merged = ChangedLineCoverage.merged([first, second])
+        #expect(merged.ran == 3)
+        #expect(merged.notRun == [.init(path: "/p/Pay.swift", lines: [2])])
+        #expect(merged.outside == ["/p/A.swift"])
+        #expect(merged.unreached == [])
     }
 
     @Test func linesNotRunAreNamedAsRanges() {

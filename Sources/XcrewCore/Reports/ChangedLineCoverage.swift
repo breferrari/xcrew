@@ -16,10 +16,17 @@ struct ChangedLineCoverage: Sendable, Equatable {
         let files: Int
     }
 
+    /// Each changed file's changed lines that can run, and whether each ran.
+    var lines: [String: [Int: Bool]] = [:]
     /// How many changed lines that can run ran.
-    var ran = 0
+    var ran: Int { lines.values.reduce(0) { $0 + $1.values.count { $0 } } }
     /// The changed lines that can run but didn't, by file.
-    var notRun: [Missed] = []
+    var notRun: [Missed] {
+        lines.keys.sorted().compactMap { path in
+            let missed = (lines[path] ?? [:]).filter { !$0.value }.keys.sorted()
+            return missed.isEmpty ? nil : Missed(path: path, lines: missed)
+        }
+    }
     /// Changed files of a kind the coverage holds that it doesn't hold.
     var outside: [String] = []
     /// The targets with changed files that the run didn't reach.
@@ -77,9 +84,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
         for (path, ranges) in changed {
             guard case let .some(.some(read)) = counts[path] else { return nil }
             let changedLines = read.filter { line, _ in ranges.contains { $0.contains(line) } }
-            found.ran += changedLines.values.count { $0 }
-            let missed = changedLines.filter { !$0.value }.keys.sorted()
-            if !missed.isEmpty { found.notRun.append(Missed(path: path, lines: missed)) }
+            if !changedLines.isEmpty { found.lines[path] = changedLines }
         }
         let changedFiles = Set(change.files)
         let unreachedFiles = holding.filter { changedFiles.contains($0.key) && $0.value.allSatisfy(\.isUnreached) }.compactMap { $0.value.first?.module }
@@ -92,6 +97,19 @@ struct ChangedLineCoverage: Sendable, Equatable {
             file.hasPrefix(root) && !held.contains(file) && kinds.contains(kind(of: file)) && !isManifest(file) && FileManager.default.fileExists(atPath: file)
         }, of: project)
         return found
+    }
+
+    /// What a branch's runs say together: a changed line ran when any run ran it; a file is outside the coverage, and a
+    /// target unreached, only when it is so in every run, since a run that reached it says what it ran there.
+    static func merged(_ runs: [ChangedLineCoverage]) -> ChangedLineCoverage {
+        guard let first = runs.first else { return ChangedLineCoverage() }
+        var merged = ChangedLineCoverage()
+        for run in runs {
+            for (path, lines) in run.lines { merged.lines[path, default: [:]].merge(lines) { $0 || $1 } }
+        }
+        merged.outside = first.outside.filter { file in runs.allSatisfy { $0.outside.contains(file) } }
+        merged.unreached = first.unreached.filter { target in runs.allSatisfy { $0.unreached.contains { $0.target == target.target } } }
+        return merged
     }
 
     /// The files only test targets build, left out: a test target's own files are no code under test, so their being
