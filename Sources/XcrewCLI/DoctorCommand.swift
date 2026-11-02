@@ -25,7 +25,7 @@ struct DoctorCommand: Command {
         // the checks read that session, which a process the mod starts isn't told.
         var context = invocation.context
         if let session = invocation.arguments["session"] {
-            SessionStamp.record(session, on: context.machine) { $0.mod = XcrewVersion.current }
+            SessionStamp.record(session, on: context.machine, .mod, version: XcrewVersion.current)
             context = CheckContext(project: context.project, machine: context.machine.setting("CLAUDE_CODE_SESSION_ID", to: session))
         }
         if invocation.arguments.has("list") {

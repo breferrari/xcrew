@@ -1106,7 +1106,7 @@ import XcrewTestSupport
     /// The mod's read names its session: the mod is stamped before any check runs, and the checks read that session.
     @Test func theModsDoctorReadStampsTheModFirst() async {
         let context = CheckContext.fake(project: .temporary(containing: ["App.xcodeproj"]))
-        SessionStamp.record(Self.session, on: context.machine) { $0.briefing = "0.11.0" }
+        SessionStamp.record(Self.session, on: context.machine, .briefing, version: "0.11.0")
         let run = await Run("doctor", "--problems", "--json", "--session", Self.session, context: context)
         #expect(SessionStamp.read(Self.session, on: context.machine)?.mod == XcrewVersion.current)
         #expect(run.text.contains("xcrew/briefing-current"), "\(run.text)")
