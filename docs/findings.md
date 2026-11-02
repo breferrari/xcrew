@@ -402,7 +402,7 @@ The mod saves the card after each run and at session start: `xcrew card --save` 
 
 The store is the plugin's, across every project, and a run scope (`test_sim · App`) doesn't name one. So each run records the session's folder (`$.session.cwd()`), and the card shows only scopes last run in this folder. Scopes from before that record stay out until they run again. The card is capped in lines and characters, with longer lists counted as "+N more".
 
-At a session's start the mod drops the times, counts and ledgers of a folder that no longer exists, as a worktree removed since: a field report filed November 2, 2026 had them kept for one removed two days earlier. Each folder is looked at once with `$.fs.exists`, which the mod API documents as answering whether the path exists and rejecting only a network location (Claude Code 2.1.314's types). A folder that can't be looked at keeps what it stored, so a rejected call never empties the store. A folder on a volume that isn't mounted reads as gone, and its history goes with it; it rebuilds from the next runs there.
+At a session's start the mod drops the times, counts and ledgers of a folder that no longer exists, as a worktree removed since: a field report filed November 2, 2026 had them kept for one removed two days earlier. The mod touches no files, so it asks `xcrew gone` with each folder the store names, once, with the 10 seconds it gives its other quick questions to the CLI. When the CLI doesn't answer, every folder keeps what it stored, so a failed call never empties the store. A folder on a volume that isn't mounted reads as gone, and its history goes with it; it rebuilds from the next runs there.
 
 ## Affected tests
 
