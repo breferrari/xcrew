@@ -240,8 +240,15 @@ public enum Space {
         let devices = byRuntime.values.joined()
         let bytes = devices.reduce(0) { $0 + ($1["dataPathSize"] as? Int ?? 0) }
         let unavailable = devices.filter { ($0["isAvailable"] as? Bool) == false }.count
-        let text = "\(counted(devices.count, "device")): \(SpaceReport.size(bytes)) of data" + (unavailable > 0 ? ", \(unavailable) unavailable" : "")
-        return .init(title: title, lines: [.init(text: text, bytes: bytes, command: unavailable > 0 ? "xcrun simctl delete unavailable" : nil)])
+        return .init(title: title, lines: [Self.devicesLine(devices: devices.count, bytes: bytes, unavailable: unavailable)])
+    }
+
+    /// The devices' line: how many and their data, and the unavailable ones, whose delete loses the apps on them and their
+    /// data, the person's call, said before the command, which `SpaceReport` prints on the line below.
+    static func devicesLine(devices: Int, bytes: Int, unavailable: Int) -> SpaceReport.Line {
+        let text = "\(counted(devices, "device")): \(SpaceReport.size(bytes)) of data"
+            + (unavailable > 0 ? ", \(unavailable) unavailable. Deleting the unavailable ones loses the apps installed on them and their data, so it's the person's to agree to:" : "")
+        return .init(text: text, bytes: bytes, command: unavailable > 0 ? "xcrun simctl delete unavailable" : nil)
     }
 
     // MARK: Xcodes

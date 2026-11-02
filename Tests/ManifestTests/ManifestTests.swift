@@ -233,11 +233,11 @@ import Testing
     /// sentence around it is copied into it.
     @Test func aCommandThatRemovesOrStopsThePersonsWorkIsTheirsToAgreeTo() throws {
         #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
-        let condition = "so it's the person's to agree to: "
-        let removing = try toldWhole().filter { $0.contains(/\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill )/) }
-        #expect(removing.count >= 3, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
+        let condition = /so it's the person's to agree to:\s+/
+        let removing = try toldWhole().filter { $0.contains(/\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill |simctl (?:delete|erase) )/) }
+        #expect(removing.count >= 6, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
         for text in removing {
-            let command = try #require(text.range(of: condition), "no condition before the command: \(text)").upperBound
+            let command = try #require(text.firstMatch(of: condition), "no condition before the command: \(text)").range.upperBound
             #expect(!text[command...].contains(". ") && !text.hasSuffix("."), "the command doesn't end the text: \(text)")
         }
         #expect(CorruptModuleCache.fix(derivedData: nil).hasSuffix("That deletes part of DerivedData, so it's the person's to agree to."))
@@ -316,7 +316,13 @@ import Testing
             + [XcodePinCheck.failureNote(pinMissing, hasXcodes: true), XcodePinCheck.failureNote(pinStarted, hasXcodes: true)].compactMap { $0 }
         let expected = ["xcrew: several Xcodes are installed", "xcrew: the Xcode MCP works through the open", "xcrew: CI uses Xcode", "xcrew: builds use", "xcrew: MobileBuildMCP started without the project's pin"]
         try #require(xcodeNotes.count == expected.count && expected.allSatisfy { start in xcodeNotes.contains { $0.hasPrefix(start) } }, "each snapshot no longer gives the note it's built for: \(xcodeNotes)")
-        let machineNotes: [String] = [ProjectConfigCheck.legacyFolder("/work/App/.xcodebuildmcp"), ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
+        let simulatorNotes: [String] = [
+            WorktreeLeftovers.leftovers(named: "`xcrew · App · old` (its worktree is gone)", udids: ["U1"]),
+            WorktreeLeftovers.leftovers(named: "`a` (its worktree is gone), `b` (its runtime is gone)", udids: ["U1", "U2"]),
+            WorktreeSimulator.reused(name: "xcrew · App · old", label: "iPhone 18, iOS 27.2", udid: "U1", fresh: true),
+            SpaceReport(parts: [.init(title: "Simulator devices", lines: [Space.devicesLine(devices: 5, bytes: 2_400_000_000, unavailable: 1)])]).text,
+        ]
+        let machineNotes: [String] = simulatorNotes + [ProjectConfigCheck.legacyFolder("/work/App/.xcodebuildmcp"), ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
         let modTools: [String] = try Self.modTools.map { try toolDescription($0.constant, in: $0.file) }
         return briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + xcodeNotes + machineNotes + modTools
     }
