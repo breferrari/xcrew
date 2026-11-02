@@ -8,11 +8,14 @@ struct ProjectConfigCheck: Check {
         let project = context.project
         guard project.hasMobileBuildMCPConfig, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else {
             // Its fix writes a MobileBuildMCP config, which only an Apple-platform project has a use for.
-            guard project.layout(.anywhereButHome).isApplePlatform else { return .skip("not an Apple project") }
+            let layout = project.layout(.anywhereButHome)
+            guard layout.isApplePlatform else { return .skip("not an Apple project") }
+            // Setup alone leaves nothing to build where the project isn't generated yet: the generate is said with it.
+            let generate = layout.ungenerated.map { "; the project isn't generated in this checkout yet either: run `\($0.firstGenerateCommand)` from the project's root" } ?? ""
             if await Worktree.takesMainConfig(project, using: context.runner) {
-                return .fail("no .mobilebuildmcp/config.yaml in this worktree: \(Worktree.setupCommand) writes it from the main checkout's")
+                return .fail("no .mobilebuildmcp/config.yaml in this worktree: \(Worktree.setupCommand) writes it from the main checkout's" + generate)
             }
-            return .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup" + (project.isConfiguredByMCS ? " (or, with the mcs CLI, mcs sync)" : ""))
+            return .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup" + (project.isConfiguredByMCS ? " (or, with the mcs CLI, mcs sync)" : "") + generate)
         }
         let lists = ConfigRenderer.lists(in: yaml)
         let kept = ConfigWriter.keeping(project)
@@ -35,8 +38,7 @@ struct ProjectConfigCheck: Check {
             // A path that isn't there can't be resolved, so the root is matched as written and as the file system spells it.
             let roots = [project.root.path, project.canonicalRoot].map { $0 + "/" }
             if let manifests = project.layout(.anywhereButHome).generator, missing.allSatisfy({ path in roots.contains { path.hasPrefix($0) } }) {
-                let generate = manifests.generator == .tuist ? manifests.installAndGenerateCommand : manifests.generateCommand
-                return .warn("the config points at \(names), which isn't generated in this checkout yet: run `\(generate)` from the project's root")
+                return .warn("the config points at \(names), which isn't generated in this checkout yet: run `\(manifests.firstGenerateCommand)` from the project's root")
             }
             return .warn("the config points at \(names), which no longer exists (the project moved or was renamed): xcrew setup")
         }

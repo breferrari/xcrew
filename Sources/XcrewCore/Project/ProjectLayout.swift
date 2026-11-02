@@ -43,6 +43,10 @@ public struct ProjectLayout: Sendable {
             }
         }
 
+        /// The command that generates the project in a checkout that has never generated it: Tuist's resolves the
+        /// dependencies first, which a fresh checkout hasn't either.
+        public var firstGenerateCommand: String { generator == .tuist ? installAndGenerateCommand : generateCommand }
+
         /// Tuist's command that resolves the dependencies its manifests declare.
         public var installCommand: String { path.isEmpty ? "tuist install" : "tuist install --path \(argument)" }
 
@@ -106,6 +110,13 @@ public struct ProjectLayout: Sendable {
             let found = entries.filter { Project.isXcodeContainer($0.url.lastPathComponent) }.map(\.path)
             return found.isEmpty ? nil : found.sorted { (rank($0), $0) < (rank($1), $1) }
         } ?? []
+    }
+
+    /// The manifests nearest the root when no container sits beside them: a checkout that hasn't generated its project
+    /// yet, as a fresh worktree, since the generated project is kept out of git.
+    public var ungenerated: Manifests? {
+        guard let manifests = generator else { return nil }
+        return containers.contains { ($0 as NSString).deletingLastPathComponent == manifests.path } ? nil : manifests
     }
 
     /// The manifests nearest the root, Tuist's before XcodeGen's at the same level.

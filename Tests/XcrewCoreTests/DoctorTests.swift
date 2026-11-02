@@ -121,6 +121,33 @@ import XcrewTestSupport
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .warn)
     }
 
+    /// Before setup, a checkout whose generated project isn't there yet, as a fresh worktree's, hears of the generate too:
+    /// setup alone leaves nothing to build.
+    @Test(arguments: [(["Tuist.swift", "Project.swift"], "`tuist install && tuist generate --no-open`"), (["project.yml"], "`xcodegen generate`")])
+    func beforeSetupAnUngeneratedProjectNamesTheGenerateToo(manifests: [String], generate: String) async {
+        let project = Project.temporary()
+        for manifest in manifests { project.write("", to: manifest) }
+        let ungenerated = "the project isn't generated in this checkout yet either: run \(generate) from the project's root"
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .fail("no .mobilebuildmcp/config.yaml: run /xcrew:setup; \(ungenerated)"))
+        let main = Project.temporary(containing: ["App.xcworkspace"])
+        main.write("schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: './App.xcworkspace'\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit\n", to: ".mobilebuildmcp/config.yaml")
+        var linked = FakeRunner()
+        linked.linkWorktree(project, to: main)
+        #expect(await ProjectConfigCheck().run(.fake(linked, project: project)) == .fail("no .mobilebuildmcp/config.yaml in this worktree: xcrew setup --worktree writes it from the main checkout's; \(ungenerated)"))
+        // Once generated, setup alone is said.
+        project.write("", to: "App.xcworkspace/contents.xcworkspacedata")
+        #expect(await ProjectConfigCheck().run(.fake(linked, project: project)) == .fail("no .mobilebuildmcp/config.yaml in this worktree: xcrew setup --worktree writes it from the main checkout's"))
+    }
+
+    /// A module's own project below the manifests isn't the app's workspace: the project still isn't generated.
+    @Test func aModulesProjectIsntTheGeneratedWorkspace() async {
+        let project = Project.temporary(containing: ["Modules/Core/Core.xcodeproj"])
+        project.write("", to: "Tuist.swift")
+        #expect(project.layout(.anywhereButHome).ungenerated?.path == "")
+        project.write("", to: "App.xcworkspace/contents.xcworkspacedata")
+        #expect(project.layout(.anywhereButHome).ungenerated == nil)
+    }
+
     /// A config whose workspace isn't in this checkout, in a project a generator makes: the generated project is kept out
     /// of git, so a fresh worktree has none yet. The fix is the generate, not setup.
     @Test(arguments: [(["Tuist.swift", "Project.swift"], "`tuist install && tuist generate --no-open`"), (["project.yml"], "`xcodegen generate`")])
