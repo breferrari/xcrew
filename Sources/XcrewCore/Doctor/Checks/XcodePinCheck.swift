@@ -11,9 +11,9 @@ struct XcodePinCheck: Check {
         let using = xcodes.forBuilds?.label ?? "the selected Xcode"
         switch xcodes.pinState {
         case let .notInstalled(pin, file):
-            return "xcrew: builds use \(using) while the project pins Xcode \(pin) (\(file)): a different SDK may be the cause. To build with the pin, \(install(pin, hasXcodes: hasXcodes))"
+            return "xcrew: builds use \(using) while the project pins Xcode \(pin) (\(file)): a different SDK may be the cause. \(hasXcodes ? "`xcodes install \(pin)` installs the pin's Xcode" : "The pin's Xcode \(pin) is at https://developer.apple.com/download/all/")"
         case let .notApplied(install, file, _):
-            return "xcrew: MobileBuildMCP started without the project's pin, \(install.label) (\(file)), so it builds with \(using): a different SDK may be the cause. Restart Claude Code to build with the pin."
+            return "xcrew: MobileBuildMCP started without the project's pin, \(install.label) (\(file)), so it builds with \(using): a different SDK may be the cause. The pin takes effect once Claude Code restarts."
         case .none, .waiting, .applied:
             return nil
         }

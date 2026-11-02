@@ -10,13 +10,13 @@ enum XcodeFailureNotes {
         let buildsCovered = { (versions: [CIXcodes.Named]) in versions.contains { named in builds.map { CIXcodes.covers(named.version, $0.version) } == true } }
         // Without a pin, with several Xcodes to choose from, the pin that would match CI says it all.
         if xcodes.pin == nil, xcodes.installed.count > 1, let ci = xcodes.ci.first, !buildsCovered(xcodes.ci) {
-            notes.append("xcrew: several Xcodes are installed and CI uses Xcode \(ci.version) (\(ci.file):\(ci.line)), but nothing pins one, so builds use \(builds?.label ?? "the selected Xcode"), and a different SDK from CI's may be the cause: pin CI's with echo \(ci.version) > \(Project.xcodePinFile)")
+            notes.append("xcrew: several Xcodes are installed and CI uses Xcode \(ci.version) (\(ci.file):\(ci.line)), but nothing pins one, so builds use \(builds?.label ?? "the selected Xcode"), and a different SDK from CI's may be the cause; `echo \(ci.version) > \(Project.xcodePinFile)` pins CI's")
         } else if let other = xcodes.ci.first, let ours = xcodes.pin?.version ?? builds?.version, !xcodes.ci.contains(where: { CIXcodes.covers($0.version, ours) }) {
             let here = xcodes.pin == nil ? "builds here use Xcode \(ours)" : "this project pins Xcode \(ours)"
-            notes.append("xcrew: CI uses Xcode \(other.version) (\(other.file):\(other.line)), but \(here), so a different SDK from CI's may be the cause: move CI to \(ours), or pin \(other.version) in \(Project.xcodePinFile)")
+            notes.append("xcrew: CI uses Xcode \(other.version) (\(other.file):\(other.line)), but \(here), so a different SDK from CI's may be the cause; moving CI to \(ours), or pinning \(other.version) in \(Project.xcodePinFile), puts both on one Xcode")
         }
         if let builds, let other = xcodes.open.first(where: { !$0.isSameToolchain(as: builds) }) {
-            notes.append("xcrew: the Xcode MCP works through the open \(other.label), but MobileBuildMCP builds with \(builds.label), so their builds and errors can disagree: quit \(other.label) and open \(builds.path)")
+            notes.append("xcrew: the Xcode MCP works through the open \(other.label), but MobileBuildMCP builds with \(builds.label), so their builds and errors can disagree; with \(other.label) quit, opening \(builds.path) puts both on \(builds.label)")
         }
         return notes
     }
