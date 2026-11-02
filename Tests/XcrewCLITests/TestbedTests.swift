@@ -401,7 +401,7 @@ struct TestbedWhyTests {
     }
 
     @Test(arguments: [
-        ("module-cache-malformed", "a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
+        ("module-cache-malformed", "a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'. That deletes part of DerivedData, so it's the person's to agree to."),
         ("module-cache-invalid", "is not a valid module file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
         ("simulator-missing", "no simulator here is named iPhone 1, which the build asked for"),
     ])

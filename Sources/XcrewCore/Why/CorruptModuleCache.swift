@@ -25,13 +25,17 @@ struct CorruptModuleCache: MachineCause {
         return ("\(URL(fileURLWithPath: module).lastPathComponent) is not a valid module file", derivedData)
     }
 
-    /// What to remove: the two folders in the DerivedData, by path when it's known.
+    /// What to remove: the two folders in the DerivedData, by path when it's known, with the condition the routing rules'
+    /// harm guard puts on deleting any of DerivedData: the person agrees to it.
     static func fix(derivedData: String?) -> String {
         guard let derivedData else {
-            return "Removing \(folders.joined(separator: " and ")) from the DerivedData this build used lets the next build rebuild them"
+            return "Removing \(folders.joined(separator: " and ")) from the DerivedData this build used lets the next build rebuild them. \(consent)"
         }
-        return "Removing the cached modules lets the next build rebuild them: rm -rf \(folders.map { quoted("\(derivedData)/\($0)") }.joined(separator: " "))"
+        return "Removing the cached modules lets the next build rebuild them: rm -rf \(folders.map { quoted("\(derivedData)/\($0)") }.joined(separator: " ")). \(consent)"
     }
+
+    /// The routing rules' harm guard on DerivedData, said after the fix: removing these folders is the person's call.
+    static let consent = "That deletes part of DerivedData, so it's the person's to agree to."
 
     /// A path as one shell word: in single quotes, each one inside it closed, escaped and reopened.
     static func quoted(_ path: String) -> String {

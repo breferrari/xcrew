@@ -227,6 +227,16 @@ import Testing
         }
     }
 
+    /// The routing rules guard DerivedData: deleted only when the person asks. The note that hands Claude a command
+    /// deleting part of it says so in each of its forms, so it never reads as Claude's to run.
+    @Test func aNoteThatDeletesPartOfDerivedDataLeavesItToThePerson() throws {
+        #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
+        let condition = "That deletes part of DerivedData, so it's the person's to agree to."
+        for note in [CorruptModuleCache.fix(derivedData: "/d"), CorruptModuleCache.fix(derivedData: nil)] {
+            #expect(note.hasSuffix(condition), "\(note)")
+        }
+    }
+
     /// xcrew routes work across its servers; it doesn't prescribe how Claude reports or works. So the words of a rule
     /// ("always", "must", "never", "before", "after") appear in what it tells Claude only in the sentences named here,
     /// each routing work across the servers or guarding the person's work against harm.

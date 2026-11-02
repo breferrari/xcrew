@@ -76,17 +76,17 @@ import XcrewTestSupport
     @Test func aCorruptCachedModuleNamesTheFoldersToRemove() async throws {
         let log = "/usr/bin/xcrun xcodebuild -project App.xcodeproj -scheme App -derivedDataPath /testbed/DerivedData -destination id=A build\n"
         let home = try home(withLog: log, named: "build_sim_2026-10-30T07-31-02-114Z_pid18611_8a4c3d1e.log")
-        #expect(await note(Self.malformed, home: home) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'")
+        #expect(await note(Self.malformed, home: home) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'. That deletes part of DerivedData, so it's the person's to agree to.")
     }
 
     /// Without the log, the fix names the folders inside the DerivedData the build used.
     @Test func withoutTheLogTheFoldersAreNamedInTheBuildsDerivedData() async {
-        #expect(await note(Self.malformed) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used lets the next build rebuild them")
+        #expect(await note(Self.malformed) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used lets the next build rebuild them. That deletes part of DerivedData, so it's the person's to agree to.")
     }
 
     /// The module the error names sits in the DerivedData, which says where it is.
     @Test func anInvalidPrecompiledModuleNamesItsDerivedData() async {
-        #expect(await note(Self.invalid) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"SwiftShims-44J58ATYTB5F8RWZHD1OXEBAB.pcm is not a valid module file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'")
+        #expect(await note(Self.invalid) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"SwiftShims-44J58ATYTB5F8RWZHD1OXEBAB.pcm is not a valid module file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'. That deletes part of DerivedData, so it's the person's to agree to.")
     }
 
     @Test func aSimulatorNoneHasNamesSetup() async {
@@ -136,7 +136,7 @@ import XcrewTestSupport
     }
 
     @Test func aFolderWithAQuoteIsQuotedForTheShell() {
-        #expect(CorruptModuleCache.fix(derivedData: "/Volumes/Work/Team's DD") == #"Removing the cached modules lets the next build rebuild them: rm -rf '/Volumes/Work/Team'\''s DD/ModuleCache.noindex' '/Volumes/Work/Team'\''s DD/SDKExplicitPrecompiledModules'"#)
+        #expect(CorruptModuleCache.fix(derivedData: "/Volumes/Work/Team's DD") == #"Removing the cached modules lets the next build rebuild them: rm -rf '/Volumes/Work/Team'\''s DD/ModuleCache.noindex' '/Volumes/Work/Team'\''s DD/SDKExplicitPrecompiledModules'. That deletes part of DerivedData, so it's the person's to agree to."#)
     }
 
     // MARK: The code's own errors, in the same words
