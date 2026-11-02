@@ -68,12 +68,15 @@ public enum RunLog {
     /// `-test-iterations`' next pass and `-retry-tests-on-failure` write it. MobileBuildMCP counts a test once however
     /// often it ran, and the log doesn't say how many more times it will, so no count holds from there. A start of testing
     /// written again is no sign: a relaunch after a crash writes it within one pass. Nor is a Swift Testing name, which
-    /// carries no suite, so two suites' tests of one name are two tests (docs/findings.md, *Test progress in a run's log*).
+    /// carries no suite, so two suites' tests of one name are two tests; but Swift Testing ends each pass with its run's
+    /// total, `Test run with 6 tests …`, so a result after one is a test plan's next configuration's (docs/findings.md,
+    /// *Test progress in a run's log*).
     static func progress(in log: String) -> (finished: Int, isRepeated: Bool) {
         var count = 0
         var expected: Set<Substring> = []
         var seen: Set<Substring> = []
         var isRepeated = false
+        var swiftTestingRunEnded = false
         for line in log.split(separator: "\n", omittingEmptySubsequences: true) {
             if line.hasPrefix("Test case '") {
                 if line.contains("' passed") || line.contains("' failed") {
@@ -91,6 +94,9 @@ public enum RunLog {
                 expected.insert(line[open.upperBound..<close])
             } else if let counts = swiftTestingCounts(line) {
                 if counts { count += 1 }
+                if swiftTestingRunEnded { isRepeated = true }
+            } else if isSwiftTestingRunTotal(line) {
+                swiftTestingRunEnded = true
             }
         }
         return (count, isRepeated)
@@ -98,6 +104,12 @@ public enum RunLog {
 
 
     static let serialCase = "Test Case '-["
+
+    /// Swift Testing's total at a run's end, `✘ Test run with 6 tests in 1 suite failed after 5.068 seconds …`.
+    static func isSwiftTestingRunTotal(_ line: Substring) -> Bool {
+        let words = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
+        return words.count == 2 && !words[0].isEmpty && words[1].hasPrefix("Test run with ")
+    }
 
     /// Whether a Swift Testing test's result line counts, or nil for any other line. Its name can hold any words, so its
     /// result is the last `passed after`, `failed after` or `was cancelled after` in it, or its end. A cancelled test

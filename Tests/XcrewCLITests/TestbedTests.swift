@@ -872,6 +872,23 @@ struct TestbedRawTests {
         #expect(RunLog.testsFinished(in: try Self.captured("cancel.log")) == total)
     }
 
+    /// A Swift Testing run through a test plan of two configurations writes each configuration's run whole, its own start
+    /// and its own `Test run with …` total, naming neither configuration (`captures/raw/shapes-configurations`). Through
+    /// the first, the count holds; a result after a run's total is another pass's, so from there no count holds.
+    @Test func aSwiftTestingRunThroughConfigurationsCountsOnlyItsFirstPass() throws {
+        let total = try #require(ToolOutput(text: try Self.content("shapes-configurations"), server: .mobileBuildMCP).testTotal)
+        #expect(total == 5)
+        let log = try Self.captured("shapes-configurations.log")
+        let firstTotal = try #require(log.range(of: "Test run with 6 tests"))
+        let firstPass = String(log[..<log[firstTotal.upperBound...].firstIndex(of: "\n")!])
+        #expect(RunLog.phase(of: firstPass, expectedTests: total) == "testing 5 of 5")
+        let secondStart = try #require(log.range(of: "◇ Test run started.", range: firstTotal.upperBound..<log.endIndex))
+        let secondFirstResult = try #require(log.range(of: "passed after", range: secondStart.upperBound..<log.endIndex))
+        let intoSecond = String(log[..<log[secondFirstResult.upperBound...].firstIndex(of: "\n")!])
+        #expect(RunLog.phase(of: intoSecond, expectedTests: total) == "testing")
+        #expect(RunLog.phase(of: log, expectedTests: total) == "testing")
+    }
+
     /// Swift Testing's `-test-iterations` writes each test once, under one start of testing: it counts as one pass.
     @Test func aSwiftTestingRunIteratedCountsItsTestsOnce() throws {
         let total = try #require(ToolOutput(text: try Self.content("shapes-iterations"), server: .mobileBuildMCP).testTotal)
