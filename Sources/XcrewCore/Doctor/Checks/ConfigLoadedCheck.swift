@@ -17,7 +17,7 @@ struct ConfigLoadedCheck: Check {
         guard let (server, isSessions) = await list.mobileBuildMCPServer(serving: context.project, forSessionOf: context.machine.processID, using: context.runner) else {
             return .skip("MobileBuildMCP isn't running for this project")
         }
-        let started = Date(timeIntervalSinceNow: -TimeInterval(server.elapsed))
+        let started = context.machine.now().addingTimeInterval(-TimeInterval(server.elapsed))
         guard written > started else { return .pass("loaded at its start") }
         // Since setup keeps the server part's fingerprint, a change to profiles alone needs no restart.
         if let serverChanged = try? FileManager.default.attributesOfItem(atPath: context.project.serverMarker.path)[.modificationDate] as? Date {

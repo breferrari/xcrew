@@ -13,7 +13,7 @@ struct CardCommand: Command {
         guard let entry = try? JSONDecoder().decode(ProjectCard.Entry.self, from: await invocation.standardInput()) else {
             throw UsageError(description: "card --save reads a card as JSON on stdin")
         }
-        ProjectCard.save(entry, on: invocation.context.machine)
+        ProjectCard.save(entry, on: invocation.context.machine, now: invocation.context.machine.now())
         return 0
     }
 }

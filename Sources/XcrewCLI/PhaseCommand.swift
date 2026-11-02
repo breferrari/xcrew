@@ -39,7 +39,8 @@ struct PhaseCommand: Command {
         let outcome = followed?.outcome
         let written = log.flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         let began = Date(timeIntervalSince1970: since / 1000)
-        let quiet = outcome == nil && (written.map { Date().timeIntervalSince($0) >= OtherRuns.quietFor } ?? (log == nil && Date().timeIntervalSince(began) >= OtherRuns.quietFor))
+        let now = context.machine.now()
+        let quiet = outcome == nil && (written.map { now.timeIntervalSince($0) >= OtherRuns.quietFor } ?? (log == nil && now.timeIntervalSince(began) >= OtherRuns.quietFor))
         let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: followed?.phase, scheme: followed?.scheme, outcome: outcome, quiet: quiet ? true : nil))
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0

@@ -27,7 +27,7 @@ public struct SessionBriefing: Sendable {
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
         let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), await simulatorApp, bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + [await offer].compactMap { $0 }
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
-        let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), now: Date(), on: machine)
+        let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), now: machine.now(), on: machine)
         return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "")
     }
 

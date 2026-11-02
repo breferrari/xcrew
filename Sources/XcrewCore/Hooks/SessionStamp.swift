@@ -43,7 +43,7 @@ public struct SessionStamp: Codable, Equatable, Sendable {
         let folder = self.folder(session, on: machine)
         let file = folder.appending(path: field.rawValue)
         guard (try? String(contentsOf: file, encoding: .utf8)) != version else { return }
-        if !FileManager.default.fileExists(atPath: folder.path) { prune(folder.deletingLastPathComponent()) }
+        if !FileManager.default.fileExists(atPath: folder.path) { prune(folder.deletingLastPathComponent(), now: machine.now()) }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try? Data(version.utf8).write(to: file, options: .atomic)
     }
@@ -69,10 +69,10 @@ public struct SessionStamp: Codable, Equatable, Sendable {
         return name.isEmpty ? "_" : name
     }
 
-    static func prune(_ folder: URL) {
-        let oldest = Date.now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
+    static func prune(_ folder: URL, now: Date) {
+        let oldest = now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
         for entry in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        where ((try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now) < oldest {
+        where ((try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? now) < oldest {
             try? FileManager.default.removeItem(at: entry)
         }
     }

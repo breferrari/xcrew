@@ -114,7 +114,7 @@ import XcrewTestSupport
         #expect(choices(project).config == nil)
         project.write("schemaVersion: 1\nsessionDefaults:\n  scheme: Mine\n", to: ".mobilebuildmcp/config.yaml")
         #expect(choices(project).config == .init(owner: .other, scheme: "Mine"))
-        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 18", appScheme: "App"), to: project, force: true)
+        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 18", appScheme: "App"), to: project, force: true, now: Date())
         #expect(choices(project).config?.owner == .xcrew)
     }
 
@@ -142,7 +142,7 @@ import XcrewTestSupport
     /// A config xcrew wrote holds what the person chose before: the form starts from it, not from setup's defaults.
     @Test func theProfilesXcrewWroteAreThePicks() throws {
         let project = project()
-        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 17", appSimulator: "iPhone Duo", appScheme: "Core", bundleID: "dev.example.Chosen", testScheme: "Core"), to: project, force: true)
+        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 17", appSimulator: "iPhone Duo", appScheme: "Core", bundleID: "dev.example.Chosen", testScheme: "Core"), to: project, force: true, now: Date())
         #expect(choices(project).picks == SetupChoices.Picks(appScheme: "Core", uiScheme: nil, testScheme: "Core", bundleID: "dev.example.Chosen", testSimulator: "iPhone 17", appSimulator: "iPhone Duo"))
     }
 }

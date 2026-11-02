@@ -9,7 +9,7 @@ public enum Space {
     /// The age a dry run of `purge` and of `simctl runtime delete` is named with.
     static let days = 30
 
-    public static func report(project: Project, machine: Machine, now: Date = Date()) async -> SpaceReport {
+    public static func report(project: Project, machine: Machine, now: Date) async -> SpaceReport {
         let live = Task { await ProjectWorkspaces.live(of: project, using: machine.runner) }
         async let derivedData = derivedDataFolder(machine: machine)
         async let mobile = mobileBuildMCP(live: live, machine: machine, now: now)

@@ -1307,6 +1307,22 @@ import Testing
         #expect(calls >= 4, "found no CLI calls in the mod; the pattern no longer matches how it builds them")
     }
 
+    // MARK: The machine
+
+    /// The time is read through `Machine` alone, as everything else that touches the machine is, so a test gives the CLI
+    /// a time of its own: no other source reads the wall clock (`Date()`, `Date.now`, `.now`, `timeIntervalSinceNow`). A
+    /// `ContinuousClock` deadline measures a wait, not the time, and stays.
+    @Test func onlyTheMachineReadsTheTime() throws {
+        let sources = Self.repository.appending(path: "Sources")
+        let files = (FileManager.default.enumerator(atPath: sources.path)?.allObjects as? [String] ?? []).filter { $0.hasSuffix(".swift") && !$0.hasSuffix("/Machine.swift") }
+        #expect(!files.isEmpty)
+        for file in files {
+            for (number, line) in try text("Sources/\(file)").split(separator: "\n", omittingEmptySubsequences: false).enumerated() where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                #expect(line.firstMatch(of: /\bDate\(\)|\bDate\.now\b|[^\w.]\.now\b(?!\s*\+)|timeIntervalSinceNow/) == nil, "Sources/\(file):\(number + 1) reads the clock: \(line)")
+            }
+        }
+    }
+
     // MARK: mcs techpack
 
     /// A check's `fixCommand` is a fix its Swift check offers, so `mcs doctor` never runs another check's.

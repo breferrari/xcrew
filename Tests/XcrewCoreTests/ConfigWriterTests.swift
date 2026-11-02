@@ -8,17 +8,17 @@ import XcrewTestSupport
 
     @Test func writesAndMarksTheConfig() async throws {
         let project = Project.temporary()
-        #expect(try ConfigWriter.write(answers, to: project) == .written(backup: nil))
+        #expect(try ConfigWriter.write(answers, to: project, now: Date()) == .written(backup: nil))
         #expect(FileManager.default.fileExists(atPath: project.managedMarker.path))
         #expect(try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8).contains("iPhone 17"))
     }
 
     @Test func rewritesItsOwnConfig() async throws {
         let project = Project.temporary()
-        _ = try ConfigWriter.write(answers, to: project)
+        _ = try ConfigWriter.write(answers, to: project, now: Date())
         var changed = answers
         changed.testSimulator = "iPhone 18"
-        #expect(try ConfigWriter.write(changed, to: project) == .written(backup: nil))
+        #expect(try ConfigWriter.write(changed, to: project, now: Date()) == .written(backup: nil))
         #expect(try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8).contains("iPhone 18"))
     }
 
@@ -29,19 +29,19 @@ import XcrewTestSupport
         project.write(old, to: ".mobilebuildmcp/config.yaml")
         try ConfigWriter.fingerprint(Data(old.utf8)).write(to: project.managedMarker)
         let app = ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17", appScheme: "App")
-        #expect(try ConfigWriter.write(app, to: project) == .written(backup: nil))
+        #expect(try ConfigWriter.write(app, to: project, now: Date()) == .written(backup: nil))
         #expect(try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8).hasSuffix("activeSessionDefaultsProfile: app\n"))
     }
 
     /// The doctor asks for a restart when xcrew's marker is newer than MobileBuildMCP; rewriting the same config mustn't move it.
     @Test func theSameConfigIsntWrittenAgain() async throws {
         let project = Project.temporary()
-        _ = try ConfigWriter.write(answers, to: project)
+        _ = try ConfigWriter.write(answers, to: project, now: Date())
         let then = Date(timeIntervalSinceNow: -3600)
         for file in [project.mobileBuildMCPConfig, project.managedMarker] {
             try FileManager.default.setAttributes([.modificationDate: then], ofItemAtPath: file.path)
         }
-        #expect(try ConfigWriter.write(answers, to: project) == .written(backup: nil))
+        #expect(try ConfigWriter.write(answers, to: project, now: Date()) == .written(backup: nil))
         for file in [project.mobileBuildMCPConfig, project.managedMarker] {
             #expect(try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date == then)
         }
@@ -50,14 +50,14 @@ import XcrewTestSupport
     @Test func leavesAHandWrittenConfigAlone() async throws {
         let project = Project.temporary()
         project.write("mine: true\n", to: ".mobilebuildmcp/config.yaml")
-        #expect(try ConfigWriter.write(answers, to: project) == .keptUnmanaged)
+        #expect(try ConfigWriter.write(answers, to: project, now: Date()) == .keptUnmanaged)
         #expect(try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) == "mine: true\n")
     }
 
     @Test func forceReplacesAHandWrittenConfigAndKeepsABackup() async throws {
         let project = Project.temporary()
         project.write("mine: true\n", to: ".mobilebuildmcp/config.yaml")
-        guard case .written(let backup?) = try ConfigWriter.write(answers, to: project, force: true) else {
+        guard case .written(let backup?) = try ConfigWriter.write(answers, to: project, force: true, now: Date()) else {
             Issue.record("expected a backup")
             return
         }
@@ -70,19 +70,19 @@ import XcrewTestSupport
 
     @Test func aManagedConfigEditedByHandIsKept() throws {
         let project = Project.temporary()
-        _ = try ConfigWriter.write(answers, to: project)
+        _ = try ConfigWriter.write(answers, to: project, now: Date())
         let edited = try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) + "debuggerBackend: lldb-cli\n"
         try edited.write(to: project.mobileBuildMCPConfig, atomically: true, encoding: .utf8)
 
-        #expect(try ConfigWriter.write(answers, to: project) == .keptEdited)
+        #expect(try ConfigWriter.write(answers, to: project, now: Date()) == .keptEdited)
         #expect(try String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) == edited)
     }
 
     @Test func forceReplacesAnEditedConfigAndKeepsABackup() throws {
         let project = Project.temporary()
-        _ = try ConfigWriter.write(answers, to: project)
+        _ = try ConfigWriter.write(answers, to: project, now: Date())
         try "edited: true\n".write(to: project.mobileBuildMCPConfig, atomically: true, encoding: .utf8)
-        guard case .written(let backup?) = try ConfigWriter.write(answers, to: project, force: true) else {
+        guard case .written(let backup?) = try ConfigWriter.write(answers, to: project, force: true, now: Date()) else {
             Issue.record("expected a backup")
             return
         }
@@ -94,7 +94,7 @@ import XcrewTestSupport
         let project = Project.temporary()
         project.write("old: true\n", to: ".mobilebuildmcp/config.yaml")
         try Data().write(to: project.managedMarker)
-        #expect(try ConfigWriter.write(answers, to: project) == .written(backup: nil))
+        #expect(try ConfigWriter.write(answers, to: project, now: Date()) == .written(backup: nil))
     }
 }
 
@@ -117,16 +117,16 @@ import XcrewTestSupport
     /// The server marker moves only when the server part does: a new simulator or scheme leaves it where it was.
     @Test func theServerMarkerMovesOnlyWithTheServerPart() throws {
         let project = Project.temporary()
-        _ = try ConfigWriter.write(answers, to: project)
+        _ = try ConfigWriter.write(answers, to: project, now: Date())
         #expect(FileManager.default.fileExists(atPath: project.serverMarker.path))
         let then = Date(timeIntervalSinceNow: -3600)
         try FileManager.default.setAttributes([.modificationDate: then], ofItemAtPath: project.serverMarker.path)
         var changed = answers
         changed.testSimulator = "iPhone 18"
-        _ = try ConfigWriter.write(changed, to: project)
+        _ = try ConfigWriter.write(changed, to: project, now: Date())
         #expect(try FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date == then)
         changed.debuggerBackend = "dap"
-        _ = try ConfigWriter.write(changed, to: project)
+        _ = try ConfigWriter.write(changed, to: project, now: Date())
         #expect((try FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date ?? then) > then)
     }
 }

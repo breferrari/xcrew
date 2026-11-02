@@ -36,7 +36,7 @@ public struct XcodeSnapshot: Sendable {
         let list = await processes.value()
         let server = await list.mobileBuildMCPServer(serving: project, forSessionOf: machine.processID, using: machine.runner)?.server
         // The launcher writes its record and then becomes the server, so the server's record is no older than its start.
-        let started = server.map { Date(timeIntervalSinceNow: -TimeInterval($0.elapsed) - ageSlack) }
+        let started = server.map { machine.now().addingTimeInterval(-TimeInterval($0.elapsed) - ageSlack) }
         let launch = Xcodes.lastLaunch(of: project, on: machine).flatMap { record in started.flatMap { record.written >= $0 ? record.launch : nil } }
         return XcodeSnapshot(installed: await installed, selected: await selected, open: Xcodes.running(in: list), pin: project.xcodePin, launch: launch, isServing: server != nil, ci: CIXcodes.named(in: project))
     }

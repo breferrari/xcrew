@@ -44,7 +44,7 @@ public enum ProjectCard {
 
     /// Saves one card in place of that folder's and branch's last, written whole through a file renamed over it, and
     /// drops the stale cards. A card a newer xcrew wrote is left as it is.
-    public static func save(_ entry: Entry, on machine: Machine, now: Date = Date()) {
+    public static func save(_ entry: Entry, on machine: Machine, now: Date) {
         let folder = ProjectLayout.canonicalPath(entry.folder)
         let file = file(folder: folder, branch: entry.branch, on: machine)
         if let existing = read(file), (existing.version ?? version) > version { return }

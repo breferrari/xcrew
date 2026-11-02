@@ -126,7 +126,7 @@ import XcrewTestSupport
             // The fourth read's reader is the slower: it saves the reading it began from after the other's.
             let entry = index == 4 ? try FileManager.default.contentsOfDirectory(at: kept, includingPropertiesForKeys: nil).first : nil
             let older = try entry.map { try Data(contentsOf: $0) }
-            phases.append(RunLog.phase(ofLogAt: log, expectedTests: index.isMultiple(of: 2) ? 6 : nil, keptIn: kept))
+            phases.append(RunLog.phase(ofLogAt: log, expectedTests: index.isMultiple(of: 2) ? 6 : nil, keptIn: (kept, Date())))
             if let entry, let older { try older.write(to: entry) }
         }
         #expect(phases == ["testing · 1 done", "testing 2 of 6", "testing · 3 done", "testing 4 of 6", "testing · 5 done", "testing 6 of 6"])
@@ -138,12 +138,13 @@ import XcrewTestSupport
         let kept = project.root.appending(path: "phases")
         try FileManager.default.createDirectory(at: kept, withIntermediateDirectories: true)
         let stale = kept.appending(path: "0000.json"), recent = kept.appending(path: "1111.json")
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
         for (file, hours) in [(stale, 25.0), (recent, 23.0)] {
             try Data("{}".utf8).write(to: file)
-            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -hours * 3_600)], ofItemAtPath: file.path)
+            try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-hours * 3_600)], ofItemAtPath: file.path)
         }
         project.write(Self.start, to: "test_sim_1.log")
-        _ = RunLog.phase(ofLogAt: project.root.appending(path: "test_sim_1.log"), expectedTests: nil, keptIn: kept)
+        _ = RunLog.phase(ofLogAt: project.root.appending(path: "test_sim_1.log"), expectedTests: nil, keptIn: (kept, now))
         #expect(!FileManager.default.fileExists(atPath: stale.path))
         #expect(FileManager.default.fileExists(atPath: recent.path))
     }

@@ -238,7 +238,7 @@ public struct Report: Sendable, Equatable, Codable {
                 if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await bundle.tests())) { (text, changed) = (added, true) }
                 if let once = text.listingRunsOnce(repetitions) { (text, changed) = (once, true) }
             }
-            if let bundle, text.isTestRun, let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images"), repetitions: repetitions) {
+            if let bundle, text.isTestRun, let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions) {
                 (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
             } else if changed {
                 (final, edited) = (ToolOutput(text, isError: output.isError), true)

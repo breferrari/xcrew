@@ -366,6 +366,17 @@ import XcrewTestSupport
         #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)) == .warn("the config changed after this session's MobileBuildMCP started: restart Claude Code to load it"))
     }
 
+    /// The server's start is the machine's time less how long it has run: a config written a minute before the machine's
+    /// time is newer than a server running five minutes.
+    @Test func aServersStartIsTheMachinesTimeLessItsAge() async throws {
+        let project = Project.temporary()
+        let runner = try sessions(project: project, mine: "05:00", theirs: "00:30", configAgo: 0)
+        let written = Date(timeIntervalSince1970: 1_767_225_600)
+        try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: project.managedMarker.path)
+        let result = await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300, now: written.addingTimeInterval(60)))
+        #expect(result == .warn("the config changed after this session's MobileBuildMCP started: restart Claude Code to load it"))
+    }
+
     /// From a terminal there's no session to match, so the oldest server for the project stands for any stale one.
     @Test func fromATerminalTheOldestServerCounts() async throws {
         let project = Project.temporary()

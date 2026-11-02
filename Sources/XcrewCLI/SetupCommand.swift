@@ -117,8 +117,8 @@ struct SetupCommand: Command {
         if !carriedKeys.isEmpty, ConfigWriter.keeping(context.project) != nil {
             notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into " + (answers.profileNames.isEmpty ? "the session defaults" : "each profile"))
         }
-        let began = Date()
-        let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"))
+        let began = context.machine.now()
+        let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"), now: began)
         Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container)"], since: began)
         if answers.appScheme == nil {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
@@ -221,8 +221,8 @@ struct SetupCommand: Command {
                 for: worktreeTop, main: checkout.main, config: config, fresh: invocation.arguments.has("fresh-simulator"), record: record, using: context.runner
             )
         }
-        let began = Date()
-        let outcome = try ConfigWriter.write(config, to: context.project, force: force)
+        let began = context.machine.now()
+        let outcome = try ConfigWriter.write(config, to: context.project, force: force, now: began)
         Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path))"]
             + leftOut.map { "xcrew: left out \($0.key) \($0.path), which the main checkout uses: this worktree's builds go in a DerivedData of its own" }
             + simulators, since: began)

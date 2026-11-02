@@ -9,7 +9,7 @@ struct SpaceCommand: Command {
     let usage = ["space [--json]   what MobileBuildMCP and Xcode keep on this Mac, and the command that would reclaim each part; deletes nothing"]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
-        let report = await Space.report(project: invocation.context.project, machine: invocation.context.machine)
+        let report = await Space.report(project: invocation.context.project, machine: invocation.context.machine, now: invocation.context.machine.now())
         if invocation.arguments.has("json") {
             invocation.print(String(decoding: try JSONEncoder.sorted.encode(report), as: UTF8.self))
         } else {
