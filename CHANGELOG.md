@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Which Xcode CI selects is read through the local composite actions a workflow uses (`uses: ./…`), however deep, so a bare `xcodes select` in one counts as CI selecting the project's `.xcode-version`. Before, a workflow that chose its Xcode in a local action was taken to name none.
+
 ## 0.12.0 — 2026-11-02
 
 - The ledger and the evidence block mark a test passed only when the run's results list it as passed, so a test deleted or renamed since it failed no longer shows as fixed. Before, a later run whose selection included the test was taken to have passed it. A test an older version marked fixed that way shows as failing again until a run lists it as passed.

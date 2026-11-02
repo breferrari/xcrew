@@ -19,12 +19,28 @@ public enum CIXcodes {
         let folder = project.root.appending(path: ".github/workflows")
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.sorted()
         let patterns = Patterns()
-        return files.flatMap { name in
-            let text = (try? String(contentsOf: folder.appending(path: name), encoding: .utf8)) ?? ""
-            return text.split(separator: "\n", omittingEmptySubsequences: false).enumerated().compactMap { index, line in
-                version(in: String(line), pinned: pinned, patterns: patterns).map { Named(file: ".github/workflows/\(name)", line: index + 1, version: $0) }
+        // Each workflow, then each local action one uses, as `uses: ./path` names it from the root, read once.
+        var queue = files.map { ".github/workflows/\($0)" }
+        var read: Set<String> = []
+        var named: [Named] = []
+        while !queue.isEmpty {
+            let file = queue.removeFirst()
+            guard read.insert(file).inserted, let text = try? String(contentsOf: project.root.appending(path: file), encoding: .utf8) else { continue }
+            for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+                if let version = version(in: String(line), pinned: pinned, patterns: patterns) { named.append(Named(file: file, line: index + 1, version: version)) }
+                if let action = localAction(usedBy: String(line), in: project, patterns: patterns) { queue.append(action) }
             }
         }
+        return named
+    }
+
+    /// The `action.yml` (or `action.yaml`) of the local action a workflow line uses, `uses: ./.github/actions/setup`, from
+    /// the project's root, as GitHub resolves it; nil for any other line, or an action outside the project.
+    static func localAction(usedBy written: String, in project: Project, patterns: Patterns = Patterns()) -> String? {
+        guard let used = code(of: written).firstMatch(of: patterns.localUses).map({ String($0.1) }),
+              !used.split(separator: "/").contains("..") else { return nil }
+        let folder = used.hasSuffix("/") ? String(used.dropLast()) : used
+        return ["action.yml", "action.yaml"].map { "\(folder)/\($0)" }.first { FileManager.default.fileExists(atPath: project.root.appending(path: $0).path) }
     }
 
     /// Whether a version CI names covers `ours`: its parts begin ours, as setup-xcode reads `26` as the newest 26.x, and a
@@ -63,7 +79,9 @@ public enum CIXcodes {
         let versionInput = /xcode-version:\s*['"]?(\d+(?:\.\d+)*)(?=['"\s#]|$)/
         let app = /Xcode[_-]?(\d+(?:\.\d+)*)[^\/\s]*\.app/
         let versionFile = /xcode-version-file:\s*["']?(?:\.\/)?([^\s"'#]+)/
-        let xcodesReadingPin = /\bxcodes\s+(?:select|install)\b(?!\s+["']?\d)/
+        // A version or an input passed through, `'${{ inputs.xcode-version }}'`, isn't the pin file.
+        let xcodesReadingPin = /\bxcodes\s+(?:select|install)\b(?!\s+["']?[\d$])/
+        let localUses = /uses:\s*["']?\.\/([^\s"'#@]+)/
         let choosing = /xcode-select|DEVELOPER_DIR|\w+=\$\(|GITHUB_ENV/
         let pinFileRead = /(?:\bcat\s+|<\s*)["']?(?:\.\/)?([\w.\/-]*\.xcode-version)(?=["'\s)]|$)/
     }
