@@ -88,21 +88,21 @@ struct ChangedLineCoverage: Sendable, Equatable {
         let held = Set(named.map(\.canonical)).union(leftOut)
         let kinds = Set(covered.map(kind))
         let root = ProjectLayout.canonical(project.root) + "/"
-        let outside = change.files.filter { file in
+        found.outside = withoutTestFiles(change.files.filter { file in
             file.hasPrefix(root) && !held.contains(file) && kinds.contains(kind(of: file)) && !isManifest(file) && FileManager.default.fileExists(atPath: file)
-        }
-        found.outside = outside.isEmpty ? [] : withoutTestFiles(outside, of: project)
+        }, of: project)
         return found
     }
 
-    /// The files a test target builds and nothing else does, left out: a run filtered to some tests builds no other test
-    /// target, so its file being outside the coverage says nothing. Read from the project's own targets, only when there
-    /// are files to say anything of; a project whose targets can't be read keeps them all.
+    /// The files only test targets build, left out: a run filtered to some tests builds no other test target, so its
+    /// file being outside the coverage says nothing. Read from an Xcode project's own targets, as `xcrew graph --owner`
+    /// reads them, only when there are files to say anything of. A file an exception set may move keeps its place, as
+    /// does every file of a project whose targets can't be read, a plain Swift package's among them.
     static func withoutTestFiles(_ files: [String], of project: Project) -> [String] {
-        guard case let .success(graph) = WorkspaceGraph.read(project) else { return files }
+        guard !files.isEmpty, case let .success(graph) = WorkspaceGraph.read(project) else { return files }
         return files.filter { file in
-            let owners = graph.owners(of: file).targets
-            return owners.isEmpty || !owners.allSatisfy { graph.targets[$0]?.isTest == true }
+            let built = graph.builders(of: file)
+            return built.isExcepted || built.targets.isEmpty || !built.targets.allSatisfy { graph.targets[$0]?.isTest == true }
         }
     }
 
