@@ -129,7 +129,7 @@ You need only `/xcrew:setup`, once. Everything else runs on its own, or is here 
 | Command | What it does |
 | --- | --- |
 | `/xcrew:setup` | Writes MobileBuildMCP's profiles to `.mobilebuildmcp/config.yaml`, kept out of git ([details](#configuration)) |
-| `/xcrew setup` | The same as a form in a pane: pick the container, the app, UI-test and unit-test schemes, the bundle ID, installed simulators and the debugger backend, then write. It shows what each scheme builds and tests, and marks a simulator with two displays |
+| `/xcrew setup` | The same as a form in a pane: pick the container, the app, UI-test and unit-test schemes, the bundle ID, installed simulators and the debugger backend, then write. It shows what each scheme builds and how many test targets it runs, and marks a simulator with two displays |
 
 **Around a run**
 

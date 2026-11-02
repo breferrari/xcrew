@@ -15,8 +15,8 @@ const CHOICES = {
   container: 'Field.xcworkspace',
   containers: ['Field.xcworkspace'],
   schemes: [
-    { name: 'App', container: 'Modules/App/App.xcodeproj', roles: ['app', 'unit-tests', 'ui-tests'], app: 'App' },
-    { name: 'Core', container: 'Modules/Core/Core.xcodeproj', roles: ['unit-tests'] },
+    { name: 'App', container: 'Modules/App/App.xcodeproj', roles: ['app', 'unit-tests', 'ui-tests'], app: 'App', unitTestTargets: 1, uiTestTargets: 1 },
+    { name: 'Core', container: 'Modules/Core/Core.xcodeproj', roles: ['unit-tests'], unitTestTargets: 2 },
   ],
   picks: { appScheme: 'App', uiScheme: 'App', testScheme: 'App', bundleID: 'dev.example.App', testSimulator: 'iPhone 18' },
   simulators: [{ name: 'iPhone 18', runtime: '27.2' }, { name: 'iPhone Duo', runtime: '27.2', twoDisplays: true }],
@@ -66,7 +66,7 @@ test('each scheme says what it does, and a two-display simulator says screenshot
   await runCommand($, 'xcrew', 'setup')
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const schemes = (await ui.find({ type: 'Select', key: 'app-scheme' }))?.props as { options: { value: string; label?: string }[] }
-  expect(schemes.options.map(option => option.label)).toEqual(['App · builds the app, runs unit tests, runs UI tests', 'Core · runs unit tests'])
+  expect(schemes.options.map(option => option.label)).toEqual(['App · builds the app, runs 1 unit-test target, runs 1 UI-test target', 'Core · runs 2 unit-test targets'])
   const simulators = (await ui.find({ type: 'Select', key: 'test-simulator' }))?.props as { options: { value: string; label?: string }[] }
   expect(simulators.options.map(option => option.value)).toEqual(['iPhone 18', 'iPhone Duo'])
   expect(simulators.options[1]?.label).toContain('two displays')
@@ -158,11 +158,12 @@ test('where nothing draws pickers, /xcrew setup names the skill and opens nothin
 })
 
 test('a scheme the workspace and its project both share is offered once', async ($, on) => {
-  await session($, on, { ...CHOICES, schemes: [...CHOICES.schemes, { name: 'App', container: 'Field.xcworkspace', roles: ['app'], app: 'App' }] })
+  await session($, on, { ...CHOICES, schemes: [...CHOICES.schemes, { name: 'App', container: 'Field.xcworkspace', roles: ['app', 'unit-tests'], app: 'App', unitTestTargets: 3 }] })
   await runCommand($, 'xcrew', 'setup')
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const schemes = (await ui.find({ type: 'Select', key: 'app-scheme' }))?.props as { options: { value: string }[] }
+  const schemes = (await ui.find({ type: 'Select', key: 'app-scheme' }))?.props as { options: { value: string; label?: string }[] }
   expect(schemes.options.map(option => option.value)).toEqual(['App', 'Core'])
+  expect(schemes.options[0]?.label).toBe('App · builds the app, runs 3 unit-test targets, runs 1 UI-test target')
   await ui.unmount()
 })
 

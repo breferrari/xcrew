@@ -76,7 +76,8 @@ function schemesByName(schemes: SetupChoices['schemes']): SetupChoices['schemes'
   const byName = new Map<string, SetupChoices['schemes'][number]>()
   for (const scheme of schemes) {
     const seen = byName.get(scheme.name)
-    byName.set(scheme.name, seen ? { ...seen, roles: [...new Set([...seen.roles, ...scheme.roles])] } : scheme)
+    const most = (key: 'unitTestTargets' | 'uiTestTargets') => Math.max(seen?.[key] ?? 0, scheme[key] ?? 0) || undefined
+    byName.set(scheme.name, seen ? { ...seen, roles: [...new Set([...seen.roles, ...scheme.roles])], unitTestTargets: most('unitTestTargets'), uiTestTargets: most('uiTestTargets') } : scheme)
   }
   return [...byName.values()]
 }
@@ -85,6 +86,19 @@ function schemesByName(schemes: SetupChoices['schemes']): SetupChoices['schemes'
 export type FormActions = { pick: (key: string, value: string) => void; write: () => void; close: () => void }
 
 const ROLE_WORDS: Record<string, string> = { app: 'builds the app', 'unit-tests': 'runs unit tests', 'ui-tests': 'runs UI tests' }
+
+/** Each testing role's count of targets, and the kind of target it counts. */
+const COUNTED: Record<string, ['unitTestTargets' | 'uiTestTargets', string]> = { 'unit-tests': ['unitTestTargets', 'unit-test'], 'ui-tests': ['uiTestTargets', 'UI-test'] }
+
+/** What a scheme does, with how many test targets of each kind it runs by default when the CLI counted them. */
+function schemeLabel(scheme: SetupChoices['schemes'][number]): string {
+  const words = scheme.roles.map(role => {
+    const [key, kind] = COUNTED[role] ?? []
+    const count = key && scheme[key]
+    return count ? `runs ${count} ${kind} target${count === 1 ? '' : 's'}` : ROLE_WORDS[role] ?? role
+  })
+  return `${scheme.name} · ${words.join(', ') || 'builds no app and runs no tests'}`
+}
 
 /** The setup form: facts and pickers, the write, and what the write said. */
 export function formTree({ Box, Text, Select, Input, Button }: FormElements, form: SetupForm | null, act: FormActions): RenderElement {
@@ -108,7 +122,7 @@ export function formTree({ Box, Text, Select, Input, Button }: FormElements, for
     if (choices.container && choices.schemes.length === 0) {
       rows.push(Text({ children: [`${choices.container} has no shared scheme. /xcrew:setup, the skill, can list the others with xcodebuild -list.`] }))
     } else if (choices.schemes.length > 0) {
-      const schemes = schemesByName(choices.schemes).map(scheme => ({ value: scheme.name, label: `${scheme.name} · ${scheme.roles.map(role => ROLE_WORDS[role] ?? role).join(', ') || 'builds no app and runs no tests'}` }))
+      const schemes = schemesByName(choices.schemes).map(scheme => ({ value: scheme.name, label: schemeLabel(scheme) }))
       const none = { value: '', label: 'none' }
       rows.push(select('app-scheme', 'App scheme', schemes, picks.appScheme))
       rows.push(select('ui-scheme', 'UI-test scheme', [none, ...schemes], picks.uiScheme ?? ''))

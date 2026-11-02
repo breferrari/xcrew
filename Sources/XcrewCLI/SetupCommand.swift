@@ -90,7 +90,7 @@ struct SetupCommand: Command {
                 answers.testScheme = scheme
                 notes.append("xcrew: unit tests run with the \(scheme) scheme (--test-scheme <name> picks another)")
             case .several(let schemes):
-                notes.append("xcrew: several schemes run unit tests (\(schemes.joined(separator: ", "))): \(ask)")
+                notes.append("xcrew: several schemes tie for the most unit-test targets (\(schemes.joined(separator: ", "))): \(ask)")
             case .unknown(let schemes):
                 notes.append("xcrew: couldn't tell whether these schemes run unit tests (\(schemes.joined(separator: ", "))): \(ask)")
             case .none:

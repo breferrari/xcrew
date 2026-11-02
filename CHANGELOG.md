@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `/xcrew setup` and `xcrew setup --choices` show how many unit-test and UI-test targets each scheme runs by default, and setup gives the `unit` profile the scheme that runs the most, rather than the app's scheme that may test one module. So running `xcrew setup` again without `--test-scheme` can move `unit` from the app's scheme to a workspace scheme, or list the schemes that tie for the most where it picked the app's before. The `/xcrew setup` form starts from the scheme your config's `unit` profile has, and setup keeps a config edited by hand unless you pass `--force`. A scheme that builds several apps names the one it launches.
 - In an Xcode project, the coverage note no longer lists a changed test file as missing from the run's coverage. A run of one module's tests had named a changed UI test file it never built.
 - A build or test result Claude reads lists only the warnings in lines your branch changed, and counts the rest in one line that says where the full list is: the saved result, or the run's build log. That holds for a failed run moved to the background too. Outside git, every warning stays listed.
 - A failed test run that Claude Code moved to the background is read like the same run in the foreground: its failing tests are named and recorded, with xcrew's notes. Before, its notification came back as MobileBuildMCP's whole text, with nothing of xcrew's.
@@ -12,6 +13,7 @@
 - After `xcrew setup`, a running MobileBuildMCP gets the profiles as the config holds them, as MobileBuildMCP itself reads a config edited by hand or rewritten by it. Before, a quoted profile name made it create a second profile, a comment line dropped the profiles after it, a long path wrapped onto the next line was cut short, and a path written from the project root carried a `/./`.
 - `xcrew setup` and the doctor no longer ask for a restart when only the profiles changed in a config with a comment line among them.
 - When xcrew lists only the warnings in lines your branch changed, the result's `Warnings (N):` heading counts the warnings still listed, and with no heading the line counting the rest goes after the run's header, not above it. A build and run that Claude Code moved to the background no longer shows as passed, on the line above the prompt or in what's recorded, once its build succeeds: a failed build ends it, and otherwise its notification says how it ended.
+- When a UI test's query found nothing and the failure has a screen, `xcrew look` says the elements it lists are the app's only: a system alert covering the app shows only in the screenshot.
 - A red test that the newest run of its scope didn't run, as one deleted or renamed since it failed, says so in the ledger and the evidence block, rather than reading as still failing.
 - `xcrew project`'s usage no longer names `--xcuserstate`, which it doesn't take. Keeping a failed test's images no longer measures every image kept in the last two weeks: each run's size is recorded once.
 - `/xcrew doctor` runs its checks once, not twice: its report and the problems on the line above the prompt come from the same run.
