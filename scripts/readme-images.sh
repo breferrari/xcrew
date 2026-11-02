@@ -8,7 +8,7 @@ urls=$(grep -oE 'https://raw\.githubusercontent\.com/breferrari/xcrew-assets/[0-
 [ -n "$urls" ] || { echo "readme-images.sh: the README names no xcrew-assets image" >&2; exit 1; }
 failed=0
 for url in $urls; do
-  # 3 × the slowest of 30 fetches, 0.75 s (measured 2026-11-02 off CI), up to the next 10 seconds.
+  # docs/findings.md, Deadlines: `readme-images.sh curl`
   type=$(curl --fail --silent --show-error --max-time 10 --output /dev/null --write-out '%{content_type}' "$url") || { echo "readme-images.sh: $url doesn't load" >&2; failed=1; continue; }
   case $type in
     image/*) ;;

@@ -710,24 +710,26 @@ The first run builds the CLI. The shim used to say "about 10 s" with no measurem
 
 ## Deadlines
 
-Each CI job, the canary step that waits on a server's log line, and the release script's three waits stop at a deadline of their own rather than at GitHub's six hours or never. Each deadline is three times the slowest duration measured, written beside it with its sample. Jobs and steps are rounded up to whole minutes, which `timeout-minutes` takes, and the script's waits are counted in seconds. Measured on November 2, 2026 from the GitHub API, over the last 30 successful runs of each workflow (10 for the canary, which runs daily), from each job's and step's start and end.
+Each CI job and step that can hang, the release script's waits and the canary's fetches stop at a deadline of their own rather than at GitHub's six hours or never. Each file names its row here, which holds its number; a ManifestTest holds each to its row and each row to the rule. The rule: three times the slowest measured, rounded up to whole minutes and at least 5 for a job or step (`timeout-minutes` takes minutes; the floor keeps a job measured at seconds clear of one slow runner start), at least 300 seconds for a script's wait, and up to the next 10 seconds for a fetch. Jobs, steps and runs were measured on November 2, 2026 from the GitHub API, over the last successful runs of each workflow, from each one's start to its end, and a run from its creation to its last update. The fetches were timed from a Mac on macOS 27.2 on a home connection, not from a runner.
 
-| What | Slowest | Deadline |
-|---|---|---|
-| ci: Changes | 21 s | 2 min |
-| ci: Swift package | 199 s | 10 min |
-| ci: Swift package, oldest toolchain | 192 s | 10 min |
-| ci: Plugin and mod | 107 s | 6 min |
-| ci: Distribution (23 runs) | 207 s | 11 min |
-| ci: Shell scripts | 48 s | 3 min |
-| ci: CI | 19 s | 1 min |
-| canary | 328 s | 17 min |
-| canary: MobileBuildMCP still accepts the config | 19 s | 1 min |
-| release | 14 s | 1 min |
-| release.sh: a release pull request's CI run, created to last update | 247 s | 741 s |
-| release.sh: the release run, created to last update | 24 s | 72 s |
+| Deadline | Slowest | Sample | Deadline |
+|---|---|---|---|
+| `ci.yml changes` | 21 s | 30 | 5 min |
+| `ci.yml swift` | 199 s | 30 | 10 min |
+| `ci.yml swift-floor` | 192 s | 30 | 10 min |
+| `ci.yml plugin` | 107 s | 30 | 6 min |
+| `ci.yml distribution` | 207 s | 23 | 11 min |
+| `ci.yml shell` | 48 s | 30 | 5 min |
+| `ci.yml ci` | 19 s | 30 | 5 min |
+| `canary.yml canary` | 328 s | 10 | 17 min |
+| `canary.yml config step` | 19 s | 10 | 5 min |
+| `release.yml release` | 14 s | 30 | 5 min |
+| `release.sh settle` | 247 s | 30 | 741 s |
+| `release.sh release run` | 24 s | 30 | 300 s |
+| `canary.yml sosumi curl` | 0.46 s | 3 | 10 s |
+| `readme-images.sh curl` | 0.75 s | 30 | 10 s |
 
-GitHub records no time for a tag's push, so the wait for the release run to appear takes the run's own deadline. Every wait that ends says how to resume: `release.sh` picks up where it stopped. The canary's and `readme-images.sh`'s `curl --max-time` is three times the slowest answer measured from a Mac, not from a runner (Sosumi's `initialize` 0.46 s over 3; the README's images 0.75 s over 30 fetches), rounded up to the next 10 seconds. A test holds every job and the script's waits to a deadline with its basis beside it.
+`release.sh settle` is a release pull request's CI run, and its deadline starts over whenever the script brings the branch up to date, which runs CI again. `release.sh release run` covers the run appearing after the tag's push and finishing: GitHub records no time for the push, so the run's own duration, under the floor, stands for both. A wait that ends says how to resume, and the merge wait turns off the release pull request's auto-merge first, so nothing merges ahead of it once the other pull requests' auto-merge comes back.
 
 ## Tried and rejected
 
