@@ -54,9 +54,21 @@ public final class DeadlineRunner: CommandRunning {
     /// The programs the deadline cut, in the order cut, each once: `xcrun`'s tool by its own name.
     public var cut: [String] { cutCommands.withLock { $0 } }
 
+    /// The line a result carries when the deadline cut a command: which programs didn't answer in time, so what they
+    /// read is left out; nil when nothing was cut. A fact, for Claude to read beside the result.
+    public static func leftOut(_ cut: [String]) -> String? {
+        guard !cut.isEmpty else { return nil }
+        let named = cut.count == 1 ? cut[0] : cut.dropLast().joined(separator: ", ") + " and " + (cut.last ?? "")
+        return "xcrew: this call's time ran out before \(named) answered, so what \(cut.count == 1 ? "it reads is" : "they read is") left out of this result."
+    }
+
+    /// Programs whose answer no result shows, so a cut one leaves nothing out of it: the pool's question of how many
+    /// cores the Mac has, which falls back to one at a time.
+    static let unshown: Set = ["sysctl"]
+
     private func note(_ argv: [String]) {
         let program = argv.first == "xcrun" ? argv.dropFirst().first : argv.first
-        guard let name = program.map({ URL(fileURLWithPath: $0).lastPathComponent }) else { return }
+        guard let name = program.map({ URL(fileURLWithPath: $0).lastPathComponent }), !Self.unshown.contains(name) else { return }
         cutCommands.withLock { if !$0.contains(name) { $0.append(name) } }
     }
 }

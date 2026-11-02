@@ -40,6 +40,7 @@ struct ReportCommand: Command {
             report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         }
         if let log { report.scheme = RunLog.scheme(ofLogAt: URL(fileURLWithPath: log)) }
+        if let cut = (invocation.context.machine.runner as? DeadlineRunner).flatMap({ DeadlineRunner.leftOut($0.cut) }) { report.notes.append(cut) }
         let encoded = try JSONEncoder.sorted.encode(report)
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0
