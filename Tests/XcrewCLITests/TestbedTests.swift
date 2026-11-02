@@ -500,26 +500,62 @@ struct TestbedMediaFlagTests {
 struct TestbedEvidenceTests {
     /// A copy of the coverage capture on a branch that wrote `price(for:)`'s body, its last commit at `committed`, with
     /// MobileBuildMCP's newest test run and build at `ran`.
-    static func project(committed: Date, ran: Date) throws -> (project: Project, context: CheckContext) {
+    /// A test run's bundle as MobileBuildMCP names it when the run starts (`utils/test-common.js`).
+    static func named(_ started: Date) -> String {
+        let stamp = started.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)).replacingOccurrences(of: ":", with: "-").replacingOccurrences(of: ".", with: "-")
+        return "test_sim_\(stamp)_pid100_0a1b2c3d.xcresult"
+    }
+
+    static func project(committed: Date, ran: Date, changed: Date? = nil, earlier: Date? = nil, earlierTests: Int? = nil, alsoChanged: Date? = nil, outsideChanged: Bool = false) throws -> (project: Project, context: CheckContext) {
         let root = try TestbedTests.copy("captures/coverage")
+        // The changed file as the runs compiled it: last changed two days before the run unless given.
+        try FileManager.default.setAttributes([.modificationDate: changed ?? ran.addingTimeInterval(-2 * 86_400)], ofItemAtPath: root.appending(path: "App/Pricing.swift").path)
+        // A second changed file, `ContentView.swift`, last changed then.
+        if let alsoChanged { try FileManager.default.setAttributes([.modificationDate: alsoChanged], ofItemAtPath: root.appending(path: "App/ContentView.swift").path) }
         let project = Project(root: root)
         let workspace = root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root.path))")
-        let bundle = workspace.appending(path: "result-bundles/test_sim_1.xcresult"), log = workspace.appending(path: "logs/build_sim_1.log")
+        let bundle = workspace.appending(path: "result-bundles/\(Self.named(ran.addingTimeInterval(-60)))"), log = workspace.appending(path: "logs/build_sim_1.log")
         try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "\(root.path)/App/Pricing.swift:4:13: warning: initialization of immutable value 'rate' was never used\n\(root.path)/App/Other.swift:2:5: warning: deprecated\n".write(to: log, atomically: true, encoding: .utf8)
-        for item in [bundle, log] { try FileManager.default.setAttributes([.modificationDate: ran], ofItemAtPath: item.path) }
-        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
+        // A finished run's bundle has MobileBuildMCP's completion mark beside it, dated when the run finished.
+        let mark = URL(fileURLWithPath: bundle.path + ResultBundle.completionMark)
+        try Data().write(to: mark)
+        for item in [bundle, log, mark] { try FileManager.default.setAttributes([.modificationDate: ran], ofItemAtPath: item.path) }
+        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"] + (alsoChanged == nil ? [] : ["App/ContentView.swift"]) + (outsideChanged ? Self.outside : []), diffed: (["App/Pricing.swift"] + (alsoChanged == nil ? [] : ["App/ContentView.swift"])).map { "\(ProjectLayout.canonical(root))/\($0)" }, diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
         let captured = { (file: String) in
             try String(contentsOf: root.appending(path: file), encoding: .utf8).replacingOccurrences(of: "\\/testbed\\/captures\\/coverage", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
+        }
+        if let earlier {
+            let second = workspace.appending(path: "result-bundles/\(Self.named(earlier.addingTimeInterval(-60)))")
+            try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+            let secondMark = URL(fileURLWithPath: second.path + ResultBundle.completionMark)
+            try Data().write(to: secondMark)
+            for item in [second, secondMark] { try FileManager.default.setAttributes([.modificationDate: earlier], ofItemAtPath: item.path) }
+            if let earlierTests {
+                responses["xcrun xcresulttool get test-results summary --path \(second.path) --compact"] = .init(status: 0, stdout: #"{"totalTestCount":\#(earlierTests),"passedTests":\#(earlierTests),"failedTests":0,"skippedTests":0}"#)
+            }
+            responses.merge([
+                "xcrun xcresulttool get content-availability --path \(second.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
+                "xcrun xccov view --report --json \(second.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
+                "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(second.path)": .init(status: 0, stdout: try captured("Pricing.json").replacingOccurrences(of: #"{"executionCount":0,"isExecutable":true,"line":5}"#, with: #"{"executionCount":1,"isExecutable":true,"line":5}"#)),
+            ]) { _, new in new }
         }
         responses.merge([
             "git -C \(root.path) log -1 --format=%ct": .init(status: 0, stdout: "\(Int(committed.timeIntervalSince1970))\n"),
             "xcrun xcresulttool get content-availability --path \(bundle.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
-            "xcrun xccov view --report --json \(bundle.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
+            "xcrun xccov view --report --json \(bundle.path)": .init(status: 0, stdout: reportHolding(try Self.without(outsideChanged ? Self.outside : [], captured("file-list.json")))),
             "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(bundle.path)": .init(status: 0, stdout: try captured("Pricing.json")),
         ]) { _, new in new }
         return (project, CheckContext.fake(FakeRunner(responses: responses), project: project))
+    }
+
+    /// A test file and a file of the code under test, changed and left out of the newest run's coverage with `outsideChanged`.
+    static let outside = ["AppTests/GreetingTests.swift", "App/ContentView.swift"]
+
+    static func without(_ files: [String], _ fileList: String) throws -> String {
+        let listed = try JSONDecoder().decode([String].self, from: Data(fileList.utf8)).filter { path in !files.contains { path.hasSuffix("/" + $0) } }
+        return String(decoding: try JSONEncoder().encode(listed), as: UTF8.self)
     }
 
     static let ran = Date(timeIntervalSince1970: 1_793_370_240)
@@ -536,6 +572,50 @@ struct TestbedEvidenceTests {
             - From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5.
             - From the build of 2026-10-30 14:24 UTC: 1 of 2 warnings are in lines this branch changed: Pricing.swift:4 initialization of immutable value 'rate' was never used.
             """, "\(run.text)")
+    }
+
+    /// A run that started before a changed file's last change compiled other content: its lines there would name the
+    /// wrong ones, so it doesn't count for that file, as when another branch's run was written in the same checkout.
+    @Test func aRunOlderThanAChangedFilesLastChangeDoesntCountForIt() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran, changed: Self.ran.addingTimeInterval(-30))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(!run.text.contains("changed lines that can run"), "\(run.text)")
+        #expect(run.text.contains("- No test run here speaks for the changed lines: each started before their last change."), "\(run.text)")
+    }
+
+    /// The branch's runs together: a line one run left out and another ran counts as run, and the runs are named.
+    @Test func theBranchsRunsCountTogether() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("- From the test runs of 2026-10-30 14:24 UTC and 2026-10-30 13:24 UTC: all 6 changed lines that can run ran in these test runs."), "\(run.text)")
+    }
+
+    /// A run that started after one changed file's last change and before another's speaks for the first alone: its
+    /// lines in the second came from content it never compiled.
+    @Test func aRunSpeaksForTheFilesUnchangedSinceItStartedAlone() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, changed: Self.ran.addingTimeInterval(-1800), earlier: Self.ran.addingTimeInterval(-3600), alsoChanged: Self.ran.addingTimeInterval(-7200))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5."), "\(run.text)")
+    }
+
+    /// A changed test file outside the runs' coverage says nothing of them; a file of the code under test there is named.
+    @Test func aChangedTestFileOutsideTheRunsCoverageIsNotNamed() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran, outsideChanged: true)
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("1 changed file isn't in this run's coverage: ContentView.swift."), "\(run.text)")
+        #expect(!run.text.contains("GreetingTests.swift"), "\(run.text)")
+    }
+
+    /// A run of no test, as one whose filter matched nothing, counts nothing as run, so it's left out.
+    @Test func aRunOfNoTestIsLeftOut() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600), earlierTests: 0)
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run."), "\(run.text)")
     }
 
     /// A run before the branch's last commit is named as older, never left out and never shown as current.

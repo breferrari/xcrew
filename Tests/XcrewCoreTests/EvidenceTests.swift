@@ -57,6 +57,17 @@ import XcrewTestSupport
             """)
     }
 
+    /// When the time allowed passed before any run was read, the block says so rather than nothing.
+    @Test func noRunReadInTimeIsSaid() {
+        #expect(BranchCoverage(sentence: "", finished: [], leftOut: 3).line(lastCommit: nil) == "- No test run read in the time allowed speaks for the changed lines: 3 runs are left out.")
+        #expect(BranchCoverage(sentence: "", finished: [], leftOut: 0).line(lastCommit: nil) == "- No test run here speaks for the changed lines: each started before their last change.")
+    }
+
+    /// A file whose date can't be read has no date, so no run counts as compiling it as it is.
+    @Test func aFileWhoseDateCantBeReadHasNone() {
+        #expect(EvidencePack.modifiedIfKnown(URL(fileURLWithPath: "/nonexistent/xcrew/Cart.swift")) == nil)
+    }
+
     /// A red test the newest run in its scope didn't run, as one deleted since it failed, says so.
     @Test func aRedTestTheNewestRunDidntRunSaysSo() async throws {
         let gone = Self.entry("Suite/testGone", green: false).replacingOccurrences(of: #","last""#, with: #","unseen":{"scope":"test_sim · App","at":\#(Self.at + 120_000)},"last""#)

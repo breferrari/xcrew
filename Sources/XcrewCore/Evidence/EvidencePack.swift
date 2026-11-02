@@ -113,18 +113,13 @@ public enum EvidencePack {
     /// One run's say on the changed lines: what it was, the file that dates it, and its sentence.
     typealias Said = (what: String, dated: URL, sentence: String)
 
-    /// What the newest finished test run's coverage and the newest build's warnings say of the lines this branch changed,
+    /// What the branch's test runs' coverage and the newest build's warnings say of the lines this branch changed,
     /// in this project's MobileBuildMCP workspace, each dated by its run and said to be older than the last commit when it is.
     static func changedLines(project: Project, machine: Machine) async -> [String] {
         let runner = machine.runner
         guard case let .success(change) = await GitChanges.since(nil, in: project, using: runner) else { return [] }
         async let committed = runner.run(["git", "-C", project.root.path, "log", "-1", "--format=%ct"], stdin: nil, timeout: .seconds(10))
-        async let coverage: Said? = {
-            guard let path = await ResultBundle.newest(project: project.root, machine: machine),
-                  let sentence = await ChangedLineCoverage.of(ResultBundle(path: path, runner: runner), change: { change }, project: project, using: runner)?.sentence
-            else { return nil }
-            return ("the test run", URL(fileURLWithPath: path), sentence)
-        }()
+        async let coverage = BranchCoverage.read(change: change, project: project, machine: machine)
         async let warnings: Said? = {
             guard let log = RunLog.newestBuild(project: project.root, home: machine.home), let text = try? String(contentsOf: log, encoding: .utf8) else { return nil }
             let found = BuildLog.warnings(in: text)
@@ -134,13 +129,18 @@ public enum EvidencePack {
             return ("the build", log, sentence)
         }()
         let lastCommit = TimeInterval(await committed.stdout.trimmingCharacters(in: .whitespacesAndNewlines)).map(Date.init(timeIntervalSince1970:))
-        return [await coverage, await warnings].compactMap { said in
-            said.map { "- \(when($0.what, at: modified($0.dated), lastCommit: lastCommit)): \($0.sentence)" }
-        }
+        let tested = await coverage?.line(lastCommit: lastCommit)
+        let built = await warnings.map { "- \(when($0.what, at: modified($0.dated), lastCommit: lastCommit)): \($0.sentence)" }
+        return [tested, built].compactMap { $0 }
+    }
+
+    /// When the file was last modified; nil when that can't be read, as for a file that isn't there.
+    static func modifiedIfKnown(_ url: URL) -> Date? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
     static func modified(_ url: URL) -> Date {
-        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+        modifiedIfKnown(url) ?? .distantPast
     }
 
     /// `- +3 more`, past the tests listed.
@@ -165,7 +165,12 @@ public enum EvidencePack {
 
     /// `From the test run of 2026-10-30 14:24 UTC`, said to be older than the branch's last commit when it is.
     static func when(_ what: String, at: Date, lastCommit: Date?) -> String {
-        let said = "From \(what) of \(stamp(at))"
+        when(what, of: stamp(at), at: at, lastCommit: lastCommit)
+    }
+
+    /// `From <what> of <stamps>`, said to be older than the branch's last commit when `at`, its newest, is.
+    static func when(_ what: String, of stamps: String, at: Date, lastCommit: Date?) -> String {
+        let said = "From \(what) of \(stamps)"
         guard let lastCommit, at < lastCommit else { return said }
         return "\(said), older than the branch's last commit (\(stamp(lastCommit)))"
     }
