@@ -95,10 +95,10 @@ import XcrewTestSupport
 
     @Test func thisProjectsWorkspaceIsNamedWithTheCommandThatWouldReclaimIt() async throws {
         let text = try await report().text
-        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes testProducts,logs,resultBundles,stateTransients\n  App's DerivedData, 77.9 MB, costs a cold build to make again\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData\n"), "\(text)")
+        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes testProducts,logs,resultBundles,stateTransients\n  App's DerivedData, 77.9 MB, costs a cold build to make again, so deleting it is the person's to agree to\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData\n"), "\(text)")
         #expect(text.hasPrefix(SpaceReport.unitsNote + "\n\n"), "\(text)")
         #expect(text.contains("MobileBuildMCP\n  this project's MobileBuildMCP workspaces take 81.5 MB (77.7 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)\n"), "\(text)")
-        #expect(text.contains("  Each `--dry-run` lists what it would delete; with `--delete` in its place and `--confirm delete-mobilebuildmcp-storage`, it deletes.\n"), "\(text)")
+        #expect(text.contains("  Each `--dry-run` lists what it would delete. Deleting loses those builds, logs and results, so it's the person's to agree to: `--delete` in place of `--dry-run`, with `--confirm delete-mobilebuildmcp-storage`\n"), "\(text)")
     }
 
     /// The figures of a large workspace, as a field report gave them (October 31, 2026): test products, the most of it,
@@ -109,7 +109,7 @@ import XcrewTestSupport
         let lines = Space.workspaceLines(workspace, name: "App", root: "/work/App", newest: "today", bundles: 105, isBuilding: true)
         #expect(lines.map(\.text) == [
             "App, /work/App: 126.2 GB, test products 95.0 GB in 105 bundles of about 904.8 MB each, DerivedData 24.2 GB, newest today; a build is writing to its DerivedData now",
-            "App's DerivedData, 24.2 GB, costs a cold build to make again",
+            "App's DerivedData, 24.2 GB, costs a cold build to make again, so deleting it is the person's to agree to",
         ])
         #expect(lines.map(\.command) == ["mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes testProducts,logs", "mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes derivedData"])
     }
@@ -172,7 +172,7 @@ import XcrewTestSupport
     /// The selected and the pinned Xcode are never offered for uninstalling, and nothing is offered without `xcodes`.
     @Test func onlyAnXcodeNeitherSelectedNorPinnedIsOffered() async throws {
         let text = try await report().text
-        #expect(text.contains("  Xcode 27.2, selected: 3.6 GB\n  Xcode 26.4, pinned: 3.4 GB\n  Xcode 26.0: 3.1 GB\n      xcodes uninstall 26.0\n"), "\(text)")
+        #expect(text.contains("  Xcode 27.2, selected: 3.6 GB\n  Xcode 26.4, pinned: 3.4 GB\n  Xcode 26.0: 3.1 GB. Uninstalling it removes that Xcode, so it's the person's to agree to:\n      xcodes uninstall 26.0\n"), "\(text)")
         #expect(!(try await report(xcodes: false).text.contains("xcodes uninstall")))
     }
 

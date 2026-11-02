@@ -230,14 +230,17 @@ import Testing
     /// The routing rules guard DerivedData, deleted only when the person asks, and a harm guard holds anything else of the
     /// person's alike. A text that hands Claude a command deleting a folder of theirs or stopping a process that may be
     /// their build says it's theirs to agree to, right before the command, which ends the text so nothing of the
-    /// sentence around it is copied into it.
+    /// sentence around it is copied into it. The commands matched are docs/findings.md's *Commands that remove the
+    /// person's data*.
     @Test func aCommandThatRemovesOrStopsThePersonsWorkIsTheirsToAgreeTo() throws {
         #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
         let condition = /so it's the person's to agree to:\s+/
-        let removing = try toldWhole().filter { $0.contains(/\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill |simctl (?:delete|erase) )/) }
-        #expect(removing.count >= 7, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
+        let destructive = /\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill |simctl (?:delete|erase) |(?:brew|npm|xcodes) uninstall |defaults (?:write|delete) |xcode-skills --force)|--delete(?![\w-])/
+        let removing = try toldWhole().filter { $0.contains(destructive) }
+        #expect(removing.count >= 12, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
         for text in removing {
             let command = try #require(text.firstMatch(of: condition), "no condition before the command: \(text)").range.upperBound
+            #expect(text[command...].contains(destructive), "the command comes before its condition: \(text)")
             #expect(!text[command...].contains(". ") && !text.hasSuffix("."), "the command doesn't end the text: \(text)")
         }
         #expect(CorruptModuleCache.fix(derivedData: nil).hasSuffix("That deletes part of DerivedData, so it's the person's to agree to."))
@@ -322,7 +325,13 @@ import Testing
             WorktreeSimulator.reused(name: "xcrew · App · old", label: "iPhone 18, iOS 27.2", udid: "U1", fresh: true),
             SpaceReport(parts: [.init(title: "Simulator devices", lines: [Space.devicesLine(devices: 5, bytes: 2_400_000_000, unavailable: 1)])]).text,
         ]
-        let machineNotes: [String] = simulatorNotes + [ProjectConfigCheck.legacyFolder("/work/App/.xcodebuildmcp"), ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
+        let spaceNotes: [String] = [
+            Space.purgeNote,
+            SpaceReport(parts: [.init(title: "Xcodes", lines: [Space.xcodeLine("Xcode 26.0: 3.1 GB", bytes: 3_100_000_000, offering: "26.0")])]).text,
+            LegacyBinaryCheck.message("/opt/homebrew/bin/xcodebuildmcp"),
+            XcodeSkillsCommand.kept(["swiftui", "testing"]),
+        ]
+        let machineNotes: [String] = simulatorNotes + spaceNotes + [ProjectConfigCheck.legacyFolder("/work/App/.xcodebuildmcp"), ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
         let modTools: [String] = try Self.modTools.map { try toolDescription($0.constant, in: $0.file) }
         return briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + xcodeNotes + machineNotes + modTools
     }
