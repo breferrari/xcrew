@@ -912,12 +912,13 @@ extension FailureNotes {
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aSavedResultTheCollapseAloneWouldEditStaysSaved() async throws {
+    func aSavedResultTheCollapseBringsUnderTheSavingPointComesBack() async throws {
         let saved = SavedResultTests.saved(try Self.json(), as: "mcp-build_sim-1.txt")
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
         let report = await Report.make(kind: .build, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
         #expect(report.ok)
-        #expect(report.result == nil)
+        let result = try #require(report.result)
+        #expect(result.utf16.count < 50_000)
     }
 
     @Test func aColumnStaysWithItsLine() {
