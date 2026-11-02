@@ -78,6 +78,12 @@ import Testing
         #expect(try text("techpack.yaml").contains("minMCSVersion: \"\(ModLoadedCheck.minMCSVersion)\""))
     }
 
+    /// The README names the mcs the mod-loaded check names: the one a pack's mod needs.
+    @Test func readmeMinimumMCSIsTheOneTheModLoadedCheckNames() throws {
+        let named = try #require(try text("README.md").firstMatch(of: /\[mcs CLI\]\([^)]*\) (\d{4}\.\d{1,2}\.\d{1,2}) or later/)?.1, "the README no longer says \"[mcs CLI](…) <version> or later\"; this test reads the version there")
+        #expect(String(named) == ModLoadedCheck.minMCSVersion)
+    }
+
     @Test func hooksLoadTheMod() async throws {
         let modules = try #require(try json("hooks/hooks.json")["modules"] as? [String])
         #expect(modules == ["./mod/register.ts"])
@@ -1119,11 +1125,15 @@ import Testing
         }
     }
 
-    /// The mod drops history no run has updated for as long as the shim keeps a build no checkout has run.
-    @Test func historyIsKeptAsLongAsAnUnusedBuild() throws {
-        let kept = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1)
-        let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
-        #expect(kept == shim)
+    /// Everything xcrew keeps that nothing uses any more goes after one age: the shim's unused builds and root keys, the
+    /// mod's history, a failed test's images, the card, and a session's stamp no session end removed. Each prunes its own;
+    /// the age is one choice.
+    @Test func everythingUnusedIsKeptForOneAge() throws {
+        let shim = try text("bin/xcrew").matches(of: /-mtime \+(\d+)/).map { Int($0.output.1) }
+        #expect(!shim.isEmpty, "bin/xcrew prunes nothing by -mtime any more, so this test holds no age of its")
+        let history = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1, "timing.ts no longer says HISTORY_KEPT_MS in days")
+        let ages = shim + [Int(history), FailureImages.keptDays, ProjectCard.keptDays, SessionStamp.keptDays]
+        #expect(Set(ages).count == 1, "the shim's -mtime, HISTORY_KEPT_MS and the keptDays of FailureImages, ProjectCard and SessionStamp differ: \(ages)")
     }
 
     /// The mod keeps the other worktrees' line as long as a quiet log still counts as a run going: one window, both sides.
@@ -1146,24 +1156,12 @@ import Testing
         }
     }
 
-    /// A failed test's images are kept as long as the shim keeps a build no checkout has run.
-    @Test func failureImagesAreKeptAsLongAsAnUnusedBuild() throws {
-        let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
-        #expect(Int(shim) == FailureImages.keptDays)
-    }
-
     /// The routing rules guard a failed snapshot test's reference, on the line naming the word its notes list images
     /// with: it's re-recorded only with the person's agreement.
     @Test func theRoutingRulesGuardASnapshotsReference() throws {
         let routing = try text("context/routing.md")
         let rule = try #require(routing.components(separatedBy: "\n").first { $0.contains("`\(FailureNotes.imageLabel)`") })
         #expect(rule.contains("Re-record a reference only when the person agrees"))
-    }
-
-    /// The card the session-start hook prints is dropped by the same age as the mod's history: one number of days.
-    @Test func theCardIsKeptAsLongAsTheHistory() throws {
-        let kept = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1)
-        #expect(Int(kept) == ProjectCard.keptDays)
     }
 
     /// The mod writes the card in the format the CLI reads: its version and its fields.
