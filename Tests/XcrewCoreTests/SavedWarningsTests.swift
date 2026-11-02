@@ -60,6 +60,42 @@ struct SavedWarningsTests {
         #expect(diagnostics["warningsLeftOut"] as? String == "353 warnings outside the lines this branch changed left out; the full list is in \(saved)")
     }
 
+    /// The test bed's `concurrency` build text, saved as Claude Code saves a large result, its paths moved under a
+    /// temporary project whose branch changed `Kit/Kit.swift` at line 13, with `filler` lines that aren't warnings added.
+    static func savedText(filler: Int) async throws -> Report {
+        let project = Project.temporary(containing: ["Kit"])
+        let root = ProjectLayout.canonical(project.root)
+        let text = try Raw.text("build_sim").replacingOccurrences(of: "/testbed/concurrency", with: root)
+        let saved = SavedResultTests.saved(text + String(repeating: "   Compiling one of the app's many source files, a line that isn't a warning, to make it long.\n", count: filler))
+        let runner = FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Kit/Kit.swift"], diffed: ["\(root)/Kit/Kit.swift"], diff: "+++ Kit/Kit.swift\n@@ -12,0 +13 @@\n"))
+        let notice = "Error: result (61,000 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: Text"
+        return await Report.make(kind: .build, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: runner, project: project)
+    }
+
+    /// A saved text result whose bulk isn't warnings stays saved when its warnings are left out: what's left, 600 lines of
+    /// 95 characters, is still past the 50,000 characters at which Claude Code saves a text result (docs/findings.md).
+    @Test func aSavedTextStillLongWithoutItsWarningsStaysSaved() async throws {
+        let report = try await Self.savedText(filler: 600)
+        #expect(report.result == nil)
+    }
+
+    /// One short once its warnings are left out comes back in the notice's place, with the warning in a changed line.
+    @Test func aSavedTextShortWithoutItsWarningsComesBack() async throws {
+        let result = try #require(try await Self.savedText(filler: 0).result)
+        #expect(result.contains("Kit/Kit.swift:13"))
+        #expect(result.contains("left out"))
+    }
+
+    /// Any of xcrew's edits keeps a saved text saved while it's still that long: here the coverage runtime's error left out
+    /// of a failed test run, 600 lines of 95 characters after it.
+    @Test func aSavedTextEditedOtherwiseStaysSavedWhileItsLong() async {
+        let text = "🧪 Test\n\nErrors (2):\n\n  ✗ Build failed: linker error\n  ✗ LLVM Profile Error: Failed to write file \"default.profraw\": Operation not permitted\n\n"
+        let saved = SavedResultTests.saved(text + String(repeating: "   Compiling one of the app's many source files, a line that isn't a warning, to make it long.\n", count: 600))
+        let notice = "Error: result (57,000 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: Text"
+        let report = await Report.make(kind: .test, output: ToolOutput(text: notice, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: FakeRunner())
+        #expect(report.result == nil)
+    }
+
     /// A failed build's errors are what Claude acts on: never left out.
     @Test func errorsAreNeverLeftOut() async throws {
         let errors = [["message": "cannot find 'Greeting' in scope", "location": "/testbed/field/Modules/Feature/Sources/Feature.swift:7"]]

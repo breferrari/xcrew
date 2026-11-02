@@ -70,6 +70,11 @@ public struct Report: Sendable, Equatable, Codable {
     /// The same, for a run whose text gave no count and whose result bundle counts 0 tests.
     static let noTestsInBundleNote = "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. \(noTestsCause)"
 
+    /// The size at which Claude Code saves a text result to a file and leaves a notice in its place: 50,000 characters
+    /// (code.claude.com/docs/en/mcp, *MCP output limits and warnings*, read October 2026; docs/findings.md). A saved
+    /// result xcrew shortens comes back in the notice's place only below it.
+    static let savedFrom = 50_000
+
     /// The longest text read as a notice: far below the size at which Claude Code saves a result (docs/findings.md),
     /// with room for the saved JSON's schema the notice names.
     static let noticeLimit = 10_000
@@ -297,7 +302,7 @@ public struct Report: Sendable, Equatable, Codable {
             durationMs: final.reportedDuration,
             tests: tests,
             failures: summary.ok ? [] : Self.attaching(images, targets: targets, to: failures),
-            result: compact ?? (edited ? final.text : nil),
+            result: compact ?? (edited && (saved == nil || final.text.count < Self.savedFrom) ? final.text : nil),
             notes: notes,
             repeated: repeatedTests,
             passed: passedTests,
