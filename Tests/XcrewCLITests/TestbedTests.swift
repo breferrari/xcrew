@@ -500,7 +500,7 @@ struct TestbedMediaFlagTests {
 struct TestbedEvidenceTests {
     /// A copy of the coverage capture on a branch that wrote `price(for:)`'s body, its last commit at `committed`, with
     /// MobileBuildMCP's newest test run and build at `ran`.
-    static func project(committed: Date, ran: Date, reflog: String? = nil, earlier: Date? = nil) throws -> (project: Project, context: CheckContext) {
+    static func project(committed: Date, ran: Date, reflog: String? = nil, earlier: Date? = nil, earlierTests: Int? = nil) throws -> (project: Project, context: CheckContext) {
         let root = try TestbedTests.copy("captures/coverage")
         let project = Project(root: root)
         let workspace = root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root.path))")
@@ -519,6 +519,9 @@ struct TestbedEvidenceTests {
             let second = workspace.appending(path: "result-bundles/test_sim_0.xcresult")
             try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
             try FileManager.default.setAttributes([.modificationDate: earlier], ofItemAtPath: second.path)
+            if let earlierTests {
+                responses["xcrun xcresulttool get test-results summary --path \(second.path) --compact"] = .init(status: 0, stdout: #"{"totalTestCount":\#(earlierTests),"passedTests":\#(earlierTests),"failedTests":0,"skippedTests":0}"#)
+            }
             responses.merge([
                 "xcrun xcresulttool get content-availability --path \(second.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
                 "xcrun xccov view --report --json \(second.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
@@ -526,7 +529,7 @@ struct TestbedEvidenceTests {
             ]) { _, new in new }
         }
         responses.merge([
-            "git -C \(root.path) reflog show HEAD --date=unix --format=%gd%x09%gs": .init(status: 0, stdout: checkedOut),
+            "git -C \(root.path) reflog show HEAD --date=unix --format=%gd%x09%gs": reflog == "" ? .init(status: 128) : .init(status: 0, stdout: checkedOut),
             "git -C \(root.path) rev-parse --abbrev-ref HEAD": .init(status: 0, stdout: "feature\n"),
             "git -C \(root.path) log -1 --format=%ct \(FakeRunner.base)": .init(status: 0, stdout: "\(Int(ran.timeIntervalSince1970) - 2 * 86_400)\n"),
             "git -C \(root.path) log -1 --format=%ct": .init(status: 0, stdout: "\(Int(committed.timeIntervalSince1970))\n"),
@@ -569,6 +572,22 @@ struct TestbedEvidenceTests {
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
         let run = await Run("evidence", context: context, stdin: Self.input)
         #expect(run.text.contains("- From the test runs of 2026-10-30 14:24 UTC and 2026-10-30 13:24 UTC: all 6 changed lines that can run ran in these test runs."), "\(run.text)")
+    }
+
+    /// A run of no test, as one whose filter matched nothing, counts nothing as run, so it's left out.
+    @Test func aRunOfNoTestIsLeftOut() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600), earlierTests: 0)
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run."), "\(run.text)")
+    }
+
+    /// With no reflog to tell the branch's runs, only runs since the last commit count, and the block says so.
+    @Test func withNoReflogOnlyRunsSinceTheLastCommitCountAndItsSaid() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, reflog: "", earlier: Self.ran.addingTimeInterval(-9000))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5. Only runs since the branch's last commit count: the checkout's reflog couldn't be read to tell its runs."), "\(run.text)")
     }
 
     /// A run before the branch's last commit is named as older, never left out and never shown as current.
