@@ -68,7 +68,7 @@ You need macOS 26 or later, Xcode 26.3 or later, [Homebrew](https://brew.sh) and
 
 4. **Approve Claude Code in Xcode's dialog** the first time Claude calls the Xcode MCP.
 
-With the [mcs CLI](https://github.com/mcs-cli/mcs), `mcs pack add breferrari/xcrew --ref stable && mcs sync` installs the plugin and MobileBuildMCP and asks which workspace to build. On Xcode 27 or later, run `sudo xcrun mcp-server enable`. Then run `/xcrew:setup` once in Claude Code, which picks the schemes and simulators: mcs shows none of setup's own messages.
+With the [mcs CLI](https://github.com/mcs-cli/mcs) 2026.10.31 or later, `mcs pack add breferrari/xcrew --ref stable && mcs sync` installs the plugin and MobileBuildMCP and asks which workspace to build; after upgrading mcs from an earlier version, run `mcs sync` once. On Xcode 27 or later, run `sudo xcrun mcp-server enable`. Then run `/xcrew:setup` once in Claude Code, which picks the schemes and simulators: mcs shows none of setup's own messages.
 
 ## What you get
 

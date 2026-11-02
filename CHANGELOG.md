@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Installed with mcs, xcrew needs mcs 2026.10.31 or later, which loads a pack's plugin with its hook modules, so the mod's line above the prompt and its tools load too. After upgrading mcs, run `mcs sync` once.
 - The doctor checks only what xcrew can't run without, its installation and the toolchain, and reaches no network: whether a newer Xcrew is out is the plugin system's to say, and whether Xcode accepts unsigned agents is said once by `xcrew setup`.
 - What the doctor checked ahead of time about which Xcode builds is said on a failed MobileBuildMCP build or test it can explain, one whose errors another SDK or toolchain gives: CI on another Xcode, a pin to suggest, and an open Xcode other than the one building, each only when it holds. The doctor no longer checks them, nor for an xcodebuild left running, which a build that finds its database locked already names.
 - The doctor no longer scans the disk: this project's MobileBuildMCP storage against its budget, and the simulators a removed worktree left behind, are in `xcrew space`, which shows them when you ask.

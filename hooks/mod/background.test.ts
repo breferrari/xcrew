@@ -8,6 +8,12 @@ const BUILD = 'mcp__MobileBuildMCP__build_sim'
 const TEST = 'mcp__MobileBuildMCP__test_sim'
 const TASK = 'k4q5tm9v2'
 const LOG = '/workspaces/App/logs/test_sim.log'
+/**
+ * How long a call takes before it answers with the handle, and how long after that its notification comes. Short: the
+ * clock is fake, but each second of it runs the mod's one-second ticker, whose phase read is real work.
+ */
+const CALL_MS = 5_000
+const NOTIFIED_AFTER_MS = 1_000
 
 /** What a call Claude Code moved to the background answers with (Claude Code 2.1.314, docs/findings.md). */
 const HANDLE = `MCP tool "plugin:xcrew:MobileBuildMCP/test_sim" is still running after 120s. It was moved to the background as task ${TASK} and keeps running; you'll receive a notification with the result when it completes.`
@@ -20,7 +26,7 @@ function notificationText(result: string, task = TASK) {
 }
 
 /**
- * A session in VS Code, where an outcome comes as a toast, whose build or test answers after 2:55 with the handle. The
+ * A session in VS Code, where an outcome comes as a toast, whose build or test answers after 0:05 with the handle. The
  * CLI answers `reports` in turn after the handle's; the run's log is `LOG`.
  */
 function session(
@@ -46,15 +52,15 @@ function session(
   on('tool.call', async (_, e) => {
     // A test run the session holds stays live on the band until `hold` settles.
     if (hold && e.tool.endsWith('test_sim')) await hold
-    await clock.advance(175_000)
+    await clock.advance(CALL_MS)
     return { result: {}, text: HANDLE }
   })
   return { toasts, clock, stored, cli, store }
 }
 
-/** The task's notification arriving a minute after the handle, as Claude Code submits it: a turn of its own. */
+/** The task's notification arriving a second after the handle, as Claude Code submits it: a turn of its own. */
 async function notify($: Engine, clock: { advance: (ms: number) => Promise<void>; settle: () => Promise<void> }, text = notificationText('the server\'s result')) {
-  await clock.advance(60_000)
+  await clock.advance(NOTIFIED_AFTER_MS)
   const entered = await $.prompt.submit({ text, wait: false, origin: { kind: 'task-notification' } })
   await clock.settle()
   return entered
@@ -80,7 +86,7 @@ const reportCalls = (cli: { args: readonly string[]; stdin?: string }[]) => cli.
 test('a build that answers with no outcome is neither passed nor failed, and nothing is recorded', async ($, on) => {
   const { toasts, stored } = session(on)
   await callTool($, BUILD, { tool_use_id: 'toolu_bg' })
-  expect(toasts).toEqual(['build_sim · no result yet, 2:55'])
+  expect(toasts).toEqual(['build_sim · no result yet, 0:05'])
   expect(stored().filter(key => /^(durations|updated|where|tests|ledger)\./.test(key))).toEqual([])
 })
 
@@ -95,8 +101,8 @@ test("a backgrounded test run's notification is read as its result", async ($, o
   expect(reportCalls(cli).at(-1)).toMatchObject({ args: ['report', '--server', 'MobileBuildMCP', '--kind', 'test', '--notification', '--log', LOG], stdin: text })
   expect(entered.text).toBe(notificationText('shorter'))
   expect(entered.context).toContain('xcrew: a note on the run')
-  // The run took from the call to the notification: 2:55, then a minute.
-  expect(toasts.at(-1)?.startsWith('✗ test_sim · 3:55')).toBe(true)
+  // The run took from the call to the notification: 0:05, then a second.
+  expect(toasts.at(-1)?.startsWith('✗ test_sim · 0:06')).toBe(true)
   // It failed: its time is kept apart from the usual one.
   expect(stored().filter(key => /^failed\./.test(key)).length).toBe(1)
   expect(stored().filter(key => /^ledger\./.test(key)).length).toBe(1)
@@ -118,7 +124,7 @@ test("a notification whose result can't be read is told from the run's log and i
   await callTool($, TEST, { tool_use_id: 'toolu_bg' })
   await notify($, clock)
   expect(reportCalls(cli).length).toBe(2)
-  expect(toasts.at(-1)?.startsWith('✗ test_sim · 3:55')).toBe(true)
+  expect(toasts.at(-1)?.startsWith('✗ test_sim · 0:06')).toBe(true)
   expect(stored().filter(key => /^ledger\./.test(key)).length).toBe(1)
 })
 
@@ -127,7 +133,7 @@ test("the log's verdict alone shows the outcome and keeps out of the ledger", as
   const { toasts, clock, stored } = session(on, { reports: [{ ok: true, isVerdictOnly: true, failures: [], notes: [] }] })
   await callTool($, TEST, { tool_use_id: 'toolu_bg' })
   await notify($, clock)
-  expect(toasts.at(-1)?.startsWith('✓ test_sim · 3:55')).toBe(true)
+  expect(toasts.at(-1)?.startsWith('✓ test_sim · 0:06')).toBe(true)
   expect(stored().filter(key => /^durations\./.test(key)).length).toBe(1)
   expect(stored().filter(key => /^ledger\./.test(key))).toEqual([])
 })
@@ -147,7 +153,8 @@ test('a notification keeps the times of runs that ended meanwhile', async ($, on
   await callTool($, TEST, { tool_use_id: 'toolu_fg' })
   await notify($, clock)
   const durations = [...store.entries()].filter(([key]) => key.startsWith('durations.')).map(([, runs]) => runs)
-  expect(durations).toEqual([[175_000, 410_000]])
+  // The run in the foreground took its 5 s; the backgrounded one, both calls and the second before its notification.
+  expect(durations).toEqual([[5_000, 11_000]])
 })
 
 /** A log that appeared only after the call moved to the background names the scheme in the notification's report. */
@@ -207,7 +214,7 @@ test("a notification naming no call waiting enters as it is, and the CLI isn't a
   await notificationRow($, clock, { id: 'x9other', status: 'completed' })
   expect(entered.text).toBe(text)
   expect(reportCalls(cli).length).toBe(1)
-  expect(toasts).toEqual(['build_sim · no result yet, 2:55'])
+  expect(toasts).toEqual(['build_sim · no result yet, 0:05'])
 })
 
 /** A clean answers with plain text and no outcome to read; it's never a call waiting in the background. */

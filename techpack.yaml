@@ -3,7 +3,7 @@ identifier: xcrew
 displayName: Xcrew
 description: "Your Xcode crew inside Claude Code: three MCP servers working as one, with live build progress and test reports Claude can act on."
 author: Brenno Ferrari
-minMCSVersion: "2026.10.30"
+minMCSVersion: "2026.10.31"
 
 # The Claude Code plugin carries the servers, hooks, skills and mod; this pack installs it with
 # the Homebrew package it needs, asks which workspace to build, and runs the checks. The
