@@ -119,12 +119,7 @@ public enum EvidencePack {
         let runner = machine.runner
         guard case let .success(change) = await GitChanges.since(nil, in: project, using: runner) else { return [] }
         async let committed = runner.run(["git", "-C", project.root.path, "log", "-1", "--format=%ct"], stdin: nil, timeout: .seconds(10))
-        async let coverage: Said? = {
-            guard let path = await ResultBundle.newest(project: project.root, machine: machine),
-                  let sentence = await ChangedLineCoverage.of(ResultBundle(path: path, runner: runner), change: { change }, project: project, using: runner)?.sentence
-            else { return nil }
-            return ("the test run", URL(fileURLWithPath: path), sentence)
-        }()
+        async let coverage: (said: Said, at: [Date], onlySinceLastCommit: Bool, leftOut: Int)? = branchCoverage(change: change, project: project, machine: machine)
         async let warnings: Said? = {
             guard let log = RunLog.newestBuild(project: project.root, home: machine.home), let text = try? String(contentsOf: log, encoding: .utf8) else { return nil }
             let found = BuildLog.warnings(in: text)
@@ -134,9 +129,50 @@ public enum EvidencePack {
             return ("the build", log, sentence)
         }()
         let lastCommit = TimeInterval(await committed.stdout.trimmingCharacters(in: .whitespacesAndNewlines)).map(Date.init(timeIntervalSince1970:))
-        return [await coverage, await warnings].compactMap { said in
-            said.map { "- \(when($0.what, at: modified($0.dated), lastCommit: lastCommit)): \($0.sentence)" }
+        let tested = await coverage.map { found in
+            let caveats = (found.onlySinceLastCommit ? [" Only runs since the branch's last commit count: the checkout's reflog couldn't be read to tell its runs."] : [])
+                + (found.leftOut > 0 ? [" \(found.leftOut == 1 ? "1 earlier run" : "\(found.leftOut) earlier runs") past the time allowed \(found.leftOut == 1 ? "isn't" : "aren't") counted."] : [])
+            let runs = found.at.count == 1 ? "the test run of \(stamp(found.at[0]))" : "the test runs of \(ResultBundle.joined(found.at.map(stamp)))"
+            let older = lastCommit.flatMap { commit in (found.at.max() ?? .distantPast) < commit ? ", older than the branch's last commit (\(stamp(commit)))" : nil } ?? ""
+            return "- From \(runs)\(older): \(found.said.sentence)" + caveats.joined()
         }
+        let built = await warnings.map { "- \(when($0.what, at: modified($0.dated), lastCommit: lastCommit)): \($0.sentence)" }
+        return [tested, built].compactMap { $0 }
+    }
+
+    /// How long the branch's runs' coverage may take together: the mod gives the whole evidence call 300 s
+    /// (`EVIDENCE_TIMEOUT_MS`), of which its other reading takes about a second; the rest is left for a large app's slower
+    /// `xccov` (docs/findings.md, *The branch's test runs*).
+    static let coverageBudget = Duration.seconds(240)
+
+    /// What the branch's test runs' coverage says together, newest first, within `coverageBudget`: each run written while
+    /// the checkout was on this branch (`BranchRuns`), leaving out runs of no test, whose coverage holds nothing run.
+    static func branchCoverage(change: GitChanges.Change, project: Project, machine: Machine) async -> (said: Said, at: [Date], onlySinceLastCommit: Bool, leftOut: Int)? {
+        let runner = machine.runner
+        let git: @Sendable ([String]) async -> CommandResult = { arguments in await runner.run(["git", "-C", project.root.path] + arguments, stdin: nil, timeout: .seconds(10)) }
+        let mark = ResultBundle.completionMark
+        let listed = RunLog.candidates(in: "result-bundles", project: project.root, home: machine.home) { $0.hasSuffix(".xcresult") || $0.hasSuffix(".xcresult" + mark) }
+        let bundles = Dictionary(listed.map { (path: $0.path.hasSuffix(mark) ? String($0.path.dropLast(mark.count)) : $0.path, written: modified($0)) }.map { ($0.path, $0.written) }) { max($0, $1) }
+        guard !bundles.isEmpty else { return nil }
+        async let reflog = git(["reflog", "show", "HEAD", "--date=unix", "--format=%gd%x09%gs"])
+        async let head = git(["rev-parse", "--abbrev-ref", "HEAD"])
+        async let base = git(["log", "-1", "--format=%ct", change.since])
+        async let last = git(["log", "-1", "--format=%ct"])
+        let date = { (result: CommandResult) in TimeInterval(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)).map(Date.init(timeIntervalSince1970:)) }
+        let branch = GitHead.firstLine(await head.stdout).flatMap { $0 == "HEAD" ? nil : $0 }
+        let read = await reflog
+        let chosen = BranchRuns.chosen(bundles.map { ($0.key, $0.value) }, reflog: read.succeeded ? read.stdout : nil, branch: branch, mergeBase: date(await base), lastCommit: date(await last))
+        let deadline = ContinuousClock.now + coverageBudget
+        var found: [(coverage: ChangedLineCoverage, at: Date)] = []
+        var leftOut = 0
+        for path in chosen.paths {
+            guard ContinuousClock.now < deadline else { leftOut += 1; continue }
+            let bundle = ResultBundle(path: path, runner: runner)
+            if ResultBundle.counts(summary: await bundle.summary())?.ran == 0 { continue }
+            if let coverage = await ChangedLineCoverage.of(bundle, change: { change }, project: project, using: runner) { found.append((coverage, bundles[path] ?? .distantPast)) }
+        }
+        guard !found.isEmpty, let sentence = ChangedLineCoverage.merged(found.map(\.coverage)).sentence else { return nil }
+        return (("the test runs", URL(fileURLWithPath: chosen.paths[0]), sentence), found.map(\.at), chosen.onlySinceLastCommit, leftOut)
     }
 
     static func modified(_ url: URL) -> Date {

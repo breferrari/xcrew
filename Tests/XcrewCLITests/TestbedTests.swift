@@ -500,7 +500,7 @@ struct TestbedMediaFlagTests {
 struct TestbedEvidenceTests {
     /// A copy of the coverage capture on a branch that wrote `price(for:)`'s body, its last commit at `committed`, with
     /// MobileBuildMCP's newest test run and build at `ran`.
-    static func project(committed: Date, ran: Date) throws -> (project: Project, context: CheckContext) {
+    static func project(committed: Date, ran: Date, reflog: String? = nil, earlier: Date? = nil) throws -> (project: Project, context: CheckContext) {
         let root = try TestbedTests.copy("captures/coverage")
         let project = Project(root: root)
         let workspace = root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root.path))")
@@ -513,7 +513,22 @@ struct TestbedEvidenceTests {
         let captured = { (file: String) in
             try String(contentsOf: root.appending(path: file), encoding: .utf8).replacingOccurrences(of: "\\/testbed\\/captures\\/coverage", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
         }
+        // The branch, checked out a day before the run unless a reflog says otherwise, from a merge base two days back.
+        let checkedOut = reflog ?? "HEAD@{\(Int(ran.timeIntervalSince1970) - 86_400)}\tcheckout: moving from main to feature\n"
+        if let earlier {
+            let second = workspace.appending(path: "result-bundles/test_sim_0.xcresult")
+            try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.modificationDate: earlier], ofItemAtPath: second.path)
+            responses.merge([
+                "xcrun xcresulttool get content-availability --path \(second.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
+                "xcrun xccov view --report --json \(second.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
+                "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(second.path)": .init(status: 0, stdout: try captured("Pricing.json").replacingOccurrences(of: #"{"executionCount":0,"isExecutable":true,"line":5}"#, with: #"{"executionCount":1,"isExecutable":true,"line":5}"#)),
+            ]) { _, new in new }
+        }
         responses.merge([
+            "git -C \(root.path) reflog show HEAD --date=unix --format=%gd%x09%gs": .init(status: 0, stdout: checkedOut),
+            "git -C \(root.path) rev-parse --abbrev-ref HEAD": .init(status: 0, stdout: "feature\n"),
+            "git -C \(root.path) log -1 --format=%ct \(FakeRunner.base)": .init(status: 0, stdout: "\(Int(ran.timeIntervalSince1970) - 2 * 86_400)\n"),
             "git -C \(root.path) log -1 --format=%ct": .init(status: 0, stdout: "\(Int(committed.timeIntervalSince1970))\n"),
             "xcrun xcresulttool get content-availability --path \(bundle.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
             "xcrun xccov view --report --json \(bundle.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
@@ -536,6 +551,24 @@ struct TestbedEvidenceTests {
             - From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5.
             - From the build of 2026-10-30 14:24 UTC: 1 of 2 warnings are in lines this branch changed: Pricing.swift:4 initialization of immutable value 'rate' was never used.
             """, "\(run.text)")
+    }
+
+    /// A run written while another branch was checked out in the checkout isn't this branch's: its coverage is left out.
+    @Test func aRunWrittenOnAnotherBranchIsLeftOut() async throws {
+        let at = Int(Self.ran.timeIntervalSince1970)
+        let reflog = "HEAD@{\(at + 300)}\tcheckout: moving from main to feature\nHEAD@{\(at - 600)}\tcheckout: moving from feature to main\nHEAD@{\(at - 86_400)}\tcheckout: moving from main to feature\n"
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran, reflog: reflog)
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(!run.text.contains("changed lines that can run"), "\(run.text)")
+    }
+
+    /// The branch's runs together: a line one run left out and another ran counts as run, and the runs are named.
+    @Test func theBranchsRunsCountTogether() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("- From the test runs of 2026-10-30 14:24 UTC and 2026-10-30 13:24 UTC: all 6 changed lines that can run ran in these test runs."), "\(run.text)")
     }
 
     /// A run before the branch's last commit is named as older, never left out and never shown as current.

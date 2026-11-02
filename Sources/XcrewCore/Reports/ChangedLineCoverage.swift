@@ -31,6 +31,8 @@ struct ChangedLineCoverage: Sendable, Equatable {
     var outside: [String] = []
     /// The targets with changed files that the run didn't reach.
     var unreached: [Unreached] = []
+    /// How many runs this speaks for: one, or a branch's runs merged.
+    var runs = 1
 
     /// How many files' line counts are asked of `xccov` at once.
     static let atOnce = 4
@@ -103,7 +105,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// target unreached, only when it is so in every run, since a run that reached it says what it ran there.
     static func merged(_ runs: [ChangedLineCoverage]) -> ChangedLineCoverage {
         guard let first = runs.first else { return ChangedLineCoverage() }
-        var merged = ChangedLineCoverage()
+        var merged = ChangedLineCoverage(runs: runs.reduce(0) { $0 + $1.runs })
         for run in runs {
             for (path, lines) in run.lines { merged.lines[path, default: [:]].merge(lines) { $0 || $1 } }
         }
@@ -193,16 +195,17 @@ struct ChangedLineCoverage: Sendable, Equatable {
         if total > 0 {
             let counted = ran == total ? (total == 1 ? "the 1 changed line that can run" : "all \(total) changed lines that can run") : "\(ran) of \(total) changed lines that can run"
             let named = notRun.flatMap { file in Self.ranges(file.lines).map { "\(ToolOutput.basename(file.path)):\($0)" } }
-            sentences.append("\(counted) ran in this test run." + (named.isEmpty ? "" : " Not run\(ResultBundle.listed(named))."))
+            sentences.append("\(counted) ran in \(runs == 1 ? "this test run" : "these test runs")." + (named.isEmpty ? "" : " Not run\(ResultBundle.listed(named))."))
         }
         if !unreached.isEmpty {
             let files = unreached.reduce(0) { $0 + $1.files }
             let named = ResultBundle.joined(unreached.map(\.target), or: true)
-            sentences.append("\(sentences.isEmpty ? "this" : "This") test run ran nothing in \(named), where \(files == 1 ? "1 changed file is" : "\(files) changed files are").")
+            let these = runs == 1 ? "test run" : "test runs"
+            sentences.append("\(sentences.isEmpty ? (runs == 1 ? "this" : "these") : (runs == 1 ? "This" : "These")) \(these) ran nothing in \(named), where \(files == 1 ? "1 changed file is" : "\(files) changed files are").")
         }
         if !outside.isEmpty {
             let files = outside.count == 1 ? "1 changed file isn't" : "\(outside.count) changed files aren't"
-            sentences.append("\(files) in this run's coverage\(ResultBundle.listed(outside.map(ToolOutput.basename))).")
+            sentences.append("\(files) in \(runs == 1 ? "this run's" : "these runs'") coverage\(ResultBundle.listed(outside.map(ToolOutput.basename))).")
         }
         return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }
