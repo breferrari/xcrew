@@ -384,7 +384,9 @@ export const register: Register = on => {
     if (subcommand === 'doctor') {
       // Asked for, the doctor's problems are read again for the band: a problem fixed since leaves it.
       void loadProblems($, true).catch(() => undefined)
-      return { text: await cliText($, ['doctor']) }
+      // Named, the session is the one the doctor's session checks read, as a process the mod starts isn't told it.
+      const session = await quietly(() => $.session.id())
+      return { text: await cliText($, ['doctor', ...(session ? ['--session', session] : [])]) }
     }
     if (subcommand === 'xcode') return { text: await cliText($, ['xcode']) }
     if (subcommand === 'history') return { text: await history($) }
