@@ -11,7 +11,7 @@
 - A long result Claude Code saved to a file stays saved when xcrew shortens it but it's still long. Before, any change xcrew made, as trimming its warnings, put the whole result back into the conversation.
 - A test marked flaky that a plain test run fails starts its passes in a row over. Before, it kept them, and could turn green although it had failed since its last pass.
 - A test marked flaky reads "passed 0 of the 4 needed in repeated runs since", saying that only a repeated run's passes count, so a single pass no longer reads as a wrong count. The ledger, the card, `/xcrew flaky` and the evidence block say it alike.
-- The `session_set_defaults` calls `xcrew setup` prints name a workspace by its plain path, without a `/./` in it.
+- The `session_set_defaults` calls `xcrew setup` prints read the config as a person may have edited it: a quoted profile name keeps no quotes, a comment line no longer drops the profiles after it, a comment after a value is left out, and a path from `~` or `./` is printed as the plain path. Before, a quoted name made MobileBuildMCP create a second profile.
 
 ## 0.13.1 — 2026-11-02
 
