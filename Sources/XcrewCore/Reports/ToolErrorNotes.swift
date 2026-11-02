@@ -16,7 +16,8 @@ public enum ToolErrorNotes {
     /// reader of a tool's result asks here.
     public static func notes(for output: ToolOutput) -> [String] {
         guard output.isError else { return [] }
-        let errors = output.server == .mobileBuildMCP ? output.reportedErrors.map(\.message) : []
+        // An error's words past its first line are its detail: simctl's reason for a screenshot is on its third.
+        let errors = output.server == .mobileBuildMCP ? output.reportedErrors.map { ([$0.message] + $0.detail).joined(separator: "\n") } : []
         return ClosedConnection.notes(for: output) + known.filter { known in errors.contains { $0.hasPrefix(known.start) && (known.says.isEmpty || $0.contains(known.says)) } }.map(\.note)
     }
 }

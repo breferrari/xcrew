@@ -6,7 +6,23 @@ import XcrewTestSupport
 /// MobileBuildMCP's errors with a way around them: a screenshot of a simulator with two displays, and an LLDB command
 /// under the DAP backend (the test bed's captures K and N).
 @Suite struct ToolErrorNotesTests {
-    static let twoDisplays = "\n📷 Screenshot\n\nErrors (1):\n\n  ✗ Failed to capture screenshot: Cannot choose between 2 displays. Specify one with --display:\n\n❌ Failed to capture screenshot.\n"
+    /// The error as a run on an iPhone Duo gave it: simctl's reason on its third line (the test bed's
+    /// `captures/field/two-display.txt`, from `captures/simctl`).
+    static let twoDisplays = """
+
+        📷 Screenshot
+
+        Errors (1):
+
+          ✗ Failed to capture screenshot: Detected file type from extension: PNG
+            An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=22):
+            Cannot choose between 2 displays. Specify one with --display:
+                --display=3  LCD-1 (primary-1) 2007x2853
+                --display=1  LCD (primary) 1398x2034
+            Invalid argument
+
+        ❌ Failed to capture screenshot.
+        """
     static let dap = "\n🐛 LLDB Command\n\nErrors (1):\n\n  ✗ DAP backend does not support LLDB command evaluation. Set MOBILEBUILDMCP_DEBUGGER_BACKEND=lldb-cli to use the CLI backend.\n\n❌ Failed to run LLDB command.\n"
     static let displayNote = "xcrew: this simulator has more than one display, and MobileBuildMCP's screenshot names none. `xcrun simctl io <udid> enumerate` lists them, and `xcrun simctl io <udid> screenshot --display=<id> <file>` captures one."
     static let lldbNote = "xcrew: MobileBuildMCP's default debugger backend, DAP, doesn't run LLDB commands such as `expr`; its CLI backend does. `xcrew setup --debugger-backend lldb-cli` writes it into .mobilebuildmcp/config.yaml, read from the next start of Claude Code."
