@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-testbed
-          ref: dfb5b85a1e2124f557298eaaf0ef0898ece1d118 # v0.8.21
+          ref: 294300d4808ff4d18ea7790516eae894e8ecb3d2 # v0.8.22
           path: xcrew-testbed
       # The README's images, at the commit it pins: bump the SHA there and here together, with the tag beside it.
       - uses: actions/checkout@v7
@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: breferrari/xcrew-testbed
-          ref: dfb5b85a1e2124f557298eaaf0ef0898ece1d118 # v0.8.21
+          ref: 294300d4808ff4d18ea7790516eae894e8ecb3d2 # v0.8.22
           path: xcrew-testbed
       # The README's images, at the commit it pins: bump the SHA there and here together, with the tag beside it.
       - uses: actions/checkout@v7
