@@ -273,8 +273,13 @@ export const register: Register = on => {
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
     // It never throws: without the CLI it falls back to whether the server reported an error.
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
-    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), 120_000, result.text ?? '')
-    const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, result.isError === true)), scope)
+    // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
+    const findsScheme = needsScheme && key === undefined
+    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], 120_000, result.text ?? '')
+    const reportedOutcome = reportOf(reported, result.isError === true)
+    // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
+    if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
+    const outcome = withConcurrencyOnce(withPinNamedOnce(reportedOutcome), scope)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
@@ -509,7 +514,10 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
  * how the run ended, from the call to the notification. Nothing, when neither says.
  */
 async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
+  // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start;
+  // the Xcode MCP writes none.
+  const finds = call.log === undefined && call.server === 'MobileBuildMCP'
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
@@ -521,7 +529,7 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   const usesBand = call.usesBand && !(await anotherRunGoing($, call.startedAt))
   // The runs that ended meanwhile count among the earlier ones; the server's time leaves out the wait for the notification.
   const { passed: earlier, failed: earlierFailed } = await earlierRuns($, call.key, ended)
-  const loop = await recordEnding($, { ...call, usesBand, earlier }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
+  const loop = await recordEnding($, { ...call, usesBand, earlier, earlierFailed }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
   // Given only once it reaches Claude: a note dropped above isn't counted as read.
   const notes = withConcurrencyOnce(outcome, call.scope).notes
   return { ...(outcome.result === undefined ? {} : { result: outcome.result }), notes: [...notes, ...(loop ? [loop] : [])] }

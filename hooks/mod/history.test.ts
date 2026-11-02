@@ -107,6 +107,16 @@ test('a run is kept under the scheme its log names, not the one worked out', asy
   expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · App')))).toBeUndefined()
 })
 
+/** A run that ends before the ticker reads its log has the report find that log, and is kept under the scheme it names. */
+test('a run too fast for the ticker is kept under the scheme its report finds', async ($, on) => {
+  const { clock, store, cli } = session(on, { took: [500], reports: [{ ok: true, scheme: 'Feature' }] })
+  await start($, clock)
+  await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Feature')))).toEqual([500])
+  const report = cli.filter(call => call.args[0] === 'report').map(call => call.args.slice(call.args.indexOf('--tool'), call.args.indexOf('--tool') + 4))
+  expect(report).toEqual([['--tool', 'build_sim', '--since', String(NOW)]])
+})
+
 /** Without a log, nothing says what the run built: it's timed and shown, and kept nowhere. */
 test('a run whose log never appears keeps no history, though a scheme was worked out', async ($, on) => {
   const { clock, store, toasts } = session(on, { scheme: 'App', took: [30_000] })

@@ -136,6 +136,27 @@ public enum RunLog {
         await find(since: since, project: project, machine: machine) { $0.hasPrefix("\(tool)_") }
     }
 
+    /// The log of the run a call started at `since`, in milliseconds since 1970, read once the run has ended: the first
+    /// `tool` log opened at or after `since`, by the time MobileBuildMCP names it with (docs/findings.md, *Which log is the
+    /// run's*). A later call's log, written since, is another run's. Only this session's servers' logs count, as for
+    /// `find`.
+    public static func first(tool: String, since: Int, project: URL, machine: Machine) async -> URL? {
+        let opened = candidates(project: project, home: machine.home) { openedAt($0, tool: tool).map { $0 >= since } ?? false }
+        let mine = opened.isEmpty ? [] : await ofSession(opened, on: machine)
+        return mine.compactMap { log in openedAt(log.lastPathComponent, tool: tool).map { (log, $0) } }.min { $0.1 < $1.1 }?.0
+    }
+
+    /// When MobileBuildMCP opened a `tool` log, in whole milliseconds since 1970, from its name:
+    /// `<tool>_<ISO 8601 time in UTC, ':' and '.' as '-'>_pid…` (`utils/log-naming.js`). Nothing for another tool's log.
+    static func openedAt(_ name: String, tool: String) -> Int? {
+        guard name.hasPrefix("\(tool)_"),
+              let stamp = name.dropFirst(tool.count + 1).prefixMatch(of: /(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_pid/),
+              let second = try? Date.ISO8601FormatStyle().parse("\(stamp.1)T\(stamp.2):\(stamp.3):\(stamp.4)Z"),
+              let milliseconds = Int(stamp.5)
+        else { return nil }
+        return Int(second.timeIntervalSince1970) * 1000 + milliseconds
+    }
+
     /// The newest log MobileBuildMCP wrote for a build or test of this project, whichever tool ran it (`build_sim_…`,
     /// `test_sim_…`, `build_run_sim_…`) and whichever server: an earlier failure's may be a server since restarted, or
     /// another session's.
@@ -144,9 +165,17 @@ public enum RunLog {
     }
 
     static func find(in folder: String = "logs", since: Date, project: URL, machine: Machine, named matches: (String) -> Bool) async -> URL? {
-        guard find(in: folder, since: since, project: project, home: machine.home, named: matches) != nil else { return nil }
+        let written = newest(candidates(in: folder, project: project, home: machine.home, named: matches), since: since)
+        return written.isEmpty ? nil : newest(await ofSession(written, on: machine), since: since).first
+    }
+
+    /// The items a MobileBuildMCP server of the Claude Code session above this process wrote (`_pid<server>_`): two
+    /// sessions in one checkout share the workspace folder. All of them when there's no session, or none of its servers
+    /// is recognised. The processes are read only once there are items to choose among.
+    static func ofSession(_ items: [URL], on machine: Machine) async -> [URL] {
         let (session, servers) = await ProcessList.load(using: machine.runner).mobileBuildMCPServers(forSessionOf: machine.processID)
-        return find(in: folder, since: since, project: project, home: machine.home, servers: session == nil ? nil : Set(servers.map(\.id)), named: matches)
+        guard session != nil, !servers.isEmpty else { return items }
+        return items.filter { item in servers.contains { item.lastPathComponent.contains("_pid\($0.id)_") } }
     }
 
     /// The log of the MobileBuildMCP run that started at `since`: the newest `<tool>_…log` written since then, in this
@@ -161,23 +190,26 @@ public enum RunLog {
     /// The newest log `matches` names, as `find(tool:…)` picks it; or, with `folder`, the newest item of another of the
     /// workspace's folders, such as `result-bundles`.
     static func find(in folder: String = "logs", since: Date, project: URL, home: URL, servers: Set<Int32>? = nil, named matches: (String) -> Bool) -> URL? {
-        let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
+        let candidates = candidates(in: folder, project: project, home: home, named: matches)
         let servers = servers.flatMap { $0.isEmpty ? nil : $0 }
+        let theirs = servers.map { servers in candidates.filter { item in servers.contains { item.lastPathComponent.contains("_pid\($0)_") } } } ?? candidates
+        return newest(theirs, since: since).first
+    }
+
+    /// The items written at or after `since`, newest first.
+    static func newest(_ items: [URL], since: Date) -> [URL] {
+        items.compactMap { item in (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate.map { (item, $0) } }
+            .filter { $0.1 >= since }.sorted { $0.1 > $1.1 }.map(\.0)
+    }
+
+    /// The items of the project's own workspace folder that `matches` names.
+    static func candidates(in folder: String = "logs", project: URL, home: URL, named matches: (String) -> Bool) -> [URL] {
+        let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
         let roots = [project.path, ProjectLayout.canonical(project)]
-        let manager = FileManager.default
-        var newest: (url: URL, modified: Date)?
-        for key in Set(roots.map(workspaceKey(root:))) {
-            let logs = workspaces.appending(path: key).appending(path: folder)
-            for name in (try? manager.contentsOfDirectory(atPath: logs.path)) ?? [] where !name.contains("parser-debug") && matches(name) {
-                if let servers, !servers.contains(where: { name.contains("_pid\($0)_") }) { continue }
-                let url = logs.appending(path: name)
-                guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-                      modified >= since, modified > (newest?.modified ?? .distantPast)
-                else { continue }
-                newest = (url, modified)
-            }
+        return Set(roots.map(workspaceKey(root:))).flatMap { key in
+            let items = workspaces.appending(path: key).appending(path: folder)
+            return ((try? FileManager.default.contentsOfDirectory(atPath: items.path)) ?? []).filter { !$0.contains("parser-debug") && matches($0) }.map { items.appending(path: $0) }
         }
-        return newest?.url
     }
 }
 
