@@ -444,6 +444,7 @@ export const register: Register = on => {
     // The card is saved from the history as it's left: fresh, and this version's.
     void quietly(() => pruneHistory($)).then(() => saveCard($))
     void quietly(() => pruneGone($))
+    void quietly(() => buildInBackground($))
     return started
   })
   // A `/clear` or a `/resume` fires no session start, the process going on under another conversation: that one starts
@@ -644,6 +645,22 @@ async function build($: EngineInterface, timeoutMs: number): Promise<string | un
       asking = undefined
     })
   return asking
+}
+
+/**
+ * Starts the shim on its cheapest command, `--binary-path`, not waited on, so the CLI is built for this version when
+ * no build matches: after `/reload-plugins` no SessionStart command hook builds it, and the first CLI call would pay
+ * for the build (docs/findings.md, *Toolchains*). With a build there it's one process start. A call made meanwhile
+ * waits on the shim's lock for the same build; the build it names is the one later calls run. The spawn lives until
+ * the module reloads, longer than a build takes. One that can't start leaves the first call to build, as before.
+ */
+async function buildInBackground($: EngineInterface): Promise<void> {
+  let printed = ''
+  for await (const piece of $.process.spawn({ argv: [shimPath($.plugin.root), '--binary-path'] })) if (piece.stream === 'stdout') printed += piece.text
+  const named = namedBuild(printed)
+  if (named === undefined) return
+  const at = await $.clock.now()
+  await update($, buildState, () => ({ path: named, at }))
 }
 
 /**
