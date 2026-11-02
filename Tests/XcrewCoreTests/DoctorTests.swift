@@ -307,6 +307,26 @@ import XcrewTestSupport
         #expect(await SimulatorsCheck().run(.fake(runner, project: project)) == .warn("a simulator the profiles name by ID is gone (GONE): xcrew setup writes the current ones"))
     }
 
+    /// `xcrew setup --worktree` names a worktree's own simulators by ID alone: the check resolves each, as it does a name,
+    /// and fails when one is gone, since MobileBuildMCP then has no simulator to run on.
+    static let idOnly = "schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: 'A.xcworkspace'\n    scheme: 'A'\n    simulatorId: 'CLONE-1'\nactiveSessionDefaultsProfile: unit\n"
+
+    @Test func aSimulatorNamedByIDAloneIsChecked() async {
+        let project = Project.temporary()
+        project.write(Self.idOnly, to: ".mobilebuildmcp/config.yaml")
+        let json = #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-2":[{"name":"xcrew · App · feature","udid":"CLONE-1","isAvailable":true}]}}"#
+        let runner = FakeRunner(responses: ["xcrun simctl list devices available --json": .init(status: 0, stdout: json)])
+        #expect(await SimulatorsCheck().run(.fake(runner, project: project)) == .pass("xcrew · App · feature (CLONE-1)"))
+    }
+
+    @Test func aSimulatorNamedByIDAloneThatIsGoneFails() async {
+        let project = Project.temporary()
+        project.write(Self.idOnly, to: ".mobilebuildmcp/config.yaml")
+        let json = #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-2":[{"name":"iPhone 18 Pro","udid":"OTHER","isAvailable":true}]}}"#
+        let runner = FakeRunner(responses: ["xcrun simctl list devices available --json": .init(status: 0, stdout: json)])
+        #expect(await SimulatorsCheck().run(.fake(runner, project: project)) == .fail("a simulator the profiles name by ID alone is gone (CLONE-1), so MobileBuildMCP has none to run on: xcrew setup --worktree makes the worktree's own again"))
+    }
+
     @Test func simulatorsCheckNamesWhatIsMissing() async {
         let project = Project.temporary()
         project.write(ConfigRenderer.render(.init(container: "A.xcworkspace", testSimulator: "iPhone 17", appSimulator: "iPhone 99", appScheme: "A"), root: project.root), to: ".mobilebuildmcp/config.yaml")
