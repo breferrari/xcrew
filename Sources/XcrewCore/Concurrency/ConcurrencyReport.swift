@@ -52,8 +52,6 @@ public struct ConcurrencyReport: Sendable, Equatable, Codable {
     /// The module a diagnostic's file is in when no project here builds it.
     public static let noModule = "not in a project"
 
-    /// The log's concurrency diagnostics, the modules from the project's targets. `changed` limits them to lines the
-    /// branch changed, when given.
     /// The log's report, its groups from the docs of the Xcode it names, else the one builds use on `machine`, looked up
     /// only then. `readsChanges` false leaves git alone: the note after a build gives no changed-line count.
     public static func read(log: URL, project: Project, machine: Machine, onlyChanged: Bool = false, readsChanges: Bool = true) async throws -> ConcurrencyReport {
@@ -63,6 +61,8 @@ public struct ConcurrencyReport: Sendable, Equatable, Codable {
         }, onlyChanged: onlyChanged, readsChanges: readsChanges, using: machine.runner)
     }
 
+    /// The log's concurrency diagnostics, the modules from the project's targets. `changed` limits them to lines the
+    /// branch changed, when given.
     public static func read(log: URL, project: Project, groups docs: @Sendable (URL?) async -> ConcurrencyGroups, onlyChanged: Bool = false, readsChanges: Bool = true, using runner: any CommandRunning) async throws -> ConcurrencyReport {
         var listed: [(diagnostic: CompilerDiagnostic, target: String?)] = []
         var target: String?
