@@ -82,7 +82,7 @@ struct OutsideSchemeTests {
     func theSelectedXcodeWordsTheRefusalAsTheNoteReadsIt() throws {
         let xcode = try #require(HookTests.installedXcode)
         let file = URL(fileURLWithPath: xcode.path).appending(path: "Contents/SharedFrameworks/XCTHarness.framework/XCTHarness")
-        let harness = try #require(try? Data(contentsOf: file), "\(xcode.path) has no XCTHarness where Xcode 27.2 kept it, so the refusal's wording can't be checked: find the framework that holds it and update this test and docs/findings.md")
+        let harness = try #require(try? Data(contentsOf: file), "can't read \(file.path), where Xcode 27.2 kept XCTHarness, so the refusal's wording can't be checked: find the framework that holds it and update this test and docs/findings.md")
         let pieces = ["Tests in the target “", "” can’t be run because “", "” isn’t a member of the specified test plan or scheme."]
         for piece in pieces { #expect(harness.range(of: Data(piece.utf8)) != nil, "\(xcode.path) no longer says \(piece)") }
         #expect(OutsideScheme.targets(in: pieces[0] + "CoreTests" + pieces[1] + "CoreTests" + pieces[2]) == ["CoreTests"])
