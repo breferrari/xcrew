@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The session's start no longer says "and at least 0 more test plans" when it stopped reading a large project's schemes with every plan it found already named; it says the schemes past the first 50 weren't read.
 - In a Tuist or XcodeGen project, the doctor says a worktree's workspace isn't generated in this checkout yet and names the generate command (`tuist install && tuist generate --no-open`, or `xcodegen generate`), rather than calling it moved or renamed and offering `xcrew setup`.
 - `affected` names the one scheme that tests everything a change reaches when that's most of the suite, rather than listing hundreds of module schemes. A narrower change still lists the schemes that test only selected targets, the first ten named and the rest counted, and a target none of them tests is named with the scheme that tests it with the fewest others, as `` `Mixed` tests AppUITests with 1 more``.
 - A screenshot of a simulator with two displays gets its note again, naming `simctl`'s `--display` option. simctl gives its reason on the error's third line, which xcrew didn't read, so the note never showed.

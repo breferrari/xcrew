@@ -59,8 +59,10 @@ public struct SessionBriefing: Sendable {
             "\(found.sentence) A test can fail under one and pass under another; `look` names which."
         }
         let more = plans.count - named.count
+        // Reading stopped with nothing left to count: the rest weren't read, which is all that's known.
+        if more == 0 { return named + (complete ? [] : ["Schemes past the first \(TestPlans.mostSchemes) weren't read for test plans."]) }
         let counted = complete ? "\(more)" : "at least \(more)"
-        return named + (more > 0 || !complete ? ["and \(counted) more test \(more == 1 && complete ? "plan runs" : "plans run") each test under several configurations."] : [])
+        return named + ["and \(counted) more test \(more == 1 && complete ? "plan runs" : "plans run") each test under several configurations."]
     }
 
     /// Said at the start, and by the mod with the session's first MobileBuildMCP build or test, while MobileBuildMCP has

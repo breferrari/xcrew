@@ -129,6 +129,21 @@ import XcrewTestSupport
         #expect(text.contains("- **xcrew:** and at least 45 more test plans run each test under several configurations."), "\(text)")
     }
 
+    /// Reading stopped with nothing unnamed: no count of 0 more, only that the rest weren't read.
+    @Test func briefingStoppedWithNothingLeftCountsNoMorePlans() async {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        for index in 1...80 {
+            let name = "S" + String(repeating: "0", count: 3 - String(index).count) + String(index)
+            project.writeScheme(name, plan: "\(name).xctestplan")
+            let configurations = index == 1 ? #"[{"name":"Light"},{"name":"Dark"}]"# : #"[{"name":"Only"}]"#
+            project.write(#"{"configurations":\#(configurations),"testTargets":[],"version":1}"#, to: "\(name).xctestplan")
+        }
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
+        #expect(text.contains("Test plan `S001`"), "\(text)")
+        #expect(!text.contains("at least 0"), "\(text)")
+        #expect(text.contains("- **xcrew:** Schemes past the first \(TestPlans.mostSchemes) weren't read for test plans."), "\(text)")
+    }
+
     /// One line per test plan, whichever schemes share it, and a few plans at most: a large modular app's schemes would
     /// otherwise each add one.
     @Test func briefingNamesEachTestPlanOnceAndAFewAtMost() async {
