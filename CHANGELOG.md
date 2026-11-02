@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- In a worktree set up by `xcrew setup --worktree`, the doctor checks its simulators by the ID the config names, and fails when one is gone. Before, it skipped them, saying no simulators were named.
 - `xcrew space` stops naming a gone project's MobileBuildMCP workspace with a purge once it holds only what `mobilebuildmcp purge` keeps, logs from the last hour and its state, and counts such folders on one line instead. Before, the same purge was offered again though it freed nothing.
 - The session's routing rules say a git worktree gets a session of its own, `claude --worktree <name>` set up there with `/xcrew:setup`, since each session's MobileBuildMCP serves its own checkout, and that a build or test run from Bash, the `mobilebuildmcp` CLI's included, gets no timing, ledger or line above the prompt.
 - A build or test run Claude Code moves to the background stays on the line above the prompt, going, with its time, gauge and phase and marked as in the background, until its log's verdict or its notification ends it. A run whose log stops with neither leaves after a minute and a half. Before, it showed `no result yet` and dropped off while it went on.

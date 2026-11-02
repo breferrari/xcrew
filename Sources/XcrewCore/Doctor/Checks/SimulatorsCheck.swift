@@ -10,7 +10,9 @@ struct SimulatorsCheck: Check {
             return .skip(context.project.layout(.anywhereButHome).isApplePlatform ? "no config" : "not an Apple project")
         }
         let wanted = ConfigRenderer.simulatorNames(in: yaml)
-        guard !wanted.isEmpty else { return .skip("no simulators named") }
+        // `xcrew setup --worktree` names a worktree's own simulators by ID alone, which is checked as a name is.
+        let ids = ConfigRenderer.simulatorIDs(in: yaml)
+        guard !wanted.isEmpty || !ids.isEmpty else { return .skip("no simulators named") }
         let catalog = await SimulatorCatalog.load(using: context.runner, displaysOf: Set(wanted))
         let missing = wanted.filter { !catalog.names.contains($0) }
         guard missing.isEmpty else {
@@ -28,10 +30,13 @@ struct SimulatorsCheck: Check {
             return .warn("\(name) has two displays, and MobileBuildMCP's screenshot fails on it: xcrew setup --test-simulator <name> picks another")
         }
         // MobileBuildMCP uses a profile's ID as it is, and tools like `screenshot` fail on one that's gone.
-        let gone = ConfigRenderer.simulatorIDs(in: yaml).filter { id in !catalog.devices.contains { $0.udid == id } }
+        let gone = ids.filter { id in !catalog.devices.contains { $0.udid == id } }
         guard gone.isEmpty else {
+            // With no name beside it, nothing else picks a simulator: the run has none.
+            if wanted.isEmpty { return .fail("a simulator the profiles name by ID alone is gone (\(gone.joined(separator: ", "))), so MobileBuildMCP has none to run on: xcrew setup --worktree makes the worktree's own again") }
             return .warn("a simulator the profiles name by ID is gone (\(gone.joined(separator: ", "))): xcrew setup writes the current ones")
         }
-        return .pass(wanted.joined(separator: ", "))
+        guard wanted.isEmpty else { return .pass(wanted.joined(separator: ", ")) }
+        return .pass(ids.compactMap { id in catalog.devices.first { $0.udid == id }.map { "\($0.name) (\(id))" } }.joined(separator: ", "))
     }
 }
