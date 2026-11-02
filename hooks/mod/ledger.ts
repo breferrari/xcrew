@@ -93,8 +93,8 @@ export function isWholeScope(scope: string): boolean {
 
 /**
  * The ledger after a test run.
- * - A failing test enters red, or turns red again after a green, keeping its first red; either way it now fails in this
- *   run's scope.
+ * - A failing test enters red, or turns red again after a green, keeping its first red's date and bundle; either way it
+ *   now fails in this run's scope, with this run's message.
  * - A run turns green each red test its results list as passed (`passes`), a failing run included. A run whose
  *   results the CLI couldn't read turns nothing green.
  * - An entry no run has written for as long as the history is kept is dropped.
@@ -119,7 +119,9 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
     if (failing.has(entry.test)) {
       const flaky = flakyAfter(entry.test, entry.flaky)
       const target = failed.get(entry.test)?.target ?? entry.target
-      return { test: entry.test, red: entry.red, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) }
+      // Its first red's date and bundle stay, for the evidence block; its message is the newest failure's.
+      const message = firstLine(failed.get(entry.test)?.message ?? verdictMessage(repeated.get(entry.test)))
+      return { test: entry.test, red: { ...entry.red, message }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) }
     }
     const flaky = flakyAfter(entry.test, entry.flaky)
     const updated = flaky === entry.flaky ? entry : { ...entry, ...(flaky ? { flaky } : {}), last: run.at }
