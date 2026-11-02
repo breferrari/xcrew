@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A test run's report reaches Claude about 0.6 s sooner: a result bundle without coverage is no longer handed to `xccov`, and one with coverage asks it one question fewer.
 - After `/clear` or `/resume`, the new conversation starts with a clean slate: a pin to suggest is named again on the next failing build it may explain, and the doctor's warnings show again from its first prompt. Before, they counted as already said.
 - A build or test run moved to the background stops being followed once its log never appears, or once more calls wait for their notifications than xcrew keeps. Before, its once-a-second read of the run's phase went on for the rest of the session.
 - Which Xcode CI selects is read through the local composite actions a workflow uses (`uses: ./…`), however deep, so a bare `xcodes select` in one counts as CI selecting the project's `.xcode-version`. Before, a workflow that chose its Xcode in a local action was taken to name none.
