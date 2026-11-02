@@ -5,16 +5,16 @@ import Foundation
 /// types are `utils/session-defaults-schema.js`'s).
 public enum LiveDefaults {
     /// One call a profile, as its tool's arguments in JSON, the active profile last, since each call makes its profile
-    /// the session's; one call without a profile for global defaults. A path is made absolute from `root`, as
-    /// MobileBuildMCP resolves the config's against its working directory.
-    public static func calls(in yaml: String, root: URL) -> [String] {
-        let sections = Self.sections(of: yaml)
-        let active = ConfigRenderer.values(of: ["activeSessionDefaultsProfile:"], in: yaml).first
+    /// the session's; one call without a profile for global defaults. A path is made absolute as MobileBuildMCP resolves
+    /// the config's against its working directory, `root`, standardized, with `~` for `home`.
+    public static func calls(in yaml: String, root: URL, home: URL) -> [String] {
+        let sessions = ConfigRenderer.sessions(in: yaml)
+        let active = ConfigRenderer.profiles(in: yaml).active
         var calls: [(name: String?, arguments: [String: Any])] = []
-        for (name, lines) in sections.profiles {
-            calls.append((name, ["profile": name, "createIfNotExists": true].merging(Self.defaults(lines, root: root)) { $1 }))
+        for (name, lines) in sessions.profiles {
+            calls.append((name, ["profile": name, "createIfNotExists": true].merging(Self.defaults(lines, root: root, home: home)) { $1 }))
         }
-        if calls.isEmpty, let global = sections.global { calls.append((nil, Self.defaults(global, root: root))) }
+        if calls.isEmpty, let global = sessions.global { calls.append((nil, Self.defaults(global, root: root, home: home))) }
         let isActive = { (call: (name: String?, arguments: [String: Any])) in call.name != nil && call.name == active }
         let ordered = calls.filter { !isActive($0) } + calls.filter(isActive)
         return ordered.compactMap { call in
@@ -23,62 +23,41 @@ public enum LiveDefaults {
         }
     }
 
-    static let paths: Set<String> = ["projectPath", "workspacePath", "derivedDataPath"]
-
-    /// The lines of `sessionDefaults`, and of each profile under `sessionDefaultsProfiles`, without their own indent.
-    static func sections(of yaml: String) -> (global: [String]?, profiles: [(String, [String])]) {
-        var global: [String]?
-        var profiles: [(String, [String])] = []
-        var section = ""
-        var profileIndent: Int?
-        for line in yaml.components(separatedBy: "\n") where !line.trimmingCharacters(in: .whitespaces).isEmpty {
-            let indent = line.prefix { $0 == " " }.count
-            if indent == 0 {
-                section = String(line.prefix { $0 != ":" })
-                profileIndent = nil
-                if section == "sessionDefaults" { global = [] }
-                continue
-            }
-            if section == "sessionDefaults" {
-                global?.append(String(line.dropFirst(min(indent, 2))))
-            } else if section == "sessionDefaultsProfiles" {
-                if profileIndent == nil || indent <= profileIndent! {
-                    profileIndent = indent
-                    profiles.append((String(line.trimmingCharacters(in: .whitespaces).dropLast()), []))
-                } else if !profiles.isEmpty {
-                    profiles[profiles.count - 1].1.append(String(line.dropFirst(profileIndent! + 2)))
-                }
-            }
-        }
-        return (global, profiles)
-    }
-
-    /// One section's keys and values: a scalar as a string or a boolean, a list of strings, or a map of strings.
-    static func defaults(_ lines: [String], root: URL) -> [String: Any] {
+    /// One block's keys and values, as YAML reads them (`ConfigRenderer.entries`): a scalar as a string, or a boolean
+    /// when it's a plain `true` or `false`; a list of strings, inline or one item a line; a map of strings, inline or one
+    /// entry a line; a value wrapped onto the lines below folded with one space, in a list or a map too. Null and empty
+    /// values are left out. A path resolves as MobileBuildMCP resolves the config's (`ConfigRenderer.resolved`).
+    static func defaults(_ lines: [String], root: URL, home: URL) -> [String: Any] {
         var found: [String: Any] = [:]
-        var key: String?
-        for line in lines {
-            if !line.hasPrefix(" ") {
-                let parts = line.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-                key = parts[0]
-                guard parts.count == 2, !parts[1].isEmpty else { continue }
-                let value = ConfigRenderer.unquoted(parts[1])
-                if value == "true" || value == "false" {
-                    found[parts[0]] = value == "true"
+        for (name, value, below) in ConfigRenderer.entries(lines) {
+            if !value.isEmpty {
+                guard let scalar = ConfigRenderer.scalar(value), !ConfigRenderer.isNull(scalar) else { continue }
+                if !scalar.isQuoted, let items = ConfigRenderer.inlineItems(scalar.value, open: "[", close: "]") {
+                    found[name] = items.compactMap { ConfigRenderer.scalar($0)?.value }
+                } else if !scalar.isQuoted, let entries = ConfigRenderer.inlineItems(scalar.value, open: "{", close: "}") {
+                    found[name] = Self.map(entries)
+                } else if !scalar.isQuoted, let flag = ["true": true, "True": true, "TRUE": true, "false": false, "False": false, "FALSE": false][scalar.value] {
+                    found[name] = flag
                 } else {
-                    found[parts[0]] = paths.contains(parts[0]) && !value.hasPrefix("/") ? root.appending(path: value).path : value
+                    found[name] = ConfigRenderer.pathKeys.contains(name) ? ConfigRenderer.resolved(scalar.value, root: root, home: home) : scalar.value
                 }
-            } else if let key {
-                let item = line.trimmingCharacters(in: .whitespaces)
-                if item.hasPrefix("- ") {
-                    found[key] = ((found[key] as? [String]) ?? []) + [ConfigRenderer.unquoted(String(item.dropFirst(2)))]
-                } else if let colon = item.firstIndex(of: ":") {
-                    var map = (found[key] as? [String: String]) ?? [:]
-                    map[String(item[..<colon])] = ConfigRenderer.unquoted(item[item.index(after: colon)...].trimmingCharacters(in: .whitespaces))
-                    found[key] = map
+            } else if let first = below.first {
+                let indent = first.prefix { $0 == " " }.count
+                let isList = first.trimmingCharacters(in: .whitespaces).hasPrefix("- ")
+                var items: [String] = []
+                for line in below {
+                    let text = line.trimmingCharacters(in: .whitespaces)
+                    let starts = line.prefix { $0 == " " }.count == indent && (isList ? text.hasPrefix("- ") : ConfigRenderer.key(of: text) != nil)
+                    if starts { items.append(isList ? String(text.dropFirst(2)) : text) } else if !items.isEmpty { items[items.count - 1] += " " + text }
                 }
+                found[name] = isList ? items.compactMap { ConfigRenderer.scalar($0)?.value } as Any : Self.map(items) as Any
             }
         }
         return found
+    }
+
+    /// A map's entries, `KEY: value` each, as strings.
+    static func map(_ entries: [String]) -> [String: String] {
+        Dictionary(entries.compactMap { entry in ConfigRenderer.split(entry).map { ($0.key, ConfigRenderer.scalar($0.rest)?.value ?? "") } }) { first, _ in first }
     }
 }

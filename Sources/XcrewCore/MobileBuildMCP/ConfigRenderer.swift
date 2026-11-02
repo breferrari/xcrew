@@ -44,32 +44,12 @@ public enum ConfigRenderer {
         return lines.joined(separator: "\n") + "\n"
     }
 
-    /// The profiles a config defines, in its order, which of them name a scheme, and the active one. A
-    /// profile is a key one level inside `sessionDefaultsProfiles`, at whatever indent the file uses.
+    /// The profiles a config defines, in its order, which of them name a scheme, and the active one, as `sessions(in:)`
+    /// reads them.
     public static func profiles(in yaml: String) -> (names: [String], withScheme: Set<String>, active: String?) {
-        var names: [String] = []
-        var withScheme: Set<String> = []
-        var inProfiles = false
-        var keyIndent: Int?
-        for raw in yaml.split(whereSeparator: \.isNewline) {
-            let line = String(raw)
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-            let indent = line.prefix { $0 == " " }.count
-            if indent == 0 {
-                inProfiles = trimmed == "sessionDefaultsProfiles:"
-                keyIndent = nil
-                continue
-            }
-            guard inProfiles else { continue }
-            if keyIndent == nil { keyIndent = indent }
-            if indent == keyIndent, trimmed.hasSuffix(":") {
-                names.append(unquoted(trimmed.dropLast().trimmingCharacters(in: .whitespaces)))
-            } else if indent > keyIndent ?? 0, trimmed.hasPrefix("scheme:"), let current = names.last {
-                withScheme.insert(current)
-            }
-        }
-        return (names, withScheme, values(of: ["activeSessionDefaultsProfile:"], in: yaml).first)
+        let profiles = sessions(in: yaml).profiles
+        let withScheme = profiles.filter { entries($0.lines).contains { $0.key == "scheme" } }.map(\.name)
+        return (profiles.map(\.name), Set(withScheme), topLevel("activeSessionDefaultsProfile", in: yaml))
     }
 
     /// The scheme MobileBuildMCP builds with when a call names none, by `hasSchemeToBuild`'s rule: the active profile's,
@@ -85,46 +65,25 @@ public enum ConfigRenderer {
 
     /// One of a profile's settings, by `schemeToBuild`'s rule; YAML's null and an empty value name none.
     public static func setting(_ key: String, profile named: String? = nil, in yaml: String) -> String? {
-        let active = profiles(in: yaml).active
-        var section: Substring = ""
-        var keyIndent: Int?
-        var profile: String?
-        for raw in yaml.split(whereSeparator: \.isNewline) {
-            let line = String(raw)
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-            let indent = line.prefix { $0 == " " }.count
-            if indent == 0 {
-                (section, keyIndent, profile) = (Substring(trimmed), nil, nil)
-                continue
-            }
-            if section == "sessionDefaultsProfiles:" {
-                if keyIndent == nil { keyIndent = indent }
-                if indent == keyIndent, trimmed.hasSuffix(":") {
-                    profile = unquoted(trimmed.dropLast().trimmingCharacters(in: .whitespaces))
-                    continue
-                }
-            }
-            guard let found = value(of: key, in: line), !["", "null", "~"].contains(found) else { continue }
-            if named == globalProfile {
-                if section == "sessionDefaults:" { return found }
-            } else if let named {
-                if section == "sessionDefaultsProfiles:", profile == named { return found }
-            } else if let active {
-                if section == "sessionDefaultsProfiles:", profile == active { return found }
-            } else if section == "sessionDefaults:" {
-                return found
-            }
+        let sessions = sessions(in: yaml)
+        let block = { (name: String) in sessions.profiles.first { $0.name == name }?.lines }
+        let lines: [String]?
+        if named == globalProfile {
+            lines = sessions.global
+        } else if let named {
+            lines = block(named)
+        } else if let active = profiles(in: yaml).active {
+            lines = block(active)
+        } else {
+            lines = sessions.global
         }
-        return nil
+        return lines.flatMap { value(of: key, among: $0) }
     }
 
     /// Whether the config turns off MobileBuildMCP's following of Xcode's scheme selection after its start
     /// (`disableXcodeAutoSync: true` at the top level).
     public static func disablesXcodeAutoSync(in yaml: String) -> Bool {
-        yaml.split(whereSeparator: \.isNewline).contains { line in
-            !line.hasPrefix(" ") && ["true", "True", "TRUE"].contains(value(of: "disableXcodeAutoSync", in: line) ?? "")
-        }
+        ["true", "True", "TRUE"].contains(topLevel("disableXcodeAutoSync", in: yaml) ?? "")
     }
 
     /// Whether MobileBuildMCP has a scheme to build with: the active profile's, since a named profile stands alone, or
@@ -132,17 +91,7 @@ public enum ConfigRenderer {
     public static func hasSchemeToBuild(in yaml: String) -> Bool {
         let profiles = profiles(in: yaml)
         if let active = profiles.active { return profiles.withScheme.contains(active) }
-        var inDefaults = false
-        for raw in yaml.split(whereSeparator: \.isNewline) {
-            let trimmed = raw.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-            if !raw.hasPrefix(" ") {
-                inDefaults = trimmed == "sessionDefaults:"
-            } else if inDefaults, trimmed.hasPrefix("scheme:"), !trimmed.dropFirst("scheme:".count).trimmingCharacters(in: .whitespaces).isEmpty {
-                return true
-            }
-        }
-        return false
+        return setting("scheme", profile: globalProfile, in: yaml) != nil
     }
 
     /// Every list a config holds, by the path of keys to it (`customWorkflows.sim-env`), block or flow style, at any
@@ -191,13 +140,17 @@ public enum ConfigRenderer {
         values(of: ["simulatorId:"], in: yaml)
     }
 
-    /// The simulator names a config's profiles reference, each once.
     /// The debugger backend a config sets at its top level, which setup keeps when it writes the config again.
     public static func debuggerBackend(in yaml: String) -> String? {
-        yaml.split(whereSeparator: \.isNewline).first { $0.hasPrefix("debuggerBackend:") }
-            .map { unquoted($0.dropFirst("debuggerBackend:".count).trimmingCharacters(in: .whitespaces)) }
+        topLevel("debuggerBackend", in: yaml)
     }
 
+    /// A config's top-level setting, read as `entries` reads a block; nil when it's null, empty or absent.
+    static func topLevel(_ key: String, in yaml: String) -> String? {
+        value(of: key, among: yaml.components(separatedBy: .newlines))
+    }
+
+    /// The simulator names a config's profiles reference, each once.
     public static func simulatorNames(in yaml: String) -> [String] {
         values(of: ["simulatorName:"], in: yaml)
     }
@@ -240,7 +193,6 @@ public enum ConfigRenderer {
         "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
     }
 
-    /// A YAML scalar's text: single-quoted as xcrew writes it, double-quoted as a person may, or plain.
     /// The config without its session defaults, global or by profile, and the active profile's name: what only a
     /// restart loads into a running MobileBuildMCP.
     public static func serverPart(of yaml: String) -> String {
@@ -256,6 +208,7 @@ public enum ConfigRenderer {
         return kept.joined(separator: "\n")
     }
 
+    /// A YAML scalar's text: single-quoted as xcrew writes it, double-quoted as a person may, or plain.
     static func unquoted(_ value: String) -> String {
         guard value.count >= 2, let quote = value.first, quote == "'" || quote == "\"", value.last == quote else { return value }
         let text = String(value.dropFirst().dropLast())
@@ -271,24 +224,6 @@ public enum ConfigRenderer {
     static func value(of key: String, in line: some StringProtocol) -> String? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("\(key):") else { return nil }
-        let rest = trimmed.dropFirst(key.count + 1).trimmingCharacters(in: .whitespaces)
-        guard let quote = rest.first, quote == "'" || quote == "\"" else {
-            let plain = rest.range(of: " #").map { String(rest[..<$0.lowerBound]) } ?? rest
-            return plain.isEmpty ? nil : plain
-        }
-        // The closing quote: in single quotes, `''` is an escaped one.
-        var index = rest.index(after: rest.startIndex)
-        while index < rest.endIndex {
-            if rest[index] == quote {
-                let next = rest.index(after: index)
-                if quote == "'", next < rest.endIndex, rest[next] == "'" {
-                    index = rest.index(after: next)
-                    continue
-                }
-                return unquoted(String(rest[...index]))
-            }
-            index = rest.index(after: index)
-        }
-        return nil
+        return scalar(trimmed.dropFirst(key.count + 1))?.value
     }
 }
