@@ -24,6 +24,20 @@ import XcrewTestSupport
         #expect(report["isUnread"] == nil)
     }
 
+    /// A notification whose result Claude Code saved for its size: the shorter result comes back, its warnings counted.
+    @Test func aSavedResultInANotificationComesBackShorter() async throws {
+        let warnings = (1...354).map { #"{"message":"unused \#($0)","location":"/testbed/field/A\#($0).swift:1"}"# }.joined(separator: ",")
+        let json = #"{"schema":"mobilebuildmcp.output.test-result","data":{"summary":{"status":"SUCCEEDED","counts":{"passed":1,"failed":0,"skipped":0}},"diagnostics":{"warnings":[\#(warnings)],"errors":[]}}}"#
+        let folder = Project.temporary()
+        folder.write(json, to: "claude/projects/-work-App/0b6e4c1a/tool-results/mcp-test_sim-1.txt")
+        let saved = folder.root.appending(path: "claude/projects/-work-App/0b6e4c1a/tool-results/mcp-test_sim-1.txt").path
+        let notice = "Error: result (119,619 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
+        let report = try Self.json(await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", stdin: Self.notification(notice)))
+        let result = try #require(report["result"] as? String, "\(report)")
+        #expect(result.contains("354 warnings left out to keep this result short; the full result is in \(saved)"), "\(result)")
+        #expect(result.count < 1_000, "\(result.count) characters")
+    }
+
     /// A task killed or failed, or a text that isn't a notification, has no result to read.
     @Test(arguments: [notification("Task failed: the server went away", status: "failed"), notification("", status: "killed"), failed])
     func aNotificationWithoutAResultIsUnread(_ text: String) async throws {

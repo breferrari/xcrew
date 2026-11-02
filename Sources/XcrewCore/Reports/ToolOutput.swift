@@ -229,16 +229,27 @@ public struct ToolOutput: Sendable {
         }
     }
 
-    /// A MobileBuildMCP test result without its per-test list, which is nearly all of a large run's
-    /// result (127 of 130 KB for 959 tests): the summary, counts, failures and artifacts stay, and the
-    /// list is pointed to in `savedPath`. Nil for anything else.
+    /// A MobileBuildMCP test result without its per-test list and its warning list, which are nearly all of a large run's
+    /// result (127 of 130 KB for 959 tests; 118 of 120 KB for 354 warnings, a field report's): the summary, counts,
+    /// errors, failures and artifacts stay, and what's left out is pointed to in `savedPath`; the notes name the warnings
+    /// in lines the branch changed. Nil for anything else, or with nothing to leave out.
     public func compactTestResult(savedPath: String) -> String? {
         guard case let .mobileBuildMCPJSON(result) = shape, result.schema == MobileBuildMCPResult.testResultSchema else { return nil }
         return editingData { data in
-            guard data["testCases"] is [Any] else { return false }
-            // No count of its own: the list can be one short of the summary's counts, which come from the result bundle.
-            data["testCases"] = "per-test list left out to keep this result short; the counts above are complete, and the full result is in \(savedPath)"
-            return true
+            var edited = false
+            if data["testCases"] is [Any] {
+                // No count of its own: the list can be one short of the summary's counts, which come from the result bundle.
+                data["testCases"] = "per-test list left out to keep this result short; the counts above are complete, and the full result is in \(savedPath)"
+                edited = true
+            }
+            if var diagnostics = data["diagnostics"] as? [String: Any], let warnings = diagnostics["warnings"] as? [[String: Any]], !warnings.isEmpty {
+                // A warning collapsed with its repeats counts each.
+                let count = warnings.map { $0["count"] as? Int ?? 1 }.reduce(0, +)
+                diagnostics["warnings"] = "\(count) \(count == 1 ? "warning" : "warnings") left out to keep this result short; the full result is in \(savedPath)"
+                data["diagnostics"] = diagnostics
+                edited = true
+            }
+            return edited
         }
     }
 
