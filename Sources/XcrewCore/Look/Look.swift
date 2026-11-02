@@ -32,7 +32,9 @@ public enum Look {
         return named.hasSuffix("()") ? exact : withoutTarget ?? exact
     }
 
-    /// `failed` is the run's failed tests, nil when its test list couldn't be read.
+    /// `failed` is the run's failed tests, nil when its test list couldn't be read. The run's size is recorded once all its
+    /// tests are looked at: they're looked at side by side, and a measure taken before another's write would record too
+    /// few.
     static func report(bundle: ResultBundle, test: TestID?, cases: [TestID: [[String: Any]]], failed: [TestID]?, keptIn folder: URL) async -> String {
         let name = URL(fileURLWithPath: bundle.path).lastPathComponent
         let run = bundle.runFolder(in: folder)
@@ -42,7 +44,9 @@ public enum Look {
             guard let read = FailedRun.read(activities: await bundle.activities(of: test), passedUnder: passedUnder) else {
                 return "xcrew: couldn't read \(test.shown)'s steps in \(name); xcrun xcresulttool get test-results activities --test-id \(test.xcresultID) --path \(bundle.path) says why"
             }
-            return await look(at: test, runs: read.failed, passed: read.passed, in: bundle, named: name, keptIn: run) ?? "xcrew: \(test.shown) didn't fail in \(name)"
+            let looked = await look(at: test, runs: read.failed, passed: read.passed, in: bundle, named: name, keptIn: run)
+            FailureImages.record(run)
+            return looked ?? "xcrew: \(test.shown) didn't fail in \(name)"
         }
         guard let failed else {
             return "xcrew: couldn't read the tests in \(name); xcrun xcresulttool get test-results tests --path \(bundle.path) says why"
@@ -76,6 +80,7 @@ public enum Look {
                 if shown.count < mostTests { shown.append(text) } else { unshown.append(test) }
             }
         }
+        FailureImages.record(run)
         guard !shown.isEmpty else {
             let among = failed.count > scanned.count ? "none of the first \(scanned.count) failed tests" : "no failed test"
             return "xcrew: \(among) in \(name) kept a screen recording, as a UI test's failed run does; xcrew look <Suite/test> shows one test's steps"
@@ -108,15 +113,15 @@ public enum Look {
         } else {
             runs.map { _ in (nil, nil) }
         }
-        if kept.contains(where: { $0.screen != nil || $0.hierarchy != nil }) { FailureImages.record(run) }
         var lines = ["xcrew look: \(test.shown), in \(name)"]
-        for (failed, found) in zip(runs, kept) {
+        let onScreen = elements(of: zip(runs, kept).map { failed, found in (failed.label, failed.attachments.isEmpty ? nil : hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps))) })
+        for ((failed, found), elements) in zip(zip(runs, kept), onScreen) {
             lines.append("  " + failed.label)
             lines += failed.steps.map { "    \(firstLine($0))" }
             lines.append("    ✗ \(firstLine(failed.failure))")
             guard !failed.attachments.isEmpty else { continue }
             lines.append("    " + screenLine(found.screen, recorded: failed.hasRecording))
-            lines += hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps)).map { "    \($0)" }
+            lines += (elements ?? []).map { "    \($0)" }
         }
         if !passed.isEmpty { lines.append("  passed under: " + passed.joined(separator: "; ")) }
         return lines.joined(separator: "\n")
@@ -127,8 +132,25 @@ public enum Look {
         return screen.secondsBefore < 1 ? "screen: \(screen.path)" : "screen: \(screen.path) (\(Int(screen.secondsBefore.rounded())) s before the failure)"
     }
 
+    /// Each run's elements on screen, as `hierarchyLines` lists them, nil for a run whose aren't listed: a list the same as
+    /// an earlier run's is said once, by that run's label, as under a test plan's configurations whose screens hold the
+    /// same elements. Two lists are the same though each names its own file for the elements past those listed; a run
+    /// whose screen lists no element, as one that kept no hierarchy, says so itself.
+    static func elements(of runs: [(label: String, lines: [String]?)]) -> [[String]?] {
+        var listedUnder: [[String]: String] = [:]
+        return runs.map { run in
+            guard let lines = run.lines else { return nil }
+            guard lines.count > 1 else { return lines }
+            let same = lines.map { $0.firstMatch(of: #/^(  and \d+ more) in /#).map { String($0.1) } ?? $0 }
+            if let first = listedUnder[same] { return ["on screen: the same as under \(first)"] }
+            listedUnder[same] = run.label
+            return lines
+        }
+    }
+
     /// The elements on screen at the failure, the query's marked or named missing; or, for a hierarchy in a shape xcrew
     /// doesn't read, its text as XCTest wrote it.
+
     static func hierarchyLines(_ kept: FailureHierarchy?, query: UIQuery?) -> [String] {
         guard let kept else { return ["on screen: no hierarchy kept; XCTest attaches one when a query fails"] }
         let more = { (count: Int) in count > 0 ? ["  and \(count) more in \(kept.path)"] : [] }
