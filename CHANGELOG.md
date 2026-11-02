@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A test run moved to the background whose result Claude Code saved for its size reaches Claude shortened: its build warnings are counted and pointed to in the saved file, with its errors, failures and counts kept. Before, a run with hundreds of warnings came back as MobileBuildMCP's whole result, about 120,000 characters.
 - `xcrew space` says its sizes are decimal, as Finder counts them, and the doctor's storage check gives its total in `du -h`'s GiB too, so the two read alike. Either says when a build is writing to a workspace as it's measured. The dry run `xcrew space` suggests starts with test products, counted in bundles with their size each, and names DerivedData apart, since it costs a cold build; the doctor gives the total and the class that takes the most, and names `xcrew space` for the rest.
 - The session's start no longer says "and at least 0 more test plans" when it stopped reading a large project's schemes with every plan it found already named; it says the schemes past the first 50 weren't read.
 - In a Tuist or XcodeGen project, the doctor says a worktree's workspace isn't generated in this checkout yet and names the generate command (`tuist install && tuist generate --no-open`, or `xcodegen generate`), rather than calling it moved or renamed and offering `xcrew setup`.
