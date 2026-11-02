@@ -15,9 +15,9 @@ struct BranchCoverage: Sendable {
 
     /// What the runs read say together, as `ChangedLineCoverage` words it.
     let sentence: String
-    /// When each run read finished, newest first.
+    /// When each run that spoke finished, newest first.
     let finished: [Date]
-    /// How many runs that could have spoken weren't read before `budget` passed.
+    /// How many runs that could have spoken weren't read: past `budget`, or past their own limit.
     let leftOut: Int
 
     /// How long reading the runs' coverage may take: the mod gives the whole evidence call 300 s (`EVIDENCE_TIMEOUT_MS`),
