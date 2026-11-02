@@ -11,6 +11,8 @@ struct LogReading: Codable, Equatable, Sendable {
         case none, testingStarted, tests
     }
 
+    /// The file read, by its number on its volume: another file at the log's path is another log.
+    var file: Int?
     /// The bytes read: up to the end of the last whole line.
     var offset: UInt64 = 0
     var start = Start.none
@@ -22,12 +24,13 @@ struct LogReading: Codable, Equatable, Sendable {
     /// The line still being written at the end: counted in this reading's phase, read again whole by the next.
     var pending: String?
 
-    /// Reads the log at `url` on from `kept`; afresh when `kept` read more than the log now holds, as for another log.
+    /// Reads the log at `url` on from `kept`; afresh when `kept` read another file, or more than the log now holds.
     static func reading(_ url: URL, after kept: LogReading?) -> LogReading? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let size = try? handle.seekToEnd() else { return nil }
-        var reading = kept.flatMap { $0.offset <= size ? $0 : nil } ?? LogReading()
+        let file = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.systemFileNumber] as? Int
+        var reading = kept.flatMap { $0.offset <= size && $0.file == file ? $0 : nil } ?? LogReading(file: file)
         guard (try? handle.seek(toOffset: reading.offset)) != nil, let appended = try? handle.readToEnd() ?? Data() else { return nil }
         reading.read(appended)
         return reading

@@ -7,6 +7,25 @@ import XcrewTestSupport
 /// A failed test's images: the attachments `xcresulttool export attachments` writes for it, kept under the CLI's cache
 /// and named under the test, so Claude can Read them.
 @Suite struct FailureImagesTests {
+    /// Past the cap the oldest runs' images go first, the newest staying whatever its size; within two weeks and the cap
+    /// every run's stay.
+    @Test func keptImagesPastTheCapLoseTheOldestRunsFirst() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-images-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        for (index, bytes) in [40, 40, 40, 150].enumerated() {
+            let run = folder.appending(path: "run\(index)/Suite/test")
+            try FileManager.default.createDirectory(at: run, withIntermediateDirectories: true)
+            try Data(count: bytes).write(to: run.appending(path: "shot.png"))
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(index - 10) * 3_600)], ofItemAtPath: folder.appending(path: "run\(index)").path)
+        }
+        FailureImages.prune(in: folder, keepingAtMost: 1_000)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["run0", "run1", "run2", "run3"])
+        FailureImages.prune(in: folder, keepingAtMost: 200)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["run2", "run3"])
+        FailureImages.prune(in: folder, keepingAtMost: 100)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["run3"])
+    }
+
     static let bundle = "/runs/test_sim_1.xcresult"
     static let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13])
     static let failed = """
