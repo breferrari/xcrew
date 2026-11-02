@@ -185,6 +185,7 @@ public enum FailureNotes {
             }
             return found
         }
+        if let imagesFolder, !images.isEmpty { FailureImages.record(bundle.runFolder(in: imagesFolder)) }
         for repeated in repetitions {
             let test = TestID(xcresultID: repeated.test)
             notes.repeated.insert(test)

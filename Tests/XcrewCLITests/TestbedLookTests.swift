@@ -45,6 +45,21 @@ struct TestbedLookTests {
         }
     }
 
+    /// `look` records the size of the run it kept screens and hierarchies in, as pruning reads it.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func lookRecordsItsRunsSize() async throws {
+        try await Self.inFolder { root in
+            _ = await Look.report(bundle: try Self.bundle("xcodebuild", root: root), named: nil, keptIn: root.appending(path: "images"))
+            let runs = try FileManager.default.contentsOfDirectory(at: root.appending(path: "images"), includingPropertiesForKeys: nil)
+            #expect(!runs.isEmpty)
+            for run in runs {
+                let files = (FileManager.default.enumerator(at: run, includingPropertiesForKeys: [.fileSizeKey])?.allObjects as? [URL] ?? []).filter { $0.lastPathComponent != FailureImages.sizeRecord }
+                let bytes = try files.reduce(0) { $0 + (try $1.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) }
+                #expect(try String(contentsOf: run.appending(path: FailureImages.sizeRecord), encoding: .utf8) == String(bytes))
+            }
+        }
+    }
+
     /// The screen at the run `pick` chooses among a test's failed runs, from a copy of the capture's export.
     static func screen(_ capture: String, _ name: String, data: Bool = false, run pick: ([FailedRun]) -> FailedRun?) async throws -> (screen: FailureScreen?, images: URL, png: Data?) {
         try await inFolder { root in
@@ -208,6 +223,7 @@ struct TestbedLookTests {
             #expect(hierarchy.elements.contains { $0.label == "Plan B" })
             #expect(try String(contentsOfFile: kept.path, encoding: .utf8).hasPrefix("Application, 0x"))
             #expect(kept.path.hasPrefix(root.appending(path: "images/UITests/testPlanA").path))
+
         }
     }
 

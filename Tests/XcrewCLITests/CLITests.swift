@@ -13,6 +13,15 @@ import XcrewTestSupport
         }
     }
 
+    /// Every option a command's usage names is one it takes: following the usage never gives an unknown-option error.
+    @Test func everyOptionAUsageNamesIsTaken() {
+        for command in CLI.commands {
+            for option in command.usage.joined(separator: " ").matches(of: /--([a-z][a-z-]*)/).map({ String($0.1) }) where option != "help" {
+                #expect(command.valuedOptions.contains(option) || command.flags.contains(option), "xcrew \(command.name)'s usage names --\(option), which it doesn't take")
+            }
+        }
+    }
+
     @Test func unknownCommandIsAUsageError() async {
         let run = await Run("frobnicate")
         #expect(run.status == 64)

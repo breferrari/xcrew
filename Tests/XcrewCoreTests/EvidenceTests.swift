@@ -80,7 +80,8 @@ import XcrewTestSupport
     }
 
     /// The images of a red-to-green test's failing run, read again from its result bundle: named in the block by a label
-    /// the person replaces, listed with their paths only outside it.
+    /// the person replaces, listed with their paths only outside it. The run's size is recorded once they're kept: three
+    /// images of the PNG header's 12 bytes, 36.
     @Test func aRedToGreenTestsImagesAreListedOutsideTheBlock() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
         let red = root.appending(path: "test_sim_1.xcresult"), export = root.appending(path: "export")
@@ -94,6 +95,7 @@ import XcrewTestSupport
         })
         #expect(text.block.contains("then passed in `test_sim · App`. Images from its failing run: attached below."), "\(text.block)")
         let kept = project.root.appending(path: "home/Library/Caches/xcrew/images/test_sim_1/CardTests/testCard")
+        #expect(try String(contentsOf: project.root.appending(path: "home/Library/Caches/xcrew/images/test_sim_1/\(FailureImages.sizeRecord)"), encoding: .utf8) == "36")
         #expect(text.attach == """
             Images to attach (for you, not the PR):
             - `CardTests/testCard`, images from its failing run:

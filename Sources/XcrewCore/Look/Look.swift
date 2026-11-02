@@ -108,6 +108,7 @@ public enum Look {
         } else {
             runs.map { _ in (nil, nil) }
         }
+        if kept.contains(where: { $0.screen != nil || $0.hierarchy != nil }) { FailureImages.record(run) }
         var lines = ["xcrew look: \(test.shown), in \(name)"]
         for (failed, found) in zip(runs, kept) {
             lines.append("  " + failed.label)

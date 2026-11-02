@@ -81,6 +81,10 @@ public enum EvidencePack {
                 results[index] = one
                 next()
             }
+            for path in Set(entries.compactMap(\.red.bundle)) {
+                let run = open(path).runFolder(in: images)
+                if FileManager.default.fileExists(atPath: run.path) { FailureImages.record(run) }
+            }
             return results
         }
     }
