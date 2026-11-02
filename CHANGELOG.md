@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A test run whose filter matched tests that then didn't execute ends on the line above the prompt as `✗ test_sim · 7:49 · 1 selected, none ran`, rather than `no tests ran`, which read as a filter that matched nothing.
 - The briefing names one command for setting up a worktree's session, `xcrew setup --worktree`, as the doctor and the line above the prompt do, and the setup skill starts there in a worktree.
 - Before setup, the doctor names the generate command along with setup in a checkout whose Tuist or XcodeGen project isn't generated yet, as a new worktree's: setup alone left nothing to build.
 - After `xcrew setup`, a running session builds and tests with the new profiles at once: setup prints the `session_set_defaults` calls that give them to MobileBuildMCP, and the doctor asks for a restart only when the config's tool groups or server settings changed. A new worktree session needs no restart to build and test after `xcrew setup --worktree`.

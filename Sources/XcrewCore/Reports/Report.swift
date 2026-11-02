@@ -228,12 +228,14 @@ public struct Report: Sendable, Equatable, Codable {
                 (final, edited) = (ToolOutput(text, isError: output.isError), true)
             }
         }
-        let summary = bundleCounts.map { $0.summary(succeeded: final.summary.ok) } ?? final.summary
+        var summary = bundleCounts.map { $0.summary(succeeded: final.summary.ok) } ?? final.summary
 
         var notes = ToolErrorNotes.notes(for: output)
         let tests = bundleCounts?.ran ?? final.testTotal
         if isTest, tests == 0 {
             if let discovered = read.discovered, discovered > 0 {
+                // The filter matched: none ran is what happened, not that no test was there to run.
+                summary = ToolOutput.Summary(ok: false, detail: "\(discovered) selected, none ran")
                 let scheme = read.buildLog(home: home).flatMap { RunLog.scheme(ofLogAt: URL(fileURLWithPath: $0)) }
                 notes.append(selectedNoneNote(discovered: discovered, plan: project.flatMap { project in scheme.flatMap { TestPlans.configured(forScheme: $0, in: project) } }))
             } else {
