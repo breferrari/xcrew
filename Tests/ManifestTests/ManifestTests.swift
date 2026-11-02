@@ -1130,7 +1130,7 @@ import Testing
     @Test func theShimsCleanupMatchesTheKeysLength() throws {
         let shim = try text("bin/xcrew")
         let kept = try #require(shim.firstMatch(of: /\| shasum \| cut -c1-(\d+)\)/)?.1, "bin/xcrew no longer cuts its key from shasum")
-        let pattern = try #require(shim.firstMatch(of: /(?m)^ *built="([^"]*)"$/)?.1, "bin/xcrew names no build pattern")
+        let pattern = try #require(shim.firstMatch(of: /(?m)^ *keyform="([^"]*)"$/)?.1, "bin/xcrew names no build pattern")
         #expect(pattern.matches(of: /\$hex/).count == Int(kept), "the build pattern names \(pattern.matches(of: /\$hex/).count) characters, the key keeps \(kept)")
     }
 
