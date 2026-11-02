@@ -117,13 +117,21 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// target unreached, only when it is so in every run, since a run that reached it says what it ran there.
     static func merged(_ runs: [ChangedLineCoverage]) -> ChangedLineCoverage {
         guard let first = runs.first else { return ChangedLineCoverage() }
-        var merged = ChangedLineCoverage(runs: runs.reduce(0) { $0 + $1.runs })
+        let spoke = runs.filter { !$0.lines.isEmpty }
+        var merged = ChangedLineCoverage(runs: max(1, spoke.reduce(0) { $0 + $1.runs }))
+        // Each file once, as the file system spells it: runs may spell it as their builds were started.
+        var spelled: [String: String] = [:]
         for run in runs {
-            for (path, lines) in run.lines { merged.lines[path, default: [:]].merge(lines) { $0 || $1 } }
+            for (path, lines) in run.lines {
+                let canonical = ProjectLayout.canonicalPath(path)
+                let key = spelled[canonical] ?? path
+                spelled[canonical] = key
+                merged.lines[key, default: [:]].merge(lines) { $0 || $1 }
+            }
         }
         merged.outside = first.outside.filter { file in runs.allSatisfy { $0.outside.contains(file) } }
         merged.unreached = first.unreached.filter { target in runs.allSatisfy { $0.unreached.contains { $0.target == target.target } } }
-        merged.stale = Set(runs.flatMap(\.stale)).subtracting(merged.lines.keys).sorted()
+        merged.stale = Set(runs.flatMap(\.stale)).filter { spelled[ProjectLayout.canonicalPath($0)] == nil }.sorted()
         return merged
     }
 
@@ -221,8 +229,8 @@ struct ChangedLineCoverage: Sendable, Equatable {
             sentences.append("\(files) in \(runs == 1 ? "this run's" : "these runs'") coverage\(ResultBundle.listed(outside.map(ToolOutput.basename))).")
         }
         if !stale.isEmpty {
-            let files = stale.count == 1 ? "1 changed file has" : "\(stale.count) changed files have"
-            sentences.append("\(sentences.isEmpty ? files : files.prefix(1).uppercased() + files.dropFirst()) changed since every run that covered \(stale.count == 1 ? "it" : "them")\(ResultBundle.listed(stale.map(ToolOutput.basename))).")
+            let files = stale.count == 1 ? "1 changed file" : "\(stale.count) changed files"
+            sentences.append("\(files) changed after every run that covered \(stale.count == 1 ? "it" : "them")\(ResultBundle.listed(stale.map(ToolOutput.basename))).")
         }
         return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }

@@ -134,6 +134,11 @@ public enum EvidencePack {
         return [tested, built].compactMap { $0 }
     }
 
+    /// When the file was last modified; nil when that can't be read, as for a file that isn't there.
+    static func modifiedIfKnown(_ url: URL) -> Date? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
     static func modified(_ url: URL) -> Date {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
     }

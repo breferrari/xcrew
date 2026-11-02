@@ -32,18 +32,32 @@ struct BranchCoverage: Sendable {
         return runs.filter { $0.started >= earliest }.sorted { $0.finished > $1.finished }
     }
 
+    /// When MobileBuildMCP started the run, from its bundle's name: it names the bundle before it builds
+    /// (`utils/test-common.js`, `createDefaultResultBundlePath`), while `xcodebuild` makes the folder only in the test
+    /// phase, after compiling. Nil for a name it didn't give, which gives the run no start.
+    static func started(_ name: String) -> Date? {
+        guard let tool = name.firstMatch(of: /^(.+?)_\d{4}-\d{2}-\d{2}T/)?.output.1, let opened = RunLog.openedAt(name, tool: String(tool)) else { return nil }
+        return Date(timeIntervalSince1970: Double(opened) / 1000)
+    }
+
+    /// Whether a run ran a test, from its summary: one whose tests all were skipped ran none. A summary that can't be read
+    /// says nothing either way, so the run's coverage is read.
+    static func ranTests(summary: String) -> Bool {
+        guard let counts = ResultBundle.counts(summary: summary) else { return true }
+        return (counts.passed ?? 0) + (counts.failed ?? 0) > 0
+    }
+
     /// The test runs in this project's MobileBuildMCP workspace: the finished ones, or the newest unfinished one when none
-    /// has finished, as `ResultBundle.newest` takes them. A run starts when its bundle folder is made and finishes when
-    /// it's last written.
+    /// has finished, as `ResultBundle.newest` takes them. A run starts as `started` reads its name, and finishes when
+    /// it's last written; one whose name gives no start is left out.
     static func runs(project: Project, home: URL) -> [Run] {
         let mark = ResultBundle.completionMark
         let finished = RunLog.candidates(in: "result-bundles", project: project.root, home: home) { $0.hasSuffix(".xcresult" + mark) }
-        let listed = finished.isEmpty ? RunLog.candidates(in: "result-bundles", project: project.root, home: home) { $0.hasSuffix(".xcresult") } : finished
-        return listed.map { item in
+        let unfinished = { RunLog.newest(RunLog.candidates(in: "result-bundles", project: project.root, home: home) { $0.hasSuffix(".xcresult") }, since: .distantPast).prefix(1) }
+        return (finished.isEmpty ? Array(unfinished()) : finished).compactMap { item in
             let bundle = item.path.hasSuffix(mark) ? URL(fileURLWithPath: String(item.path.dropLast(mark.count))) : item
-            let values = try? bundle.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
-            let finished = EvidencePack.modified(item)
-            return Run(path: bundle.path, started: values?.creationDate ?? finished, finished: finished)
+            guard let started = started(bundle.lastPathComponent) else { return nil }
+            return Run(path: bundle.path, started: started, finished: EvidencePack.modified(item))
         }
     }
 
@@ -52,8 +66,7 @@ struct BranchCoverage: Sendable {
     static func read(change: GitChanges.Change, project: Project, machine: Machine) async -> BranchCoverage? {
         let all = runs(project: project, home: machine.home)
         guard !all.isEmpty else { return nil }
-        // Each file's date is asked of the file system by the path its coverage spells, which it resolves as it does git's.
-        let chosen = candidates(all, changedFiles: change.files.map { EvidencePack.modified(URL(fileURLWithPath: $0)) })
+        let chosen = candidates(all, changedFiles: change.files.compactMap { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) })
         guard !chosen.isEmpty else { return BranchCoverage(sentence: "", finished: [], leftOut: 0) }
         let gathered = Gathered()
         await withTaskGroup(of: Void.self) { group in
@@ -61,11 +74,12 @@ struct BranchCoverage: Sendable {
                 for run in chosen {
                     guard !Task.isCancelled else { return }
                     let bundle = ResultBundle(path: run.path, runner: machine.runner)
-                    let tested = ResultBundle.counts(summary: await bundle.summary())?.ran != 0
+                    let tested = ranTests(summary: await bundle.summary())
                     let coverage = tested ? await ChangedLineCoverage.of(bundle, change: { change }, project: project, using: machine.runner) : nil
                     guard !Task.isCancelled else { return }
                     gathered.reached.withLock { $0 += 1 }
-                    if let coverage { gathered.read.withLock { $0.append((coverage.fresh(since: run.started) { EvidencePack.modified(URL(fileURLWithPath: $0)) }, run.finished)) } }
+                    // Each file's date is asked of the file system by the path the coverage spells, which resolves either spelling.
+                    if let coverage { gathered.read.withLock { $0.append((coverage.fresh(since: run.started) { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }, run.finished)) } }
                 }
             }
             group.addTask { try? await Task.sleep(for: budget) }
@@ -73,8 +87,11 @@ struct BranchCoverage: Sendable {
             group.cancelAll()
         }
         let found = gathered.read.withLock { $0 }
-        guard !found.isEmpty, let sentence = ChangedLineCoverage.merged(found.map(\.coverage)).sentence else { return nil }
-        return BranchCoverage(sentence: sentence, finished: found.map(\.finished), leftOut: chosen.count - gathered.reached.withLock { $0 })
+        let leftOut = chosen.count - gathered.reached.withLock { $0 }
+        guard !found.isEmpty else { return leftOut > 0 ? BranchCoverage(sentence: "", finished: [], leftOut: leftOut) : nil }
+        guard let sentence = ChangedLineCoverage.merged(found.map(\.coverage)).sentence else { return nil }
+        let spoke = found.filter { !$0.coverage.lines.isEmpty }.map(\.finished)
+        return BranchCoverage(sentence: sentence, finished: spoke.isEmpty ? [found[0].finished] : spoke, leftOut: leftOut)
     }
 
     /// What the reading has gathered when the budget passes: the runs read, and how many were reached.
@@ -86,7 +103,9 @@ struct BranchCoverage: Sendable {
     /// The evidence block's line: the runs by when they finished, said to be older than the branch's last commit when the
     /// newest is, then what they say, and the runs left out past the time allowed.
     func line(lastCommit: Date?) -> String {
-        guard !finished.isEmpty else { return "- No test run here speaks for the changed lines: each started before their last change." }
+        guard !finished.isEmpty else {
+            return leftOut > 0 ? "- No test run was read in the time allowed: \(leftOut == 1 ? "1 run is" : "\(leftOut) runs are") left out." : "- No test run here speaks for the changed lines: each started before their last change."
+        }
         let runs = finished.count == 1 ? "the test run" : "the test runs"
         let stamps = ResultBundle.joined(finished.map(EvidencePack.stamp))
         let dated = EvidencePack.when(runs, of: stamps, at: finished.max() ?? .distantPast, lastCommit: lastCommit)

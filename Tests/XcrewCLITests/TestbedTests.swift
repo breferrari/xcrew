@@ -500,25 +500,36 @@ struct TestbedMediaFlagTests {
 struct TestbedEvidenceTests {
     /// A copy of the coverage capture on a branch that wrote `price(for:)`'s body, its last commit at `committed`, with
     /// MobileBuildMCP's newest test run and build at `ran`.
+    /// A test run's bundle as MobileBuildMCP names it when the run starts (`utils/test-common.js`).
+    static func named(_ started: Date) -> String {
+        let stamp = started.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)).replacingOccurrences(of: ":", with: "-").replacingOccurrences(of: ".", with: "-")
+        return "test_sim_\(stamp)_pid100_0a1b2c3d.xcresult"
+    }
+
     static func project(committed: Date, ran: Date, changed: Date? = nil, earlier: Date? = nil, earlierTests: Int? = nil) throws -> (project: Project, context: CheckContext) {
         let root = try TestbedTests.copy("captures/coverage")
         // The changed file as the runs compiled it: last changed two days before the run unless given.
         try FileManager.default.setAttributes([.modificationDate: changed ?? ran.addingTimeInterval(-2 * 86_400)], ofItemAtPath: root.appending(path: "App/Pricing.swift").path)
         let project = Project(root: root)
         let workspace = root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root.path))")
-        let bundle = workspace.appending(path: "result-bundles/test_sim_1.xcresult"), log = workspace.appending(path: "logs/build_sim_1.log")
+        let bundle = workspace.appending(path: "result-bundles/\(Self.named(ran.addingTimeInterval(-60)))"), log = workspace.appending(path: "logs/build_sim_1.log")
         try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "\(root.path)/App/Pricing.swift:4:13: warning: initialization of immutable value 'rate' was never used\n\(root.path)/App/Other.swift:2:5: warning: deprecated\n".write(to: log, atomically: true, encoding: .utf8)
-        for item in [bundle, log] { try FileManager.default.setAttributes([.creationDate: ran.addingTimeInterval(-60), .modificationDate: ran], ofItemAtPath: item.path) }
+        // A finished run's bundle has MobileBuildMCP's completion mark beside it, dated when the run finished.
+        let mark = URL(fileURLWithPath: bundle.path + ResultBundle.completionMark)
+        try Data().write(to: mark)
+        for item in [bundle, log, mark] { try FileManager.default.setAttributes([.modificationDate: ran], ofItemAtPath: item.path) }
         var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
         let captured = { (file: String) in
             try String(contentsOf: root.appending(path: file), encoding: .utf8).replacingOccurrences(of: "\\/testbed\\/captures\\/coverage", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
         }
         if let earlier {
-            let second = workspace.appending(path: "result-bundles/test_sim_0.xcresult")
+            let second = workspace.appending(path: "result-bundles/\(Self.named(earlier.addingTimeInterval(-60)))")
             try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
-            try FileManager.default.setAttributes([.creationDate: earlier.addingTimeInterval(-60), .modificationDate: earlier], ofItemAtPath: second.path)
+            let secondMark = URL(fileURLWithPath: second.path + ResultBundle.completionMark)
+            try Data().write(to: secondMark)
+            for item in [second, secondMark] { try FileManager.default.setAttributes([.modificationDate: earlier], ofItemAtPath: item.path) }
             if let earlierTests {
                 responses["xcrun xcresulttool get test-results summary --path \(second.path) --compact"] = .init(status: 0, stdout: #"{"totalTestCount":\#(earlierTests),"passedTests":\#(earlierTests),"failedTests":0,"skippedTests":0}"#)
             }
