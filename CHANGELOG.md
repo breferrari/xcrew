@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A Swift Testing run through a test plan of several configurations counts its tests through the first configuration and then says `testing`, rather than counting past its total as `testing · 10 done`.
 - The doctor's worktree-simulator check says "none of those made for this repository's worktrees is left" once every simulator setup made for them is deleted, rather than "0 made …, each still there".
 - In a worktree set up by `xcrew setup --worktree`, the doctor checks its simulators by the ID the config names, and fails when one is gone. Before, it skipped them, saying no simulators were named.
 - `xcrew space` stops naming a gone project's MobileBuildMCP workspace with a purge once it holds only what `mobilebuildmcp purge` keeps, logs from the last hour and its state, and counts such folders on one line instead. Before, the same purge was offered again though it freed nothing.
