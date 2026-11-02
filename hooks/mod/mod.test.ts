@@ -217,6 +217,7 @@ test('later runs compare with the average of earlier ones', async ($, on) => {
 
   for (let run = 0; run < 3; run += 1) {
     await callTool($, 'mcp__xcode__BuildProject')
+    await clock.settle()
   }
 
   expect(seen.toasts).toEqual(['✓ BuildProject · 1:00', '✓ BuildProject · 1:20 (avg 1:00)', '✓ BuildProject · 1:30 (avg 1:10)'])
@@ -231,6 +232,7 @@ test('a run far slower than usual says how much slower', async ($, on) => {
   })
 
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ build_sim · 0:22 (2× its usual 0:11)'])
 })
@@ -244,6 +246,7 @@ test('slowness is only called out once there are five earlier runs to judge by',
   })
 
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ BuildProject · 0:30 (avg 0:10)'])
 })
@@ -257,7 +260,9 @@ test('a run is timed by what the server reports, so a pre-build hook or a permis
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await clock.settle()
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ test_sim · 0:15 · 3 passed', '✓ test_sim · 0:15 (avg 0:15) · 3 passed'])
 })
@@ -454,6 +459,7 @@ test('a run of a minute or more sends a notification with its outcome', async ($
   stubCli(on, { reports: [{ ok: true, detail: '5 passed' }] })
 
   await callTool($, 'mcp__xcode__RunAllTests')
+  await clock.settle()
 
   expect(notifications).toEqual(['✓ RunAllTests · 1:01 · 5 passed'])
 })
@@ -686,8 +692,10 @@ test('a call the person denies leaves no trace: no time in the history, no outco
   })
 
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
   // The next run is still measured against the usual 1:30, not an average the denied 0:02 pulled down.
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ build_sim · 1:30 (avg 1:30)'])
   expect(notifications).toEqual(['✓ build_sim · 1:30 (avg 1:30)'])

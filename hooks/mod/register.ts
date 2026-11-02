@@ -494,13 +494,22 @@ type Ending = { tool: string; scope: string; key?: string; startedAt: number; ea
 type Backgrounded = Ending & { repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
 
 /**
- * Records how a run ended: its time in the history, apart when it failed, once `recordDuration` has asked whether it
- * overlapped another checkout's run, after the result is returned; its failures, the ledger when the CLI read the run (`isRead`) and
- * read more than a log's verdict, the card, its row and the band; the loop note, when a full run crossed the budget.
+ * Records how a run ended: its failures, the ledger when the CLI read the run (`isRead`) and
+ * read more than a log's verdict, and the card; then, once the result is returned, its row, the band and its time in the
+ * history (`endAfterResult`); the loop note, when a full run crossed the budget.
  */
 async function recordEnding($: EngineInterface, run: Ending, outcome: Report, isRead: boolean, ended: number, elapsed: number): Promise<string | undefined> {
   const { tool, scope, key, kind, earlier } = run
-  if (key !== undefined) void quietly(() => recordDuration($, { ...run, key }, outcome.ok, ended, elapsed))
+  // Its ending: compared with the usual time unless it overlapped another checkout's run, and so shown once that's known.
+  const show = async (overlapped: boolean) => {
+    const ending = endingOf(outcome, ended, elapsed, overlapped ? [] : earlier)
+    const requestId = run.toolUseId
+    if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
+    await showEnding($, tool, ending, run.usesBand, run.by)
+    // Long enough that the person has likely looked away; their notification settings decide how it arrives.
+    if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
+  }
+  void quietly(() => endAfterResult($, run, outcome.ok, ended, elapsed, show))
   await quietly(() => recordRun($, scope, outcome.ok, outcome.failures, outcome.cause))
   // Only what the CLI read goes in the ledger: without it, or from a log's verdict alone, the outcome says no test's own.
   const readTests = kind === 'test' && isRead && !outcome.isVerdictOnly
@@ -508,12 +517,6 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
   // A failed run may have stopped early: its count is no total for the next run's.
   if (key !== undefined && outcome.ok && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
   saveCard($)
-  const ending = endingOf(outcome, ended, elapsed, earlier)
-  const requestId = run.toolUseId
-  if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
-  await showEnding($, tool, ending, run.usesBand, run.by)
-  // Long enough that the person has likely looked away; their notification settings decide how it arrives.
-  if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
   // A whole suite run again and again: past the budget, the tests the change can break would do.
   // Only a run the CLI read and that ran tests counts: a test build that failed ran none.
   const ranTests = outcome.tests === undefined ? outcome.ok || outcome.failures.some(failure => failure.isTest) : outcome.tests > 0
@@ -522,31 +525,34 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
 }
 
 /**
- * A run's time in its scope's history, apart when it failed, unless the CLI says another checkout's run went while it
- * did (`xcrew runs --overlapped`): that run shared the Mac, so its time says nothing of a run on its own. Asked once the
- * result is returned, as overlap decides only what is stored (docs/findings.md, *Runs that overlap another
- * checkout's*). A CLI that can't answer stores the time, as before the check.
+ * What follows a run's result, which Claude reads first: whether the CLI says another checkout's run went while it did
+ * (`xcrew runs --overlapped`), then its ending, `show`n compared with the usual time only when none did, then its time
+ * in its scope's history, apart when it failed, unless one did. That run shared the Mac, so its time says nothing of a
+ * run on its own (docs/findings.md, *Runs that overlap another checkout's*). A CLI that can't answer counts as none, as
+ * before the check; a run kept under no scope asks nothing.
  */
-async function recordDuration($: EngineInterface, run: Ending & { key: string }, ok: boolean, ended: number, elapsed: number): Promise<void> {
+async function endAfterResult($: EngineInterface, run: Ending, ok: boolean, ended: number, elapsed: number, show: (overlapped: boolean) => Promise<void>): Promise<void> {
+  const key = run.key
   // The run went from the call's start for `elapsed`: the server's own duration where it gives one, else until the call
   // answered, or for a call moved to the background, until its notification.
-  const overlapped = overlappedOf(await answer($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)], 10_000))
-  if (overlapped.length > 0) return
+  const overlapped = key !== undefined && overlappedOf(await answer($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)], 10_000)).length > 0
+  await quietly(() => show(overlapped))
+  if (key === undefined || overlapped) return
   // Another run of the scope may have ended while this one's check was out: the history is read again just before it's
   // written, one write a scope at a time, so neither run's time is lost.
-  const write = (durationWrites.get(run.key) ?? Promise.resolve()).then(async () => {
+  const write = (durationWrites.get(key) ?? Promise.resolve()).then(async () => {
     // A failed run's time is kept apart: one that fails early would pull the usual time down. A scope gone stale since
     // the run began starts over whichever way the run ended.
-    const { passed, failed } = await earlierRuns($, run.key, run.startedAt)
+    const { passed, failed } = await earlierRuns($, key, run.startedAt)
     const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
-    await quietly(() => $.store.set(historyKey(run.key), ok ? add(passed) : [...passed]))
-    await quietly(() => $.store.set(failedKey(run.key), ok ? [...failed] : add(failed)))
-    const updated = await quietly(() => $.store.get(updatedKey(run.key)))
-    await quietly(() => $.store.set(updatedKey(run.key), typeof updated === 'number' ? Math.max(updated, ended) : ended))
+    await quietly(() => $.store.set(historyKey(key), ok ? add(passed) : [...passed]))
+    await quietly(() => $.store.set(failedKey(key), ok ? [...failed] : add(failed)))
+    const updated = await quietly(() => $.store.get(updatedKey(key)))
+    await quietly(() => $.store.set(updatedKey(key), typeof updated === 'number' ? Math.max(updated, ended) : ended))
   })
-  durationWrites.set(run.key, write)
+  durationWrites.set(key, write)
   await write
-  if (durationWrites.get(run.key) === write) durationWrites.delete(run.key)
+  if (durationWrites.get(key) === write) durationWrites.delete(key)
   // The card's dates come from the run scopes, this one's now written.
   saveCard($)
 }

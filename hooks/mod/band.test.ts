@@ -59,12 +59,14 @@ test('when it ends the band shows the outcome: success green, failure and its de
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await clock.settle()
   let ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: '✓' }))?.props.color).toBe('success')
   expect((await ui.find({ type: 'Text', text: /^3 passed$/ }))?.props.color).toBeUndefined()
   await ui.unmount()
 
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
   ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: '✗' }))?.props.color).toBe('error')
   expect((await ui.find({ type: 'Text', text: /^MacroProbe\.swift:13/ }))?.props.color).toBe('error')
@@ -283,7 +285,7 @@ test('a failed run stays for up to half an hour, since it asks for action', asyn
 })
 
 test('/xcrew close takes a failed run off the band', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   mock.store(on)
   inTerminal(on)
   on('ui.status', () => ({ value: undefined }))
@@ -296,6 +298,7 @@ test('/xcrew close takes a failed run off the band', async ($, on) => {
   on('tool.call', () => ({ result: {}, isError: true, text: 'the server\'s result' }))
 
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
   await runCommand($, 'xcrew', 'close')
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /BuildProject/ })).toBeUndefined()

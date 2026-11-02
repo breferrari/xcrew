@@ -90,6 +90,7 @@ test("another repository's runs of the same scheme are no usual time here", asyn
   const { toasts, clock } = session(on, { took: [60_000], stored })
   await start($, clock)
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
   expect(toasts.at(-1)).toBe('✓ BuildProject · 1:00')
 })
 
@@ -167,10 +168,22 @@ test("overlap is asked for the run's own time", async ($, on) => {
   expect(cli.filter(call => call.args[0] === 'runs' && call.args.includes('--overlapped')).map(call => call.args)).toEqual([['runs', '--overlapped', '--since', String(NOW), '--until', String(NOW + 60_000)]])
 })
 
-/** The ending is shown with the result, before the overlap check answers: an overlapped run is still compared there. */
-test("an overlapped run's ending is shown before the check answers, compared as any run's", async ($, on) => {
+/** An overlapped run's ending carries no comparison: its time says nothing of a run on its own. */
+test("an overlapped run's ending carries no comparison with the usual time", async ($, on) => {
   const overlaps = [[], ['feature']]
   const { clock, toasts } = session(on, { took: [60_000, 90_000], overlapped: () => overlaps.shift() ?? [] })
+  await start($, clock)
+  for (let run = 0; run < 2; run += 1) {
+    await callTool($, 'mcp__xcode__BuildProject')
+    await clock.settle()
+  }
+  expect(toasts.at(-1)).toBe('✓ BuildProject · 1:30')
+})
+
+/** A CLI that can't say whether the run overlapped another shows its ending compared, as its time is stored. */
+test("a run's ending is compared when the overlap check can't answer", async ($, on) => {
+  const answers: unknown[] = [[], new Error('timed out')]
+  const { clock, toasts } = session(on, { took: [60_000, 90_000], overlapped: () => answers.shift() ?? [] })
   await start($, clock)
   for (let run = 0; run < 2; run += 1) {
     await callTool($, 'mcp__xcode__BuildProject')
@@ -398,9 +411,11 @@ test('a failed run after weeks away brings no old runs back', async ($, on) => {
   const key = scopeKey('/work/App', 'BuildProject')
   const stored = { [historyKey(key)]: [600_000], [updatedKey(key)]: NOW - 20 * DAY, [failedKey(key)]: [1_000] }
   // No session start prunes it first, as in a session that began before the scope went stale.
-  const { toasts, store } = session(on, { took: [5_000, 60_000], reports: [{ ok: false }, { ok: true }], stored })
+  const { toasts, store, clock } = session(on, { took: [5_000, 60_000], reports: [{ ok: false }, { ok: true }], stored })
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
   expect(toasts.at(-1)).toBe('✓ BuildProject · 1:00')
   expect(store.get(failedKey(key))).toEqual([5_000])
 })
