@@ -16,22 +16,22 @@ import XcrewTestSupport
         return #"{"test":"\#(test)","red":\#(red),"failing":"test_sim · App"\#(passed)\#(marked),"last":\#(at)}"#
     }
 
-    static func input(_ entries: [String], times: [String] = []) throws -> EvidenceInput {
-        let listed = times.map { #""\#($0)""# }.joined(separator: ",")
-        return try JSONDecoder().decode(EvidenceInput.self, from: Data(#"{"ledger":[\#(entries.joined(separator: ","))],"times":[\#(listed)]}"#.utf8))
+    /// The input as the mod sends it; with `times`, as a mod before run times left the evidence sent it.
+    static func input(_ entries: [String], times: [String]? = nil) throws -> EvidenceInput {
+        let listed = times.map { #","times":["# + $0.map { #""\#($0)""# }.joined(separator: ",") + "]" } ?? ""
+        return try JSONDecoder().decode(EvidenceInput.self, from: Data(#"{"ledger":[\#(entries.joined(separator: ","))]\#(listed)}"#.utf8))
     }
 
     static func pack(_ input: EvidenceInput, project: Project = .temporary(), open: @escaping @Sendable (String) -> ResultBundle = { ResultBundle(path: $0, runner: FakeRunner()) }) async -> EvidencePack.Text? {
         await EvidencePack.make(input, project: project, machine: CheckContext.fake(project: project).machine, open: open)
     }
 
-    /// Run times an older mod still sends are left out: a reviewer acts on test results, coverage and warnings.
     @Test func testsTakenFromRedToGreenAndThoseStillRedAreListed() async throws {
         let text = try #require(await Self.pack(try Self.input([
             Self.entry("CardTests/testCard", message: "Snapshot does not match reference."),
             Self.entry("Suite/testOther", message: "XCTAssertEqual failed", green: false),
             Self.entry("Suite/testFlaky", green: false, flaky: (2, 5)),
-        ], times: ["test_sim · App: usually 1m 20s, 312 tests"])))
+        ])))
         #expect(text.block == """
             ## Evidence
 
@@ -43,6 +43,18 @@ import XcrewTestSupport
             - `Suite/testFlaky`: "failed", flaky, failing 2 of 5 runs
             """)
         #expect(text.attach == nil)
+    }
+
+    /// Run times a mod from before they left the evidence still sends are read past: a reviewer acts on test results,
+    /// coverage and warnings.
+    @Test func anOlderModsRunTimesAreLeftOut() async throws {
+        let text = try #require(await Self.pack(try Self.input([Self.entry("Suite/testOther", green: false)], times: ["test_sim · App: usually 1m 20s, 312 tests"])))
+        #expect(text.block == """
+            ## Evidence
+
+            Still red:
+            - `Suite/testOther`: "failed"
+            """)
     }
 
     /// A red test the newest run in its scope didn't run, as one deleted since it failed, says so.

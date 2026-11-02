@@ -83,6 +83,12 @@ test('usual times alone make no card', async ($, on) => {
   expect(await card($)).toBeUndefined()
 })
 
+test('a slow full run with no selection run before it makes no card', async ($, on) => {
+  const clock = session(on, runs({ 'test_sim · App': { runs: [190_000], tests: 959 } }))
+  await start($, clock)
+  expect(await card($)).toBeUndefined()
+})
+
 test('a full run under two minutes gets no hint', async ($, on) => {
   const clock = session(on, runs({ 'test_sim · App': { runs: [60_000], tests: 959 }, 'test_sim · App › AppTests': { runs: [20_000], tests: 120 } }))
   await start($, clock)
@@ -111,9 +117,8 @@ test('without a store the session starts and there is no card', async ($, on) =>
 })
 
 test('however much is stored, the card stays within ten lines and 800 characters, the rest counted', async ($, on) => {
-  const scopes = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [`test_sim · Module${index}WithAVeryLongSchemeName › Module${index}Tests/SomeSuite`, { runs: [200_000 + index * 1000], tests: 100 }]))
   const reds = Array.from({ length: 40 }, (_, index) => ({ test: `Module${index}Tests/SomeVeryLongTestCaseName/test_somethingQuiteDescriptive_${index}`, failing: `test_sim · Module${index}WithAVeryLongSchemeName` }))
-  const clock = session(on, { ...runs(scopes), ...ledger(reds) })
+  const clock = session(on, { ...runs(SLOW), ...ledger(reds) })
   await start($, clock)
   const text = (await card($)) ?? ''
   expect(text.split('\n').length).toBeLessThanOrEqual(10)
@@ -163,7 +168,7 @@ test('the saved card carries its folder, its branch and the time of its data', a
 /** The card is dropped by its oldest line's age, as the mod dropped each line by its own. */
 test('the saved card carries the time of its oldest line too', async ($, on) => {
   const old = NOW - 5 * 24 * 60 * 60_000
-  const clock = session(on, { ...runs({ 'build_sim · App': { runs: [45_000] }, 'test_sim · App': { runs: [90_000] } }), [updatedKey(scopeKey('/work/App', 'test_sim · App'))]: old })
+  const clock = session(on, { ...runs(SLOW), [updatedKey(scopeKey('/work/App', 'test_sim · App › AppTests'))]: old })
   await start($, clock)
   expect(saved()).toMatchObject({ updated: NOW - 60_000, oldest: old })
 })

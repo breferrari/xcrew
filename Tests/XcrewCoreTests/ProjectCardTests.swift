@@ -9,7 +9,7 @@ import XcrewTestSupport
 /// is kept.
 @Suite struct ProjectCardTests {
     static let now = Date(timeIntervalSince1970: 1_793_361_600)
-    static let card = "Xcrew's notes on this project, from earlier runs:\n- build_sim · App: usually 0:45"
+    static let card = "Xcrew's notes on this project, from earlier runs:\n- Still red on feat/card: GreetingTests/testHello (test_sim · App)"
 
     func machine() -> Machine {
         CheckContext.fake(project: .temporary()).machine
@@ -23,7 +23,7 @@ import XcrewTestSupport
     @Test func theCardForThisFolderAndBranchSaysHowOldItIs() {
         let machine = machine()
         ProjectCard.save(entry(), on: machine, now: Self.now)
-        #expect(ProjectCard.text(folder: "/work/App", branch: "feat/card", now: Self.now, on: machine) == "Xcrew's notes on this project, from earlier runs, as of the run 2 h ago:\n- build_sim · App: usually 0:45")
+        #expect(ProjectCard.text(folder: "/work/App", branch: "feat/card", now: Self.now, on: machine) == "Xcrew's notes on this project, from earlier runs, as of the run 2 h ago:\n- Still red on feat/card: GreetingTests/testHello (test_sim · App)")
     }
 
     /// A branch switched since the last run must never show the old branch's red tests.

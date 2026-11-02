@@ -1,13 +1,13 @@
 import type { LedgerEntry } from './ledger'
 
 /**
- * A pull request's evidence: `xcrew evidence`'s block for this branch, then the images to attach, from the ledger and the
- * run times the mod holds. The CLI reads the result bundles and words it; the mod sends what only it knows.
+ * A pull request's evidence: `xcrew evidence`'s block for this branch, then the images to attach, from the ledger the mod
+ * holds. The CLI reads the result bundles and words it; the mod sends what only it knows.
  */
 export const EVIDENCE_TOOL = {
   name: 'evidence',
   description:
-    "Xcrew: the evidence this branch's runs give for a pull request: the tests it took from red to green, with their failing run's images, the tests still red, the coverage and warnings of the lines it changed, and the usual run times. " +
+    "Xcrew: the evidence this branch's runs give for a pull request: the tests it took from red to green, with their failing run's images, the tests still red, and the coverage and warnings of the lines it changed. " +
     "It answers with a `## Evidence` block, for the person to add to a pull request's body if they want it, as it is, then the local images, attached only if the person agrees; their paths never go in the pull request.",
   inputSchema: { type: 'object', properties: {} },
 }
