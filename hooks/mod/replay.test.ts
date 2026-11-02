@@ -18,6 +18,9 @@ const BAND = {
   props: { hasSurvey: false, isWorking: true, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
 } as const
 
+/** The scheme each capture's log names in its `Command line invocation:`. */
+const SCHEMES: Record<string, string> = { serial: 'Feature', shapes: 'Kit', 'swift-testing': 'Core', profile: 'Data' }
+
 /** A session on a branch whose test_sim answers `replay`'s text each time, and whose CLI reports on it as the golden says. */
 function session(on: On, replay: Replay): { toasts: string[]; cli: CliCall[]; store: Map<string, unknown> } {
   const project = (args: readonly string[]) => ({
@@ -25,7 +28,7 @@ function session(on: On, replay: Replay): { toasts: string[]; cli: CliCall[]; st
     ...(args.includes('--profiles') ? { scheme: 'App' } : {}),
     ...(args.includes('--branch') ? { root: '/work/App', branch: 'feat/replay' } : {}),
   })
-  const seen = { toasts: [] as string[], cli: stubCli(on, { reports: [replay.report], phase: () => ({}), project }), store: mapStore(on) }
+  const seen = { toasts: [] as string[], cli: stubCli(on, { reports: [replay.report], phase: () => ({ log: '/logs/test_sim_1.log', scheme: SCHEMES[Object.entries(replays).find(([, value]) => value === replay)?.[0] ?? ''] }), project }), store: mapStore(on) }
   const clock = mock.clock(on)
   on('session.surfaces', () => ({ value: ['terminal'] }))
   on('ui.toast', (_, e) => {

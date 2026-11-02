@@ -39,7 +39,7 @@ function session(on: On, { surface = 'vscode' as 'vscode' | 'terminal', hold, re
   on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['as the engine draws it'] }))
   // The prompt enters as the hooks above left it.
   on('prompt.submit', (_, e) => ({ text: e.text, ...(e.context ? { context: e.context } : {}), origin: e.origin }))
-  const cli = stubCli(on, { reports: [UNREAD, ...reports], phase: () => ({ log: LOG, phase: 'testing' }), project: { isGenerated: false, root: '/work/App', branch: 'main', scheme: 'App' } })
+  const cli = stubCli(on, { reports: [UNREAD, ...reports], phase: () => ({ log: LOG, phase: 'testing', scheme: 'App' }), project: { isGenerated: false, root: '/work/App', branch: 'main', scheme: 'App' } })
   on('tool.call', async (_, e) => {
     // A test run the session holds stays live on the band until `hold` settles.
     if (hold && e.tool.endsWith('test_sim')) await hold

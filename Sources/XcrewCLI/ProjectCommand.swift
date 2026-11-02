@@ -9,9 +9,9 @@ import XcrewCore
 struct ProjectCommand: Command {
     let name = "project"
     let flags: Set<String> = ["setup", "profiles", "branch", "xcode"]
-    let valuedOptions: Set<String> = ["manifest", "generated", "hash", "profile", "xcuserstate"]
+    let valuedOptions: Set<String> = ["manifest", "generated", "hash", "profile"]
     let usage = [
-        "project [--setup] [--profiles [--profile <name>]] [--xcode] [--xcuserstate <file>] [--manifest <file>] [--generated <file>] [--branch] [--hash <file>]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --profiles the line offering setup while MobileBuildMCP has no scheme to build with, and the scheme it builds with once it has, or with --profile that profile's, (default) for the global defaults, --xcode the scheme selected in Xcode when Xcode hosts MobileBuildMCP's server, with the file it's read from and whether MobileBuildMCP follows it, --xcuserstate the scheme selected in <file>, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, --branch the real root with the branch or commit checked out, and --hash <file>'s SHA-256, for telling an edit undone",
+        "project [--setup] [--profiles [--profile <name>]] [--xcode] [--manifest <file>] [--generated <file>] [--branch] [--hash <file>]   whether a generator writes this project, as JSON; --setup adds the container setup would use, --profiles the line offering setup while MobileBuildMCP has no scheme to build with, and the scheme it builds with once it has, or with --profile that profile's, (default) for the global defaults, --xcode the scheme selected in Xcode when Xcode hosts MobileBuildMCP's server, with the file it's read from and whether MobileBuildMCP follows it, --xcuserstate the scheme selected in <file>, --manifest the command that regenerates the project after an edit to <file>, when the generator reads it, --generated the manifest to edit instead of <file>, when the generator writes it, --branch the real root with the branch or commit checked out, and --hash <file>'s SHA-256, for telling an edit undone",
     ]
 
     struct Answer: Codable, Equatable {
@@ -30,7 +30,7 @@ struct ProjectCommand: Command {
         var followsXcode: Bool?
         /// With `--xcode`, once MobileBuildMCP's server is found: whether Xcode started it.
         var xcodeHostsServer: Bool?
-        /// With `--xcode` or `--xcuserstate <file>`: the scheme selected in Xcode, as MobileBuildMCP reads it.
+        /// With `--xcode`: the scheme selected in Xcode, as MobileBuildMCP reads it.
         var xcodeScheme: String?
         /// The command to run before the next build, when the file `--manifest` names is one the generator reads.
         var generate: String?
@@ -93,9 +93,6 @@ struct ProjectCommand: Command {
             if let selection = read.selection {
                 (answer.xcodeState, answer.xcodeScheme, answer.followsXcode, answer.activeProfile) = (selection.state.path, selection.scheme, selection.follows, selection.activeProfile)
             }
-        }
-        if let state = invocation.arguments["xcuserstate"] {
-            answer.xcodeScheme = XcodeSelection.scheme(inStateAt: URL(fileURLWithPath: state))
         }
         if invocation.arguments.has("setup") {
             do {

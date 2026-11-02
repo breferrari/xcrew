@@ -4,12 +4,12 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSchemeOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { answerOf, couldntRun, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
-import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, observeSession, xcodeSelected, xcodeStarted } from './context'
+import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, observeSession, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
 import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
@@ -147,24 +147,29 @@ export const register: Register = on => {
     const label = labelOf(name, target)
     const input = e as unknown as Record<string, unknown>
     // Durations and test totals are kept per repository, scheme and test selection, not only per tool. A MobileBuildMCP
-    // call that names no scheme builds Xcode's selection, when Xcode hosts the server, or its profile's; one whose scheme
-    // no one can name keeps no history.
-    if (parsed.server === 'MobileBuildMCP' && input.scheme === undefined) await quietly(() => followXcode($))
+    // call that names no scheme is kept under the scheme its log names; the one worked out from Xcode's selection at the
+    // server's start or the profile only picks the usual time and test total until then. Without a log, it's kept nowhere.
+    if (parsed.server === 'MobileBuildMCP' && input.scheme === undefined) await quietly(() => readXcodeStart($))
     const needsScheme = parsed.server === 'MobileBuildMCP' && !namesScheme(parsed, input)
     const fallbackScheme = needsScheme ? await profileScheme($) : undefined
-    const scope = historyOf(parsed, input, fallbackScheme)
-    const key = needsScheme && fallbackScheme === undefined ? undefined : scopeKey(await sessionRoot($), scope)
+    const root = await sessionRoot($)
+    const estimate = needsScheme && fallbackScheme === undefined ? undefined : scopeKey(root, historyOf(parsed, input, fallbackScheme))
+    let scope = historyOf(parsed, input, fallbackScheme)
+    let key = needsScheme ? undefined : estimate
+    const keyFor = (scheme: string) => {
+      const named = historyOf(parsed, { ...input, scheme })
+      return { scope: named, key: scopeKey(root, named) }
+    }
 
     const started = await quietly(() => $.clock.now())
-    const { passed: earlier, failed: earlierFailed } = await earlierRuns($, key, started)
-    // What the gauge measures against; a tool's first run has none and shows its time alone.
-    const usual = earlier.length > 0 ? average(earlier) : undefined
+    const { passed: estimated, failed: estimatedFailed } = await earlierRuns($, estimate, started)
+    const usual = estimated.length > 0 ? average(estimated) : undefined
     const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
     // While this run goes, the other worktrees' runs are read too, so the line under it stays current.
     if (usesBand) void quietly(() => followElsewhere($))
     // MobileBuildMCP logs xcodebuild's output as the run goes; the Xcode MCP writes nothing to follow.
     const followsLog = parsed.server === 'MobileBuildMCP'
-    const expectedTests = followsLog && key !== undefined ? ((await quietly(() => $.store.get(testsKey(key)))) as number | undefined) : undefined
+    let expectedTests = followsLog && estimate !== undefined ? ((await quietly(() => $.store.get(testsKey(estimate)))) as number | undefined) : undefined
     const writesLog = followsLog && (await quietly(() => $.store.get(logsKey(name)))) === true
     // The usual time is the server's own, which leaves out a pre-build hook; for a tool that logs,
     // the gauge starts when the log appears, before which the run itself hasn't begun.
@@ -176,6 +181,12 @@ export const register: Register = on => {
       const found = (await quietly(() => runPhase($, name, since, expectedTests, following.logPath))) ?? {}
       const step = phaseStep(following, found, writesLog)
       following = step.following
+      // Once the log names the scheme, the run is that scheme's, its progress counted out of that scheme's tests.
+      if (needsScheme && key === undefined && found.scheme !== undefined) {
+        ;({ scope, key } = keyFor(found.scheme))
+        const named = key
+        if (named !== estimate) expectedTests = (await quietly(() => $.store.get(testsKey(named)))) as number | undefined
+      }
       if (step.logAppeared) {
         if (!writesLog) await quietly(() => $.store.set(logsKey(name), true))
         if (measuredFrom === undefined) {
@@ -227,10 +238,13 @@ export const register: Register = on => {
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
     // its real end comes later, as a task notification (`UserMessage` below).
+    // The runs before this one are its own scheme's, read again when its log named another than the one worked out; a run
+    // whose log named none is measured against the usual time it was shown with.
+    const { passed: earlier, failed: earlierFailed } = key === undefined || key === estimate ? { passed: estimated, failed: estimatedFailed } : await earlierRuns($, key, started)
     const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
-        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }) })
+        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}) })
         // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
         for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) backgrounded.delete(old)
       }
@@ -386,7 +400,7 @@ export const register: Register = on => {
 type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
-type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean> }
+type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string } }
 
 /**
  * Records how a run ended: its time in the history, apart when it failed, its failures, the ledger when the CLI read the run (`isRead`) and
@@ -431,6 +445,8 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
+  // A run whose log appeared only after it was moved to the background is kept under the scheme the log names.
+  if (call.key === undefined && call.keyFor && outcome.scheme !== undefined) call = { ...call, ...call.keyFor(outcome.scheme) }
   const ended = await quietly(() => $.clock.now())
   if (ended === undefined) return undefined
   // A run going meanwhile keeps the band: this one ended earlier, in the background.
@@ -736,13 +752,6 @@ async function readXcodeStart($: EngineInterface): Promise<{ state: string; foll
   const read = await xcodeSelection
   if (read === undefined) xcodeSelection = undefined
   return read
-}
-
-/** Before a MobileBuildMCP run, takes a selection Xcode changed since, while the server follows it. */
-async function followXcode($: EngineInterface): Promise<void> {
-  const read = await readXcodeStart($)
-  if (!read?.follows) return
-  xcodeSelected(xcodeSchemeOf(await answer($, ['project', '--xcuserstate', read.state], 10_000)))
 }
 
 /** A scope's passing and failed runs before this one, read when it began: none once no run has updated it for weeks. */

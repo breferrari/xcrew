@@ -213,6 +213,23 @@ extension RunLog {
     /// Whether the log's run succeeded, by the last verdict xcodebuild printed (`** BUILD SUCCEEDED **`,
     /// `** TEST EXECUTE FAILED **`); nil before it printed one, when that verdict is neither, as for a run interrupted,
     /// and for a test run when it isn't its tests' own, as after building for testing.
+    /// The scheme the run built, from the `Command line invocation:` MobileBuildMCP's log opens with: the line after it is
+    /// xcodebuild's command, `-scheme Feature` or `-scheme "My App"`.
+    public static func scheme(in log: String) -> String? {
+        let lines = log.split(separator: "\n", maxSplits: 64, omittingEmptySubsequences: false)
+        guard let heading = lines.firstIndex(where: { $0.hasPrefix("Command line invocation:") }), heading + 1 < lines.count else { return nil }
+        guard let match = lines[heading + 1].firstMatch(of: /\s-scheme\s+(?:"([^"]+)"|(\S+))/) else { return nil }
+        return String(match.1 ?? match.2 ?? "")
+    }
+
+    /// The scheme a log names, read from its first part only: the invocation is at its top.
+    public static func scheme(ofLogAt url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: 65_536) else { return nil }
+        return scheme(in: String(decoding: head, as: UTF8.self))
+    }
+
     public static func outcome(of log: String, kind: Report.Kind) -> Bool? {
         guard let verdict = log.split(separator: "\n").reversed().lazy.map({ $0.trimmingCharacters(in: .whitespaces) }).first(where: { $0.hasPrefix("** ") && $0.hasSuffix(" **") }) else { return nil }
         if kind == .test, !verdict.hasPrefix("** TEST ") || verdict.hasPrefix("** TEST BUILD ") { return nil }

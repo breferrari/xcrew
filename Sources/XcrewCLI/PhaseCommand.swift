@@ -14,6 +14,8 @@ struct PhaseCommand: Command {
     struct Answer: Codable, Equatable {
         let log: String?
         let phase: String?
+        /// The scheme the log's invocation names, which the mod keys the run by.
+        let scheme: String?
     }
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -27,7 +29,7 @@ struct PhaseCommand: Command {
             log = await RunLog.find(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: context.project.root, machine: context.machine)
         }
         let phase = log.flatMap { RunLog.phase(ofLogAt: $0, expectedTests: invocation.arguments["expected"].flatMap(Int.init)) }
-        let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: phase))
+        let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: phase, scheme: log.flatMap(RunLog.scheme(ofLogAt:))))
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0
     }
