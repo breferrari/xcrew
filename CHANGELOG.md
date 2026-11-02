@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A failed test run that Claude Code moved to the background is read like the same run in the foreground: its failing tests are named and recorded, with xcrew's notes. Before, its notification came back as MobileBuildMCP's whole text, with nothing of xcrew's.
+
 ## 0.13.1 — 2026-11-02
 
 - `/xcrew doctor` checks the session it runs in, so `xcrew/briefing-current` and `xcrew/mod-loaded` say something there. In 0.13.0 they always skipped with "not run from a Claude Code session".

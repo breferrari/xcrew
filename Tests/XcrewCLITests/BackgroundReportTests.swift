@@ -38,7 +38,8 @@ import XcrewTestSupport
         #expect(result.count < 1_000, "\(result.count) characters")
     }
 
-    /// A task killed or failed, or a text that isn't a notification, has no result to read.
+    /// A task killed, one failed with a text that isn't the server's ("the server went away"), or a text that isn't a
+    /// notification, has no result to read: the run's log decides.
     @Test(arguments: [notification("Task failed: the server went away", status: "failed"), notification("", status: "killed"), failed])
     func aNotificationWithoutAResultIsUnread(_ text: String) async throws {
         let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "build", "--notification", stdin: text)
