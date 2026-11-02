@@ -58,6 +58,8 @@ export type Report = {
   concurrency?: { count: number; note: string }
   /** Read with a run's log: the scheme it names, which keys a backgrounded run whose log came late. */
   scheme?: string
+  /** Told the run's start: the other worktrees whose xcodebuild run went meanwhile, which keep this run out of the usual time. */
+  overlapped?: string[]
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */

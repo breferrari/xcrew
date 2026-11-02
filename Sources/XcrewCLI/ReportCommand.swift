@@ -9,7 +9,7 @@ struct ReportCommand: Command {
     let valuedOptions: Set<String> = ["server", "kind", "log", "tool", "since"]
     let flags: Set<String> = ["error", "repeated", "notification", "passed", "launches"]
     let usage = [
-        "report --server S --kind K [--error] [--repeated] [--passed] [--notification [--launches]] [--log PATH | --tool T --since MS]   (mod) read a build, test or run result on stdin; print its report as JSON; --repeated reads each repeated test's runs; --passed lists the tests the results give as passed, for the ledger; --notification reads the result in a background task's notification; --log reads a MobileBuildMCP run's log and the result bundle it names, after the notification when both are given, --launches its verdict as a call's that installs and launches after its build, whose build's success is no outcome; --tool and --since (the call's start, in milliseconds) find the run's log when no --log is given, the first that tool's server named since, for its scheme, and after a notification for its outcome too",
+        "report --server S --kind K [--error] [--repeated] [--passed] [--notification [--launches]] [--log PATH | --tool T] [--since MS]   (mod) read a build, test or run result on stdin; print its report as JSON; --repeated reads each repeated test's runs; --passed lists the tests the results give as passed, for the ledger; --notification reads the result in a background task's notification; --log reads a MobileBuildMCP run's log and the result bundle it names, after the notification when both are given, --launches its verdict as a call's that installs and launches after its build, whose build's success is no outcome; --since is the call's start, in milliseconds: the report names the other worktrees whose xcodebuild run went since, and with --tool and no --log it finds the run's log, the first that tool's server named since, for its scheme, and after a notification for its outcome too",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -24,9 +24,11 @@ struct ReportCommand: Command {
         let listsPassed = invocation.arguments.has("passed")
         var report: Report
         let given = invocation.arguments["log"]
+        let since = invocation.arguments["since"].flatMap(Double.init)
+        let asked = Date()
         var found: String?
         if given == nil, let tool = invocation.arguments["tool"] {
-            guard let since = invocation.arguments["since"].flatMap(Double.init).flatMap({ Int(exactly: $0.rounded(.down)) }) else { throw UsageError(description: "report --tool needs --since, in milliseconds") }
+            guard let since = since.flatMap({ Int(exactly: $0.rounded(.down)) }) else { throw UsageError(description: "report --tool needs --since, in milliseconds") }
             found = await RunLog.first(tool: tool, since: since, project: invocation.context.project.root, machine: machine)?.path
         }
         let log = given ?? found
@@ -40,6 +42,11 @@ struct ReportCommand: Command {
             report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         }
         if let log { report.scheme = RunLog.scheme(ofLogAt: URL(fileURLWithPath: log)) }
+        if let since {
+            let went = OtherRuns.window(since: since, durationMs: report.durationMs, asked: asked)
+            let overlapped = await OtherRuns.overlapped(project: invocation.context.project, machine: machine, from: went.from, to: went.to)
+            if !overlapped.isEmpty { report.overlapped = overlapped }
+        }
         let encoded = try JSONEncoder.sorted.encode(report)
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0

@@ -33,6 +33,57 @@ import XcrewTestSupport
         return await OtherRuns.going(project: project, machine: machine, now: Self.now)
     }
 
+    /// The other worktrees whose run overlapped this checkout's from `from` to `to` seconds before now.
+    func overlapped(worktrees: [String], from: TimeInterval, to: TimeInterval = 0, prefix: String = "") async throws -> [String] {
+        let here = prefix.isEmpty ? main : main.appending(path: prefix)
+        try FileManager.default.createDirectory(at: here, withIntermediateDirectories: true)
+        for name in worktrees { try FileManager.default.createDirectory(at: worktree(name).appending(path: prefix), withIntermediateDirectories: true) }
+        let project = Project(root: here)
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(responses: FakeRunner.worktreeResponses(project: project, main: main.path, linked: worktrees.map { worktree($0).path }, prefix: prefix)))
+        return await OtherRuns.overlapped(project: project, machine: machine, from: Self.now.addingTimeInterval(-from), to: Self.now.addingTimeInterval(-to))
+    }
+
+    /// Another worktree's run overlapped this one when it went while this one did: started before or during it, ended
+    /// since or not. One that ended before this run started, or started after it ended, didn't.
+    @Test func anotherWorktreesRunThatWentMeanwhileOverlapped() async throws {
+        try log("test_sim_2026-11-01T23-50-00-000Z_pid100_a.log", in: worktree("before"), ago: 120, text: Self.testing + "** TEST SUCCEEDED **\n")
+        try log("build_sim_2026-11-01T23-58-00-000Z_pid100_a.log", in: worktree("during"), ago: 5, text: "Build started\n")
+        try log("test_sim_2026-11-01T23-40-00-000Z_pid100_a.log", in: worktree("earlier"), ago: 400, text: Self.testing)
+        try log("test_sim_2026-11-01T23-59-30-000Z_pid100_a.log", in: worktree("later"), ago: 5, text: Self.testing)
+        #expect(try await overlapped(worktrees: ["before", "during", "earlier", "later"], from: 300, to: 60) == ["before", "during"])
+    }
+
+    /// Only another worktree's xcodebuild run overlaps: this checkout's own, a Swift package's build and other logs don't.
+    @Test func onlyAnotherWorktreesXcodebuildRunOverlaps() async throws {
+        try log("test_sim_2026-11-01T23-58-00-000Z_pid100_a.log", in: main, ago: 5, text: Self.testing)
+        try log("build_spm_2026-11-01T23-58-00-000Z_pid100_a.log", in: worktree("feature"), ago: 5, text: "Build complete!\n")
+        try log("app_oslog_2026-11-01T23-58-00-000Z_pid100_a.log", in: worktree("feature"), ago: 5, text: "log\n")
+        #expect(try await overlapped(worktrees: ["feature"], from: 300).isEmpty)
+    }
+
+    /// A run in a quiet stretch, as through a link or a simulator's boot, wrote nothing while this one went, yet went on:
+    /// one quiet less than `quietFor` before this run started, with no verdict, overlapped it; one that had ended didn't.
+    @Test func anotherWorktreesRunQuietWhenThisOneStartedOverlapped() async throws {
+        try log("build_sim_2026-11-01T23-50-00-000Z_pid100_a.log", in: worktree("linking"), ago: 360, text: "Build started\n")
+        try log("build_sim_2026-11-01T23-50-00-000Z_pid100_a.log", in: worktree("built"), ago: 360, text: "Build started\n** BUILD SUCCEEDED **\n")
+        try log("build_sim_2026-11-01T23-40-00-000Z_pid100_a.log", in: worktree("stopped"), ago: 400, text: "Build started\n")
+        #expect(try await overlapped(worktrees: ["linking", "built", "stopped"], from: 300, to: 280) == ["linking"])
+    }
+
+    /// This checkout's own runs aren't another's, wherever the project sits in it.
+    @Test func thisCheckoutsRunDoesntOverlapItAFolderDown() async throws {
+        try log("test_sim_2026-11-01T23-58-00-000Z_pid100_a.log", in: main.appending(path: "App"), ago: 5, text: Self.testing)
+        try log("test_sim_2026-11-01T23-58-00-000Z_pid100_a.log", in: worktree("feature").appending(path: "App"), ago: 5, text: Self.testing)
+        #expect(try await overlapped(worktrees: ["feature"], from: 300, prefix: "App") == ["feature"])
+    }
+
+    /// The run went from the call's start for the server's own duration when it gives one, else until the report was asked.
+    @Test func theRunsTimeIsItsDurationFromItsStart() {
+        let asked = Date(timeIntervalSince1970: 2_000)
+        #expect(OtherRuns.window(since: 1_000_000, durationMs: 30_000, asked: asked) == (Date(timeIntervalSince1970: 1_000), Date(timeIntervalSince1970: 1_030)))
+        #expect(OtherRuns.window(since: 1_000_000, durationMs: nil, asked: asked) == (Date(timeIntervalSince1970: 1_000), asked))
+    }
+
     static let testing = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\nTest Case '-[AppTests.GreetingTests testHello]' started.\n"
 
     @Test func anotherWorktreesRunIsListedWithItsToolAndPhase() async throws {

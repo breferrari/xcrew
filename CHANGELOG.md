@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A build or test run that overlapped another worktree's build or test is kept out of its usual time, which the line above the prompt measures runs against, and isn't measured against it either: it ran slower for sharing the Mac. Before, two checkouts testing at once raised each other's usual time.
 - The evidence block's changed-line coverage counts a line as run when any test run that compiled its file as it is now ran it, and names those runs. A run that started before the file last changed, as one from another branch or before a later commit, doesn't count for it, nor does a run of no tests. Before, it read only the newest run, which could have tested another module or nothing.
 - Rebuilding the CLI no longer removes xcrew's own folders in its cache, such as the session stamps, the failed tests' images and the cards, when nothing new was added to one for two weeks: its cleanup removes only old builds.
 - The evidence block for a pull request no longer lists usual run times, and the card at a session's start no longer lists them either: it keeps the tests still red and, when a full test run is slow, the selections run before it. The line above the prompt still measures runs against their usual time.
