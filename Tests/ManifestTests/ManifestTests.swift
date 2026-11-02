@@ -782,6 +782,24 @@ import Testing
         #expect(changes.contains(/if \[ "\$EVENT" = push \]; then\n\s+code=true\n\s+distribution=true\n/))
     }
 
+    /// The CLI's release build is timed on CI's macOS runner on each push to main, and only there: those times are the
+    /// basis the build's guard waits on (docs/findings.md, *Building after a reload*), and a pull request's run gains
+    /// no release compile. It builds as the shim builds.
+    @Test func theReleaseBuildIsTimedOnPushesToMainAsTheShimBuilds() throws {
+        let ci = try text(".github/workflows/ci.yml")
+        let job = try #require(ci.firstMatch(of: /(?s)\n  release-build:\n(.*?)(?=\n  [a-z-]+:\n|\z)/), "no release-build job").output.1
+        #expect(job.contains("if: github.event_name == 'push'"))
+        // The same runner as the Swift job, whose row it carries until it has samples of its own.
+        let swift = try #require(ci.firstMatch(of: /(?s)\n  swift:\n(.*?)(?=\n  [a-z-]+:\n|\z)/)).output.1
+        let runner = { (job: Substring) in job.firstMatch(of: /runs-on: (\S+)/).map { String($0.output.1) } }
+        #expect(runner(job) != nil && runner(job) == runner(swift))
+        #expect(job.contains("GITHUB_STEP_SUMMARY"))
+        // The shim's build, its folders aside: the package is the checkout, and the scratch folder only moves `.build`.
+        let shim = try #require(try text("bin/xcrew").firstMatch(of: /swift build ([^\n]*?) --package-path/)).output.1
+        let built = try #require(job.firstMatch(of: /swift build ([^\n]*)/)).output.1
+        #expect(shim == built, "the shim builds with \(shim), CI with \(built)")
+    }
+
     /// The deadlines and the durations they come from, as docs/findings.md's *Deadlines* table records them, by the key
     /// each deadline's comment names: the slowest measured, in seconds, and the deadline in the table's unit.
     func deadlineRows() throws -> [String: (slowest: Double, deadline: Int, unit: String)] {
