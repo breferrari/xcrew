@@ -32,6 +32,7 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
     return { value: { tool: `mcp__xcrew__${e.name}` } }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   const calls = stubCli(on, {
     reports,
     ...(options.reportFails ? { reportFails: options.reportFails } : {}),
@@ -286,6 +287,18 @@ test('a branch switched in Bash, or outside the session once the answer is old, 
   await clock.advance(1)
   expect(await ledgerText($)).toContain(TEST)
   expect(calls.filter(call => call.args.includes('--branch'))).toHaveLength(3)
+})
+
+test('a cleared or resumed conversation reads the branch again, however new the last answer', async ($, on) => {
+  let branch = 'feat/ledger'
+  project(on, [FAILED], { branch: () => branch })
+  await run($)
+  expect(await ledgerText($)).toContain(TEST)
+  for (const reason of ['clear', 'resume'] as const) {
+    branch = branch === 'main' ? 'feat/ledger' : 'main'
+    await $.session.end({ reason, sessionId: 'before', resume: { id: 'before' } })
+    expect(await ledgerText($)).toBe(branch === 'main' ? 'No test has failed on main yet.' : `Still red (1):\n- ${TEST}: red Oct 30 13:00 in test_sim: XCTAssertEqual failed: ("Hi") is not equal to ("Hello")`)
+  }
 })
 
 test('Claude reads the ledger through a tool registered behind ToolSearch, and /xcrew ledger shows the same text', async ($, on) => {
