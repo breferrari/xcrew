@@ -33,6 +33,10 @@ They overlap on build, test and run. Xcrew sends those to MobileBuildMCP because
 - **Sosumi beats `DocumentationSearch` for documentation**: short results with links, WWDC sessions, and each API's minimum OS version. `DocumentationSearch` matches the installed SDK and works offline.
 - **`IDEAllowUnauthenticatedAgents`** lets any unsigned process drive Xcode's tools; leave it off. Turning it off doesn't cut Claude Code off: on October 29, 2026 (Xcode 27.2 beta 3, 27B5038j; macOS 27.0; Claude Code 2.1.312; MobileBuildMCP 2.7.1), setting it to `NO` and restarting Xcode left every doctor check `ok`, `xcode-mcp/claude-approved` included. That check reads a status, so a working Xcode MCP call is the stronger proof. On that Mac the value was already `1` before Xcrew first ran, so something else set it; Xcode itself is the likely source (unverified).
 
+## A run's subagent
+
+A run a subagent started carries the subagent's description on the line above the prompt and on its row, cut after 40 characters (`KEPT`, `hooks/mod/agent.ts`). Claude Code's Agent tool asks for "a short (3-5 word) description of the task" (its input schema, Claude Code 2.1.316). Of the 265 descriptions Claude gave subagents across one long working session on this repository (October 31 to November 2, 2026, Claude Code 2.1.314 to 2.1.316), the longest was 39 characters and 6 words, the median 23 characters; none was cut. So 40 keeps each description the tool asks for whole, and cuts only one that runs past it. The line itself is cut at the surface's width wherever it ends.
+
 ## Build and test progress
 
 Measured October 2026 (Xcode 27.1, MobileBuildMCP 2.7.1, Claude Code 2.1.312). The band's gauge is time against the usual duration because no exact count reaches a mod:
@@ -216,6 +220,8 @@ So a run that names no scheme is kept under the scheme its own log names: Mobile
 - With `disableXcodeAutoSync`, a selection changed between the server's start and the mod's first answer, as while the CLI first builds, is taken as the start's.
 - MobileBuildMCP drops every container `find` lists when `find` exits non-zero, as on an unreadable folder within six levels (`xcode-state-reader.js:79`); xcrew's walk skips that folder and goes on.
 - A restarted server reads the selection again at its start; the mod reads it once, and keeps it across a cleared conversation as the server does.
+
+**How much of the log is read for the scheme.** The invocation is xcodebuild's own first output, not a line MobileBuildMCP writes: MobileBuildMCP 2.7.1 builds the command `xcodebuild`, `-workspace` or `-project` and its path, then `-scheme` (`utils/build-utils.js`), and the test filters come after, with the extra arguments (`-only-testing:…`, one a selected test). So `-scheme` sits within the heading, the indent, xcodebuild's path and the container's path, each path at most `PATH_MAX`, 1,024 bytes on macOS: about 2.1 KB plus the scheme's name, however many tests a run selects. In 96 MobileBuildMCP logs on this Mac (November 2, 2026, macOS 27.2, Xcode 27.2, a small project's builds and test runs, 17 of them filtered), the heading was always the first line, the invocation line 363 to 829 bytes long, and `-scheme` at most 226 bytes into it, before the filters in all 17. `RunLog.scheme(ofLogAt:)` reads the first 64 KB, past that bound with room for a long scheme name, in one read; it looks for the heading in the first `RunLog.invocationWithin` lines, 64, a margin chosen over the first line it was always on, not measured past it.
 
 ## MobileBuildMCP's config paths
 
