@@ -250,6 +250,52 @@ import XcrewTestSupport
         let report = await Report.make(kind: .build, output: try Raw.output("swift-testing"), home: Captured.home, runner: run(project), project: project)
         #expect(!report.notes.contains { $0.contains("changed line") })
     }
+
+    /// `AppUITests`, a UI test target, builds its folder but for `Moved.swift`, which an exception set moves and which it
+    /// also lists, and compiles `Shared.swift`, which `App` only copies as a resource. No target lists `Loose.swift`.
+    static let testTargetFiles = """
+        // !$*UTF8*$!
+        { archiveVersion = 1; objects = {
+          G = { isa = PBXGroup; sourceTree = "<group>"; children = (F, SH, MV); };
+          F = { isa = PBXFileSystemSynchronizedRootGroup; path = AppUITests; sourceTree = "<group>"; exceptions = (E); };
+          E = { isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Moved.swift); target = TT; };
+          SH = { isa = PBXFileReference; path = Shared.swift; sourceTree = "<group>"; };
+          MV = { isa = PBXFileReference; path = AppUITests/Moved.swift; sourceTree = "<group>"; };
+          TA = { isa = PBXNativeTarget; name = App; productType = "com.apple.product-type.application"; buildPhases = (RES); };
+          RES = { isa = PBXResourcesBuildPhase; files = (BR); };
+          BR = { isa = PBXBuildFile; fileRef = SH; };
+          TT = { isa = PBXNativeTarget; name = AppUITests; productType = "com.apple.product-type.bundle.ui-testing"; fileSystemSynchronizedGroups = (F); buildPhases = (SRC); };
+          SRC = { isa = PBXSourcesBuildPhase; files = (BS, BM); };
+          BS = { isa = PBXBuildFile; fileRef = SH; };
+          BM = { isa = PBXBuildFile; fileRef = MV; };
+        }; rootObject = G; }
+        """
+
+    static func testTargetProject() -> (project: Project, root: String) {
+        let project = Project.temporary(containing: ["App.xcodeproj", "AppUITests"])
+        project.write(Self.testTargetFiles, to: "App.xcodeproj/project.pbxproj")
+        return (project, ProjectLayout.canonical(project.root))
+    }
+
+    /// A Swift file only a test target compiles is a test file, though the app copies it. A file an exception set moves
+    /// may be built anywhere, and one no target lists by nothing the reading knows: both stay.
+    @Test func onlyAFileATestTargetAloneBuildsIsLeftOut() {
+        let (project, root) = Self.testTargetProject()
+        let files = ["AppUITests/Plain.swift", "AppUITests/Moved.swift", "Shared.swift", "Loose.swift"].map { "\(root)/\($0)" }
+        #expect(ChangedLineCoverage.withoutTestFiles(files, of: project) == ["\(root)/AppUITests/Moved.swift", "\(root)/Loose.swift"])
+    }
+
+    /// Once the coverage's budget has passed, the project's targets aren't read: every file keeps its place.
+    @Test func pastTheBudgetTheTargetsArentRead() async {
+        let (project, root) = Self.testTargetProject()
+        let files = ["\(root)/AppUITests/Plain.swift"]
+        let task = Task {
+            while !Task.isCancelled { await Task.yield() }
+            return ChangedLineCoverage.withoutTestFiles(files, of: project)
+        }
+        task.cancel()
+        #expect(await task.value == files)
+    }
 }
 
 /// xcresulttool's and xccov's answers on a bundle the canary makes fresh with the newest Xcode

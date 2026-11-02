@@ -340,6 +340,29 @@ struct TestbedCoverageTests {
         let report = await Report.make(kind: .test, output: ToolOutput(text: output, server: .mobileBuildMCP), home: "/home", runner: runner, project: project)
         #expect(report.notes.contains("xcrew: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5."), "\(report.notes)")
     }
+
+    /// A run filtered to some tests builds no other test target, so a changed test file of one isn't in the coverage,
+    /// and that says nothing: only a changed file of the code under test is named as outside it. Field shape, names
+    /// neutralised (November 2, 2026): a module's run named a file of the UI test target. Composed from the test bed's
+    /// coverage capture, its report holding neither `GreetingTests.swift`, of the test target, nor `ContentView.swift`.
+    @Test func aChangedTestFileOutsideTheCoverageIsNotNamed() async throws {
+        let root = try TestbedTests.copy("captures/coverage")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let project = Project(root: root)
+        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift", "AppTests/GreetingTests.swift", "App/ContentView.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
+        let listed = try captured("file-list.json", in: root)
+        let files = try JSONDecoder().decode([String].self, from: Data(listed.utf8)).filter { !$0.hasSuffix("/GreetingTests.swift") && !$0.hasSuffix("/ContentView.swift") }
+        responses.merge([
+            "xcrun xcresulttool get content-availability --path \(Self.bundle) --compact": .init(status: 0, stdout: try captured("content-availability.json", in: root)),
+            "xcrun xccov view --report --json \(Self.bundle)": .init(status: 0, stdout: reportHolding(String(decoding: try JSONEncoder().encode(files), as: UTF8.self))),
+            "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(Self.bundle)": .init(status: 0, stdout: try captured("Pricing.json", in: root)),
+        ]) { _, new in new }
+        let output = #"{"schema":"mobilebuildmcp.output.test-result","didError":false,"data":{"summary":{"status":"SUCCEEDED"},"artifacts":{"xcresultPath":"\#(Self.bundle)"}}}"#
+        let report = await Report.make(kind: .test, output: ToolOutput(text: output, server: .mobileBuildMCP), home: "/home", runner: FakeRunner(responses: responses), project: project)
+        let note = try #require(report.notes.first { $0.contains("changed line") || $0.contains("changed file") }, "\(report.notes)")
+        #expect(note.contains("1 changed file isn't in this run's coverage: ContentView.swift."), "\(note)")
+        #expect(!note.contains("GreetingTests.swift"), "\(note)")
+    }
 }
 
 /// The field fixture's run under `-only-testing:FeatureTests/ProbeTests/testPasses`, replayed from what xccov answered:
