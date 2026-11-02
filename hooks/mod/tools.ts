@@ -147,6 +147,14 @@ export function kindOf(tool: XcodeTool): ToolKind | undefined {
 
 
 /**
+ * Whether a build goes on to install and launch what it built (`build_run_sim`): its log's build verdict comes before
+ * the launch, so it isn't how the call ends.
+ */
+export function launchesAfterBuild(tool: XcodeTool): boolean {
+  return kindOf(tool) === 'build' && /\brun\b/.test(wordsOf(tool.tool))
+}
+
+/**
  * Whether a call builds the project, so a stale one would build it as it was: a build, a test run, or a run that builds
  * first (`RunProject`); not a clean, nor a launch of what was built.
  */

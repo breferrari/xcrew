@@ -921,6 +921,24 @@ extension FailureNotes {
         #expect(result.utf16.count < 50_000)
     }
 
+    /// Warnings left out of the list are counted under its heading, which then counts the warnings it still lists: one
+    /// of the test bed's seven.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func theWarningsHeadingCountsTheWarningsItLists() throws {
+        let text = try #require(ToolOutput(text: try Raw.text("build_sim"), server: .mobileBuildMCP).mobileText)
+        let kept = try #require(text.keepingWarnings({ $0.message.hasPrefix("var 'sharedCount'") }, leftOut: { "\($0) warnings left out" })).text
+        #expect(kept.contains("Warnings (1):\n\n  6 warnings left out\n\n  ⚠ var 'sharedCount'"))
+    }
+
+    /// With no heading, the count goes after the run's header, not above it.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func withNoHeadingTheCountGoesAfterTheHeader() throws {
+        let raw = try Raw.text("build_sim").replacingOccurrences(of: "Warnings (7):\n\n", with: "")
+        let text = try #require(ToolOutput(text: raw, server: .mobileBuildMCP).mobileText)
+        let kept = try #require(text.keepingWarnings({ $0.message.hasPrefix("var 'sharedCount'") }, leftOut: { "\($0) warnings left out" })).text
+        #expect(kept.hasPrefix("\n🔨 Build\n\n  6 warnings left out\n\n"))
+    }
+
     @Test func aColumnStaysWithItsLine() {
         #expect(RepeatedWarnings.locations(["/a/A.swift:4:12", "/a/A.swift:4:30", "/a/A.swift:9"].map(RepeatedWarnings.Location.init)) == "/a/A.swift:4:12, :4:30, :9")
     }

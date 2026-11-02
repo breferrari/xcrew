@@ -99,8 +99,8 @@ export function reportArgs(server: string, kind: string, isError: boolean, repea
   return ['report', '--server', server, '--kind', kind, ...(isError ? ['--error'] : []), ...(repeated ? ['--repeated'] : []), ...(passed ? ['--passed'] : [])]
 }
 
-export function phaseArgs(tool: string, since: number, expectedTests: number | undefined, log: string | undefined): string[] {
-  return ['phase', '--tool', tool, '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
+export function phaseArgs(tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined): string[] {
+  return ['phase', '--tool', tool, ...(launches ? ['--launches'] : []), '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
 }
 
 /** The CLI's JSON answer, or nothing when it didn't run or said something else. */

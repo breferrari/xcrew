@@ -199,6 +199,18 @@ test("a run kept under its report's scheme adds to that scheme's failed runs", a
   expect(feature[0]).not.toContain(111_111)
 })
 
+/** A build and run's log is read as one whose build's success doesn't end it: the mod says it launches after its build. */
+test("a build and run's log is read as one that launches after its build", async ($, on) => {
+  const { clock, cli } = session(on, { surface: 'terminal', reports: [{ ok: true, failures: [], notes: [] }] })
+  await callTool($, 'mcp__MobileBuildMCP__build_run_sim', { tool_use_id: 'toolu_run' })
+  await clock.advance(2_000)
+  await notify($, clock)
+  const phases = cli.filter(call => call.args[0] === 'phase')
+  expect(phases.length).toBeGreaterThan(0)
+  expect(phases.every(call => call.args.includes('--launches'))).toBe(true)
+  expect(reportCalls(cli).filter(call => call.args.includes('--notification')).map(call => call.args.includes('--launches'))).toEqual([true])
+})
+
 /** Drawn before the notification is read, the row leaves the call to it, and says nothing yet. */
 test('a row drawn before its notification is read leaves the call to be read', async ($, on) => {
   const { toasts, clock } = session(on, { reports: [{ ok: false, failures: [], notes: [] }] })

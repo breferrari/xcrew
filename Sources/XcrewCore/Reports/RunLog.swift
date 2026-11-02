@@ -234,9 +234,13 @@ extension RunLog {
         return scheme(in: String(decoding: head, as: UTF8.self))
     }
 
+    /// Whether the log's run succeeded, by the last verdict xcodebuild printed; nil before it printed one, and for a verdict
+    /// that isn't the run's: a test run's that isn't its tests', or a build and run's success, which is its build's alone
+    /// and comes before the app is installed and launched.
     public static func outcome(of log: String, kind: Report.Kind) -> Bool? {
         guard let verdict = log.split(separator: "\n").reversed().lazy.map({ $0.trimmingCharacters(in: .whitespaces) }).first(where: { $0.hasPrefix("** ") && $0.hasSuffix(" **") }) else { return nil }
         if kind == .test, !verdict.hasPrefix("** TEST ") || verdict.hasPrefix("** TEST BUILD ") { return nil }
+        if kind == .run { return verdict.hasSuffix(" FAILED **") ? false : nil }
         return verdict.hasSuffix(" SUCCEEDED **") ? true : verdict.hasSuffix(" FAILED **") ? false : nil
     }
 
