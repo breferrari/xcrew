@@ -67,6 +67,27 @@ public enum Space {
         return [line, .init(text: "\(name)'s DerivedData, \(SpaceReport.size(derived)), costs a cold build to make again", bytes: derived, command: purge(workspace, classes: ["derivedData"]))]
     }
 
+    /// How long MobileBuildMCP's purge keeps a log after it's written (`WORKSPACE_FILESYSTEM_LIFECYCLE_MIN_VISIBLE_MS`).
+    static let logsKeptFor: TimeInterval = 3600
+
+    /// The workspaces whose project is gone, each with the purge's dry run, unless all it holds is what the purge keeps:
+    /// logs written within `logsKeptFor`, and its state, and its folder, which the purge never removes. Those are counted on
+    /// one line with no command; a purge an hour on takes the logs (docs/findings.md, *Disk space*).
+    static func goneLines(_ gone: [(workspace: StorageReport.Workspace, root: String)], now: Date) -> [SpaceReport.Line] {
+        let isKept = { (workspace: StorageReport.Workspace) in
+            workspace.classes.allSatisfy { name, found in
+                !found.exists || found.bytes == 0 || name == "locks" || name == "stateTransients" || (name == "logs" && found.newest.map { now.timeIntervalSince($0) < logsKeptFor } == true)
+            }
+        }
+        let named = gone.filter { !isKept($0.workspace) }.map { workspace, root in
+            SpaceReport.Line(text: "\(workspace.key): \(SpaceReport.size(workspace.bytes)); its project, \(root), is gone", bytes: workspace.bytes, command: purge(workspace, classes: reclaimable(workspace)))
+        }
+        let kept = gone.filter { isKept($0.workspace) }.map(\.workspace.bytes)
+        guard !kept.isEmpty else { return named }
+        let bytes = kept.reduce(0, +)
+        return named + [.init(text: "\(kept.count) gone \(kept.count == 1 ? "project's folder holds" : "projects' folders hold") only what `mobilebuildmcp purge` keeps: \(SpaceReport.size(bytes))", bytes: bytes)]
+    }
+
     static func mobileBuildMCP(live: Task<[ProjectWorkspaces.Checkout], Never>, machine: Machine, now: Date) async -> SpaceReport.Part {
         let title = "MobileBuildMCP"
         guard let report = await StorageReport.read(.all, using: machine.runner) else { return SpaceReport.notRead(title, by: "mobilebuildmcp purge --report") }
@@ -76,9 +97,7 @@ public enum Space {
             workspaceLines(workspace, name: URL(fileURLWithPath: checkout.root).lastPathComponent, root: checkout.root, newest: workspace.classes.values.compactMap(\.newest).max().map { SpaceReport.age(of: $0, now: now) },
                            bundles: bundles(in: workspace, home: machine.home), isBuilding: isBuilding(into: workspace, processes: processes, home: machine.home))
         }
-        lines += grouped.gone.map { workspace, root in
-            .init(text: "\(workspace.key): \(SpaceReport.size(workspace.bytes)); its project, \(root), is gone", bytes: workspace.bytes, command: purge(workspace, classes: reclaimable(workspace)))
-        }
+        lines += goneLines(grouped.gone, now: now)
         let (elsewhere, unknown) = (grouped.elsewhere, grouped.unknown)
         lines += [
             rollup(elsewhere.map(\.bytes), "workspace", "of other projects still here"),

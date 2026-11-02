@@ -113,6 +113,23 @@ import XcrewTestSupport
         #expect(lines.map(\.command) == ["mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes testProducts,logs", "mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes derivedData"])
     }
 
+    /// MobileBuildMCP's purge keeps logs written in the last hour and never removes a workspace's folder
+    /// (`utils/workspace-filesystem-lifecycle.js:22` and `:129-140`, MobileBuildMCP 2.7.1): a field report saw a second
+    /// purge free nothing. So a gone project's workspace holding only what the purge keeps isn't named with a purge; its
+    /// folders are counted on one line, with no command. One holding anything older still gets the purge's dry run.
+    @Test func aGoneProjectsWorkspaceHoldingOnlyWhatThePurgeKeepsIsCountedNotNamed() {
+        let now = Date(timeIntervalSince1970: 1_793_400_000)
+        let held = { (bytes: Int, ago: TimeInterval?) in StorageReport.StorageClass(bytes: bytes, exists: true, newest: ago.map { now.addingTimeInterval(-$0) }, isReclaimable: true) }
+        let recent = StorageReport.Workspace(key: "Feature-1", folder: "~/w/Feature-1", bytes: 7_500_013, classes: ["logs": held(7_500_000, 600), "stateTransients": held(13, 600), "testProducts": held(0, nil)])
+        let empty = StorageReport.Workspace(key: "Old-2", folder: "~/w/Old-2", bytes: 13, classes: ["stateTransients": held(13, 90_000)])
+        let older = StorageReport.Workspace(key: "Gone-3", folder: "~/w/Gone-3", bytes: 7_500_013, classes: ["logs": held(7_500_000, 7_200), "stateTransients": held(13, 7_200)])
+        let lines = Space.goneLines([(recent, "/work/trees/feature"), (empty, "/work/old"), (older, "/work/gone")], now: now)
+        #expect(lines == [
+            SpaceReport.Line(text: "Gone-3: 7.5 MB; its project, /work/gone, is gone", bytes: 7_500_013, command: "mobilebuildmcp purge --dry-run --scope workspace --workspace-key Gone-3 --classes logs,stateTransients"),
+            SpaceReport.Line(text: "2 gone projects' folders hold only what `mobilebuildmcp purge` keeps: 7.5 MB", bytes: 7_500_026),
+        ])
+    }
+
     /// Only a root its log names and its key confirms is said to be gone; the rest are counted, with what age would take.
     @Test func aGoneProjectsWorkspaceIsNamedAndTheUnknownAreCounted() async throws {
         let text = try await report().text
