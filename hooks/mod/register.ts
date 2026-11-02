@@ -283,7 +283,7 @@ export const register: Register = on => {
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
     const findsScheme = needsScheme && key === undefined
-    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], 120_000, result.text ?? '')
+    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name] : []), '--since', String(started)], 120_000, result.text ?? '')
     const reportedOutcome = reportOf(reported, result.isError === true)
     // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
     if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
@@ -494,12 +494,13 @@ type Ending = { tool: string; scope: string; key?: string; earlierFailed: readon
 type Backgrounded = Ending & { startedAt: number; repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
 
 /**
- * Records how a run ended: its time in the history, apart when it failed, its failures, the ledger when the CLI read the run (`isRead`) and
+  * Records how a run ended: its time in the history, apart when it failed and not at all when it overlapped another checkout's run, its failures, the ledger when the CLI read the run (`isRead`) and
  * read more than a log's verdict, the card, its row and the band; the loop note, when a full run crossed the budget.
  */
 async function recordEnding($: EngineInterface, run: Ending, outcome: Report, isRead: boolean, ended: number, elapsed: number): Promise<string | undefined> {
   const { tool, scope, key, kind, earlier, earlierFailed } = run
-  if (key !== undefined) {
+  // A run that overlapped another checkout's shared the Mac: its time says nothing of a run on its own.
+  if (key !== undefined && !outcome.overlapped?.length) {
     // A failed run's time is kept apart: one that fails early would pull the usual time down. Both lists are written as
     // read when the run began, so a scope gone stale starts over whichever way the run ended.
     const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
@@ -535,7 +536,7 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start;
   // the Xcode MCP writes none.
   const finds = call.log === undefined && call.server === 'MobileBuildMCP'
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool] : []), '--since', String(call.startedAt)]
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined

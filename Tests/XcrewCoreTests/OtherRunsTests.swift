@@ -33,6 +33,33 @@ import XcrewTestSupport
         return await OtherRuns.going(project: project, machine: machine, now: Self.now)
     }
 
+    /// The other worktrees whose run overlapped this checkout's from `from` to `to` seconds before now.
+    func overlapped(worktrees: [String], from: TimeInterval, to: TimeInterval = 0) async throws -> [String] {
+        try FileManager.default.createDirectory(at: main, withIntermediateDirectories: true)
+        for name in worktrees { try FileManager.default.createDirectory(at: worktree(name), withIntermediateDirectories: true) }
+        let project = Project(root: main)
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(responses: FakeRunner.worktreeResponses(project: project, main: main.path, linked: worktrees.map { worktree($0).path })))
+        return await OtherRuns.overlapped(project: project, machine: machine, from: Self.now.addingTimeInterval(-from), to: Self.now.addingTimeInterval(-to))
+    }
+
+    /// Another worktree's run overlapped this one when it went while this one did: started before or during it, ended
+    /// since or not. One that ended before this run started, or started after it ended, didn't.
+    @Test func anotherWorktreesRunThatWentMeanwhileOverlapped() async throws {
+        try log("test_sim_2026-11-01T23-50-00-000Z_pid100_a.log", in: worktree("before"), ago: 120, text: Self.testing + "** TEST SUCCEEDED **\n")
+        try log("build_sim_2026-11-01T23-58-00-000Z_pid100_a.log", in: worktree("during"), ago: 5, text: "Build started\n")
+        try log("test_sim_2026-11-01T23-40-00-000Z_pid100_a.log", in: worktree("earlier"), ago: 400, text: Self.testing)
+        try log("test_sim_2026-11-01T23-59-30-000Z_pid100_a.log", in: worktree("later"), ago: 5, text: Self.testing)
+        #expect(try await overlapped(worktrees: ["before", "during", "earlier", "later"], from: 300, to: 60) == ["before", "during"])
+    }
+
+    /// Only another worktree's xcodebuild run overlaps: this checkout's own, a Swift package's build and other logs don't.
+    @Test func onlyAnotherWorktreesXcodebuildRunOverlaps() async throws {
+        try log("test_sim_2026-11-01T23-58-00-000Z_pid100_a.log", in: main, ago: 5, text: Self.testing)
+        try log("build_spm_2026-11-01T23-58-00-000Z_pid100_a.log", in: worktree("feature"), ago: 5, text: "Build complete!\n")
+        try log("app_oslog_2026-11-01T23-58-00-000Z_pid100_a.log", in: worktree("feature"), ago: 5, text: "log\n")
+        #expect(try await overlapped(worktrees: ["feature"], from: 300).isEmpty)
+    }
+
     static let testing = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\nTest Case '-[AppTests.GreetingTests testHello]' started.\n"
 
     @Test func anotherWorktreesRunIsListedWithItsToolAndPhase() async throws {

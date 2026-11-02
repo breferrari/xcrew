@@ -101,6 +101,25 @@ test("a failed run's time is kept apart from the usual time", async ($, on) => {
   expect((await runCommand($, 'xcrew', 'history')).text).toContain('1 failed run, 0:05')
 })
 
+/** A run that overlapped another checkout's run took longer for it: it says nothing of a run on its own. */
+test("a run that overlapped another checkout's run is kept out of the usual time", async ($, on) => {
+  const overlapped = { overlapped: ['feature'] }
+  const { clock, store } = session(on, { took: [60_000, 90_000, 5_000, 70_000], reports: [{ ok: true }, { ok: true, ...overlapped }, { ok: false, ...overlapped }, { ok: true }] })
+  await start($, clock)
+  for (let run = 0; run < 4; run += 1) await callTool($, 'mcp__xcode__BuildProject')
+  expect(store.get(historyKey(scopeKey('/work/App', 'BuildProject')))).toEqual([60_000, 70_000])
+  expect(store.get(failedKey(scopeKey('/work/App', 'BuildProject')))).toEqual([])
+})
+
+/** The report is told when the run started, to read which other checkouts' runs went meanwhile. */
+test("the report is told the run's start", async ($, on) => {
+  const { clock, cli } = session(on, { took: [60_000] })
+  await start($, clock)
+  await callTool($, 'mcp__xcode__BuildProject')
+  const report = cli.filter(call => call.args[0] === 'report').map(call => call.args.slice(call.args.indexOf('--since'), call.args.indexOf('--since') + 2))
+  expect(report).toEqual([['--since', String(NOW)]])
+})
+
 /** The run's log names what it built, which keys its history, whatever scheme was worked out before it appeared. */
 test('a run is kept under the scheme its log names, not the one worked out', async ($, on) => {
   const { clock, store } = session(on, { scheme: 'App', logScheme: 'Feature', took: [30_000] })

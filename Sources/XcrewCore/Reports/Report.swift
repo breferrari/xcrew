@@ -44,6 +44,9 @@ public struct Report: Sendable, Equatable, Codable {
     public var concurrency: ConcurrencySummary?
     /// The scheme the run's log names, when the report was read with its log: what the mod keys a backgrounded run by.
     public var scheme: String?
+    /// The other worktrees whose xcodebuild run went while this one did, when the report was told the run's start: the
+    /// mod keeps such a run out of the usual time.
+    public var overlapped: [String]?
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
