@@ -49,17 +49,14 @@ export function ledgerKey(head: Head): string {
 
 /** A ledger as stored, or none: a value in another shape is ignored rather than trusted. A green
  * not marked `listed` was inferred from a run's selection by an older xcrew, and could name a test that run never
- * ran: it's read as still red, to turn green again from a run that lists it. An entry that isn't an object is left out.
+ * ran; its red is long over, so the entry is left out, and the ledger rebuilds from new runs. An entry that isn't an
+ * object is left out too.
  */
 export function ledgerOf(stored: unknown): Ledger | undefined {
   const ledger = stored as Ledger | undefined
   if (!Array.isArray(ledger?.entries) || typeof ledger?.updated !== 'number') return undefined
   const entries = ledger.entries.filter((entry): entry is LedgerEntry => typeof entry === 'object' && entry !== null)
-  return { ...ledger, entries: entries.map(entry => (entry.green && !entry.green.listed ? withoutGreen(entry) : entry)) }
-}
-
-function withoutGreen({ green: _, ...entry }: LedgerEntry): LedgerEntry {
-  return entry
+  return { ...ledger, entries: entries.filter(entry => !entry.green || entry.green.listed) }
 }
 
 /**
