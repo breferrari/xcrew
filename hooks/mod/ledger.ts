@@ -95,6 +95,7 @@ export function isWholeScope(scope: string): boolean {
  * The ledger after a test run.
  * - A failing test enters red, or turns red again after a green, keeping its first red's date and bundle; either way it
  *   now fails in this run's scope, with this run's message.
+ * - A flaky test that fails with no repeated verdict for it, as in a plain run, starts its passes in a row over.
  * - A run turns green each red test its results list as passed (`passes`), a failing run included. A run whose
  *   results the CLI couldn't read turns nothing green.
  * - An entry no run has written for as long as the history is kept is dropped.
@@ -113,7 +114,9 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
     const mark = marked.get(test)
     const counts = mark ? { failed: mark.failed, runs: mark.runs, passes: mark.passes, needed: mark.needed, settled: mark.settled } : undefined
     if (verdict === 'flaky') return { ...(counts ?? { failed: repeated.get(test)?.failed ?? 0, runs: repeated.get(test)?.runs ?? 0 }), scope: run.scope, at: run.at }
-    return before && counts ? { ...before, ...counts } : before
+    const after = before && counts ? { ...before, ...counts } : before
+    // A failure no repeated verdict counts, a plain run's, adds nothing to the rate but ends the passes in a row.
+    return after && verdict === undefined && failed.has(test) ? { ...after, passes: 0, settled: false } : after
   }
   const entries = (ledger?.entries ?? []).filter(entry => !isStale(entry.last, run.at)).map((entry): LedgerEntry => {
     if (failing.has(entry.test)) {
