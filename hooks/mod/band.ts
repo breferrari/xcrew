@@ -50,7 +50,8 @@ function outcomeSegments(run: BandRun, now: number): Segment[] {
   if (run.ended) return endedSegments(run.tool, run.ended)
   const elapsed = now - run.startedAt
   const phase = run.phase ? piece(run.phase) : []
-  return [segment('●', ORANGE), segment(' '), segment(run.tool, undefined, 'semibold'), ...piece(stopwatch(elapsed)), ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase]
+  const background = run.inBackground ? piece('in the background') : []
+  return [segment('●', ORANGE), segment(' '), segment(run.tool, undefined, 'semibold'), ...background, ...piece(stopwatch(elapsed)), ...(run.measuredFrom === undefined ? [] : gaugeSegments(now - run.measuredFrom, run.usual)), ...phase]
 }
 
 /** A finished run's outcome: the mark, the tool, its time and how it compares, and what it came to. */

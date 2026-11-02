@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import type { Report } from './cli'
+import type { Phase, Report } from './cli'
 import { callTool, mapStore, stubCli } from './testing'
 
 const BUILD = 'mcp__MobileBuildMCP__build_sim'
@@ -23,7 +23,10 @@ function notificationText(result: string, task = TASK) {
  * A session in VS Code, where an outcome comes as a toast, whose build or test answers after 2:55 with the handle. The
  * CLI answers `reports` in turn after the handle's; the run's log is `LOG`.
  */
-function session(on: On, { surface = 'vscode' as 'vscode' | 'terminal', hold, reports = [] as Partial<Report>[], logSeen = true }: { surface?: 'vscode' | 'terminal'; hold?: Promise<void>; reports?: Partial<Report>[]; logSeen?: boolean } = {}) {
+function session(
+  on: On,
+  { surface = 'vscode' as 'vscode' | 'terminal', hold, reports = [] as Partial<Report>[], logSeen = true, phase }: { surface?: 'vscode' | 'terminal'; hold?: Promise<void>; reports?: Partial<Report>[]; logSeen?: boolean; phase?: (args: readonly string[]) => Phase } = {},
+) {
   const toasts: string[] = []
   const clock = mock.clock(on)
   const store = mapStore(on)
@@ -39,7 +42,7 @@ function session(on: On, { surface = 'vscode' as 'vscode' | 'terminal', hold, re
   on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['as the engine draws it'] }))
   // The prompt enters as the hooks above left it.
   on('prompt.submit', (_, e) => ({ text: e.text, ...(e.context ? { context: e.context } : {}), origin: e.origin }))
-  const cli = stubCli(on, { reports: [UNREAD, ...reports], phase: () => (logSeen ? { log: LOG, phase: 'testing', scheme: 'App' } : {}), project: { isGenerated: false, root: '/work/App', branch: 'main', scheme: 'App' } })
+  const cli = stubCli(on, { reports: [UNREAD, ...reports], phase: phase ?? (() => (logSeen ? { log: LOG, phase: 'testing', scheme: 'App' } : {})), project: { isGenerated: false, root: '/work/App', branch: 'main', scheme: 'App' } })
   on('tool.call', async (_, e) => {
     // A test run the session holds stays live on the band until `hold` settles.
     if (hold && e.tool.endsWith('test_sim')) await hold
@@ -257,4 +260,88 @@ test("a backgrounded test run's notification asks for its passed tests while a r
   await callTool($, TEST, { tool_use_id: 'toolu_bg' })
   await notify($, clock)
   expect(reportCalls(cli).at(-1)?.args).toEqual(['report', '--server', 'MobileBuildMCP', '--kind', 'test', '--passed', '--notification', '--log', LOG])
+})
+
+// MARK: Followed in the background
+
+const BAND = {
+  plugin: 'xcrew',
+  component: 'AbovePrompt',
+  surface: 'terminal',
+  props: { hasSurvey: false, isWorking: true, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+} as const
+
+/** Whether the band, as drawn now, shows a text matching `text`. */
+async function bandShows($: Engine, text: RegExp): Promise<boolean> {
+  const band = await $.ui.mount(BAND)
+  const found = await band.find({ type: 'Text', text })
+  await band.unmount()
+  return found !== undefined
+}
+
+const phaseCalls = (cli: { args: readonly string[] }[], tool = 'test_sim') => cli.filter(call => call.args[0] === 'phase' && call.args.includes(tool)).length
+
+/** Moved to the background, a run goes on: the band keeps it going, its phase read from its log, until it ends. */
+test('a run moved to the background stays on the band, going, with its phase', async ($, on) => {
+  const { clock, cli } = session(on, { surface: 'terminal' })
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  const read = phaseCalls(cli)
+  await clock.advance(5_000)
+  expect(phaseCalls(cli)).toBeGreaterThan(read)
+  expect(await bandShows($, /^test_sim$/)).toBe(true)
+  expect(await bandShows($, /in the background/)).toBe(true)
+  expect(await bandShows($, /^testing$/)).toBe(true)
+  expect(await bandShows($, /no result yet/)).toBe(false)
+  // The notification ends it: its log is read no more.
+  await notify($, clock)
+  const atNotification = phaseCalls(cli)
+  await clock.advance(5_000)
+  expect(phaseCalls(cli)).toBe(atNotification)
+})
+
+/** The log's verdict ends the band; the notification still records the run, once. */
+test("the log's verdict ends the band, and the notification records the run once", async ($, on) => {
+  let outcome: boolean | undefined
+  const { clock, cli, stored } = session(on, { surface: 'terminal', reports: [{ ok: false, failures: [], notes: [] }], phase: () => ({ log: LOG, phase: 'testing', scheme: 'App', ...(outcome === undefined ? {} : { outcome }) }) })
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  outcome = false
+  await clock.advance(2_000)
+  expect(await bandShows($, /^✗$/)).toBe(true)
+  const read = phaseCalls(cli)
+  await clock.advance(5_000)
+  expect(phaseCalls(cli)).toBe(read)
+  await notify($, clock)
+  expect(reportCalls(cli).filter(call => call.args.includes('--notification')).length).toBe(1)
+  expect(stored().filter(key => /^failed\./.test(key)).length).toBe(1)
+})
+
+/** A log that stops without a verdict, as when its server was killed, leaves the band, and nothing reads it on. */
+test('a run whose log goes quiet leaves the band, and its log is read no more', async ($, on) => {
+  let quiet = false
+  const { clock, cli } = session(on, { surface: 'terminal', phase: () => ({ log: LOG, phase: 'testing', scheme: 'App', ...(quiet ? { quiet: true } : {}) }) })
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  quiet = true
+  await clock.advance(2_000)
+  expect(await bandShows($, /test_sim/)).toBe(false)
+  const read = phaseCalls(cli)
+  await clock.advance(60_000)
+  expect(phaseCalls(cli)).toBe(read)
+})
+
+/** Two runs in the background each follow their own log, and each ends on its own. */
+test('two runs in the background each follow their own log', async ($, on) => {
+  let buildDone = false
+  const { clock, cli } = session(on, { surface: 'terminal', phase: args => (args.includes('build_sim') && buildDone ? { log: '/logs/build.log', phase: 'linking', outcome: true } : { log: args.includes('build_sim') ? '/logs/build.log' : LOG, phase: 'working' }) })
+  await callTool($, BUILD, { tool_use_id: 'toolu_build' })
+  await callTool($, TEST, { tool_use_id: 'toolu_test' })
+  const [builds, tests] = [phaseCalls(cli, 'build_sim'), phaseCalls(cli, 'test_sim')]
+  await clock.advance(3_000)
+  expect(phaseCalls(cli, 'build_sim')).toBeGreaterThan(builds)
+  expect(phaseCalls(cli, 'test_sim')).toBeGreaterThan(tests)
+  buildDone = true
+  await clock.advance(2_000)
+  const [builtAt, testedAt] = [phaseCalls(cli, 'build_sim'), phaseCalls(cli, 'test_sim')]
+  await clock.advance(3_000)
+  expect(phaseCalls(cli, 'build_sim')).toBe(builtAt)
+  expect(phaseCalls(cli, 'test_sim')).toBeGreaterThan(testedAt)
 })

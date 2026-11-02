@@ -16,6 +16,10 @@ struct PhaseCommand: Command {
         let phase: String?
         /// The scheme the log's invocation names, which the mod keys the run by.
         let scheme: String?
+        /// The log's xcodebuild verdict, once printed: a run moved to the background is followed until it.
+        var outcome: Bool?
+        /// True when the log has gone unwritten as long as `OtherRuns.quietFor`: its run stopped without a verdict.
+        var quiet: Bool?
     }
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -29,7 +33,11 @@ struct PhaseCommand: Command {
             log = await RunLog.find(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: context.project.root, machine: context.machine)
         }
         let phase = log.flatMap { RunLog.phase(ofLogAt: $0, expectedTests: invocation.arguments["expected"].flatMap(Int.init)) }
-        let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: phase, scheme: log.flatMap(RunLog.scheme(ofLogAt:))))
+        let kind: Report.Kind = tool.hasPrefix("test") ? .test : .build
+        let outcome = log.flatMap { RunLog.outcome(of: RunLog.tail(ofLogAt: $0), kind: kind) }
+        let written = log.flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+        let quiet = written.map { Date().timeIntervalSince($0) >= OtherRuns.quietFor } == true && outcome == nil
+        let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: phase, scheme: log.flatMap(RunLog.scheme(ofLogAt:)), outcome: outcome, quiet: quiet ? true : nil))
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0
     }
