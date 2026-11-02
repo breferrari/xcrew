@@ -506,10 +506,12 @@ struct TestbedEvidenceTests {
         return "test_sim_\(stamp)_pid100_0a1b2c3d.xcresult"
     }
 
-    static func project(committed: Date, ran: Date, changed: Date? = nil, earlier: Date? = nil, earlierTests: Int? = nil) throws -> (project: Project, context: CheckContext) {
+    static func project(committed: Date, ran: Date, changed: Date? = nil, earlier: Date? = nil, earlierTests: Int? = nil, alsoChanged: Date? = nil) throws -> (project: Project, context: CheckContext) {
         let root = try TestbedTests.copy("captures/coverage")
         // The changed file as the runs compiled it: last changed two days before the run unless given.
         try FileManager.default.setAttributes([.modificationDate: changed ?? ran.addingTimeInterval(-2 * 86_400)], ofItemAtPath: root.appending(path: "App/Pricing.swift").path)
+        // A second changed file, `ContentView.swift`, last changed then.
+        if let alsoChanged { try FileManager.default.setAttributes([.modificationDate: alsoChanged], ofItemAtPath: root.appending(path: "App/ContentView.swift").path) }
         let project = Project(root: root)
         let workspace = root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root.path))")
         let bundle = workspace.appending(path: "result-bundles/\(Self.named(ran.addingTimeInterval(-60)))"), log = workspace.appending(path: "logs/build_sim_1.log")
@@ -520,7 +522,7 @@ struct TestbedEvidenceTests {
         let mark = URL(fileURLWithPath: bundle.path + ResultBundle.completionMark)
         try Data().write(to: mark)
         for item in [bundle, log, mark] { try FileManager.default.setAttributes([.modificationDate: ran], ofItemAtPath: item.path) }
-        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
+        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"] + (alsoChanged == nil ? [] : ["App/ContentView.swift"]), diffed: (["App/Pricing.swift"] + (alsoChanged == nil ? [] : ["App/ContentView.swift"])).map { "\(ProjectLayout.canonical(root))/\($0)" }, diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
         let captured = { (file: String) in
             try String(contentsOf: root.appending(path: file), encoding: .utf8).replacingOccurrences(of: "\\/testbed\\/captures\\/coverage", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
         }
@@ -580,6 +582,15 @@ struct TestbedEvidenceTests {
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
         let run = await Run("evidence", context: context, stdin: Self.input)
         #expect(run.text.contains("- From the test runs of 2026-10-30 14:24 UTC and 2026-10-30 13:24 UTC: all 6 changed lines that can run ran in these test runs."), "\(run.text)")
+    }
+
+    /// A run that started after one changed file's last change and before another's speaks for the first alone: its
+    /// lines in the second came from content it never compiled.
+    @Test func aRunSpeaksForTheFilesUnchangedSinceItStartedAlone() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, changed: Self.ran.addingTimeInterval(-1800), earlier: Self.ran.addingTimeInterval(-3600), alsoChanged: Self.ran.addingTimeInterval(-7200))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: context, stdin: Self.input)
+        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5."), "\(run.text)")
     }
 
     /// A run of no test, as one whose filter matched nothing, counts nothing as run, so it's left out.

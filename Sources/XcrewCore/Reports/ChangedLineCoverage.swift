@@ -1,8 +1,8 @@
 import Foundation
 
 /// Of the lines a branch changed that can run, those a test run ran and those it didn't, from the run's coverage
-/// archive (docs/findings.md, *Changed lines a test run ran*). It speaks for this run alone: a line it didn't run may
-/// be run by a test it left out.
+/// archive (docs/findings.md, *Changed lines a test run ran*), or of a branch's runs merged. It speaks for the runs it
+/// holds alone: a line they didn't run may be run by a test they left out.
 struct ChangedLineCoverage: Sendable, Equatable {
     /// A file's changed lines that can run but didn't.
     struct Missed: Sendable, Equatable {
@@ -43,8 +43,8 @@ struct ChangedLineCoverage: Sendable, Equatable {
     static let budget = Duration.seconds(45)
 
     /// `work`'s answer, or nothing once `limit` has passed, when the work is cancelled: a command it runs is stopped.
-    static func within(_ limit: Duration, _ work: @escaping @Sendable () async -> ChangedLineCoverage?) async -> ChangedLineCoverage? {
-        await withTaskGroup(of: ChangedLineCoverage?.self) { group in
+    static func within<Answer: Sendable>(_ limit: Duration, _ work: @escaping @Sendable () async -> Answer) async -> Answer? {
+        await withTaskGroup(of: Answer?.self) { group in
             group.addTask { await work() }
             group.addTask {
                 try? await Task.sleep(for: limit)
@@ -62,7 +62,9 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// With the run's `targets`, a test bundle's files are left out, and a target the run didn't reach is said once
     /// rather than its changed lines one by one; a file every target holding it leaves out is left out. Only files named
     /// like a changed one are resolved, since an app's coverage can list thousands.
-    static func of(_ covered: [String], in change: GitChanges.Change, targets: [CoverageTarget], bundle: ResultBundle, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
+    /// With `keepingTestFiles`, files outside the coverage keep those only test targets build, for a caller that leaves
+    /// them out once for many runs.
+    static func of(_ covered: [String], in change: GitChanges.Change, targets: [CoverageTarget], bundle: ResultBundle, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
         guard !change.files.isEmpty else { return nil }
         let names = Set(change.files.map { ToolOutput.basename($0).lowercased() })
         let isNamed = { (path: String) in names.contains(ToolOutput.basename(path).lowercased()) }
@@ -88,7 +90,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
         for (path, ranges) in changed {
             guard case let .some(.some(read)) = counts[path] else { return nil }
             let changedLines = read.filter { line, _ in ranges.contains { $0.contains(line) } }
-            if !changedLines.isEmpty { found.lines[path] = changedLines }
+            found.lines[path] = changedLines
         }
         let changedFiles = Set(change.files)
         let unreachedFiles = holding.filter { changedFiles.contains($0.key) && $0.value.allSatisfy(\.isUnreached) }.compactMap { $0.value.first?.module }
@@ -97,9 +99,10 @@ struct ChangedLineCoverage: Sendable, Equatable {
         let held = Set(named.map(\.canonical)).union(leftOut)
         let kinds = Set(covered.map(kind))
         let root = ProjectLayout.canonical(project.root) + "/"
-        found.outside = withoutTestFiles(change.files.filter { file in
+        let outside = change.files.filter { file in
             file.hasPrefix(root) && !held.contains(file) && kinds.contains(kind(of: file)) && !isManifest(file) && FileManager.default.fileExists(atPath: file)
-        }, of: project)
+        }
+        found.outside = keepingTestFiles ? outside : withoutTestFiles(outside, of: project)
         return found
     }
 
@@ -113,13 +116,19 @@ struct ChangedLineCoverage: Sendable, Equatable {
         return fresh
     }
 
+    /// The runs that speak, by index: those holding a changed file, or every one when none does, as when they agree only
+    /// on what they don't hold.
+    static func speakers(_ runs: [ChangedLineCoverage]) -> [Int] {
+        let holding = runs.indices.filter { !runs[$0].lines.isEmpty }
+        return holding.isEmpty ? Array(runs.indices) : holding
+    }
+
     /// What a branch's runs say together: a changed line ran when any run ran it; a file is outside the coverage, and a
-    /// target unreached, only when it is so in every run, since a run that reached it says what it ran there.
+    /// target unreached, only when it is so in every run, since a run that reached it says what it ran there. Each file
+    /// is taken once, as the file system spells it, since runs spell it as their builds were started.
     static func merged(_ runs: [ChangedLineCoverage]) -> ChangedLineCoverage {
         guard let first = runs.first else { return ChangedLineCoverage() }
-        let spoke = runs.filter { !$0.lines.isEmpty }
-        var merged = ChangedLineCoverage(runs: max(1, spoke.reduce(0) { $0 + $1.runs }))
-        // Each file once, as the file system spells it: runs may spell it as their builds were started.
+        var merged = ChangedLineCoverage(runs: max(1, speakers(runs).reduce(0) { $0 + runs[$1].runs }))
         var spelled: [String: String] = [:]
         for run in runs {
             for (path, lines) in run.lines {
@@ -131,7 +140,11 @@ struct ChangedLineCoverage: Sendable, Equatable {
         }
         merged.outside = first.outside.filter { file in runs.allSatisfy { $0.outside.contains(file) } }
         merged.unreached = first.unreached.filter { target in runs.allSatisfy { $0.unreached.contains { $0.target == target.target } } }
-        merged.stale = Set(runs.flatMap(\.stale)).filter { spelled[ProjectLayout.canonicalPath($0)] == nil }.sorted()
+        var staleSeen = Set<String>()
+        merged.stale = runs.flatMap(\.stale).sorted().filter { path in
+            let canonical = ProjectLayout.canonicalPath(path)
+            return spelled[canonical] == nil && staleSeen.insert(canonical).inserted
+        }
         return merged
     }
 
@@ -194,22 +207,26 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// coverage. A bundle that says it holds none asks nothing of `xccov`, whose start alone takes over half a second;
     /// otherwise the change is read while `xccov`'s report, which names every file the archive holds, is.
     static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
-        await within(budget) {
-            guard await bundle.holdsCoverage() != false else { return nil }
-            async let listed = change()
-            let targets = CoverageTarget.targets(in: await bundle.coverageReport())
-            var seen = Set<String>()
-            let covered = targets.flatMap { $0.files.map(\.path) }.filter { seen.insert($0).inserted }
-            guard !covered.isEmpty, let change = await listed else { return nil }
-            return await of(covered, in: change, targets: targets, bundle: bundle, project: project, using: runner)
-        }
+        await within(budget) { await read(bundle, change: change, project: project, using: runner) } ?? nil
+    }
+
+    /// What `of` reads, with no time limit of its own; `keepingTestFiles` as `of(_:in:targets:bundle:project:using:keepingTestFiles:)` takes it.
+    static func read(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
+        guard await bundle.holdsCoverage() != false else { return nil }
+        async let listed = change()
+        let targets = CoverageTarget.targets(in: await bundle.coverageReport())
+        var seen = Set<String>()
+        let covered = targets.flatMap { $0.files.map(\.path) }.filter { seen.insert($0).inserted }
+        guard !covered.isEmpty, let change = await listed else { return nil }
+        return await of(covered, in: change, targets: targets, bundle: bundle, project: project, using: runner, keepingTestFiles: keepingTestFiles)
     }
 
     /// What Claude reads: the sentence, marked as xcrew's.
     var note: String? { sentence.map { "xcrew: " + $0 } }
 
-    /// How many changed lines ran, those that didn't, a few named, the targets with changed files the run didn't reach,
-    /// and the changed files the coverage doesn't hold. Nothing when none of that has anything to say.
+    /// How many changed lines ran, those that didn't, a few named, the targets with changed files the runs didn't reach,
+    /// the changed files the coverage doesn't hold, and those changed after every run that covered them. Nothing when
+    /// none of that has anything to say.
     var sentence: String? {
         let total = ran + notRun.reduce(0) { $0 + $1.lines.count }
         var sentences: [String] = []

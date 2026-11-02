@@ -140,7 +140,7 @@ public enum EvidencePack {
     }
 
     static func modified(_ url: URL) -> Date {
-        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+        modifiedIfKnown(url) ?? .distantPast
     }
 
     /// `- +3 more`, past the tests listed.

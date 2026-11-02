@@ -26,9 +26,10 @@ struct BranchCoverage: Sendable {
     static let budget = Duration.seconds(240)
 
     /// The runs that can speak for any changed file, newest first: started no earlier than the earliest of the changed
-    /// files' last changes, as a run that started before every one of them compiled none of them as they are.
-    static func candidates(_ runs: [Run], changedFiles modified: [Date]) -> [Run] {
-        guard let earliest = modified.min() else { return [] }
+    /// files' last changes, as a run that started before every one of them compiled none of them as they are. Nil with
+    /// no change to go by, as on a branch that only deletes files.
+    static func candidates(_ runs: [Run], lastChanges modified: [Date]) -> [Run]? {
+        guard let earliest = modified.min() else { return nil }
         return runs.filter { $0.started >= earliest }.sorted { $0.finished > $1.finished }
     }
 
@@ -62,11 +63,12 @@ struct BranchCoverage: Sendable {
     }
 
     /// What the branch's runs say of `change`, within `budget`: nothing when there's no run here or none says anything, and
-    /// no run at all when every run started before every changed file's last change.
+    /// no run at all when every run started before every changed file's last change. A run cut off at its own limit is
+    /// left out, as is one past `budget`. The files only test targets build are left out of those outside the coverage
+    /// once, for every run read, after the reading.
     static func read(change: GitChanges.Change, project: Project, machine: Machine) async -> BranchCoverage? {
         let all = runs(project: project, home: machine.home)
-        guard !all.isEmpty else { return nil }
-        let chosen = candidates(all, changedFiles: change.files.compactMap { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) })
+        guard !all.isEmpty, let chosen = candidates(all, lastChanges: change.files.compactMap { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }) else { return nil }
         guard !chosen.isEmpty else { return BranchCoverage(sentence: "", finished: [], leftOut: 0) }
         let gathered = Gathered()
         await withTaskGroup(of: Void.self) { group in
@@ -74,37 +76,51 @@ struct BranchCoverage: Sendable {
                 for run in chosen {
                     guard !Task.isCancelled else { return }
                     let bundle = ResultBundle(path: run.path, runner: machine.runner)
-                    let tested = ranTests(summary: await bundle.summary())
-                    let coverage = tested ? await ChangedLineCoverage.of(bundle, change: { change }, project: project, using: machine.runner) : nil
+                    let reading: ChangedLineCoverage?? = ranTests(summary: await bundle.summary())
+                        ? await ChangedLineCoverage.within(ChangedLineCoverage.budget) { await ChangedLineCoverage.read(bundle, change: { change }, project: project, using: machine.runner, keepingTestFiles: true) }
+                        : .some(nil)
                     guard !Task.isCancelled else { return }
-                    gathered.reached.withLock { $0 += 1 }
-                    // Each file's date is asked of the file system by the path the coverage spells, which resolves either spelling.
-                    if let coverage { gathered.read.withLock { $0.append((coverage.fresh(since: run.started) { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }, run.finished)) } }
+                    guard let reading else { continue }
+                    let fresh = reading?.fresh(since: run.started) { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }
+                    gathered.state.withLock { gathered in
+                        gathered.reached += 1
+                        if let fresh { gathered.read.append((fresh, run.finished)) }
+                    }
                 }
             }
             group.addTask { try? await Task.sleep(for: budget) }
             await group.next()
             group.cancelAll()
         }
-        let found = gathered.read.withLock { $0 }
-        let leftOut = chosen.count - gathered.reached.withLock { $0 }
-        guard !found.isEmpty else { return leftOut > 0 ? BranchCoverage(sentence: "", finished: [], leftOut: leftOut) : nil }
-        guard let sentence = ChangedLineCoverage.merged(found.map(\.coverage)).sentence else { return nil }
-        let spoke = found.filter { !$0.coverage.lines.isEmpty }.map(\.finished)
-        return BranchCoverage(sentence: sentence, finished: spoke.isEmpty ? [found[0].finished] : spoke, leftOut: leftOut)
+        let read = gathered.state.withLock { $0 }
+        let kept = Set(ChangedLineCoverage.withoutTestFiles(Array(Set(read.read.flatMap(\.coverage.outside))).sorted(), of: project))
+        let found = read.read.map { coverage, finished in
+            var coverage = coverage
+            coverage.outside = coverage.outside.filter(kept.contains)
+            return (coverage: coverage, finished: finished)
+        }
+        return together(found, leftOut: chosen.count - read.reached)
     }
 
-    /// What the reading has gathered when the budget passes: the runs read, and how many were reached.
+    /// What the runs read say together, the runs that spoke named by when they finished; with nothing said and runs left
+    /// out, the cut-off alone.
+    static func together(_ found: [(coverage: ChangedLineCoverage, finished: Date)], leftOut: Int) -> BranchCoverage? {
+        let cutOff = leftOut > 0 ? BranchCoverage(sentence: "", finished: [], leftOut: leftOut) : nil
+        guard let sentence = ChangedLineCoverage.merged(found.map(\.coverage)).sentence else { return cutOff }
+        return BranchCoverage(sentence: sentence, finished: ChangedLineCoverage.speakers(found.map(\.coverage)).map { found[$0].finished }, leftOut: leftOut)
+    }
+
+    /// What the reading has gathered when the budget passes: the runs read, and how many were reached. A class, as a
+    /// `Mutex` can't be captured by the reading's task.
     private final class Gathered: Sendable {
-        let read = Mutex<[(coverage: ChangedLineCoverage, finished: Date)]>([])
-        let reached = Mutex(0)
+        let state = Mutex<(read: [(coverage: ChangedLineCoverage, finished: Date)], reached: Int)>(([], 0))
     }
 
     /// The evidence block's line: the runs by when they finished, said to be older than the branch's last commit when the
     /// newest is, then what they say, and the runs left out past the time allowed.
     func line(lastCommit: Date?) -> String {
         guard !finished.isEmpty else {
-            return leftOut > 0 ? "- No test run was read in the time allowed: \(leftOut == 1 ? "1 run is" : "\(leftOut) runs are") left out." : "- No test run here speaks for the changed lines: each started before their last change."
+            return leftOut > 0 ? "- No test run read in the time allowed speaks for the changed lines: \(leftOut == 1 ? "1 run is" : "\(leftOut) runs are") left out." : "- No test run here speaks for the changed lines: each started before their last change."
         }
         let runs = finished.count == 1 ? "the test run" : "the test runs"
         let stamps = ResultBundle.joined(finished.map(EvidencePack.stamp))

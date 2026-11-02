@@ -58,7 +58,7 @@ import XcrewTestSupport
     @Test func onlyRunsStartedSinceTheEarliestChangeCanSpeak() {
         let at = { Date(timeIntervalSince1970: $0) }
         let runs = [BranchCoverage.Run(path: "/r/a", started: at(90), finished: at(95)), BranchCoverage.Run(path: "/r/b", started: at(110), finished: at(120)), BranchCoverage.Run(path: "/r/c", started: at(130), finished: at(140))]
-        #expect(BranchCoverage.candidates(runs, changedFiles: [at(200), at(100)]).map(\.path) == ["/r/c", "/r/b"])
+        #expect(BranchCoverage.candidates(runs, lastChanges: [at(200), at(100)])?.map(\.path) == ["/r/c", "/r/b"])
     }
 
     /// A run starts when MobileBuildMCP names its bundle, before it builds (`utils/test-common.js`); the folder itself is
@@ -85,6 +85,60 @@ import XcrewTestSupport
         let second = ChangedLineCoverage(lines: [ProjectLayout.canonicalPath(file.path): [4: false, 5: false]])
         #expect(ChangedLineCoverage.merged([first, second]).ran == 1)
         #expect(ChangedLineCoverage.merged([first, second]).notRun.map(\.lines) == [[5]])
+    }
+
+    /// A reading that finds nothing in time is told from one cut off at the limit, which leaves its run out.
+    @Test func aReadingThatFoundNothingIsToldFromOneCutOff() async {
+        let none = await ChangedLineCoverage.within(.seconds(30)) { Optional<ChangedLineCoverage>.none }
+        #expect(none.map { _ in "answered" } == "answered")
+        let cut = await ChangedLineCoverage.within(.milliseconds(50)) { () async -> ChangedLineCoverage? in
+            try? await Task.sleep(for: .seconds(30))
+            return nil
+        }
+        #expect(cut.map { _ in "answered" } == nil)
+    }
+
+    /// A stale file two runs spell two ways is named once.
+    @Test func aStaleFileSpelledTwoWaysIsNamedOnce() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-stale-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appending(path: "Pay.swift")
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+        let merged = ChangedLineCoverage.merged([ChangedLineCoverage(stale: [file.path]), ChangedLineCoverage(stale: [ProjectLayout.canonicalPath(file.path)])])
+        #expect(merged.stale.count == 1)
+    }
+
+    /// With no changed file's date to go by, as on a branch that only deletes files, no run is chosen or ruled out.
+    @Test func noDateChoosesNoRun() {
+        let run = BranchCoverage.Run(path: "/r/a", started: Date(timeIntervalSince1970: 100), finished: Date(timeIntervalSince1970: 200))
+        #expect(BranchCoverage.candidates([run], lastChanges: []) == nil)
+    }
+
+    /// When the runs read say nothing but some were left out, the cut-off is said; with nothing left out, nothing is.
+    @Test func runsThatSaidNothingWithSomeLeftOutSayTheCutOff() {
+        let line = "- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."
+        #expect(BranchCoverage.together([], leftOut: 2)?.line(lastCommit: nil) == line)
+        #expect(BranchCoverage.together([(ChangedLineCoverage(), Date(timeIntervalSince1970: 100))], leftOut: 2)?.line(lastCommit: nil) == line)
+        #expect(BranchCoverage.together([], leftOut: 0) == nil)
+    }
+
+    /// Runs that each hold none of the changed lines yet agree a file is outside their coverage are all named.
+    @Test func runsAgreeingOnlyOnWhatTheyDontHoldAreAllNamed() throws {
+        let outside = ChangedLineCoverage(outside: ["/p/A.swift"])
+        let together = try #require(BranchCoverage.together([(outside, Date(timeIntervalSince1970: 200)), (outside, Date(timeIntervalSince1970: 100))], leftOut: 0))
+        #expect(together.finished == [Date(timeIntervalSince1970: 200), Date(timeIntervalSince1970: 100)])
+        #expect(together.sentence == "1 changed file isn't in these runs' coverage: A.swift.")
+    }
+
+    /// A file the run covered whose changed lines can't run is held with none, so the run still speaks for it: an older
+    /// run's lines there don't make it a file no run covered.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCoveredFileWithNoChangedLineThatCanRunIsHeld() async throws {
+        let project = project()
+        let runner = run(project, counts: [nil, nil, nil, nil])
+        guard case let .success(change) = await GitChanges.since(nil, in: project, using: runner) else { Issue.record("no change"); return }
+        let found = try #require(await ChangedLineCoverage.of(ResultBundle(path: Self.bundle, runner: runner), change: { change }, project: project, using: runner))
+        #expect(found.lines.count == 1 && found.lines.values.allSatisfy(\.isEmpty), "\(found.lines)")
     }
 
     /// The runs named are those that spoke for a line; a run whose every file changed since says nothing.
