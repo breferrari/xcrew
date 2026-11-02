@@ -40,18 +40,20 @@ export function submitPrompt($: Engine, text: string) {
 type ProjectAnswer = { isGenerated: boolean; readsYaml?: boolean; setup?: string; scheme?: string; activeProfile?: string; xcodeState?: string; xcodeScheme?: string; followsXcode?: boolean; xcodeHostsServer?: boolean; generate?: string; app?: string; root?: string; branch?: string; commit?: string; manifest?: string }
 
 /** One call the mod made to the Swift CLI: its arguments, what it piped in, and the program when it wasn't the shim. */
+/** A CLI call a stub answered: its arguments, what was piped in, the program when not the shim, its time limit, and whether it was spawned rather than run. */
 export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number; spawned?: true }
 
 /**
- * Answers every `$.process.spawn`, so no test starts the real shim: a spawn of `--binary-path` names `BUILT_BINARY`, after
- * `held` when given; `fails` makes it unable to start. Each is recorded in `calls`, marked `spawned`.
+ * Answers every `$.process.spawn`: a spawn of `--binary-path` names `BUILT_BINARY`, after `held` when given; `fails`
+ * makes it unable to start, and `printsNothing` ends it with nothing on standard output, as a killed or failed build
+ * does. Each is recorded in `calls`, marked `spawned`.
  */
-export function stubSpawn(on: On, calls: CliCall[] = [], { held, fails }: { held?: Promise<void>; fails?: boolean } = {}): CliCall[] {
+export function stubSpawn(on: On, calls: CliCall[] = [], { held, fails, printsNothing }: { held?: Promise<void>; fails?: boolean; printsNothing?: boolean } = {}): CliCall[] {
   on('process.spawn', async function* (_, e) {
     calls.push({ args: e.argv.slice(1), spawned: true })
     if (fails) throw new Error('spawn ENOENT')
     if (held) await held
-    if (e.argv.includes('--binary-path')) yield { stream: 'stdout' as const, text: `${BUILT_BINARY}\n` }
+    if (e.argv.includes('--binary-path') && !printsNothing) yield { stream: 'stdout' as const, text: `${BUILT_BINARY}\n` }
     return { value: { code: 0, signal: null } }
   })
   return calls
@@ -101,7 +103,7 @@ export function stubCli(
     noBuild?: boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
     /** How the session start's background build goes: held until a promise settles, or unable to start. */
-    spawn?: { held?: Promise<void>; fails?: boolean }
+    spawn?: { held?: Promise<void>; fails?: boolean; printsNothing?: boolean }
   } = {},
 ): CliCall[] {
   const calls: CliCall[] = []

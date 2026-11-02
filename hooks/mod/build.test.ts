@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { BUILT_BINARY, callTool, stubCli } from './testing'
 
 /** A session in a terminal, its CLI stubbed with `spawn` for the session start's background build. */
-function session(on: On, spawn: { held?: Promise<void>; fails?: boolean } = {}) {
+function session(on: On, spawn: { held?: Promise<void>; fails?: boolean; printsNothing?: boolean } = {}) {
   const clock = mock.clock(on)
   mock.store(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -37,14 +37,14 @@ test("a session start starts the shim's build without waiting for it", async ($,
 })
 
 /**
- * The background build is the session start's first call on the shim, ahead of the doctor's read and the rest, which
- * run under time limits of their own: the shim's lock goes to the build no caller's limit stops, and they wait on it.
+ * The background build is dispatched first of the session start's calls on the shim, ahead of the doctor's read and
+ * the rest, which run under time limits of their own, so it's the likeliest to take the shim's lock.
  */
-test("the background build is the session start's first call on the shim", async ($, on) => {
+test("the background build is dispatched first of the session start's calls on the shim", async ($, on) => {
   const { clock, cli } = session(on)
   await start($)
   await clock.settle()
-  const shim = cli.filter(call => call.spawned || call.args[0] === '--binary-path')
+  const shim = cli.filter(call => call.args[0] === '--binary-path')
   expect(shim[0]).toEqual({ args: ['--binary-path'], spawned: true })
   expect(shim.length).toBeGreaterThan(1)
 })
@@ -55,6 +55,16 @@ test("a background build that can't start leaves the first CLI call to build", a
   await start($)
   await clock.settle()
   expect(cli.filter(call => call.spawned)).toHaveLength(1)
+  await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
+  expect(cli.filter(call => call.args[0] === 'report').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
+})
+
+/** A background build that ends naming no binary, as one killed or failed does, records nothing: calls keep the build they found. */
+test('a background build that names no binary leaves the known build as it was', async ($, on) => {
+  const { clock, cli } = session(on, { printsNothing: true })
+  await start($)
+  await clock.settle()
   await callTool($, 'mcp__xcode__BuildProject')
   await clock.settle()
   expect(cli.filter(call => call.args[0] === 'report').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])

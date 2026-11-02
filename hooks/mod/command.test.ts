@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { historyKey, scopeKey, updatedKey } from './timing'
-import { callTool, runCommand, stubSpawn } from './testing'
+import { callTool, runCommand } from './testing'
 
 /** Stands for the engine: registers commands, and answers `bin/xcrew` with `outputs[subcommand]`. */
 function engine(on: On, outputs: Record<string, string> = {}) {
@@ -13,7 +13,6 @@ function engine(on: On, outputs: Record<string, string> = {}) {
     return { value: { command: e.name } }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  stubSpawn(on)
   on('process.run', (_, e) => {
     // The session start's own look for problems, and its read of Xcode's selection, aren't a command's run.
     if (!e.argv.includes('--problems') && !e.argv.includes('--xcode')) runs.push(e.argv)

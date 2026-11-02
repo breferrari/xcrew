@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Problem } from './cli'
 import { RESTART_CHECK } from './problems'
-import { runCommand, stubCli, stubSpawn, submitPrompt } from './testing'
+import { runCommand, stubCli, submitPrompt } from './testing'
 
 const BAND = {
   plugin: 'xcrew',
@@ -274,7 +274,6 @@ test('after setup, a doctor read already in flight is followed by a fresh one', 
   const problems: Problem[] = []
   const clock = mock.clock(on)
   mock.store(on)
-  stubSpawn(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.surfaces', () => ({ value: ['terminal'] }))
