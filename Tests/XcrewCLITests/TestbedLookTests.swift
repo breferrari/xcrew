@@ -180,7 +180,8 @@ struct TestbedLookTests {
         let (text, _) = try await Self.report(TestID(suite: "UITests", name: "testMissingElement"))
         let lines = text.components(separatedBy: "\n")
         let screen = try #require(lines.firstIndex { $0.hasPrefix("    screen: ") }, "\(text)")
-        #expect(Array(lines[(screen + 1)...].prefix(5)) == [
+        #expect(Array(lines[(screen + 1)...].prefix(6)) == [
+            "    the elements below are the app's only; a system alert, as a permission request, shows only in the screenshot",
             #"    on screen, nothing the query's "checkout" Button matches:"#,
             #"      Application "App""#,
             #"        StaticText "Welcome", identifier "title""#,

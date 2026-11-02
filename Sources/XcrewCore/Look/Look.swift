@@ -114,7 +114,7 @@ public enum Look {
             runs.map { _ in (nil, nil) }
         }
         var lines = ["xcrew look: \(test.shown), in \(name)"]
-        let onScreen = elements(of: zip(runs, kept).map { failed, found in (failed.label, failed.attachments.isEmpty ? nil : hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps))) })
+        let onScreen = elements(of: zip(runs, kept).map { failed, found in (failed.label, failed.attachments.isEmpty ? nil : hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps), screenshot: found.screen != nil)) })
         for ((failed, found), elements) in zip(zip(runs, kept), onScreen) {
             lines.append("  " + failed.label)
             lines += failed.steps.map { "    \(firstLine($0))" }
@@ -126,6 +126,9 @@ public enum Look {
         if !passed.isEmpty { lines.append("  passed under: " + passed.joined(separator: "; ")) }
         return lines.joined(separator: "\n")
     }
+
+    /// Said above the elements when a query found nothing and a screenshot shows what the hierarchy can't.
+    static let appsOnly = "the elements below are the app's only; a system alert, as a permission request, shows only in the screenshot"
 
     static func screenLine(_ screen: FailureScreen?, recorded: Bool) -> String {
         guard let screen else { return recorded ? "screen: none; its recording couldn't be read" : "screen: none; the run kept no screen recording" }
@@ -149,9 +152,9 @@ public enum Look {
     }
 
     /// The elements on screen at the failure, the query's marked or named missing; or, for a hierarchy in a shape xcrew
-    /// doesn't read, its text as XCTest wrote it.
-
-    static func hierarchyLines(_ kept: FailureHierarchy?, query: UIQuery?) -> [String] {
+    /// doesn't read, its text as XCTest wrote it. The hierarchy XCTest attaches is the app's: a system alert belongs to
+    /// another process, so when the query found nothing and there's a `screenshot`, the list says it shows only the app.
+    static func hierarchyLines(_ kept: FailureHierarchy?, query: UIQuery?, screenshot: Bool) -> [String] {
         guard let kept else { return ["on screen: no hierarchy kept; XCTest attaches one when a query fails"] }
         let more = { (count: Int) in count > 0 ? ["  and \(count) more in \(kept.path)"] : [] }
         switch kept.content {
@@ -161,7 +164,8 @@ public enum Look {
         case let .read(hierarchy):
             let shown = hierarchy.lines(query: query, most: mostElements)
             let head = if let query, !shown.found { "on screen, nothing the query's \"\(query.text)\" \(query.type) matches:" } else { "on screen:" }
-            return [head] + shown.lines.map { "  \($0)" } + more(shown.more)
+            let note = query != nil && !shown.found && screenshot ? [Self.appsOnly] : []
+            return note + [head] + shown.lines.map { "  \($0)" } + more(shown.more)
         }
     }
 

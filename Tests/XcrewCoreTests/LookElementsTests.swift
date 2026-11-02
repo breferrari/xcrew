@@ -39,4 +39,22 @@ import Testing
         let runs: [(String, [String]?)] = [("Plan A · iPhone 18, iOS 27.2", none), ("Plan B · iPhone 18, iOS 27.2", none)]
         #expect(Look.elements(of: runs) == [none, none])
     }
+
+    static func hierarchy() throws -> FailureHierarchy {
+        FailureHierarchy(content: .read(try #require(UIHierarchy(text: UIHierarchyTests.captured))), path: "hierarchy.txt")
+    }
+    static let appsOnly = "the elements below are the app's only; a system alert, as a permission request, shows only in the screenshot"
+
+    /// A query that found nothing, with a screenshot kept: a system alert covering the app is another process's, so the
+    /// list can't show it and the screenshot can.
+    @Test func aQueryThatFoundNothingBesideAScreenshotSaysTheListIsTheAppsOnly() throws {
+        let lines = Look.hierarchyLines(try Self.hierarchy(), query: UIQuery(text: "checkout", type: "Button"), screenshot: true)
+        #expect(lines.prefix(2) == [Self.appsOnly, #"on screen, nothing the query's "checkout" Button matches:"#])
+    }
+
+    /// With no screenshot to look at, or a query that found its element, there's nothing to say.
+    @Test func noScreenshotOrAFoundQueryAddsNothing() throws {
+        #expect(!Look.hierarchyLines(try Self.hierarchy(), query: UIQuery(text: "checkout", type: "Button"), screenshot: false).contains(Self.appsOnly))
+        #expect(!Look.hierarchyLines(try Self.hierarchy(), query: UIQuery(text: "continue", type: "Button"), screenshot: true).contains(Self.appsOnly))
+    }
 }

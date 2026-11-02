@@ -1122,7 +1122,7 @@ import Testing
         let block = try #require(types.firstMatch(of: /export type SetupChoices = \{[\s\S]*?\n\}/)?.0)
         var choices = SetupChoices()
         choices.container = "A"; choices.containerProblem = "p"; choices.worktree = true
-        choices.schemes = [.init(name: "S", container: "A", roles: [.app, .unitTests, .uiTests], app: "App")]
+        choices.schemes = [.init(name: "S", container: "A", roles: [.app, .unitTests, .uiTests], app: "App", unitTestTargets: 2, uiTestTargets: 1)]
         choices.simulators = [.init(name: "iPhone", runtime: "27.2", twoDisplays: true)]
         choices.picks = .init(appScheme: "S", uiScheme: "S", testScheme: "S", bundleID: "b", testSimulator: "iPhone", appSimulator: "iPhone")
         choices.config = .init(owner: .edited, scheme: "S", debuggerBackend: "dap")
