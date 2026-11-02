@@ -16,6 +16,10 @@ public struct FlakyMark: Sendable, Equatable, Codable {
     /// The chance below which passing every run at the seen rate counts as a fix.
     static let chance = 0.05
 
+    /// Where a mark's passes come from, said with each count: only a repeated run's count, so a single pass leaves it as
+    /// it was. The mod says it in the same words.
+    public static let passesCountedFrom = "in repeated runs since"
+
     /// What the passes needed are, said once where they're listed; the mod says it in the same words.
     public static let neededMeaning = "Passes needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake."
 

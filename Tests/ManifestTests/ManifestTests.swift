@@ -176,6 +176,13 @@ import Testing
         #expect(String(said) == FlakyMark.neededMeaning)
     }
 
+    /// The ledger, the card, `/xcrew flaky` and the evidence's still-red line say where a flaky test's passes come from
+    /// in the same words.
+    @Test func theModAndTheEvidenceSayWherePassesComeFromAlike() throws {
+        let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const PASSES_COUNTED = '([^']*)'/)?.1)
+        #expect(String(said) == FlakyMark.passesCountedFrom)
+    }
+
     /// Every option the mod sends `xcrew report` is one the command takes: one it doesn't is a usage error, which the mod
     /// reads as a report it couldn't get, and the ledger records nothing.
     @Test func everyOptionTheModSendsReportIsOneItTakes() throws {

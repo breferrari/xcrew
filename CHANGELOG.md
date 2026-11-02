@@ -5,6 +5,7 @@
 - In an Xcode project, the coverage note no longer lists a changed test file as missing from the run's coverage. A run of one module's tests had named a changed UI test file it never built.
 - A build or test result Claude reads lists only the warnings in lines your branch changed, and counts the rest in one line that says where the full list is: the saved result, or the run's build log. That holds for a failed run moved to the background too. Outside git, every warning stays listed.
 - A failed test run that Claude Code moved to the background is read like the same run in the foreground: its failing tests are named and recorded, with xcrew's notes. Before, its notification came back as MobileBuildMCP's whole text, with nothing of xcrew's.
+- A test marked flaky reads "passed 0 of the 4 needed in repeated runs since", saying that only a repeated run's passes count, so a single pass no longer reads as a wrong count. The ledger, the card, `/xcrew flaky` and the evidence block say it alike.
 
 ## 0.13.1 — 2026-11-02
 

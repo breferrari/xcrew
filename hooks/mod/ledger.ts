@@ -212,21 +212,27 @@ export const LEDGER_TOOL_NAME = 'mcp__xcrew__ledger'
 export const LEDGER_UNAVAILABLE = "The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out. Run `/xcrew doctor`."
 
 /**
- * ` (flaky: failed 2 of 5 runs; passed 5 of the 6 needed since)` for a test marked flaky, without the passes when the
- * CLI hasn't counted them, and nothing otherwise: the ledger and the card say it alike.
+ * ` (flaky: failed 2 of 5 runs; passed 5 of the 6 needed in repeated runs since)` for a test marked flaky, without
+ * the passes when the CLI hasn't counted them, and nothing otherwise: the ledger and the card say it alike.
  */
 export function flakyLabel(entry: LedgerEntry): string {
   if (!entry.flaky) return ''
   return ` (flaky: ${flakyCounts(entry.flaky)}${entry.flaky.needed === undefined ? '' : `; ${passedSince(entry.flaky)}`})`
 }
 
+/** Where a mark's passes come from: only a repeated run's count. The evidence block says it in the same words. */
+export const PASSES_COUNTED = 'in repeated runs since'
+
 /** What the passes needed are, said once where they're listed. */
 export const PASSES_NEEDED = 'Passes needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.'
 
-/** `passed 5 of the 6 needed since`, or once it has them, `passed 10 in a row since, of 6 needed`. */
+/**
+ * `passed 5 of the 6 needed in repeated runs since`, or once it has them, `passed 10 in a row in repeated runs since, of 6
+ * needed`.
+ */
 function passedSince(flaky: Flakiness): string {
   const passes = flaky.passes ?? 0
-  return flaky.settled ? `passed ${passes} in a row since, of ${flaky.needed} needed` : `passed ${passes} of the ${flaky.needed} needed since`
+  return flaky.settled ? `passed ${passes} in a row ${PASSES_COUNTED}, of ${flaky.needed} needed` : `passed ${passes} of the ${flaky.needed} needed ${PASSES_COUNTED}`
 }
 
 /** `failed 2 of 5 runs`: how a flaky mark's counts read wherever it's shown. */
