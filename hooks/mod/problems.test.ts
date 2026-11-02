@@ -206,6 +206,29 @@ test('a session that ends another way reads nothing again', async ($, on) => {
   expect(calls.filter(call => call.args[0] === 'doctor').length).toBe(1)
 })
 
+test('the doctor read names its session, so the CLI records the mod as loaded in it', async ($, on) => {
+  const { calls, clock } = sessionWith(on, [PIN])
+  on('session.id', () => ({ value: '5f0c1a2b-0000-4000-8000-000000000003' }))
+  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(calls.map(call => call.args)).toContainEqual(['doctor', '--problems', '--json', '--session', '5f0c1a2b-0000-4000-8000-000000000003'])
+})
+
+test('a first doctor read that failed is tried once more, on the next prompt, and not again', async ($, on) => {
+  const { calls, clock } = sessionWith(on, [PIN], () => true)
+  const doctorRuns = () => calls.filter(call => call.args[0] === 'doctor').length
+  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const atStart = doctorRuns()
+  await submitPrompt($, 'first')
+  await clock.settle()
+  const afterFirst = doctorRuns()
+  expect(afterFirst).toBeGreaterThan(atStart)
+  await submitPrompt($, 'second')
+  await clock.settle()
+  expect(doctorRuns()).toBe(afterFirst)
+})
+
 // MARK: The restart a changed config needs
 
 test('a config MobileBuildMCP hasn\'t loaded outranks a failure, and stays past two minutes', async ($, on) => {

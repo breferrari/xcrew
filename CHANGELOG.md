@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The doctor says when a session's rules are an older xcrew's than the one running, as after a plugin update in an open session, `/reload-plugins` included, and when xcrew's mod hasn't reported in the session, which leaves its notes, tools and the line above the prompt off. Both checks run only from inside a Claude Code session.
 - A test run whose filter matched tests that then didn't execute ends on the line above the prompt as `✗ test_sim · 7:49 · 1 selected, none ran`, rather than `no tests ran`, which read as a filter that matched nothing.
 - The briefing names one command for setting up a worktree's session, `xcrew setup --worktree`, as the doctor and the line above the prompt do, and the setup skill starts there in a worktree.
 - Before setup, the doctor names the generate command along with setup in a checkout whose Tuist or XcodeGen project isn't generated yet, as a new worktree's: setup alone left nothing to build.

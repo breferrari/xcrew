@@ -86,3 +86,11 @@ supplementaryDoctorChecks:
     section: xcrew
     command: mcs/checks/xcode-mcp--claude-approved.sh
     fixCommand: "defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO"
+  - type: shellScript
+    name: This session has the running xcrew's rules
+    section: xcrew
+    command: mcs/checks/xcrew--briefing-current.sh
+  - type: shellScript
+    name: xcrew's mod is loaded in this session
+    section: xcrew
+    command: mcs/checks/xcrew--mod-loaded.sh

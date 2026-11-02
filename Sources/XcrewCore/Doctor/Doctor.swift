@@ -11,6 +11,8 @@ public enum Doctor {
         XcodeMCPHandshakeCheck(),
         XcodePinCheck(),
         ClaudeApprovedCheck(),
+        BriefingCurrentCheck(),
+        ModLoadedCheck(),
     ]
 
     public static func check(id: String) -> (any Check)? {

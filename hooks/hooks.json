@@ -14,6 +14,17 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook session-end",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
