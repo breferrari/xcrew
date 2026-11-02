@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The briefing names one command for setting up a worktree's session, `xcrew setup --worktree`, as the doctor and the line above the prompt do, and the setup skill starts there in a worktree.
 - Before setup, the doctor names the generate command along with setup in a checkout whose Tuist or XcodeGen project isn't generated yet, as a new worktree's: setup alone left nothing to build.
 - After `xcrew setup`, a running session builds and tests with the new profiles at once: setup prints the `session_set_defaults` calls that give them to MobileBuildMCP, and the doctor asks for a restart only when the config's tool groups or server settings changed. A new worktree session needs no restart to build and test after `xcrew setup --worktree`.
 - `/xcrew timings` lists the build, test and run calls that waited a second or more before they reached their server, with how long each step before the call took, so a slow start can be traced to its step.

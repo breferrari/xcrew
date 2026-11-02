@@ -5,6 +5,8 @@ description: Set up xcrew for this iOS project — write MobileBuildMCP's config
 
 # Set up xcrew in this project
 
+In a git worktree whose main checkout is set up, run `xcrew setup --worktree` instead of the steps below: it writes this worktree's config from the main checkout's, with simulators of its own, and prints the calls that give this session's MobileBuildMCP its profiles. Then do steps 4 and 5.
+
 1. Find the choices, without asking for what you can look up:
    - **Container:** run `xcrew project --setup`. Its JSON names the `container` setup will build. When it has a `containerProblem` instead, explain it to the person in your own words and ask: which of the folders it lists to use, or to generate the workspace first, then run `xcrew project --setup` again.
    - **Schemes:** MobileBuildMCP's `list_schemes` on that container. Pick the app scheme and, if there is one, the UI-test scheme. Leave the unit-test scheme to `xcrew setup`.
