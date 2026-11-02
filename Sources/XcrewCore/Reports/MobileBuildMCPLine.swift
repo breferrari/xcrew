@@ -65,9 +65,14 @@ enum MobileBuildMCPLine {
         entry.hasPrefix("|")
     }
 
-    /// `Suite / test(): message`, the part of a failing test's line after its `✗`.
+    /// `Suite / test(): message`, the part of a failing test's line after its `✗`. A crash the result bundle files under
+    /// `System Failures`, as `xctest (<pid>) encountered an error`, is its test's: the message names it last,
+    /// `Crash: xctest at implicit closure #1 in Suite.test()` (docs/findings.md, *A crash under System Failures*).
     static func test(in entry: String) -> (test: TestID, message: String)? {
-        entry.firstMatch(of: #/^(.+?) \/ (\S+?): (.*)$/#).map { (TestID(suite: $0.1, name: $0.2), String($0.3)) }
+        if let crash = entry.wholeMatch(of: #/System Failures \/ xctest \(\d+\) encountered an error: (Crash: .* in (?:\S+\.)?([^.\s]+)\.([^.\s]+\(\)))/#) {
+            return (TestID(suite: crash.2, name: crash.3), String(crash.1))
+        }
+        return entry.firstMatch(of: #/^(.+?) \/ (\S+?): (.*)$/#).map { (TestID(suite: $0.1, name: $0.2), String($0.3)) }
     }
 
     /// `    /path/File.swift:12`, the line after a failure, an error or a warning that says where it happened.
