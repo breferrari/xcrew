@@ -20,7 +20,7 @@ export function afterRead(held: ElsewhereRuns | null, read: ElsewhereRun[] | und
 export const ELSEWHERE_LABEL = 'elsewhere: '
 
 /** `feature · test_sim · testing 120 of 959`: a fact, the first runs named and the rest counted. */
-export function elsewhereText(runs: ElsewhereRun[]): string {
+export function elsewhereRuns(runs: ElsewhereRun[]): string {
   const named = runs.slice(0, NAMED).map(run => [run.worktree, run.tool, ...(run.phase ? [run.phase] : [])].join(' · '))
   const more = runs.length > NAMED ? [`+${runs.length - NAMED} more`] : []
   return [...named, ...more].join('; ')

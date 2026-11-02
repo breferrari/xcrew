@@ -49,11 +49,11 @@ async function bandLines($: Engine): Promise<string[]> {
   return lines
 }
 
-/** Whether the elsewhere line is the band's last: no text after it but its own label and runs. */
+/** Whether the elsewhere line is the band's last: after it come only its own label and runs, in that order. */
 function isLast(lines: string[]): boolean {
   const at = lines.findIndex(line => line.startsWith('elsewhere: '))
   const own = lines[at] ?? ''
-  return at >= 0 && lines.slice(at + 1).every(part => own.includes(part))
+  return at >= 0 && at === lines.length - 3 && lines[at + 1] === 'elsewhere: ' && own === `elsewhere: ${lines[at + 2]}`
 }
 
 async function start($: Engine, clock: { settle: () => Promise<void> }) {
