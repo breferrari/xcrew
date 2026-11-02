@@ -23,7 +23,15 @@ const CHOICES = {
 }
 
 /** A session that draws in the terminal, with the CLI answering `choices` and printing `wrote` for a write. */
-async function session($: Engine, on: On, choices: unknown = CHOICES, surfaces: RenderSurface[] = ['terminal'], placed = true, after: unknown = choices) {
+/** What `xcrew setup` prints when it wrote the config: the calls that give a running MobileBuildMCP its profiles. */
+const WROTE_OUTPUT = [
+  'xcrew: wrote .mobilebuildmcp/config.yaml for Field.xcworkspace',
+  'xcrew: a running MobileBuildMCP takes these session defaults without a restart, one call each:',
+  '  session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"Field","workspacePath":"/project/Field.xcworkspace"}',
+  "xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it",
+].join('\n')
+
+async function session($: Engine, on: On, choices: unknown = CHOICES, surfaces: RenderSurface[] = ['terminal'], placed = true, after: unknown = choices, wroteOutput = WROTE_OUTPUT) {
   mapStore(on)
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
@@ -36,7 +44,7 @@ async function session($: Engine, on: On, choices: unknown = CHOICES, surfaces: 
   let wrote = false
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
-  const calls = stubCli(on, { setup: args => (args.includes('--choices') ? (wrote ? after : choices) : ((wrote = true), 'xcrew: wrote .mobilebuildmcp/config.yaml for Field.xcworkspace; restart Claude Code so MobileBuildMCP reads it')) })
+  const calls = stubCli(on, { setup: args => (args.includes('--choices') ? (wrote ? after : choices) : ((wrote = true), wroteOutput)) })
   await $.session.start({ cwd: '/project', surface: 'terminal', isInteractive: true })
   return { calls, opened }
 }
@@ -117,16 +125,29 @@ test('picking another container reads its choices', async ($, on) => {
   await ui.unmount()
 })
 
-test('after a write, Claude reads once that MobileBuildMCP reads the new config at the next start', async ($, on) => {
+test('after a write, Claude reads once the calls that give this session\'s MobileBuildMCP the new profiles', async ($, on) => {
   await session($, on)
   await runCommand($, 'xcrew', 'setup')
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'write' })
   await ui.unmount()
   const first = await submitPrompt($, 'build it')
-  expect(first).toMatchObject({ context: ['The person wrote a new MobileBuildMCP config with /xcrew setup; MobileBuildMCP reads it when Claude Code next starts.'] })
+  expect(first).toMatchObject({ context: [[
+    "The person wrote a new MobileBuildMCP config with /xcrew setup. This session's MobileBuildMCP takes its session defaults through these calls, one each:",
+    'session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"Field","workspacePath":"/project/Field.xcworkspace"}',
+    "Its tool groups and server settings load when Claude Code next starts; builds and tests don't wait for that.",
+  ].join('\n')] })
   const second = await submitPrompt($, 'and again')
   expect((second as { context?: readonly string[] }).context ?? []).toEqual([])
+})
+
+test('a write whose output names no call leaves Claude the restart', async ($, on) => {
+  await session($, on, CHOICES, ['terminal'], true, CHOICES, 'xcrew: wrote .mobilebuildmcp/config.yaml for Field.xcworkspace')
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'write' })
+  await ui.unmount()
+  expect(await submitPrompt($, 'build it')).toMatchObject({ context: ['The person wrote a new MobileBuildMCP config with /xcrew setup; MobileBuildMCP reads it when Claude Code next starts.'] })
 })
 
 test('where nothing draws pickers, /xcrew setup names the skill and opens nothing', async ($, on) => {

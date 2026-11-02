@@ -17,8 +17,12 @@ struct ConfigLoadedCheck: Check {
         guard let (server, isSessions) = await list.mobileBuildMCPServer(serving: context.project, forSessionOf: context.machine.processID, using: context.runner) else {
             return .skip("MobileBuildMCP isn't running for this project")
         }
-        guard written > Date(timeIntervalSinceNow: -TimeInterval(server.elapsed)) else {
-            return .pass("loaded at its start")
+        let started = Date(timeIntervalSinceNow: -TimeInterval(server.elapsed))
+        guard written > started else { return .pass("loaded at its start") }
+        // Since setup keeps the server part's fingerprint, a change to profiles alone needs no restart.
+        if let serverChanged = try? FileManager.default.attributesOfItem(atPath: context.project.serverMarker.path)[.modificationDate] as? Date {
+            guard serverChanged > started else { return .pass("loaded at its start; the profiles written since come through session_set_defaults, as setup printed") }
+            if isSessions { return .warn("the config's tool groups or server settings changed after this session's MobileBuildMCP started: builds and tests go on, and restarting Claude Code loads the rest") }
         }
         return .warn(!isSessions
             ? "a MobileBuildMCP serving this project started before the config changed: restart its Claude Code session to load it"

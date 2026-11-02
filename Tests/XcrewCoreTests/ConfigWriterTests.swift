@@ -97,3 +97,67 @@ import XcrewTestSupport
         #expect(try ConfigWriter.write(answers, to: project) == .written(backup: nil))
     }
 }
+
+/// What only a restart loads into a running MobileBuildMCP, apart from the session defaults a call can set.
+@Suite struct ServerPartTests {
+    let answers = ProfileAnswers(container: "App.xcworkspace", testSimulator: "iPhone 17", testScheme: "App")
+
+    @Test func theServerPartLeavesTheSessionDefaultsOut() {
+        let yaml = "schemaVersion: 1\nenabledWorkflows:\n  - simulator\ndebuggerBackend: lldb-cli\nsessionDefaultsProfiles:\n  unit:\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit\nsessionDefaults:\n  simulatorName: 'iPhone 17'\nshowTestTiming: true\n"
+        #expect(ConfigRenderer.serverPart(of: yaml) == "schemaVersion: 1\nenabledWorkflows:\n  - simulator\ndebuggerBackend: lldb-cli\nshowTestTiming: true\n")
+    }
+
+    /// The server marker moves only when the server part does: a new simulator or scheme leaves it where it was.
+    @Test func theServerMarkerMovesOnlyWithTheServerPart() throws {
+        let project = Project.temporary()
+        _ = try ConfigWriter.write(answers, to: project)
+        #expect(FileManager.default.fileExists(atPath: project.serverMarker.path))
+        let then = Date(timeIntervalSinceNow: -3600)
+        try FileManager.default.setAttributes([.modificationDate: then], ofItemAtPath: project.serverMarker.path)
+        var changed = answers
+        changed.testSimulator = "iPhone 18"
+        _ = try ConfigWriter.write(changed, to: project)
+        #expect(try FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date == then)
+        changed.debuggerBackend = "dap"
+        _ = try ConfigWriter.write(changed, to: project)
+        #expect((try FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date ?? then) > then)
+    }
+}
+
+/// The calls that give this session's MobileBuildMCP setup's profiles without a restart.
+@Suite struct LiveDefaultsTests {
+    @Test func eachProfileIsOneCallTheActiveLast() {
+        let yaml = """
+        schemaVersion: 1
+        enabledWorkflows:
+          - simulator
+        sessionDefaultsProfiles:
+          unit:
+            workspacePath: 'App.xcworkspace'
+            scheme: 'AppTests'
+            simulatorName: 'iPhone 17'
+            simulatorId: 'AAAA'
+            env:
+              LOG: 'quiet'
+            extraArgs:
+              - '-skipMacroValidation'
+            useLatestOS: true
+          app:
+            workspacePath: 'App.xcworkspace'
+            scheme: 'App'
+            simulatorName: 'iPhone 17'
+            bundleId: 'com.example.app'
+        activeSessionDefaultsProfile: unit
+
+        """
+        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App")) == [
+            #"session_set_defaults {"bundleId":"com.example.app","createIfNotExists":true,"profile":"app","scheme":"App","simulatorName":"iPhone 17","workspacePath":"/work/App/App.xcworkspace"}"#,
+            #"session_set_defaults {"createIfNotExists":true,"env":{"LOG":"quiet"},"extraArgs":["-skipMacroValidation"],"profile":"unit","scheme":"AppTests","simulatorId":"AAAA","simulatorName":"iPhone 17","useLatestOS":true,"workspacePath":"/work/App/App.xcworkspace"}"#,
+        ])
+    }
+
+    @Test func globalDefaultsAreOneCallWithoutAProfile() {
+        let yaml = "schemaVersion: 1\nsessionDefaults:\n  projectPath: '/abs/App.xcodeproj'\n  simulatorName: 'iPhone 17'\n"
+        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App")) == [#"session_set_defaults {"projectPath":"/abs/App.xcodeproj","simulatorName":"iPhone 17"}"#])
+    }
+}

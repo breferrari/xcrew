@@ -45,6 +45,8 @@ public enum ConfigWriter {
         try fileManager.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
         try content.write(to: config, options: .atomic)
         try Self.fingerprint(content).write(to: project.managedMarker, options: .atomic)
+        let server = Self.fingerprint(Data(ConfigRenderer.serverPart(of: yaml).utf8))
+        if (try? Data(contentsOf: project.serverMarker)) != server { try server.write(to: project.serverMarker, options: .atomic) }
         return .written(backup: backup)
     }
 
