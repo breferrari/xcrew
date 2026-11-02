@@ -9,45 +9,35 @@ public enum RunLog {
         phase(in: Data(log.utf8), expectedTests: expectedTests)
     }
 
-    /// The phase of the log at `url`, reading only what it needs: a clean build's log runs to tens of
-    /// megabytes, and the band asks once a second. A test run's count needs only what follows its start of testing;
-    /// a build's step needs only the log's end.
-    public static func phase(ofLogAt url: URL, expectedTests: Int?) -> String? {
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
-        return phase(in: data, expectedTests: expectedTests)
+    /// The phase of the log at `url`. With `folder`, read on from the reading kept there for it, and that reading kept
+    /// again: a clean build's log runs to tens of megabytes, and the band asks once a second.
+    public static func phase(ofLogAt url: URL, expectedTests: Int?, keptIn folder: URL? = nil) -> String? {
+        let kept = folder.map { $0.appending(path: SHA256.hash(data: Data(url.path.utf8)).hex + ".json") }
+        let before = kept.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(LogReading.self, from: $0) }
+        guard let reading = LogReading.reading(url, after: before) else { return nil }
+        if let kept, reading != before, let encoded = try? JSONEncoder().encode(reading) {
+            try? FileManager.default.createDirectory(at: kept.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? encoded.write(to: kept, options: .atomic)
+        }
+        return reading.phase(expectedTests: expectedTests)
     }
 
-    /// How much of a log's end holds its latest task line, nearly always.
+    /// Where a log's reading is kept between the band's asks, one file a log.
+    public static func readings(on machine: Machine) -> URL {
+        machine.cacheFolder.appending(path: "phases")
+    }
+
+    /// How much of a log's end holds its latest lines, nearly always.
     static let tailBytes = 64 * 1024
 
     /// A short phase for the band, or nil before the first task. `expectedTests` is the last run's total. From the
     /// end of the tests' build until testing starts, the phase is testing, with no count (docs/findings.md, *Test progress
-    /// in a run's log*).
+    /// in a run's log*). No count for a build: xcodebuild starts work on nearly every module early, and prints no line
+    /// when one is done.
     static func phase(in data: Data, expectedTests: Int?) -> String? {
-        if let testing = testingStart(in: data) {
-            let (done, isRepeated) = progress(in: String(decoding: data[testing...], as: UTF8.self))
-            if isRepeated { return "testing" }
-            if let expectedTests, done <= expectedTests { return "testing \(done) of \(expectedTests)" }
-            return "testing · \(done) done"
-        }
-        if data.range(of: Data("\n** TEST BUILD SUCCEEDED **".utf8), options: .backwards) != nil { return "testing" }
-        // No count for a build: xcodebuild starts work on nearly every module early, and prints no line when one is done.
-        let tail = String(decoding: data.suffix(tailBytes), as: UTF8.self)
-        return buildStep(tail) ?? (data.count > tailBytes ? lastStep(in: data) : nil)
-    }
-
-    /// Where testing starts in a log: xcodebuild's own first `Test Suite '…'` line for XCTest, or Swift Testing's
-    /// `◇ Test run started.`, whichever comes first. MobileBuildMCP writes its `Testing started` only once the tests have
-    /// run, so that's the last resort (docs/findings.md, *Test progress in a run's log*).
-    static func testingStart(in data: Data) -> Data.Index? {
-        func lineStart(_ marker: String, before end: Data.Index? = nil, options: Data.SearchOptions = []) -> Data.Index? {
-            let bytes = Data(marker.utf8)
-            if data.starts(with: bytes) { return data.startIndex }
-            let line = data.range(of: Data("\n".utf8) + bytes, options: options, in: data.startIndex..<(end ?? data.endIndex))
-            return line.map { $0.lowerBound + 1 }
-        }
-        let suite = lineStart("Test Suite '")
-        return lineStart("◇ Test run started.", before: suite) ?? suite ?? lineStart("Testing started", options: .backwards)
+        var reading = LogReading()
+        reading.read(data)
+        return reading.phase(expectedTests: expectedTests)
     }
 
     /// How many tests a log's lines say have finished, counted as MobileBuildMCP counts a run's tests (docs/findings.md,
@@ -72,36 +62,10 @@ public enum RunLog {
     /// total, `Test run with 6 tests …`, so a result after one is a test plan's next configuration's (docs/findings.md,
     /// *Test progress in a run's log*).
     static func progress(in log: String) -> (finished: Int, isRepeated: Bool) {
-        var count = 0
-        var expected: Set<Substring> = []
-        var seen: Set<Substring> = []
-        var isRepeated = false
-        var swiftTestingRunEnded = false
-        for line in log.split(separator: "\n", omittingEmptySubsequences: true) {
-            if line.hasPrefix("Test case '") {
-                if line.contains("' passed") || line.contains("' failed") {
-                    count += 1
-                    if !seen.insert(line.dropFirst("Test case '".count).prefix { $0 != "'" }).inserted { isRepeated = true }
-                }
-            } else if line.hasPrefix(serialCase), let close = line.range(of: "]' ") {
-                let verdict = line[close.upperBound...]
-                let test = line[..<close.lowerBound].dropFirst(serialCase.count)
-                if verdict.hasPrefix("passed (") || verdict.hasPrefix("failed (") || verdict.hasPrefix("skipped (") {
-                    if !expected.contains(test) { count += 1 }
-                    if !seen.insert(test).inserted { isRepeated = true }
-                }
-            } else if let open = line.range(of: "Expected failure in -["), let close = line[open.upperBound...].firstIndex(of: "]") {
-                expected.insert(line[open.upperBound..<close])
-            } else if let counts = swiftTestingCounts(line) {
-                if counts { count += 1 }
-                if swiftTestingRunEnded { isRepeated = true }
-            } else if isSwiftTestingRunTotal(line) {
-                swiftTestingRunEnded = true
-            }
-        }
-        return (count, isRepeated)
+        var progress = TestProgress()
+        for line in log.split(separator: "\n", omittingEmptySubsequences: true) { progress.read(line) }
+        return (progress.finished, progress.isRepeated)
     }
-
 
     static let serialCase = "Test Case '-["
 
@@ -127,20 +91,6 @@ public enum RunLog {
         if failed != nil { return true }
         if test.hasSuffix(" skipped.") || test.contains(" skipped: \"") { return true }
         if let cancelled = test.range(of: " was cancelled after ", options: .backwards), !test[cancelled.upperBound...].contains(" started.") { return true }
-        return nil
-    }
-
-    /// The latest task's step in a log whose end holds none, such as a long run of linker warnings:
-    /// each earlier `(in target '` is found in the bytes and only its own line is read.
-    static func lastStep(in data: Data) -> String? {
-        let mark = Data("(in target '".utf8), newline = UInt8(ascii: "\n")
-        var searchEnd = data.endIndex
-        while let found = data.range(of: mark, options: .backwards, in: data.startIndex..<searchEnd) {
-            let start = data[..<found.lowerBound].lastIndex(of: newline).map { $0 + 1 } ?? data.startIndex
-            let end = data[found.upperBound...].firstIndex(of: newline) ?? data.endIndex
-            if let step = buildStep(String(decoding: data[start..<end], as: UTF8.self)) { return step }
-            searchEnd = start
-        }
         return nil
     }
 

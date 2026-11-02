@@ -537,6 +537,22 @@ import XcrewTestSupport
         #expect(run.text == #"{"log":"\#(log)","phase":"compiling Payments"}"#)
     }
 
+    /// Each tick reads on from where the last stopped, kept in xcrew's cache: what was read before isn't read again.
+    @Test func aTickReadsOnlyWhatWasAppended() async throws {
+        let project = Project.temporary()
+        let start = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\nTest Case '-[AppTests testOne]' passed (0.101 seconds).\n"
+        project.write(start, to: "test_sim_1.log")
+        let log = project.root.appending(path: "test_sim_1.log")
+        let context = CheckContext.fake(project: project)
+        #expect(await Run("phase", "--tool", "test_sim", "--since", "0", "--log", log.path, context: context).text == #"{"log":"\#(log.path)","phase":"testing · 1 done"}"#)
+        project.write(String(repeating: "x", count: start.utf8.count - 1) + "\n", to: "test_sim_1.log")
+        let handle = try FileHandle(forWritingTo: log)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("Test Case '-[AppTests testTwo]' passed (0.101 seconds).\n".utf8))
+        try handle.close()
+        #expect(await Run("phase", "--tool", "test_sim", "--since", "0", "--log", log.path, context: context).text == #"{"log":"\#(log.path)","phase":"testing · 2 done"}"#)
+    }
+
     /// A run moved to the background is followed until its log ends: the log's verdict, once xcodebuild prints it.
     @Test(arguments: [("** TEST EXECUTE SUCCEEDED **", true), ("** TEST EXECUTE FAILED **", false)])
     func aLogsVerdictIsItsOutcome(verdict: String, ok: Bool) async throws {
