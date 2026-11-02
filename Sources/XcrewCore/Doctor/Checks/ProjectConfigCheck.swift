@@ -31,6 +31,13 @@ struct ProjectConfigCheck: Check {
         let missing = ConfigRenderer.containerPaths(in: yaml, root: project.root, home: context.machine.home).filter { !FileManager.default.fileExists(atPath: $0) }
         if !missing.isEmpty {
             let names = missing.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
+            // A generator's output is kept out of git, so a checkout made since, as a worktree, has none until it generates.
+            // A path that isn't there can't be resolved, so the root is matched as written and as the file system spells it.
+            let roots = [project.root.path, project.canonicalRoot].map { $0 + "/" }
+            if let manifests = project.layout(.anywhereButHome).generator, missing.allSatisfy({ path in roots.contains { path.hasPrefix($0) } }) {
+                let generate = manifests.generator == .tuist ? manifests.installAndGenerateCommand : manifests.generateCommand
+                return .warn("the config points at \(names), which isn't generated in this checkout yet: run `\(generate)` from the project's root")
+            }
             return .warn("the config points at \(names), which no longer exists (the project moved or was renamed): xcrew setup")
         }
         let profiles = ConfigRenderer.profiles(in: yaml)

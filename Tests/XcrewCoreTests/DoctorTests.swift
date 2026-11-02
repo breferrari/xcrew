@@ -167,6 +167,24 @@ import XcrewTestSupport
         #expect(await ProjectConfigCheck().run(.fake(project: project)).status == .warn)
     }
 
+    /// A config whose workspace isn't in this checkout, in a project a generator makes: the generated project is kept out
+    /// of git, so a fresh worktree has none yet. The fix is the generate, not setup.
+    @Test(arguments: [(["Tuist.swift", "Project.swift"], "`tuist install && tuist generate --no-open`"), (["project.yml"], "`xcodegen generate`")])
+    func aGeneratedProjectNotYetGeneratedHereNamesTheGenerate(manifests: [String], generate: String) async {
+        let project = Project.temporary()
+        for manifest in manifests { project.write("", to: manifest) }
+        project.write(ConfigRenderer.render(.init(container: "App.xcworkspace", testSimulator: "iPhone 17", testScheme: "App"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        let result = await ProjectConfigCheck().run(.fake(project: project))
+        #expect(result == .warn("the config points at App.xcworkspace, which isn't generated in this checkout yet: run \(generate) from the project's root"), "\(result.message)")
+    }
+
+    /// Without a generator, or with the workspace outside this checkout, the project moved or was renamed.
+    @Test func aWorkspaceGoneFromAPlainProjectWasMoved() async {
+        let project = Project.temporary(containing: ["Other.xcodeproj"])
+        project.write(ConfigRenderer.render(.init(container: "App.xcworkspace", testSimulator: "iPhone 17", testScheme: "App"), root: project.root), to: ".mobilebuildmcp/config.yaml")
+        #expect(await ProjectConfigCheck().run(.fake(project: project)) == .warn("the config points at App.xcworkspace, which no longer exists (the project moved or was renamed): xcrew setup"))
+    }
+
     /// The tool groups as Xcrew 0.9.0 wrote them, with `xcode-ide` and without the status bar.
     static let groupsOf090 = "enabledWorkflows:\n  - simulator\n  - sim-env\n  - xcode-ide\n  - ui-automation\n  - debugging\ncustomWorkflows:\n  sim-env:\n    - erase_sims\n    - set_sim_appearance\n    - set_sim_location\n    - reset_sim_location\n    - toggle_software_keyboard\n    - toggle_connect_hardware_keyboard\n"
 
