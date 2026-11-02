@@ -3,6 +3,9 @@ import Foundation
 /// A pull request's evidence from what xcrew knows of its branch: a Markdown block safe to paste into the PR, and apart
 /// from it, the local images for the person to attach. The block never holds a path of this Mac or an id of its devices.
 public enum EvidencePack {
+    /// What a red test the newest run in its scope didn't run is said to be; the mod's ledger says it in the same words.
+    public static let notInNewestRun = "not in the newest run of its scope"
+
     /// The block to paste, and the images to attach, which never go inside it.
     public struct Text: Sendable, Equatable {
         public let block: String
@@ -42,7 +45,7 @@ public enum EvidencePack {
             let lines = red.prefix(mostTests).map { entry in
                 "- `\(entry.test)`: " + quoted(entry.red.message ?? "failed") + (entry.flaky.map { flaky in
                     ", flaky, failing \(flaky.failed) of \(flaky.runs) runs" + (flaky.needed.map { ", passed \(flaky.passes ?? 0) of the \($0) needed \(FlakyMark.passesCountedFrom)" } ?? "")
-                } ?? "")
+                } ?? "") + (entry.unseen == nil ? "" : ", \(Self.notInNewestRun)")
             }
             parts.append(["Still red:"] + lines + more(red.count))
         }

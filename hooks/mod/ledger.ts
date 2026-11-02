@@ -19,7 +19,7 @@ export type LedgerRun = { scope: string; at: number }
  * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, when a run last
  * wrote it, and its target, from the result bundle, when the report named one.
  */
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun & { listed?: true }; last: number; flaky?: Flakiness; target?: string }
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun & { listed?: true }; last: number; flaky?: Flakiness; target?: string; unseen?: LedgerRun }
 
 /**
  * A flaky mark: the failures and runs of the repeated runs up to its last failure, and the repeated run that found the
@@ -32,9 +32,10 @@ export type Ledger = { entries: LedgerEntry[]; updated: number }
 
 /**
  * A finished test run, as the ledger reads it. `passed`: the tests its results list as passed, each with the test bundle
- * the result bundle files it under when it names one; absent when the CLI couldn't read them.
+ * the result bundle files it under when it names one; absent when the CLI couldn't read them. `narrowed`: the run left some
+ * of its scope's tests out on purpose, by a skip, a test plan or a configuration, or repeated them.
  */
-export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; repeated?: readonly Repetition[]; passed?: readonly Passed[]; bundle?: string }
+export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; repeated?: readonly Repetition[]; passed?: readonly Passed[]; bundle?: string; narrowed?: true }
 
 /** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
 export function label(head: Head, isShort: boolean): string {
@@ -81,6 +82,15 @@ export function passes(scope: string, passed: readonly Passed[], entry: LedgerEn
   if (schemeOfScope(scope) !== schemeOfScope(entry.failing)) return false
   const test = bare(entry.test)
   return passed.some(each => bare(each.test) === test && (each.target === undefined || entry.target === undefined || each.target === entry.target))
+}
+
+/** Whether a run of `scope` would have run a red of `failing`'s: the same scheme, and its whole suite, or a selection holding each of the red run's own. */
+export function wouldRun(scope: string, failing: string): boolean {
+  if (schemeOfScope(scope) === '' || schemeOfScope(scope) !== schemeOfScope(failing)) return false
+  if (isWholeScope(scope)) return true
+  const selected = new Set(scopeParts(scope).selections)
+  const reds = scopeParts(failing).selections
+  return reds.length > 0 && reds.every(selection => selected.has(selection))
 }
 
 /** A test's name without a Swift Testing method's `()`. */
@@ -131,8 +141,25 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
     const flaky = flakyAfter(entry.test, entry.flaky)
     const updated = flaky === entry.flaky ? entry : { ...entry, ...(flaky ? { flaky } : {}), last: run.at }
     const cleared = !flaky || (repeated.get(entry.test)?.verdict === 'passed' && flaky.settled === true)
-    const isGreen = !entry.green && cleared && run.passed !== undefined && passes(run.scope, run.passed, entry)
-    return isGreen ? { ...updated, green: { scope: run.scope, at: run.at, listed: true }, last: run.at } : updated
+    const read = !entry.green && run.passed !== undefined
+    const listed = read && passes(run.scope, run.passed ?? [], entry)
+    if (listed && cleared) {
+      const { unseen: _, ...green } = updated
+      return { ...green, green: { scope: run.scope, at: run.at, listed: true }, last: run.at }
+    }
+    // A run that ran it, listing it passed or repeating it, ends a note that one didn't.
+    const ranIt = listed || repeated.has(entry.test)
+    if (ranIt && updated.unseen) {
+      const { unseen: _, ...ran } = updated
+      return ran
+    }
+    // A run whose passed tests are listed whole, from its result bundle, that didn't list it, of its scheme's whole suite or
+    // of a selection holding the red's own, as for a test deleted since: said, and the entry's age left as it was, so it
+    // goes once no run has failed it for as long as the history is kept. The Xcode MCP's list stops at 100 results, and a
+    // run that passed nothing, as a failed build, lists none.
+    const listsWhole = run.bundle !== undefined && (run.passed?.length ?? 0) > 0
+    const isUnseen = read && !ranIt && listsWhole && !run.narrowed && wouldRun(run.scope, entry.failing)
+    return isUnseen ? { ...updated, unseen: { scope: run.scope, at: run.at } } : updated
   })
   for (const test of failing) {
     if (entries.some(entry => entry.test === test)) continue
@@ -167,7 +194,7 @@ export function ledgerText(ledger: Ledger | undefined, head: Head): string {
   if (entries.length === 0) return `No test has failed on ${name} yet.`
   const green = entries.filter((entry): entry is GreenEntry => entry.green !== undefined)
   const red = entries.filter(entry => !entry.green)
-  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}`
+  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}${entry.unseen ? `; ${NOT_IN_NEWEST}, ${dayAndTime(entry.unseen.at)}` : ''}`
   const named = (entry: LedgerEntry) => `${entry.test}${flakyLabel(entry)}`
   return [
     ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${named(entry)}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
@@ -224,6 +251,9 @@ export function flakyLabel(entry: LedgerEntry): string {
   if (!entry.flaky) return ''
   return ` (flaky: ${flakyCounts(entry.flaky)}${entry.flaky.needed === undefined ? '' : `; ${passedSince(entry.flaky)}`})`
 }
+
+/** What a red test the newest run in its scope didn't run is said to be; the evidence block says it in the same words. */
+export const NOT_IN_NEWEST = 'not in the newest run of its scope'
 
 /** Where a mark's passes come from: only a repeated run's count. The evidence block says it in the same words. */
 export const PASSES_COUNTED = 'in repeated runs since'

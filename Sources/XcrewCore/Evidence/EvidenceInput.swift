@@ -27,6 +27,8 @@ public struct EvidenceInput: Sendable, Decodable {
         public let red: Run
         public let green: Run?
         public let flaky: Flaky?
+        /// The newest run of the red's own scope, when its results didn't list the test, as for a test deleted since.
+        public let unseen: Run?
     }
 
     public let ledger: [Entry]
