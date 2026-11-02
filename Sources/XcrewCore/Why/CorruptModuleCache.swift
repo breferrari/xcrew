@@ -28,9 +28,9 @@ struct CorruptModuleCache: MachineCause {
     /// What to remove: the two folders in the DerivedData, by path when it's known.
     static func fix(derivedData: String?) -> String {
         guard let derivedData else {
-            return "Removing \(folders.joined(separator: " and ")) from the DerivedData this build used lets the next build make them afresh"
+            return "Removing \(folders.joined(separator: " and ")) from the DerivedData this build used lets the next build rebuild them"
         }
-        return "Removing the cached modules lets the next build make them afresh: rm -rf \(folders.map { quoted("\(derivedData)/\($0)") }.joined(separator: " "))"
+        return "Removing the cached modules lets the next build rebuild them: rm -rf \(folders.map { quoted("\(derivedData)/\($0)") }.joined(separator: " "))"
     }
 
     /// A path as one shell word: in single quotes, each one inside it closed, escaped and reopened.
