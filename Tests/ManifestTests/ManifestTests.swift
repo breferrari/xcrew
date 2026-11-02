@@ -227,17 +227,20 @@ import Testing
         }
     }
 
-    /// The routing rules guard DerivedData: deleted only when the person asks. A note that hands Claude a command deleting
-    /// part of it says so, so it never reads as Claude's to run; the command ends the note, so nothing of the sentence
-    /// around it is copied into it.
-    @Test func aNoteThatDeletesPartOfDerivedDataLeavesItToThePerson() throws {
+    /// The routing rules guard DerivedData, deleted only when the person asks, and a harm guard holds anything else of the
+    /// person's alike. A text that hands Claude a command deleting a folder of theirs or stopping a process that may be
+    /// their build says it's theirs to agree to, right before the command, which ends the text so nothing of the
+    /// sentence around it is copied into it.
+    @Test func aCommandThatRemovesOrStopsThePersonsWorkIsTheirsToAgreeTo() throws {
         #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
-        let condition = "That deletes part of DerivedData, so it's the person's to agree to"
-        let deleting = try toldWhole().filter { $0.contains("rm -rf") }
-        #expect(!deleting.isEmpty, "no note to Claude gives an rm -rf any more; this test has nothing to hold")
-        for note in deleting { #expect(note.contains(condition), "\(note)") }
-        #expect(CorruptModuleCache.fix(derivedData: nil).hasSuffix(condition + "."))
-        #expect(CorruptModuleCache.fix(derivedData: "/d").hasSuffix("SDKExplicitPrecompiledModules'"))
+        let condition = "so it's the person's to agree to: "
+        let removing = try toldWhole().filter { $0.contains(/\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill )/) }
+        #expect(removing.count >= 3, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
+        for text in removing {
+            let command = try #require(text.range(of: condition), "no condition before the command: \(text)").upperBound
+            #expect(!text[command...].contains(". ") && !text.hasSuffix("."), "the command doesn't end the text: \(text)")
+        }
+        #expect(CorruptModuleCache.fix(derivedData: nil).hasSuffix("That deletes part of DerivedData, so it's the person's to agree to."))
     }
 
     /// xcrew routes work across its servers; it doesn't prescribe how Claude reports or works. So the words of a rule
@@ -313,7 +316,7 @@ import Testing
             + [XcodePinCheck.failureNote(pinMissing, hasXcodes: true), XcodePinCheck.failureNote(pinStarted, hasXcodes: true)].compactMap { $0 }
         let expected = ["xcrew: several Xcodes are installed", "xcrew: the Xcode MCP works through the open", "xcrew: CI uses Xcode", "xcrew: builds use", "xcrew: MobileBuildMCP started without the project's pin"]
         try #require(xcodeNotes.count == expected.count && expected.allSatisfy { start in xcodeNotes.contains { $0.hasPrefix(start) } }, "each snapshot no longer gives the note it's built for: \(xcodeNotes)")
-        let machineNotes: [String] = [ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
+        let machineNotes: [String] = [ProjectConfigCheck.legacyFolder("/work/App/.xcodebuildmcp"), ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
         let modTools: [String] = try Self.modTools.map { try toolDescription($0.constant, in: $0.file) }
         return briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + xcodeNotes + machineNotes + modTools
     }
