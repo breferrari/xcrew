@@ -33,6 +33,8 @@ struct ChangedLineCoverage: Sendable, Equatable {
     var unreached: [Unreached] = []
     /// How many runs this speaks for: one, or a branch's runs merged.
     var runs = 1
+    /// Changed files a run covered but that changed since it started, which it can't speak for.
+    var stale: [String] = []
 
     /// How many files' line counts are asked of `xccov` at once.
     static let atOnce = 4
@@ -101,6 +103,16 @@ struct ChangedLineCoverage: Sendable, Equatable {
         return found
     }
 
+    /// This run's say on the changed files unchanged since it `started`; a file modified later holds content the run never
+    /// compiled, so its lines there would name the wrong ones: it's named stale instead.
+    func fresh(since started: Date, modified: (String) -> Date?) -> ChangedLineCoverage {
+        var fresh = self
+        let unchanged = Set(lines.keys.filter { path in modified(path).map { $0 <= started } ?? false })
+        fresh.lines = lines.filter { unchanged.contains($0.key) }
+        fresh.stale = (stale + lines.keys.filter { !unchanged.contains($0) }).sorted()
+        return fresh
+    }
+
     /// What a branch's runs say together: a changed line ran when any run ran it; a file is outside the coverage, and a
     /// target unreached, only when it is so in every run, since a run that reached it says what it ran there.
     static func merged(_ runs: [ChangedLineCoverage]) -> ChangedLineCoverage {
@@ -111,6 +123,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
         }
         merged.outside = first.outside.filter { file in runs.allSatisfy { $0.outside.contains(file) } }
         merged.unreached = first.unreached.filter { target in runs.allSatisfy { $0.unreached.contains { $0.target == target.target } } }
+        merged.stale = Set(runs.flatMap(\.stale)).subtracting(merged.lines.keys).sorted()
         return merged
     }
 
@@ -206,6 +219,10 @@ struct ChangedLineCoverage: Sendable, Equatable {
         if !outside.isEmpty {
             let files = outside.count == 1 ? "1 changed file isn't" : "\(outside.count) changed files aren't"
             sentences.append("\(files) in \(runs == 1 ? "this run's" : "these runs'") coverage\(ResultBundle.listed(outside.map(ToolOutput.basename))).")
+        }
+        if !stale.isEmpty {
+            let files = stale.count == 1 ? "1 changed file has" : "\(stale.count) changed files have"
+            sentences.append("\(sentences.isEmpty ? files : files.prefix(1).uppercased() + files.dropFirst()) changed since every run that covered \(stale.count == 1 ? "it" : "them")\(ResultBundle.listed(stale.map(ToolOutput.basename))).")
         }
         return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }

@@ -35,6 +35,32 @@ import XcrewTestSupport
         #expect(merged.unreached == [])
     }
 
+    /// A run speaks only for the changed files unchanged since it started: a file modified later holds content the run
+    /// never compiled, so its lines there would name the wrong ones.
+    @Test func aRunSpeaksOnlyForFilesUnchangedSinceItStarted() {
+        let run = ChangedLineCoverage(lines: ["/p/Cart.swift": [4: true], "/p/Pay.swift": [2: true]])
+        let modified = ["/p/Cart.swift": Date(timeIntervalSince1970: 100), "/p/Pay.swift": Date(timeIntervalSince1970: 300)]
+        let fresh = run.fresh(since: Date(timeIntervalSince1970: 200)) { modified[$0] }
+        #expect(fresh.lines == ["/p/Cart.swift": [4: true]])
+        #expect(fresh.stale == ["/p/Pay.swift"])
+    }
+
+    /// A changed file every run that covered it is older than says so, as neither run nor not run.
+    @Test func aFileChangedSinceEveryRunIsSaidSo() {
+        let first = ChangedLineCoverage(lines: ["/p/Cart.swift": [4: true]], stale: ["/p/Pay.swift"])
+        let second = ChangedLineCoverage(lines: ["/p/Cart.swift": [4: false]], stale: ["/p/Pay.swift", "/p/Cart.swift"])
+        let merged = ChangedLineCoverage.merged([first, second])
+        #expect(merged.stale == ["/p/Pay.swift"])
+        #expect(merged.sentence == "the 1 changed line that can run ran in these test runs. 1 changed file has changed since every run that covered it: Pay.swift.")
+    }
+
+    /// Only runs that started once the earliest changed file had its last change can speak for any, newest first.
+    @Test func onlyRunsStartedSinceTheEarliestChangeCanSpeak() {
+        let at = { Date(timeIntervalSince1970: $0) }
+        let runs = [BranchCoverage.Run(path: "/r/a", started: at(90), finished: at(95)), BranchCoverage.Run(path: "/r/b", started: at(110), finished: at(120)), BranchCoverage.Run(path: "/r/c", started: at(130), finished: at(140))]
+        #expect(BranchCoverage.candidates(runs, changedFiles: [at(200), at(100)]).map(\.path) == ["/r/c", "/r/b"])
+    }
+
     @Test func linesNotRunAreNamedAsRanges() {
         #expect(ChangedLineCoverage.ranges([10, 6, 7, 8]) == ["6-8", "10"])
     }

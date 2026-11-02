@@ -500,25 +500,25 @@ struct TestbedMediaFlagTests {
 struct TestbedEvidenceTests {
     /// A copy of the coverage capture on a branch that wrote `price(for:)`'s body, its last commit at `committed`, with
     /// MobileBuildMCP's newest test run and build at `ran`.
-    static func project(committed: Date, ran: Date, reflog: String? = nil, earlier: Date? = nil, earlierTests: Int? = nil) throws -> (project: Project, context: CheckContext) {
+    static func project(committed: Date, ran: Date, changed: Date? = nil, earlier: Date? = nil, earlierTests: Int? = nil) throws -> (project: Project, context: CheckContext) {
         let root = try TestbedTests.copy("captures/coverage")
+        // The changed file as the runs compiled it: last changed two days before the run unless given.
+        try FileManager.default.setAttributes([.modificationDate: changed ?? ran.addingTimeInterval(-2 * 86_400)], ofItemAtPath: root.appending(path: "App/Pricing.swift").path)
         let project = Project(root: root)
         let workspace = root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root.path))")
         let bundle = workspace.appending(path: "result-bundles/test_sim_1.xcresult"), log = workspace.appending(path: "logs/build_sim_1.log")
         try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "\(root.path)/App/Pricing.swift:4:13: warning: initialization of immutable value 'rate' was never used\n\(root.path)/App/Other.swift:2:5: warning: deprecated\n".write(to: log, atomically: true, encoding: .utf8)
-        for item in [bundle, log] { try FileManager.default.setAttributes([.modificationDate: ran], ofItemAtPath: item.path) }
+        for item in [bundle, log] { try FileManager.default.setAttributes([.creationDate: ran.addingTimeInterval(-60), .modificationDate: ran], ofItemAtPath: item.path) }
         var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
         let captured = { (file: String) in
             try String(contentsOf: root.appending(path: file), encoding: .utf8).replacingOccurrences(of: "\\/testbed\\/captures\\/coverage", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
         }
-        // The branch, checked out a day before the run unless a reflog says otherwise, from a merge base two days back.
-        let checkedOut = reflog ?? "HEAD@{\(Int(ran.timeIntervalSince1970) - 86_400)}\tcheckout: moving from main to feature\n"
         if let earlier {
             let second = workspace.appending(path: "result-bundles/test_sim_0.xcresult")
             try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
-            try FileManager.default.setAttributes([.modificationDate: earlier], ofItemAtPath: second.path)
+            try FileManager.default.setAttributes([.creationDate: earlier.addingTimeInterval(-60), .modificationDate: earlier], ofItemAtPath: second.path)
             if let earlierTests {
                 responses["xcrun xcresulttool get test-results summary --path \(second.path) --compact"] = .init(status: 0, stdout: #"{"totalTestCount":\#(earlierTests),"passedTests":\#(earlierTests),"failedTests":0,"skippedTests":0}"#)
             }
@@ -529,9 +529,6 @@ struct TestbedEvidenceTests {
             ]) { _, new in new }
         }
         responses.merge([
-            "git -C \(root.path) reflog show HEAD --date=unix --format=%gd%x09%gs": reflog == "" ? .init(status: 128) : .init(status: 0, stdout: checkedOut),
-            "git -C \(root.path) rev-parse --abbrev-ref HEAD": .init(status: 0, stdout: "feature\n"),
-            "git -C \(root.path) log -1 --format=%ct \(FakeRunner.base)": .init(status: 0, stdout: "\(Int(ran.timeIntervalSince1970) - 2 * 86_400)\n"),
             "git -C \(root.path) log -1 --format=%ct": .init(status: 0, stdout: "\(Int(committed.timeIntervalSince1970))\n"),
             "xcrun xcresulttool get content-availability --path \(bundle.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
             "xcrun xccov view --report --json \(bundle.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
@@ -556,14 +553,14 @@ struct TestbedEvidenceTests {
             """, "\(run.text)")
     }
 
-    /// A run written while another branch was checked out in the checkout isn't this branch's: its coverage is left out.
-    @Test func aRunWrittenOnAnotherBranchIsLeftOut() async throws {
-        let at = Int(Self.ran.timeIntervalSince1970)
-        let reflog = "HEAD@{\(at + 300)}\tcheckout: moving from main to feature\nHEAD@{\(at - 600)}\tcheckout: moving from feature to main\nHEAD@{\(at - 86_400)}\tcheckout: moving from main to feature\n"
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran, reflog: reflog)
+    /// A run that started before a changed file's last change compiled other content: its lines there would name the
+    /// wrong ones, so it doesn't count for that file, as when another branch's run was written in the same checkout.
+    @Test func aRunOlderThanAChangedFilesLastChangeDoesntCountForIt() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran, changed: Self.ran.addingTimeInterval(-30))
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
         let run = await Run("evidence", context: context, stdin: Self.input)
         #expect(!run.text.contains("changed lines that can run"), "\(run.text)")
+        #expect(run.text.contains("- No test run here speaks for the changed lines: each started before their last change."), "\(run.text)")
     }
 
     /// The branch's runs together: a line one run left out and another ran counts as run, and the runs are named.
@@ -580,14 +577,6 @@ struct TestbedEvidenceTests {
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
         let run = await Run("evidence", context: context, stdin: Self.input)
         #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run."), "\(run.text)")
-    }
-
-    /// With no reflog to tell the branch's runs, only runs since the last commit count, and the block says so.
-    @Test func withNoReflogOnlyRunsSinceTheLastCommitCountAndItsSaid() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, reflog: "", earlier: Self.ran.addingTimeInterval(-9000))
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        let run = await Run("evidence", context: context, stdin: Self.input)
-        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5. Only runs since the branch's last commit count: the checkout's reflog couldn't be read to tell its runs."), "\(run.text)")
     }
 
     /// A run before the branch's last commit is named as older, never left out and never shown as current.
