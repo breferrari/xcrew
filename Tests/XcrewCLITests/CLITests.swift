@@ -86,7 +86,7 @@ import XcrewTestSupport
         var runner = simulators
         runner.responses["defaults read com.apple.dt.Xcode IDEAllowUnauthenticatedAgents"] = .init(status: 0, stdout: value)
         let run = await Run("setup", "--app-scheme", "App", context: .fake(runner, project: project))
-        #expect(run.output.contains("xcrew: Xcode accepts unsigned agents, so any unsigned process on this Mac may drive Xcode's tools: defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO") == says, "\(run.output)")
+        #expect(run.output.contains("xcrew: Xcode accepts unsigned agents, so any unsigned process on this Mac may drive Xcode's tools. Turning that off changes an Xcode setting the person may have chosen, so it's the person's to agree to: defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO") == says, "\(run.output)")
     }
 
     @Test func detectsTheWorkspaceAndTheNewestIPhone() async {

@@ -89,7 +89,9 @@ import XcrewTestSupport
     }
 
     @Test func legacyBinaryWarns() async {
-        #expect(await LegacyBinaryCheck().run(.fake(FakeRunner(installed: ["xcodebuildmcp"]))).status == .warn)
+        let old = await LegacyBinaryCheck().run(.fake(FakeRunner(installed: ["xcodebuildmcp"])))
+        #expect(old.status == .warn)
+        #expect(old.message.hasSuffix(". Uninstalling it removes a tool of the person's, so it's the person's to agree to: brew uninstall xcodebuildmcp, or npm uninstall -g xcodebuildmcp"), "\(old.message)")
         #expect(await LegacyBinaryCheck().run(.fake()).status == .pass)
     }
 

@@ -35,7 +35,7 @@ public enum Space {
     // MARK: MobileBuildMCP
 
     /// What follows each `--dry-run`, said once.
-    static let purgeNote = "Each `--dry-run` lists what it would delete; with `--delete` in its place and `--confirm delete-mobilebuildmcp-storage`, it deletes."
+    static let purgeNote = "Each `--dry-run` lists what it would delete. Deleting loses those builds, logs and results, so it's the person's to agree to: `--delete` in place of `--dry-run`, with `--confirm delete-mobilebuildmcp-storage`"
 
     /// The dry run of `purge` for one workspace's `classes`; none for none.
     static func purge(_ workspace: StorageReport.Workspace, classes: [String]) -> String? {
@@ -73,7 +73,7 @@ public enum Space {
         let classes = reclaimable(workspace)
         let line = SpaceReport.Line(text: "\(name), \(root): \(SpaceReport.size(workspace.bytes))\(products)\(derived.map { ", DerivedData \(SpaceReport.size($0))" } ?? "")\(newest.map { ", newest \($0)" } ?? "")\(building)", bytes: workspace.bytes, command: purge(workspace, classes: classes.filter { $0 != "derivedData" }))
         guard let derived, classes.contains("derivedData") else { return [line] }
-        return [line, .init(text: "\(name)'s DerivedData, \(SpaceReport.size(derived)), costs a cold build to make again", bytes: derived, command: purge(workspace, classes: ["derivedData"]))]
+        return [line, .init(text: "\(name)'s DerivedData, \(SpaceReport.size(derived)), costs a cold build to make again, so it's the person's to agree to:", bytes: derived, command: purge(workspace, classes: ["derivedData"]))]
     }
 
     /// How long MobileBuildMCP's purge keeps a log after it's written (`WORKSPACE_FILESYSTEM_LIFECYCLE_MIN_VISIBLE_MS`).
@@ -269,9 +269,15 @@ public enum Space {
             let roles = [same(chosen) ? "selected" : nil, same(pinned) ? "pinned" : nil].compactMap(\.self)
             let alone = all.filter { $0.version == xcode.version }.count == 1
             let offered = roles.isEmpty && alone && canUninstall
-            return .init(text: "\(xcode.label)\(roles.isEmpty ? "" : ", " + roles.joined(separator: " and ")): \(sizes[xcode.path].map(SpaceReport.size) ?? "size not known")", bytes: sizes[xcode.path], command: offered ? "xcodes uninstall \(xcode.version)" : nil)
+            return Self.xcodeLine("\(xcode.label)\(roles.isEmpty ? "" : ", " + roles.joined(separator: " and ")): \(sizes[xcode.path].map(SpaceReport.size) ?? "size not known")", bytes: sizes[xcode.path], offering: offered ? xcode.version : nil)
         }
         return .init(title: "Xcodes", lines: lines)
+    }
+
+    /// An Xcode's line, and when `version` is offered, the uninstall that removes it, the person's call, said before the
+    /// command `SpaceReport` prints on the line below.
+    static func xcodeLine(_ text: String, bytes: Int?, offering version: String?) -> SpaceReport.Line {
+        .init(text: text + (version == nil ? "" : ". Uninstalling it removes that Xcode, so it's the person's to agree to:"), bytes: bytes, command: version.map { "xcodes uninstall \($0)" })
     }
 
     // MARK: Other folders
