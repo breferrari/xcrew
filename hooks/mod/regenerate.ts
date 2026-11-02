@@ -23,6 +23,20 @@ export function refusal(generates: readonly string[]): string {
   )
 }
 
+/**
+ * Why a build is held back again after the edit a build was refused for is undone: the person may have generated from
+ * the edit meanwhile, which the mod can't see, and the next build goes through.
+ */
+export function refusalAfterUndo(generates: readonly string[]): string {
+  return (
+    `xcrew: the manifest edit a build was refused for is undone, but the project may have been generated from that edit since, in the person's own terminal, so the generated project may still hold it. ` +
+    `Run ${listed(generates)} from the project's root, then try again. If it wasn't generated, try again: it goes through.`
+  )
+}
+
+/** What Claude reads after an edit that puts the manifests back as the last generate read them. */
+export const UNDONE_NOTE = "xcrew: this edit puts the project's manifests back as the last generate read them, so the next build or test needs no generate."
+
 /** What Claude reads after the build it tried again without a generate. */
 export function letThroughNote(generates: readonly string[]): string {
   return `xcrew: this ran without ${listed(generates)} after a manifest edit, taken as regenerated outside this session; if its errors name what the edit changed, run ${generates.length > 1 ? 'them' : 'it'}.`
@@ -61,8 +75,18 @@ export function marked(stale: StaleProject | null, mark: { app: string; generate
  * build was refused for: the person may have generated from the edit since.
  */
 export function isUndone(mark: Mark, now: Readonly<Record<string, string | undefined>>): boolean {
+  return !mark.wasRefused && isBack(mark, now)
+}
+
+/** Whether a mark a build was refused for has its edits all undone since: it still holds the build back, once. */
+export function isUndoneAfterRefusal(mark: Mark, now: Readonly<Record<string, string | undefined>>): boolean {
+  return mark.wasRefused === true && isBack(mark, now)
+}
+
+/** Whether each file a mark holds has the hash it had before its first edit. */
+function isBack(mark: Mark, now: Readonly<Record<string, string | undefined>>): boolean {
   const files = Object.entries(mark.files ?? {})
-  return !mark.wasRefused && files.length > 0 && files.every(([path, before]) => now[path] === before)
+  return files.length > 0 && files.every(([path, before]) => now[path] === before)
 }
 
 /** The stale project as a refusal leaves it: each mark refused for, and the next build let through. */
