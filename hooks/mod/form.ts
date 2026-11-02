@@ -5,10 +5,10 @@ import type { Elements } from './band'
 /** What Claude reads once after the person writes a config with the form: the session's MobileBuildMCP still has the old one. */
 export const SETUP_FACT = 'The person wrote a new MobileBuildMCP config with /xcrew setup; MobileBuildMCP reads it when Claude Code next starts.'
 
-/** How a call setup prints for a running MobileBuildMCP starts, after its indent (`LiveDefaults.call`). */
+/** What each call setup prints for a running MobileBuildMCP begins with, once trimmed (`LiveDefaults.call`). */
 export const CALL_START = 'session_set_defaults '
 
-/** How the line setup prints starts when the config changed what MobileBuildMCP reads only at its start (`SetupCommand.restartLine`). */
+/** What the line setup prints begins with when the config changed what MobileBuildMCP reads only when it launches (`SetupCommand.restartLine`). */
 export const RESTART_START = 'xcrew: restart Claude Code'
 
 /** What Claude reads once after the form wrote a config, from what setup printed. */

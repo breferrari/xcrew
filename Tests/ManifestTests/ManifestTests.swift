@@ -1253,7 +1253,8 @@ import Testing
         let restart = try #require(form.firstMatch(of: /export const RESTART_START = '([^']*)'/)?.1, "form.ts names no RESTART_START")
         #expect(try #require(LiveDefaults.call(["scheme": "App"])).hasPrefix(String(call)))
         #expect(SetupCommand.restartLine.hasPrefix(String(restart)))
-        #expect(form.contains("startsWith(CALL_START)") && form.contains("startsWith(RESTART_START)"), "setupFact no longer reads the lines by these starts")
+        let reader = try #require(form.firstMatch(of: /export function setupFact[\s\S]*?\n}/)?.0, "form.ts has no setupFact")
+        #expect(reader.contains("CALL_START") && reader.contains("RESTART_START"), "setupFact no longer reads the lines by these starts")
     }
 
     /// The form tells a write by the line setup prints when it wrote the config.

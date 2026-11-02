@@ -179,8 +179,8 @@ struct SetupCommand: Command {
         }
     }
 
-    /// The line setup prints when the config changed what a running MobileBuildMCP reads only at its start; the setup form
-    /// reads it by its start.
+    /// The line setup prints when the config changed what MobileBuildMCP reads only when it launches; the setup form tells
+    /// it by how it begins.
     static let restartLine = "xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it"
 
     /// The config names this Mac's simulators by ID, and DerivedData may live beside it, so it never belongs in the
