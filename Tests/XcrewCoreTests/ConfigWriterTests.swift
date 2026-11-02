@@ -156,6 +156,13 @@ import XcrewTestSupport
         ])
     }
 
+    /// A path the config writes from the root as `./App.xcworkspace` is printed standardized, with no `/./`.
+    @Test func aDotRelativePathIsStandardized() {
+        let yaml = "schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: './App.generated.xcworkspace'\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit\n"
+        let calls = LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"))
+        #expect(calls == [#"session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"App","workspacePath":"/work/App/App.generated.xcworkspace"}"#])
+    }
+
     @Test func globalDefaultsAreOneCallWithoutAProfile() {
         let yaml = "schemaVersion: 1\nsessionDefaults:\n  projectPath: '/abs/App.xcodeproj'\n  simulatorName: 'iPhone 17'\n"
         #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App")) == [#"session_set_defaults {"projectPath":"/abs/App.xcodeproj","simulatorName":"iPhone 17"}"#])

@@ -5,8 +5,8 @@ import Foundation
 /// types are `utils/session-defaults-schema.js`'s).
 public enum LiveDefaults {
     /// One call a profile, as its tool's arguments in JSON, the active profile last, since each call makes its profile
-    /// the session's; one call without a profile for global defaults. A path is made absolute from `root`, as
-    /// MobileBuildMCP resolves the config's against its working directory.
+    /// the session's; one call without a profile for global defaults. A path is made absolute from `root` and
+    /// standardized, as MobileBuildMCP resolves the config's against its working directory.
     public static func calls(in yaml: String, root: URL) -> [String] {
         let sections = Self.sections(of: yaml)
         let active = ConfigRenderer.values(of: ["activeSessionDefaultsProfile:"], in: yaml).first
@@ -66,7 +66,7 @@ public enum LiveDefaults {
                 if value == "true" || value == "false" {
                     found[parts[0]] = value == "true"
                 } else {
-                    found[parts[0]] = paths.contains(parts[0]) && !value.hasPrefix("/") ? root.appending(path: value).path : value
+                    found[parts[0]] = paths.contains(parts[0]) && !value.hasPrefix("/") ? root.appending(path: value).standardized.path : value
                 }
             } else if let key {
                 let item = line.trimmingCharacters(in: .whitespaces)
