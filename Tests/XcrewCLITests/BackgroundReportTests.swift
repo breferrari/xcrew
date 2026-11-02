@@ -110,39 +110,45 @@ import XcrewTestSupport
         #expect(report["isVerdictOnly"] as? Bool == true)
     }
 
+    /// Run logs in `context`'s MobileBuildMCP workspace folder, each named and naming the scheme its run built, ending on
+    /// `verdict`.
+    @discardableResult
+    static func logs(_ named: [(String, String)], in context: CheckContext, verdict: String = "** TEST EXECUTE SUCCEEDED **") throws -> URL {
+        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        for (name, scheme) in named {
+            try "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme \(scheme) -destination id=0000\n\n\(verdict)\n".write(to: logs.appending(path: name), atomically: true, encoding: .utf8)
+        }
+        return logs
+    }
+
+    /// A notification's report found with the tool and the call's start, over the logs `named`.
+    static func notified(since: String, logs named: [(String, String)], tool: String = "test_sim") async throws -> Run {
+        let context = CheckContext.fake()
+        try logs(named, in: context)
+        return await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", tool, "--since", since, context: context, stdin: Self.notification("", status: "killed"))
+    }
+
     /// A notification read with the tool and the call's start, and no log, finds the run's own log in its workspace: the
     /// log may appear only after Claude Code moved the call, when nothing followed it any more.
     @Test func aNotificationWithoutALogFindsTheRunsLog() async throws {
-        let context = CheckContext.fake()
-        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
-        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-        let invocation = "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme Feature -destination id=0000\n\n"
-        try (invocation + "** TEST EXECUTE SUCCEEDED **\n").write(to: logs.appending(path: "test_sim_2026-11-02T10-00-00-000Z_pid1_abcd1234.log"), atomically: true, encoding: .utf8)
-        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", "test_sim", "--since", "0", context: context, stdin: Self.notification("", status: "killed"))
-        let report = try Self.json(run)
+        let report = try Self.json(try await Self.notified(since: "0", logs: [("test_sim_2026-11-02T10-00-00-000Z_pid1_abcd1234.log", "Feature")]))
         #expect(report["scheme"] as? String == "Feature")
         #expect(report["ok"] as? Bool == true)
         #expect(report["isUnread"] == nil)
     }
 
-
     /// The run's log is the first MobileBuildMCP named at or after the call's start, by the time in its name: a later
-    /// call's log, written since, is another run's, and one named before the start is an earlier run's. The call started
-    /// at 10:00:00 UTC on November 2, 2026, 1,793,613,600,000 ms after the epoch.
+    /// call's log is another run's, and one named before the start is an earlier run's. The call started at 10:00:00 UTC
+    /// on November 2, 2026, 1,793,613,600,000 ms after the epoch. Each log was last written a minute or more after it was
+    /// named, at 10:01:00, 10:01:40 and 10:05:00 (1,793,613,660 s on), so the later run's is the newest written: picking
+    /// by writing, as the band does while a run goes, would take it.
     @Test func aNotificationsLogIsTheFirstNamedSinceTheCallStarted() async throws {
         let context = CheckContext.fake()
-        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
-        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-        for (name, scheme) in [("2026-11-02T09-59-00-000Z", "Earlier"), ("2026-11-02T10-00-05-000Z", "Feature"), ("2026-11-02T10-04-00-000Z", "Later")] {
-            let log = logs.appending(path: "test_sim_\(name)_pid1_abcd1234.log")
-            try "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme \(scheme) -destination id=0000\n\n** TEST EXECUTE SUCCEEDED **\n".write(to: log, atomically: true, encoding: .utf8)
+        let logs = try Self.logs([("test_sim_2026-11-02T09-59-00-000Z_pid1_abcd1234.log", "Earlier"), ("test_sim_2026-11-02T10-00-05-000Z_pid1_abcd1234.log", "Feature"), ("test_sim_2026-11-02T10-04-00-000Z_pid1_abcd1234.log", "Later")], in: context)
+        for (name, written) in [("2026-11-02T09-59-00-000Z", 1_793_613_660.0), ("2026-11-02T10-00-05-000Z", 1_793_613_700), ("2026-11-02T10-04-00-000Z", 1_793_613_900)] {
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: written)], ofItemAtPath: logs.appending(path: "test_sim_\(name)_pid1_abcd1234.log").path)
         }
-        let modified = { (name: String, at: TimeInterval) in
-            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: at)], ofItemAtPath: logs.appending(path: "test_sim_\(name)_pid1_abcd1234.log").path)
-        }
-        try modified("2026-11-02T09-59-00-000Z", 1_793_613_660)
-        try modified("2026-11-02T10-00-05-000Z", 1_793_613_700)
-        try modified("2026-11-02T10-04-00-000Z", 1_793_613_900)
         let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", "test_sim", "--since", "1793613600000", context: context, stdin: Self.notification("", status: "killed"))
         let scheme = try Self.json(run)["scheme"] as? String
         #expect(scheme == "Feature")
@@ -152,24 +158,11 @@ import XcrewTestSupport
     /// for the band to have read its log needs; the outcome is still the result's.
     @Test func aResultWithTheToolAndStartNamesItsLogsScheme() async throws {
         let context = CheckContext.fake()
-        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
-        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-        try "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -scheme Feature -destination id=0000\n\n** BUILD FAILED **\n".write(to: logs.appending(path: "build_sim_2026-11-02T10-00-01-000Z_pid1_abcd1234.log"), atomically: true, encoding: .utf8)
+        try Self.logs([("build_sim_2026-11-02T10-00-01-000Z_pid1_abcd1234.log", "Feature")], in: context, verdict: "** BUILD FAILED **")
         let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "build", "--tool", "build_sim", "--since", "1793613600000", context: context, stdin: "✅ Build succeeded for scheme Feature.")
         let report = try Self.json(run)
         #expect(report["scheme"] as? String == "Feature")
         #expect(report["ok"] as? Bool == true)
-    }
-
-    /// A notification's report found with the tool and the call's start, over the logs `named` (time in the name, scheme).
-    static func notified(since: String, logs named: [(String, String)], tool: String = "test_sim") async throws -> Run {
-        let context = CheckContext.fake()
-        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
-        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-        for (name, scheme) in named {
-            try "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme \(scheme) -destination id=0000\n\n** TEST EXECUTE SUCCEEDED **\n".write(to: logs.appending(path: name), atomically: true, encoding: .utf8)
-        }
-        return await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", tool, "--since", since, context: context, stdin: Self.notification("", status: "killed"))
     }
 
     /// A log opened in the same millisecond as the call began is the run's: 10:00:00.259 UTC on November 2, 2026 is
@@ -180,12 +173,20 @@ import XcrewTestSupport
         #expect(scheme == "Feature")
     }
 
-    /// The call's start is whole milliseconds, as the mod's clock gives it: anything else is the mod's mistake.
-    @Test(arguments: ["soon", "nan", "inf", "1e12", "1793613600259.5"])
+    /// The call's start is a number of milliseconds, as the mod's clock gives it: anything else is the mod's mistake.
+    @Test(arguments: ["soon", "nan", "inf", "-inf"])
     func aStartThatIsntWholeMillisecondsIsAUsageError(since: String) async throws {
         let run = try await Self.notified(since: since, logs: [])
         #expect(run.status != 0)
         #expect(run.errors == ["report --tool needs --since, in milliseconds"])
+    }
+
+    /// A start with a fraction of a millisecond, which the engine's clock doesn't rule out, counts from its whole
+    /// millisecond, as a log's name gives it.
+    @Test func aStartWithAFractionCountsFromItsWholeMillisecond() async throws {
+        let run = try await Self.notified(since: "1793613600259.5", logs: [("test_sim_2026-11-02T10-00-00-259Z_pid1_abcd1234.log", "Feature")])
+        let scheme = try Self.json(run)["scheme"] as? String
+        #expect(scheme == "Feature")
     }
 
     /// Another tool whose name starts with this one's, as `test_sim_foo` would, logs another run.

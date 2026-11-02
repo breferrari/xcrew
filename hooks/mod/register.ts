@@ -274,10 +274,12 @@ export const register: Register = on => {
     // It never throws: without the CLI it falls back to whether the server reported an error.
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
-    const findsScheme = needsScheme && key === undefined && parsed.server === 'MobileBuildMCP'
+    const findsScheme = needsScheme && key === undefined
     const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], 120_000, result.text ?? '')
-    const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, result.isError === true)), scope)
-    if (findsScheme && key === undefined && outcome.scheme !== undefined) ({ scope, key } = keyFor(outcome.scheme))
+    const reportedOutcome = reportOf(reported, result.isError === true)
+    // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
+    if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
+    const outcome = withConcurrencyOnce(withPinNamedOnce(reportedOutcome), scope)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:

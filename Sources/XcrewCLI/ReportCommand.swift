@@ -23,16 +23,18 @@ struct ReportCommand: Command {
         let repeated = invocation.arguments.has("repeated")
         let listsPassed = invocation.arguments.has("passed")
         var report: Report
-        var log = invocation.arguments["log"]
-        if log == nil, let tool = invocation.arguments["tool"] {
-            guard let since = invocation.arguments["since"].flatMap({ Int($0) }) else { throw UsageError(description: "report --tool needs --since, in milliseconds") }
-            log = await RunLog.first(tool: tool, since: since, project: invocation.context.project.root, machine: machine)?.path
+        let given = invocation.arguments["log"]
+        var found: String?
+        if given == nil, let tool = invocation.arguments["tool"] {
+            guard let since = invocation.arguments["since"].flatMap(Double.init).flatMap({ Int(exactly: $0.rounded(.down)) }) else { throw UsageError(description: "report --tool needs --since, in milliseconds") }
+            found = await RunLog.first(tool: tool, since: since, project: invocation.context.project.root, machine: machine)?.path
         }
+        let log = given ?? found
         if invocation.arguments.has("notification") {
             let text = String(decoding: await invocation.standardInput(), as: UTF8.self)
             report = await Report.make(kind: kind, notification: text, log: log, server: server, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
-        } else if let log = invocation.arguments["log"] {
-            report = await Report.make(kind: kind, log: RunLog.end(ofLogAt: log), runner: machine.runner, repeated: repeated, listsPassed: listsPassed)
+        } else if let given {
+            report = await Report.make(kind: kind, log: RunLog.end(ofLogAt: given), runner: machine.runner, repeated: repeated, listsPassed: listsPassed)
         } else {
             let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
             report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
