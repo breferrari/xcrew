@@ -77,12 +77,6 @@ import XcrewTestSupport
         #expect(try await overlapped(worktrees: ["feature"], from: 300, prefix: "App") == ["feature"])
     }
 
-    /// A time is stamped as MobileBuildMCP names a log, so the two compare as text: a log named in the same millisecond
-    /// as the run's end compares equal, and so opened no earlier than it.
-    @Test func aTimeIsStampedAsMobileBuildMCPNamesALog() {
-        #expect(RunLog.stamp(Date(timeIntervalSince1970: 1_793_577_540.25)) == "2026-11-01T23-59-00-250Z")
-    }
-
     static let testing = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\nTest Case '-[AppTests.GreetingTests testHello]' started.\n"
 
     @Test func anotherWorktreesRunIsListedWithItsToolAndPhase() async throws {

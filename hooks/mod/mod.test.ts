@@ -350,8 +350,9 @@ test('Xcode MCP runs ask for no phase: that server writes no log to follow', asy
   })
 
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
 
-  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path' && command !== 'project')).not.toContain('phase')
+  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path' && command !== 'project')).toEqual(['report', 'runs'])
 })
 
 test('where no band draws, the status line carries the gauge against the usual time', async ($, on) => {

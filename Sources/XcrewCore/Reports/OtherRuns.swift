@@ -37,18 +37,19 @@ public enum OtherRuns {
     /// before `to` and was last written at or after `from`, ended since or not, or written less than `quietFor` before
     /// `from` with no verdict, as through a long link. Their folder names, sorted; none outside git. A run in this time
     /// shares the Mac's cores, so its length says nothing of a run on its own. It runs after every build and test, so each
-    /// worktree's logs are listed once with their dates, and a log's opening is its name's UTC stamp compared as text,
-    /// which sorts as the time does (docs/findings.md, *Runs that overlap another checkout's*).
+    /// worktree's logs are listed once with their dates, and only those written lately have their names read
+    /// (docs/findings.md, *Runs that overlap another checkout's*).
     public static func overlapped(project: Project, machine: Machine, from: Date, to: Date) async -> [String] {
-        let until = RunLog.stamp(to)
+        let until = Int(to.timeIntervalSince1970 * 1000)
         let quietFrom = from.addingTimeInterval(-quietFor)
+        let readings = RunLog.readingsKept(on: machine)
         let names = await others(of: project, machine: machine).compactMap { root, top -> String? in
             let logs = RunLog.dated(project: URL(fileURLWithPath: root), home: machine.home).filter { log in
-                guard log.modified >= quietFrom, let tool = log.url.lastPathComponent.firstMatch(of: runLog)?.1 else { return false }
-                return log.url.lastPathComponent.dropFirst(tool.count + 1).prefix(until.count) < until
+                guard log.modified >= quietFrom, let tool = log.name.firstMatch(of: runLog)?.1 else { return false }
+                return RunLog.openedAt(log.name, tool: String(tool)).map { $0 < until } ?? false
             }
             let went = logs.contains { $0.modified >= from } || logs.contains { log in
-                RunLog.follow(logAt: log.url, expectedTests: nil, kind: log.url.lastPathComponent.hasPrefix("test") ? .test : .build, keptIn: RunLog.readingsKept(on: machine))?.outcome == nil
+                RunLog.follow(logAt: log.folder.appending(path: log.name), expectedTests: nil, kind: log.name.hasPrefix("test") ? .test : .build, keptIn: readings)?.outcome == nil
             }
             return went ? URL(fileURLWithPath: top).lastPathComponent : nil
         }

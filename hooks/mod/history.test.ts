@@ -97,7 +97,10 @@ test("another repository's runs of the same scheme are no usual time here", asyn
 test("a failed run's time is kept apart from the usual time", async ($, on) => {
   const { toasts, clock, store } = session(on, { took: [60_000, 5_000, 80_000], reports: [{ ok: true }, { ok: false }, { ok: true }] })
   await start($, clock)
-  for (let run = 0; run < 3; run += 1) await callTool($, 'mcp__xcode__BuildProject')
+  for (let run = 0; run < 3; run += 1) {
+    await callTool($, 'mcp__xcode__BuildProject')
+    await clock.settle()
+  }
   expect(toasts.at(-1)).toBe('✓ BuildProject · 1:20 (avg 1:00)')
   expect(store.get(historyKey(scopeKey('/work/App', 'BuildProject')))).toEqual([60_000, 80_000])
   expect(store.get(failedKey(scopeKey('/work/App', 'BuildProject')))).toEqual([5_000])
@@ -130,6 +133,30 @@ test('the result is returned before the overlap check answers', async ($, on) =>
   expect(store.get(historyKey(scopeKey('/work/App', 'BuildProject')))).toEqual([60_000])
 })
 
+/** Runs that end while an earlier one's overlap check is still out each keep their time, whichever answer comes first. */
+test("a run's time isn't lost to another that ends before its overlap check answers", async ($, on) => {
+  let answerFirst: (worktrees: string[]) => void = () => {}
+  const first = new Promise<string[]>(resolve => { answerFirst = resolve })
+  const answers: (Promise<string[]> | string[])[] = [first, []]
+  const { clock, store } = session(on, { took: [60_000, 70_000], overlapped: () => answers.shift() ?? [] })
+  await start($, clock)
+  await callTool($, 'mcp__xcode__BuildProject')
+  await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
+  answerFirst([])
+  await clock.settle()
+  expect([...(store.get(historyKey(scopeKey('/work/App', 'BuildProject'))) as number[])].sort()).toEqual([60_000, 70_000])
+})
+
+/** A CLI that can't say whether the run overlapped another stores its time, as before the check. */
+test("a run's time is stored when the overlap check can't answer", async ($, on) => {
+  const { clock, store } = session(on, { took: [60_000], overlapped: () => new Error('timed out') })
+  await start($, clock)
+  await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
+  expect(store.get(historyKey(scopeKey('/work/App', 'BuildProject')))).toEqual([60_000])
+})
+
 /** The overlap check is asked for the run's own time, from its start for as long as it took; the report isn't. */
 test("overlap is asked for the run's own time", async ($, on) => {
   const { clock, cli } = session(on, { took: [60_000] })
@@ -157,6 +184,7 @@ test('a run is kept under the scheme its log names, not the one worked out', asy
   const { clock, store } = session(on, { scheme: 'App', logScheme: 'Feature', took: [30_000] })
   await start($, clock)
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
   expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Feature')))).toEqual([30_000])
   expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · App')))).toBeUndefined()
 })
@@ -166,6 +194,7 @@ test('a run too fast for the ticker is kept under the scheme its report finds', 
   const { clock, store, cli } = session(on, { took: [500], reports: [{ ok: true, scheme: 'Feature' }] })
   await start($, clock)
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
   expect(store.get(historyKey(scopeKey('/work/App', 'build_sim · Feature')))).toEqual([500])
   const report = cli.filter(call => call.args[0] === 'report').map(call => call.args.slice(call.args.indexOf('--tool'), call.args.indexOf('--tool') + 4))
   expect(report).toEqual([['--tool', 'build_sim', '--since', String(NOW)]])
@@ -177,6 +206,7 @@ test('a run whose log never appears keeps no history, though a scheme was worked
   await start($, clock)
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
   expect(toasts.at(-1)).toBe('✓ build_sim · 0:30')
+  await clock.settle()
   expect([...store.keys()].filter(key => /^(durations|failed|updated|tests)\./.test(key))).toEqual([])
 })
 
@@ -314,6 +344,7 @@ test('a run whose scheme no one can name keeps no history', async ($, on) => {
   await start($, clock)
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
   expect(toasts.at(-1)).toBe('✓ build_sim · 0:30')
+  await clock.settle()
   expect([...store.keys()].filter(key => /^(durations|failed|updated|tests)\./.test(key))).toEqual([])
 })
 

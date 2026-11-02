@@ -528,15 +528,31 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
  * checkout's*). A CLI that can't answer stores the time, as before the check.
  */
 async function recordDuration($: EngineInterface, run: Ending & { key: string }, ok: boolean, ended: number, elapsed: number): Promise<void> {
+  // The run went from the call's start for `elapsed`: the server's own duration where it gives one, else until the call
+  // answered, or for a call moved to the background, until its notification.
   const overlapped = overlappedOf(await answer($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)], 10_000))
   if (overlapped.length > 0) return
-  // A failed run's time is kept apart: one that fails early would pull the usual time down. Both lists are written as
-  // read when the run began, so a scope gone stale starts over whichever way the run ended.
-  const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
-  await $.store.set(historyKey(run.key), ok ? add(run.earlier) : [...run.earlier])
-  await $.store.set(failedKey(run.key), ok ? [...run.earlierFailed] : add(run.earlierFailed))
-  await $.store.set(updatedKey(run.key), ended)
+  // Another run of the scope may have ended while this one's check was out: the history is read again just before it's
+  // written, one write a scope at a time, so neither run's time is lost.
+  const write = (durationWrites.get(run.key) ?? Promise.resolve()).then(async () => {
+    // A failed run's time is kept apart: one that fails early would pull the usual time down. A scope gone stale since
+    // the run began starts over whichever way the run ended.
+    const { passed, failed } = await earlierRuns($, run.key, run.startedAt)
+    const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
+    await quietly(() => $.store.set(historyKey(run.key), ok ? add(passed) : [...passed]))
+    await quietly(() => $.store.set(failedKey(run.key), ok ? [...failed] : add(failed)))
+    const updated = await quietly(() => $.store.get(updatedKey(run.key)))
+    await quietly(() => $.store.set(updatedKey(run.key), typeof updated === 'number' ? Math.max(updated, ended) : ended))
+  })
+  durationWrites.set(run.key, write)
+  await write
+  if (durationWrites.get(run.key) === write) durationWrites.delete(run.key)
+  // The card's dates come from the run scopes, this one's now written.
+  saveCard($)
 }
+
+/** Each scope's duration writes in flight, one after another, so two runs ending together each keep their time. */
+const durationWrites = new Map<string, Promise<void>>()
 
 /**
  * Reads a backgrounded call's notification for its result, or the run's log when that has none to read, and records
