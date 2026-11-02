@@ -395,28 +395,32 @@ export const register: Register = on => {
     const started = await next(e)
     await $.command.register(COMMAND)
     for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
-    // A cleared conversation is a new session: its warnings show again, and the pin is named again.
-    sessionRootRead = undefined
-    sessionProfileSchemes = new Map()
-    found = []
-    pinsNamed.clear()
-    agentDescriptions.clear()
-    concurrencyGiven.clear()
-    seenAt = {}
+    startOver()
     void loadProblems($).catch(() => undefined)
     void quietly(() => readXcodeStart($))
     // The card is saved from the history as it's left: fresh, and this version's.
     void quietly(() => pruneHistory($)).then(() => saveCard($))
     return started
   })
-  // The one unmatched prompt hook. The doctor isn't read again here: what it checks, what xcrew needs to run, a prompt
-  // doesn't change, so it runs at session start, after setup, and when asked. Never awaited.
+  // A `/clear` fires no session start: the next conversation starts over here, and its first prompt reads the doctor,
+  // since a CLI call can't finish within this event's bound.
+  on('session.end', { reason: 'clear' }, async ($, e, next) => {
+    startOver()
+    doctorAfterClear = true
+    return next(e)
+  })
+  // The one unmatched prompt hook. The doctor is read here only on the first prompt after a `/clear`: what it checks,
+  // what xcrew needs to run, a prompt doesn't change, so it runs at session start, after setup, and when asked.
   on('prompt.submit', async ($, e, next) => {
     // A config the form wrote is told once: the session's MobileBuildMCP still runs on the old one. A read first, so
     // a prompt writes nothing when there's nothing to tell.
     if ((await quietly(() => read($, wroteConfigState))) === true) {
       await quietly(() => update($, wroteConfigState, () => false))
       e = withContext(e, SETUP_FACT)
+    }
+    if (doctorAfterClear) {
+      doctorAfterClear = false
+      void loadProblems($).catch(() => undefined)
     }
     void (async () => {
       if (!drawsBand((await quietly(() => $.session.surfaces())) ?? [])) return
@@ -854,6 +858,20 @@ async function branchLedger($: EngineInterface): Promise<{ head?: Head; ledger?:
   if (!head) return {}
   const ledger = ledgerOf(await $.store.get(ledgerKey(head)))
   return { head, ...(ledger ? { ledger } : {}) }
+}
+
+/** Whether the first prompt after a `/clear` is still to read the doctor. */
+let doctorAfterClear = false
+
+/** Forgets what the conversation was told: a new one's warnings show again, and the pin is named again. */
+function startOver(): void {
+  sessionRootRead = undefined
+  sessionProfileSchemes = new Map()
+  found = []
+  pinsNamed.clear()
+  agentDescriptions.clear()
+  concurrencyGiven.clear()
+  seenAt = {}
 }
 
 /** The doctor's last answer, and when each problem was first found: bookkeeping a reload may start over. */
