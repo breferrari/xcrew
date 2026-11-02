@@ -45,7 +45,9 @@ public struct FailureImages: Sendable, Equatable {
             let destination = folder.appending(path: image.name)
             return (try? FileManager.default.moveItem(at: image.file, to: destination)) != nil ? destination.path : nil
         }
-        return kept.isEmpty ? nil : FailureImages(paths: kept, folder: folder.path)
+        guard !kept.isEmpty else { return nil }
+        record(run)
+        return FailureImages(paths: kept, folder: folder.path)
     }
 
     /// A test's attachments as an export's `manifest.json` lists them.
@@ -70,21 +72,42 @@ public struct FailureImages: Sendable, Equatable {
     /// How much the kept images may take: a UI suite's snapshots run to megabytes a failure.
     static let keptBytes = 200 * 1024 * 1024
 
+    /// The file in a run's folder that records the bytes its images take, written as they're kept.
+    static let sizeRecord = ".size"
+
     /// Removes each run's images kept longer than `keptDays`, then the oldest runs' while all of them take more than
-    /// `limit`; the newest run's stay whatever their size.
-    static func prune(in folder: URL, keepingAtMost limit: Int = keptBytes) {
+    /// `limit`; the newest run's stay whatever their size. Each run's size is read from its record, so pruning costs the
+    /// same however many runs are kept; a run kept before sizes were recorded is measured once and recorded.
+    static func prune(in folder: URL, keepingAtMost limit: Int = keptBytes, now: Date = .now) {
         let runs = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        let oldest = Date.now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
+        let oldest = now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
         let dated = runs.map { (run: $0, written: (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now) }
         var kept: [(run: URL, bytes: Int)] = []
         for (run, written) in dated.sorted(by: { $0.written < $1.written }) {
-            if written < oldest { try? FileManager.default.removeItem(at: run) } else { kept.append((run, size(of: run))) }
+            if written < oldest { try? FileManager.default.removeItem(at: run) } else { kept.append((run, recordedSize(of: run, written: written))) }
         }
         var total = kept.reduce(0) { $0 + $1.bytes }
         for (run, bytes) in kept.dropLast() where total > limit {
             try? FileManager.default.removeItem(at: run)
             total -= bytes
         }
+    }
+
+    /// A run's size as its record says, or measured and recorded when it has none, its folder's date put back as it was:
+    /// the date is the run's age.
+    static func recordedSize(of run: URL, written: Date) -> Int {
+        if let recorded = (try? String(contentsOf: run.appending(path: sizeRecord), encoding: .utf8)).flatMap({ Int($0) }) { return recorded }
+        let bytes = record(run)
+        try? FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: run.path)
+        return bytes
+    }
+
+    /// Measures a run's images and records the bytes they take; the bytes.
+    @discardableResult
+    static func record(_ run: URL) -> Int {
+        let bytes = size(of: run) - ((try? run.appending(path: sizeRecord).resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        try? Data(String(bytes).utf8).write(to: run.appending(path: sizeRecord), options: .atomic)
+        return bytes
     }
 
     /// The bytes of every file below `folder`.

@@ -173,7 +173,7 @@ export function elsewhereOf(answer: unknown): ElsewhereRun[] | undefined {
   })
 }
 
-/** The scheme selected in Xcode, as `xcrew project --xcuserstate <file>` answers. */
+/** The scheme selected in Xcode, as `xcrew project --xcode` answers. */
 export function xcodeSchemeOf(answer: unknown): string | undefined {
   const scheme = (answer as { xcodeScheme?: unknown } | undefined)?.xcodeScheme
   return typeof scheme === 'string' && scheme !== '' ? scheme : undefined
