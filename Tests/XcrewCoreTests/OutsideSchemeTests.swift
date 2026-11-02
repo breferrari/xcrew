@@ -77,11 +77,12 @@ struct OutsideSchemeTests {
     }
 
     /// The selected Xcode's XCTHarness still words the refusal in the pieces the note reads, the target's name between
-    /// them: a change in its wording turns this red.
+    /// them: a change in its wording turns this red, and so does a move of the framework, which the failure says.
     @Test(.enabled(if: (Version.major(of: HookTests.installedXcode?.version ?? "") ?? 0) >= 27, "no Xcode 27 or later selected"))
     func theSelectedXcodeWordsTheRefusalAsTheNoteReadsIt() throws {
         let xcode = try #require(HookTests.installedXcode)
-        let harness = try Data(contentsOf: URL(fileURLWithPath: xcode.path).appending(path: "Contents/SharedFrameworks/XCTHarness.framework/XCTHarness"))
+        let file = URL(fileURLWithPath: xcode.path).appending(path: "Contents/SharedFrameworks/XCTHarness.framework/XCTHarness")
+        let harness = try #require(try? Data(contentsOf: file), "can't read \(file.path), where Xcode 27.2 kept XCTHarness, so the refusal's wording can't be checked: find the framework that holds it and update this test and docs/findings.md")
         let pieces = ["Tests in the target “", "” can’t be run because “", "” isn’t a member of the specified test plan or scheme."]
         for piece in pieces { #expect(harness.range(of: Data(piece.utf8)) != nil, "\(xcode.path) no longer says \(piece)") }
         #expect(OutsideScheme.targets(in: pieces[0] + "CoreTests" + pieces[1] + "CoreTests" + pieces[2]) == ["CoreTests"])
