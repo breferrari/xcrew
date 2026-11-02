@@ -536,6 +536,28 @@ import XcrewTestSupport
         #expect(run.text == #"{"log":"\#(log)","phase":"compiling Payments"}"#)
     }
 
+    /// A run moved to the background is followed until its log ends: the log's verdict, once xcodebuild prints it.
+    @Test(arguments: [("** TEST EXECUTE SUCCEEDED **", true), ("** TEST EXECUTE FAILED **", false)])
+    func aLogsVerdictIsItsOutcome(verdict: String, ok: Bool) async throws {
+        let project = Project.temporary()
+        project.write("Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\n\(verdict)\n", to: "test_sim_1.log")
+        let log = project.root.appending(path: "test_sim_1.log").path
+        let answer = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "test_sim", "--since", "0", "--log", log).text.utf8)) as? [String: Any])
+        #expect(answer["outcome"] as? Bool == ok, "\(answer)")
+        #expect(answer["quiet"] == nil, "\(answer)")
+    }
+
+    /// A log unwritten for as long as another worktree's run counts as going has stopped: a run whose server was killed.
+    @Test func aLogUnwrittenThatLongIsQuiet() async throws {
+        let project = Project.temporary()
+        project.write("SwiftCompile normal arm64 /w/A.swift (in target 'Payments' from project 'App')\n", to: "test_sim_1.log")
+        let log = project.root.appending(path: "test_sim_1.log").path
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -OtherRuns.quietFor - 5)], ofItemAtPath: log)
+        let answer = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "test_sim", "--since", "0", "--log", log).text.utf8)) as? [String: Any])
+        #expect(answer["quiet"] as? Bool == true, "\(answer)")
+        #expect(answer["outcome"] == nil, "\(answer)")
+    }
+
     @Test func beforeTheLogAppearsThereIsNeitherLogNorPhase() async {
         #expect(await Run("phase", "--tool", "test_sim", "--since", "0").text == "{}")
     }

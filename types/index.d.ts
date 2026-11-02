@@ -12,6 +12,8 @@ export type BandRun = {
   phase?: string
   /** The subagent that started the run, by its own description, shortened; absent for the main loop. */
   by?: string
+  /** Claude Code moved the call to the background, where the run goes on: its log is still followed. */
+  inBackground?: true
   /** `hasFailures`: the run left failures, or the Mac's cause, in the pane, which the band points to. */
   /**
    * `isUnread`: the result said no outcome, as a call moved to the background answers. `background`: how the call's background

@@ -61,7 +61,8 @@ export type Report = {
 }
 
 /** What `xcrew phase` says of a running MobileBuildMCP call. */
-export type Phase = { log?: string; phase?: string; scheme?: string }
+/** The running call's log and phase; `outcome`, the log's verdict once printed, and `quiet`, a log that stopped without one. */
+export type Phase = { log?: string; phase?: string; scheme?: string; outcome?: boolean; quiet?: boolean }
 
 /** One line of `xcrew doctor --problems --json`. */
 export type Problem = { status: 'fail' | 'warn'; id: string; message: string }

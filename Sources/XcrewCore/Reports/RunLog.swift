@@ -236,6 +236,12 @@ extension RunLog {
         return verdict.hasSuffix(" SUCCEEDED **") ? true : verdict.hasSuffix(" FAILED **") ? false : nil
     }
 
+    /// The last `tailBytes` of the log at `url`, where a running log's latest lines are; empty when it can't be read.
+    public static func tail(ofLogAt url: URL) -> String {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return "" }
+        return String(decoding: data.suffix(tailBytes), as: UTF8.self)
+    }
+
     /// How much of a finished log's end holds its verdict and the result bundle it names, with a long list of failing
     /// tests between them.
     static let endBytes = 1024 * 1024

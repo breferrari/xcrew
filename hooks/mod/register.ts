@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -182,7 +182,9 @@ export const register: Register = on => {
     let following: Following = {}
     const by = await quietly(() => agentDescription($, e.agentId))
     if (usesBand && started !== undefined) await quietly(() => startRun($, { tool: name, target, startedAt: started, ...(usual === undefined ? {} : { usual }), ...(measuredFrom === undefined ? {} : { measuredFrom }), ...(by === undefined ? {} : { by }) }))
-    const readPhase = async (since: number) => {
+    // Moved to the background, the call answers with a handle while its run goes on: its log is followed until it ends.
+    let inBackground = false
+    const readPhase = async (since: number): Promise<Phase> => {
       const found = (await quietly(() => runPhase($, name, since, expectedTests, following.logPath))) ?? {}
       const step = phaseStep(following, found, writesLog)
       following = step.following
@@ -201,11 +203,25 @@ export const register: Register = on => {
         }
       }
       const shown = step.newPhase
-      if (usesBand && shown !== undefined) await quietly(() => update($, runState, run => changedRun(run, { phase: shown })))
+      if (usesBand && shown !== undefined) await quietly(() => update($, runState, run => (run?.startedAt === started ? changedRun(run, { phase: shown }) : run)))
+      return found
+    }
+    // A run in the background ends on its log's verdict, which the band shows, or leaves once its log goes quiet without
+    // one; its notification still records it, once. Either way its log is read no more.
+    const endInBackground = async (found: Phase) => {
+      stopFollowing()
+      const now = await quietly(() => $.clock.now())
+      if (found.outcome === undefined || started === undefined || now === undefined) {
+        if (usesBand) await quietly(() => update($, runState, run => (run?.startedAt === started && !run?.ended ? null : run)))
+        return
+      }
+      const ok = found.outcome
+      if (usesBand) await showEndingOf($, started, { at: now, elapsed: now - started, ok })
     }
     const ticker = started === undefined ? undefined : await quietly(() =>
       $.clock.every(1000, async () => {
-        if (followsLog) await readPhase(started)
+        const found = followsLog ? await readPhase(started) : undefined
+        if (inBackground && found && (found.outcome !== undefined || found.quiet)) return endInBackground(found)
         if (usesBand) return quietly(() => $.ui.invalidate('ui.render'))
         const now = await quietly(() => $.clock.now())
         if (now !== undefined) await quietly(() => $.ui.status(statusLine(label, started, now, measuredFrom, usual, following.phase)))
@@ -216,16 +232,18 @@ export const register: Register = on => {
     // again at its end only when another run wrote the ledger meanwhile.
     const writesAtStart = ledgerWritesQueued
     const askingPassed = asksForPassed($, kind)
-    // However the call ends, the run stops counting; one that failed beneath leaves the band too.
-    const result = await next(e)
-      .catch(async (error: unknown) => {
-        if (usesBand) await quietly(() => update($, runState, () => null))
-        throw error
-      })
-      .finally(async () => {
-        ticker?.cancel()
-        if (!usesBand) await quietly(() => $.ui.status(undefined))
-      })
+    // However the call ends, the run stops counting, unless it goes on in the background; one that failed beneath leaves
+    // the band too.
+    function stopFollowing() {
+      ticker?.cancel()
+      if (!usesBand) void quietly(() => $.ui.status(undefined))
+    }
+    const result = await next(e).catch(async (error: unknown) => {
+      stopFollowing()
+      if (usesBand) await quietly(() => update($, runState, () => null))
+      throw error
+    })
+    try {
     const ended = await quietly(() => $.clock.now())
     if (started === undefined || ended === undefined) return result
     // A denied call never ran: it has no outcome to show and no time that says how long a run takes.
@@ -249,16 +267,22 @@ export const register: Register = on => {
     const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
-        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}) })
+        // A run whose log is followed stays on the band, going, until its log or its notification ends it.
+        inBackground = followsLog && ticker !== undefined
+        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
         // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
         for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) backgrounded.delete(old)
       }
-      await showEnding($, name, { at: ended, elapsed, ok: true, isUnread: true }, usesBand, by)
+      if (inBackground && usesBand) await quietly(() => update($, runState, current => (current?.startedAt === started && !current.ended ? { ...current, inBackground: true as const } : current)))
+      else await showEnding($, name, { at: ended, elapsed, ok: true, isUnread: true }, usesBand, by)
       return resultFor(result, outcome)
     }
     const loop = await recordEnding($, run, outcome, reported !== undefined, ended, elapsed)
     const resulting = resultFor(result, outcome)
     return loop ? withContext(resulting, loop) : resulting
+    } finally {
+      if (!inBackground) stopFollowing()
+    }
   }).catch(async ($, e, next) => next(e))
   // A background task's notification carries the result of the call moved there: read as that call's, it ends the run
   // as a call answering in the foreground does, and Claude reads the shorter result with xcrew's notes. The call is
@@ -267,6 +291,8 @@ export const register: Register = on => {
     const task = [...backgrounded.keys()].find(id => !backgrounded.get(id)?.read && e.text.includes(id))
     const call = task === undefined ? undefined : backgrounded.get(task)
     if (task === undefined || !call) return next(e)
+    // The notification ends the run: its log is followed no more.
+    call.stop?.()
     const reading = readTask($, call, e.text)
     backgrounded.set(task, { ...call, read: reading.then(Boolean) })
     const read = await reading
@@ -289,7 +315,7 @@ export const register: Register = on => {
           if (now === undefined) return
           const usesBand = drawsBand((await quietly(() => $.session.surfaces())) ?? [])
           // A run going meanwhile keeps the band: the notification is an earlier call's.
-          if (usesBand && (await anotherRunGoing($))) return
+          if (usesBand && (await anotherRunGoing($, call.startedAt))) return
           await showEnding($, call.tool, { at: now, elapsed: task.durationMs ?? 0, ok: true, background: { ...(task.status ? { status: task.status } : {}), ...(task.durationMs === undefined ? {} : { durationMs: task.durationMs }) } }, usesBand, call.by)
         }),
       )
@@ -405,7 +431,7 @@ export const register: Register = on => {
 type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
-type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string } }
+type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
 
 /**
  * Records how a run ended: its time in the history, apart when it failed, its failures, the ledger when the CLI read the run (`isRead`) and
@@ -454,8 +480,8 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   if (call.key === undefined && call.keyFor && outcome.scheme !== undefined) call = { ...call, ...call.keyFor(outcome.scheme) }
   const ended = await quietly(() => $.clock.now())
   if (ended === undefined) return undefined
-  // A run going meanwhile keeps the band: this one ended earlier, in the background.
-  const usesBand = call.usesBand && !(await anotherRunGoing($))
+  // A run going meanwhile keeps the band: this one ended earlier, in the background. This one, still followed there, isn't another.
+  const usesBand = call.usesBand && !(await anotherRunGoing($, call.startedAt))
   // The runs that ended meanwhile count among the earlier ones; the server's time leaves out the wait for the notification.
   const { passed: earlier, failed: earlierFailed } = await earlierRuns($, call.key, ended)
   const loop = await recordEnding($, { ...call, usesBand, earlier }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
@@ -464,10 +490,10 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   return { ...(outcome.result === undefined ? {} : { result: outcome.result }), notes: [...notes, ...(loop ? [loop] : [])] }
 }
 
-/** Whether a run is going now: it keeps the band from a call that ended in the background meanwhile. */
-async function anotherRunGoing($: EngineInterface): Promise<boolean> {
+/** Whether a run other than the one started at `startedAt` is going now: it keeps the band from a call that ended in the background meanwhile. */
+async function anotherRunGoing($: EngineInterface, startedAt?: number): Promise<boolean> {
   const going = await quietly(() => read($, runState))
-  return going !== undefined && going !== null && !going.ended
+  return going !== undefined && going !== null && !going.ended && going.startedAt !== startedAt
 }
 
 /**
@@ -551,6 +577,12 @@ async function showEnding($: EngineInterface, tool: string, ending: NonNullable<
   if (!usesBand) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
   await quietly(() => update($, runState, run => (run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending, ...(by === undefined ? {} : { by }) })))
   // The outcome leaves the band on its own; a later run has replaced it by then, or it's this one.
+  await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
+}
+
+/** A run in the background ended on its log's verdict: shown on the band while it's still this run's, then left to clear. */
+async function showEndingOf($: EngineInterface, startedAt: number, ending: NonNullable<BandRun['ended']>): Promise<void> {
+  await quietly(() => update($, runState, run => (run?.startedAt === startedAt && !run.ended ? endedRun(run, ending) : run)))
   await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
 }
 
