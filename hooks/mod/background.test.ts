@@ -31,7 +31,7 @@ function notificationText(result: string, task = TASK) {
  */
 function session(
   on: On,
-  { surface = 'vscode' as 'vscode' | 'terminal', hold, reports = [] as Partial<Report>[], logSeen = true, phase }: { surface?: 'vscode' | 'terminal'; hold?: Promise<void>; reports?: Partial<Report>[]; logSeen?: boolean; phase?: (args: readonly string[]) => Phase } = {},
+  { surface = 'vscode' as 'vscode' | 'terminal', hold, reports = [] as Partial<Report>[], logSeen = true, phase, callMs = CALL_MS }: { surface?: 'vscode' | 'terminal'; hold?: Promise<void>; reports?: Partial<Report>[]; logSeen?: boolean; phase?: (args: readonly string[]) => Phase; callMs?: number } = {},
 ) {
   const toasts: string[] = []
   const clock = mock.clock(on)
@@ -52,7 +52,7 @@ function session(
   on('tool.call', async (_, e) => {
     // A test run the session holds stays live on the band until `hold` settles.
     if (hold && e.tool.endsWith('test_sim')) await hold
-    await clock.advance(CALL_MS)
+    await clock.advance(callMs)
     return { result: {}, text: HANDLE }
   })
   return { toasts, clock, stored, cli, store }
@@ -351,4 +351,17 @@ test('two runs in the background each follow their own log', async ($, on) => {
   await clock.advance(3_000)
   expect(phaseCalls(cli, 'build_sim')).toBe(builtAt)
   expect(phaseCalls(cli, 'test_sim')).toBeGreaterThan(testedAt)
+})
+
+/** More calls waiting than are kept: the oldest is dropped, and its ticker with it, so it reads no phase on. */
+test('a backgrounded call dropped from the waiting ones stops following its log', async ($, on) => {
+  // Calls that answer at once, each moved to a task of its own: no tick runs until the clock moves below.
+  const tasks: Partial<Report>[] = Array.from({ length: 20 }, (_, call) => ({ ...UNREAD, backgroundTask: `task${call + 1}` }))
+  const { clock, cli } = session(on, { surface: 'terminal', callMs: 0, reports: tasks })
+  for (let call = 0; call < 21; call += 1) await callTool($, TEST, { tool_use_id: `toolu_${call}` })
+  await clock.settle()
+  const before = phaseCalls(cli)
+  await clock.advance(1_000)
+  // One second: one read for each of the 20 calls kept, none for the one dropped.
+  expect(phaseCalls(cli) - before).toBe(20)
 })

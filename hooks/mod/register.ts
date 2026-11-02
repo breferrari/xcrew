@@ -271,7 +271,11 @@ export const register: Register = on => {
         inBackground = followsLog && ticker !== undefined
         backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
         // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
-        for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) backgrounded.delete(old)
+        // A call dropped stops following its log: no notification will end it now.
+        for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) {
+          backgrounded.get(old)?.stop?.()
+          backgrounded.delete(old)
+        }
       }
       if (inBackground && usesBand) await quietly(() => update($, runState, current => (current?.startedAt === started && !current.ended ? { ...current, inBackground: true as const } : current)))
       else await showEnding($, name, { at: ended, elapsed, ok: true, isUnread: true }, usesBand, by)
