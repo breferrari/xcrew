@@ -26,7 +26,7 @@ struct LockedBuildDatabase: MachineCause {
     }
 
     /// When nothing holds the database any more.
-    static let free = "its build database is locked (\"database is locked\") by another build, and no process holds it now. Build again."
+    static let free = "its build database is locked (\"database is locked\") by another build, and no process holds it now, so a build started now can take it."
 
     /// When the processes couldn't be listed: nothing is said about whether one holds it.
     static let unknown = "its build database is locked (\"database is locked\") by another build; xcrew couldn't list the processes to say which."

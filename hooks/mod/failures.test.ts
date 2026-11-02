@@ -24,7 +24,7 @@ const BUILD_FAILED: Partial<Report> = { ok: false, failures: [{ title: 'MacroPro
 const TESTS_FAILED: Partial<Report> = { ok: false, failures: [{ title: 'PlainTests/testConcatenation', message: 'XCTAssertEqual failed', where: 'PlainTests.swift:5' }] }
 const PASSED: Partial<Report> = { ok: true, detail: '5 passed' }
 const CAUSE =
-  'xcrew: this build failed because of the Mac, not the code: a module in its DerivedData\'s module cache is corrupt ("malformed or corrupted precompiled file"). Remove ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used, then build again'
+  'xcrew: this build failed because of the Mac, not the code: a module in its DerivedData\'s module cache is corrupt ("malformed or corrupted precompiled file"). Removing ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used lets the next build rebuild them'
 const MAC_FAILED: Partial<Report> = { ...BUILD_FAILED, cause: CAUSE }
 const MAC_ONLY: Partial<Report> = { ok: false, failures: [], cause: CAUSE }
 

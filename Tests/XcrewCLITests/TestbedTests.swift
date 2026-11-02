@@ -401,8 +401,8 @@ struct TestbedWhyTests {
     }
 
     @Test(arguments: [
-        ("module-cache-malformed", "a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Remove the cached modules, then build again: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
-        ("module-cache-invalid", "is not a valid module file\"). Remove the cached modules, then build again: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
+        ("module-cache-malformed", "a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
+        ("module-cache-invalid", "is not a valid module file\"). Removing the cached modules lets the next build rebuild them: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
         ("simulator-missing", "no simulator here is named iPhone 1, which the build asked for"),
     ])
     func aRealBuildLogNamesItsCause(capture: String, cause: String) async {
@@ -414,7 +414,7 @@ struct TestbedWhyTests {
     /// MobileBuildMCP's own result names the same cause. The log it points at isn't on this Mac, so the DerivedData
     /// goes unnamed where the result doesn't name it.
     @Test(arguments: [
-        ("module-cache-malformed", "\"malformed or corrupted precompiled file\"). Remove ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used"),
+        ("module-cache-malformed", "\"malformed or corrupted precompiled file\"). Removing ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used lets the next build rebuild them"),
         ("module-cache-invalid", "rm -rf '/testbed/DerivedData/ModuleCache.noindex'"),
         ("simulator-missing", "no simulator here is named iPhone 1"),
     ])

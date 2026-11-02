@@ -24,6 +24,7 @@
 - `look` lists the elements on screen once when a test failed alike under several configurations of a test plan: each later one says its screen held the same, in one line.
 - A test marked flaky that a plain test run fails starts its passes in a row over. Before, it kept them, and could turn green although it had failed since its last pass.
 - A test marked flaky reads "passed 0 of the 4 needed in repeated runs since", saying that only a repeated run's passes count, so a single pass no longer reads as a wrong count. The ledger, the card, `/xcrew flaky` and the evidence block say it alike.
+- xcrew's notes on which Xcode builds, on the project's pin, on a corrupt module cache and on a build database another build left locked state their fix as a fact rather than an order, as its other notes do.
 
 ## 0.13.1 — 2026-11-02
 

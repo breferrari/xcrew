@@ -3,7 +3,7 @@ import type { On } from 'claude-code'
 import type { Report } from './cli'
 import { callTool, stubCli } from './testing'
 
-const PIN = "xcrew: builds use Xcode 27.2 while the project pins Xcode 26.5 (.xcode-version): a different SDK may be the cause. To build with the pin, xcodes install 26.5"
+const PIN = "xcrew: builds use Xcode 27.2 while the project pins Xcode 26.5 (.xcode-version): a different SDK may be the cause. `xcodes install 26.5` installs the pin's Xcode"
 const FAILED: Partial<Report> = { ok: false, detail: 'build failed', failures: [{ title: 'App.swift:2', message: 'module compiled with Swift 6.1 cannot be imported by the Swift 6.3 compiler' }], notes: [], pinNote: PIN, pin: '26.5 (.xcode-version)' }
 
 function session(on: On, reports: Partial<Report>[]) {
@@ -55,7 +55,7 @@ test('a resumed conversation names the pin again, and one the person left doesn\
 })
 
 test('a pin is named once a session, though its note words it another way', async ($, on) => {
-  const restart = "xcrew: MobileBuildMCP started without the project's pin, Xcode 26.5 (.xcode-version), so it builds with Xcode 27.2: a different SDK may be the cause. Restart Claude Code to build with the pin."
+  const restart = "xcrew: MobileBuildMCP started without the project's pin, Xcode 26.5 (.xcode-version), so it builds with Xcode 27.2: a different SDK may be the cause. The pin takes effect once Claude Code restarts."
   session(on, [FAILED, { ...FAILED, pinNote: restart }])
   expect(await build($)).toContain(PIN)
   expect(await build($)).not.toContain(restart)
