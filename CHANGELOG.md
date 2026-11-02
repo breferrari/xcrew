@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A failing MobileBuildMCP test run repeated with `-test-iterations` lists each failing test with its message and file and line, from the result bundle, and lists each test once with its runs counted, rather than once per run. A failing test run no longer lists the coverage runtime's `default.profraw` error, as a failing build already didn't.
 - A test marked flaky turns green only after enough passes in a row from repeated runs: enough that, failing at the rate it was seen failing, it would pass them all under 5% of the time (14 after failing 1 of 5 runs). The ledger, the card, `/xcrew flaky` and the evidence say how many it has, `passed 10 of the 14 needed since`. Before, one repeated run passing it every time turned it green.
 - A test that crashed is listed as that test's failure when the result bundle files the crash under `System Failures`, as it can on iOS 26: in the failures pane, on its row and in the ledger. Before, the run showed a failure but named no test.
 - A MobileBuildMCP test run whose filter matched tests that then didn't execute says so in its note to Claude, naming the test plan's configurations when it has several, rather than blaming a filter that matched nothing. A run of no tests that doesn't list what it matched names every cause that does this, without claiming one.

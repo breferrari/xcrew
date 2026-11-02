@@ -76,6 +76,25 @@ public struct ResultBundle: Sendable {
         }
     }
 
+    /// Each failed test of a repeated run, with the first message and place below its first failed repetition, worded as
+    /// MobileBuildMCP words a message, without `failed - `: its text lists none, since it reads messages only from right
+    /// below a test case (docs/findings.md, *A repeated run's failures*).
+    static func repeatedFailures(listing: String) -> [(test: TestID, message: String, place: String?)] {
+        var seen: Set<TestID> = []
+        return nodes(parse(listing)).compactMap { node in
+            guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Failed",
+                  let test = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), !seen.contains(test) else { return nil }
+            let failed = nodes(node["children"]).filter { $0["nodeType"] as? String == "Repetition" && $0["result"] as? String == "Failed" }
+            guard let message = failed.lazy.compactMap({ nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }).first,
+                  let name = message["name"] as? String else { return nil }
+            seen.insert(test)
+            let location = message["sourceLocation"] as? [String: Any]
+            let place = (location?["filePath"] as? String).flatMap { file in (location?["lineNumber"] as? Int).map { "\(file):\($0)" } }
+            let firstLine = name.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? name
+            return (test, firstLine.replacing(#/^failed\s*-\s*/#, with: ""), place)
+        }
+    }
+
     /// What the result bundle writes before a skip's reason: XCTest's `XCTSkip`, or Swift Testing's `.disabled`.
     static let skipPrefixes = ["Test skipped - ", "Test skipped: "]
 

@@ -211,11 +211,18 @@ public struct Report: Sendable, Equatable, Codable {
         if let collapsed = read.collapsingWarnings() { (final, edited) = (collapsed, saved == nil) }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
         let repetitions = if repeated, let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
-        if let text = final.mobileText {
-            if let bundle, text.isTestRun {
-                if let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images"), repetitions: repetitions) { (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images) }
-            } else if let cleaned = text.withoutExcerpts() {
-                (final, edited) = (ToolOutput(cleaned, isError: output.isError), true)
+        if var text = final.mobileText {
+            var changed = false
+            if let cleaned = text.withoutExcerpts() { (text, changed) = (cleaned, true) }
+            // A repeated run's text lists no failures, and with test timing on, each test once for each run.
+            if let bundle, text.isTestRun, !repetitions.isEmpty {
+                if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await bundle.tests())) { (text, changed) = (added, true) }
+                if let once = text.listingRunsOnce(repetitions) { (text, changed) = (once, true) }
+            }
+            if let bundle, text.isTestRun, let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images"), repetitions: repetitions) {
+                (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
+            } else if changed {
+                (final, edited) = (ToolOutput(text, isError: output.isError), true)
             }
         }
         let summary = bundleCounts.map { $0.summary(succeeded: final.summary.ok) } ?? final.summary
