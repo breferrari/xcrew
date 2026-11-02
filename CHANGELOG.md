@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The line above the prompt reads a running build's or test's log on from where its last look stopped, rather than the whole log every second: on a 31 MB log each look takes about 10 ms instead of 50.
 - A test run asks `xcrew project --branch` once for its ledger and card where it asked up to four times: an answer under five seconds old is shared, and a Bash call, which may switch branches, drops it.
 - Editing a YAML file, such as a CI workflow, in a project XcodeGen doesn't generate no longer starts two `xcrew` calls on the edit's path; `project` says whether the project reads YAML (`readsYaml`).
 - A test run's report reaches Claude about 0.6 s sooner: a result bundle without coverage is no longer handed to `xccov`, and one with coverage asks it one question fewer.
