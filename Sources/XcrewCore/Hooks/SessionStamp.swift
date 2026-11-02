@@ -25,9 +25,9 @@ public struct SessionStamp: Codable, Equatable, Sendable {
     /// A session's stamp: each writer's field from its own file, else from the one file an older xcrew kept for both.
     public static func read(_ session: String, on machine: Machine) -> SessionStamp? {
         let folder = self.folder(session, on: machine)
-        let field = { (field: Field) in try? String(contentsOf: folder.appending(path: field.rawValue), encoding: .utf8) }
+        let written = { (field: Field) in try? String(contentsOf: folder.appending(path: field.rawValue), encoding: .utf8) }
         let older = (try? Data(contentsOf: legacyFile(session, on: machine))).flatMap { try? JSONDecoder().decode(SessionStamp.self, from: $0) }
-        let stamp = SessionStamp(briefing: field(.briefing) ?? older?.briefing, mod: field(.mod) ?? older?.mod)
+        let stamp = SessionStamp(briefing: written(.briefing) ?? older?.briefing, mod: written(.mod) ?? older?.mod)
         return stamp == SessionStamp() ? nil : stamp
     }
 
@@ -39,7 +39,7 @@ public struct SessionStamp: Codable, Equatable, Sendable {
     /// Records one writer's `field` for a session, in a file of its own that no other writer touches, so two writing at
     /// once, as the start hook and the mod's first doctor read do, each keep theirs. A session's first record removes the
     /// stamps left too long.
-    public static func record(_ session: String, on machine: Machine, _ field: Field, _ version: String) {
+    public static func record(_ session: String, on machine: Machine, _ field: Field, version: String) {
         let folder = self.folder(session, on: machine)
         let file = folder.appending(path: field.rawValue)
         guard (try? String(contentsOf: file, encoding: .utf8)) != version else { return }

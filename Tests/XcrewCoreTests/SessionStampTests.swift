@@ -9,15 +9,15 @@ import XcrewTestSupport
 
     func context(_ stamp: SessionStamp?, project: Project = .temporary(), session: String? = Self.session) -> CheckContext {
         let context = CheckContext.fake(project: project, environment: session.map { ["CLAUDE_CODE_SESSION_ID": $0] } ?? [:])
-        if let briefing = stamp?.briefing { SessionStamp.record(Self.session, on: context.machine, .briefing, briefing) }
-        if let mod = stamp?.mod { SessionStamp.record(Self.session, on: context.machine, .mod, mod) }
+        if let briefing = stamp?.briefing { SessionStamp.record(Self.session, on: context.machine, .briefing, version: briefing) }
+        if let mod = stamp?.mod { SessionStamp.record(Self.session, on: context.machine, .mod, version: mod) }
         return context
     }
 
     @Test func aStampIsKeptReadAndRemoved() {
         let machine = context(nil).machine
-        SessionStamp.record(Self.session, on: machine, .briefing, "0.12.0")
-        SessionStamp.record(Self.session, on: machine, .mod, "0.12.0")
+        SessionStamp.record(Self.session, on: machine, .briefing, version: "0.12.0")
+        SessionStamp.record(Self.session, on: machine, .mod, version: "0.12.0")
         #expect(SessionStamp.read(Self.session, on: machine) == SessionStamp(briefing: "0.12.0", mod: "0.12.0"))
         SessionStamp.remove(Self.session, on: machine)
         #expect(SessionStamp.read(Self.session, on: machine) == nil)
@@ -27,11 +27,11 @@ import XcrewTestSupport
     /// writer never rewrites a file that holds the other's, so neither can put back an older view of it.
     @Test func oneWriterNeverRewritesTheOthersFact() throws {
         let machine = context(nil).machine
-        SessionStamp.record(Self.session, on: machine, .mod, "mod-2")
+        SessionStamp.record(Self.session, on: machine, .mod, version: "mod-2")
         let sessions = machine.cacheFolder.appending(path: "sessions")
         let files = { (FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []).filter { !$0.hasDirectoryPath } }
         for file in files() { try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 0)], ofItemAtPath: file.path) }
-        SessionStamp.record(Self.session, on: machine, .briefing, "briefing-1")
+        SessionStamp.record(Self.session, on: machine, .briefing, version: "briefing-1")
         let holdingMod = files().filter { (try? String(contentsOf: $0, encoding: .utf8))?.contains("mod-2") == true }
         #expect(!holdingMod.isEmpty)
         for file in holdingMod {
@@ -47,7 +47,7 @@ import XcrewTestSupport
         let older = machine.cacheFolder.appending(path: "sessions/\(Self.session).json")
         try FileManager.default.createDirectory(at: older.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(#"{"briefing":"0.13.1","mod":"0.13.1"}"#.utf8).write(to: older)
-        SessionStamp.record(Self.session, on: machine, .mod, "0.14.0")
+        SessionStamp.record(Self.session, on: machine, .mod, version: "0.14.0")
         #expect(SessionStamp.read(Self.session, on: machine) == SessionStamp(briefing: "0.13.1", mod: "0.14.0"))
         SessionStamp.remove(Self.session, on: machine)
         #expect(SessionStamp.read(Self.session, on: machine) == nil)
@@ -59,14 +59,14 @@ import XcrewTestSupport
     @Test func aSessionsFirstRecordRemovesTheStampsLeftTooLong() throws {
         let machine = context(nil).machine
         let sessions = machine.cacheFolder.appending(path: "sessions")
-        SessionStamp.record("old", on: machine, .mod, "0.13.0")
-        SessionStamp.record("recent", on: machine, .mod, "0.13.0")
+        SessionStamp.record("old", on: machine, .mod, version: "0.13.0")
+        SessionStamp.record("recent", on: machine, .mod, version: "0.13.0")
         try Data("{}".utf8).write(to: sessions.appending(path: "older.json"))
         let ago = { (days: Double) in Date.now.addingTimeInterval(-days * 24 * 3600) }
         try FileManager.default.setAttributes([.modificationDate: ago(15)], ofItemAtPath: sessions.appending(path: "old").path)
         try FileManager.default.setAttributes([.modificationDate: ago(15)], ofItemAtPath: sessions.appending(path: "older.json").path)
         try FileManager.default.setAttributes([.modificationDate: ago(13)], ofItemAtPath: sessions.appending(path: "recent").path)
-        SessionStamp.record(Self.session, on: machine, .briefing, "0.14.0")
+        SessionStamp.record(Self.session, on: machine, .briefing, version: "0.14.0")
         #expect(Set(try FileManager.default.contentsOfDirectory(atPath: sessions.path)) == ["recent", Self.session])
     }
 

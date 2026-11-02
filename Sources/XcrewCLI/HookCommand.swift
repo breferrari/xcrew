@@ -23,7 +23,7 @@ struct HookCommand: Command {
             return 0
         }
         // Which version's rules this session was given, for the doctor to compare with the running one.
-        if let session = event.session { SessionStamp.record(session, on: machine, .briefing, XcrewVersion.current) }
+        if let session = event.session { SessionStamp.record(session, on: machine, .briefing, version: XcrewVersion.current) }
         let project = event.cwd.map { Project(root: URL(fileURLWithPath: $0, isDirectory: true), home: invocation.context.machine.home) } ?? invocation.context.project
         let routing = (try? String(contentsOf: Self.pluginRoot(machine).appending(path: "context/routing.md"), encoding: .utf8)) ?? ""
         if let text = await SessionBriefing(project: project, machine: machine).text(routing: routing) {
