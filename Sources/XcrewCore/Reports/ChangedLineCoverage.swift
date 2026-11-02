@@ -36,8 +36,6 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// Changed files a run covered but that changed since it started, which it can't speak for.
     var stale: [String] = []
 
-    /// How many files' line counts are asked of `xccov` at once.
-    static let atOnce = 4
     /// How long the whole reading may take: it shares the report's time with the failures and the summary, so past this
     /// the note is dropped and the rest of the report stands.
     static let budget = Duration.seconds(45)
@@ -79,11 +77,9 @@ struct ChangedLineCoverage: Sendable, Equatable {
         guard let listed = await ChangedLines.of(candidates, in: change, project: project, using: runner) else { return nil }
         let changed = oneSpellingEach(listed)
         var counts: [String: [Int: Bool]?] = [:]
+        // Every file's counts are asked at once; the runner's pool decides how many `xccov`s run together.
         await withTaskGroup(of: (String, [Int: Bool]?).self) { group in
-            for (index, (path, _)) in changed.enumerated() {
-                if index >= atOnce, let finished = await group.next() { counts[finished.0] = finished.1 }
-                group.addTask { (path, lines(await bundle.coverage(of: path))) }
-            }
+            for (path, _) in changed { group.addTask { (path, lines(await bundle.coverage(of: path))) } }
             for await (path, read) in group { counts[path] = read }
         }
         var found = ChangedLineCoverage()

@@ -72,19 +72,22 @@ struct BranchCoverage: Sendable {
         guard !chosen.isEmpty else { return BranchCoverage(sentence: "", finished: [], leftOut: 0) }
         let gathered = Gathered()
         await withTaskGroup(of: Void.self) { group in
+            // Every run is read side by side, its commands queued in the runner's pool with the others', newest first.
             group.addTask {
-                for run in chosen {
-                    guard !Task.isCancelled else { return }
-                    let bundle = ResultBundle(path: run.path, runner: machine.runner)
-                    let reading: ChangedLineCoverage?? = ranTests(summary: await bundle.summary())
-                        ? await ChangedLineCoverage.within(ChangedLineCoverage.budget) { await ChangedLineCoverage.read(bundle, change: { change }, project: project, using: machine.runner, keepingTestFiles: true) }
-                        : .some(nil)
-                    guard !Task.isCancelled else { return }
-                    guard let reading else { continue }
-                    let fresh = reading?.fresh(since: run.started) { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }
-                    gathered.state.withLock { gathered in
-                        gathered.reached += 1
-                        if let fresh { gathered.read.append((fresh, run.finished)) }
+                await withTaskGroup(of: Void.self) { runs in
+                    for run in chosen {
+                        runs.addTask {
+                            let bundle = ResultBundle(path: run.path, runner: machine.runner)
+                            let reading: ChangedLineCoverage?? = ranTests(summary: await bundle.summary())
+                                ? await ChangedLineCoverage.within(ChangedLineCoverage.budget) { await ChangedLineCoverage.read(bundle, change: { change }, project: project, using: machine.runner, keepingTestFiles: true) }
+                                : .some(nil)
+                            guard !Task.isCancelled, let reading else { return }
+                            let fresh = reading?.fresh(since: run.started) { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }
+                            gathered.state.withLock { gathered in
+                                gathered.reached += 1
+                                if let fresh { gathered.read.append((fresh, run.finished)) }
+                            }
+                        }
                     }
                 }
             }
@@ -94,7 +97,7 @@ struct BranchCoverage: Sendable {
         }
         let read = gathered.state.withLock { $0 }
         let kept = Set(ChangedLineCoverage.withoutTestFiles(Array(Set(read.read.flatMap(\.coverage.outside))).sorted(), of: project))
-        let found = read.read.map { coverage, finished in
+        let found = read.read.sorted { $0.finished > $1.finished }.map { coverage, finished in
             var coverage = coverage
             coverage.outside = coverage.outside.filter(kept.contains)
             return (coverage: coverage, finished: finished)

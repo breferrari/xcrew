@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import XcrewCLI
 @testable import XcrewCore
@@ -610,6 +611,19 @@ struct TestbedEvidenceTests {
         #expect(!run.text.contains("GreetingTests.swift"), "\(run.text)")
     }
 
+    /// The branch's runs are read side by side, each one's `xccov` calls beside the others', not one run after another.
+    @Test func theBranchsRunsAreReadSideBySide() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        var fake = try #require(context.machine.runner as? FakeRunner)
+        fake.responses["sysctl -n hw.perflevel0.physicalcpu"] = .init(status: 0, stdout: "8\n")
+        let slow = SlowRunner(fake)
+        let machine = Machine(environment: context.machine.environment, home: context.machine.home, runner: slow, processID: context.machine.processID, applications: context.machine.applications, now: context.machine.now)
+        let run = await Run("evidence", context: CheckContext(project: project, machine: machine), stdin: Self.input)
+        #expect(run.text.contains("these test runs"), "\(run.text)")
+        #expect(slow.peakArchiveReads == 2)
+    }
+
     /// A run of no test, as one whose filter matched nothing, counts nothing as run, so it's left out.
     @Test func aRunOfNoTestIsLeftOut() async throws {
         let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600), earlierTests: 0)
@@ -1041,4 +1055,23 @@ private func reportHolding(_ fileList: String) -> String {
     let files = (try? JSONDecoder().decode([String].self, from: Data(fileList.utf8))) ?? []
     let listed = files.map { #"{"path":"\#($0)"}"# }.joined(separator: ",")
     return #"{"targets":[{"name":"App.app","coveredLines":1,"executableLines":1,"files":[\#(listed)]}]}"#
+}
+
+/// A runner that answers as another does, each `xccov` file read after a short wait, counting how many run at once.
+final class SlowRunner: CommandRunning {
+    let base: any CommandRunning
+    let reads = Mutex((now: 0, peak: 0))
+    var peakArchiveReads: Int { reads.withLock { $0.peak } }
+
+    init(_ base: any CommandRunning) { self.base = base }
+
+    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        guard argv.contains("--archive") else { return await base.run(argv, stdin: stdin, timeout: timeout) }
+        reads.withLock { $0.now += 1; $0.peak = max($0.peak, $0.now) }
+        try? await Task.sleep(for: .milliseconds(50))
+        reads.withLock { $0.now -= 1 }
+        return await base.run(argv, stdin: stdin, timeout: timeout)
+    }
+
+    func which(_ name: String) -> String? { base.which(name) }
 }
