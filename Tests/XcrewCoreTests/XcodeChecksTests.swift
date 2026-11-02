@@ -44,16 +44,16 @@ import XcrewTestSupport
         #expect(result.message.contains("started without it (the xcrew CLI failed, with status 1)"))
     }
 
-    /// A CI matrix over several Xcodes is fine when the project's is among them.
-    @Test func aCIMatrixWithTheProjectsXcodePasses() async {
+    /// A CI matrix over several Xcodes is fine when the project's is among them: a toolchain failure says nothing of CI.
+    @Test func aCIMatrixWithTheProjectsXcodeSaysNothing() async {
         let matrix = "jobs:\n  test:\n    strategy:\n      matrix:\n        include:\n          - xcode-version: '26.4'\n          - xcode-version: '27.2'\n"
-        #expect(await XcodeCICheck().run(context(pin: "26.4\n", workflow: matrix)).status == .pass)
+        #expect(await XcodeFailureNotesTests().notes(context(pin: "26.4\n", workflow: matrix, launch: XcodeFailureNotesTests.applied)) == [])
     }
 
     /// setup-xcode reads `26` as the newest 26.x: a partial version covers the project's.
     @Test func aPartialCIVersionCoversTheProjects() async {
         let partial = "jobs:\n  test:\n    steps:\n      - uses: maxim-lobanov/setup-xcode@v1\n        with:\n          xcode-version: '26'\n"
-        #expect(await XcodeCICheck().run(context(pin: "26.4\n", workflow: partial)).status == .pass)
+        #expect(await XcodeFailureNotesTests().notes(context(pin: "26.4\n", workflow: partial, launch: XcodeFailureNotesTests.applied)) == [])
     }
 
     /// Without a pin, CI already on the Xcode builds use has nothing to ask for.
@@ -240,51 +240,10 @@ import XcrewTestSupport
         #expect(result.message.contains("MobileBuildMCP started without it"))
     }
 
-    @Test func withoutAPinSeveralXcodesAndCIsVersionSuggestOne() async {
-        let result = await XcodePinCheck().run(context(workflow: Self.ciOn26_3))
-        #expect(result.status == .warn)
-        #expect(result.message == "several Xcodes are installed and CI uses Xcode 26.3 (.github/workflows/ci.yml:6), but nothing pins one, so builds use Xcode 27.2: pin CI's with echo 26.3 > .xcode-version")
-    }
-
+    /// Without a pin the check passes, CI or not: a pin to suggest is said on a failure it can explain.
     @Test func withoutAPinOneXcodeHasNothingToChoose() async {
         let result = await XcodePinCheck().run(context(workflow: Self.ciOn26_3, onlyOne: true))
         #expect(result.status == .pass)
-    }
-
-    @Test func ciOnAnotherXcodeWarnsWithWhere() async {
-        let result = await XcodeCICheck().run(context(pin: "26.4\n", workflow: Self.ciOn26_3, launch: "applied APPS/Xcode-26.4.app/Contents/Developer\n"))
-        #expect(result.status == .warn)
-        #expect(result.message == "CI uses Xcode 26.3 (.github/workflows/ci.yml:6), but this project pins Xcode 26.4, so results can differ from CI's: move CI to 26.4, or pin 26.3 in .xcode-version")
-    }
-
-    @Test func ciOnTheSameXcodePasses() async {
-        let result = await XcodeCICheck().run(context(pin: "26.3\n", workflow: Self.ciOn26_3))
-        #expect(result.status == .pass)
-    }
-
-    /// The Xcode MCP works through the Xcode that's open; a pin can't change it.
-    @Test func theOpenXcodeOtherThanTheBuildsOneIsTwoToolchains() async {
-        let result = await XcodeOpenCheck().run(context(pin: "26.4\n", running: "Xcode-27.2.0-Beta.3.app", launch: "applied APPS/Xcode-26.4.app/Contents/Developer\n"))
-        #expect(result.status == .warn)
-        #expect(result.message.hasPrefix("two toolchains in one session: the Xcode MCP works through the open Xcode 27.2, but MobileBuildMCP builds with Xcode 26.4, so their builds, errors and tests can disagree: quit Xcode 27.2 and open "))
-        #expect(result.message.hasSuffix("/Xcode-26.4.app"))
-    }
-
-    @Test func theOpenXcodeTheSameAsTheBuildsOnePasses() async {
-        let result = await XcodeOpenCheck().run(context(running: "Xcode-27.2.0-Beta.3.app"))
-        #expect(result.status == .pass)
-    }
-
-    @Test func noOpenXcodeHasNothingToCompare() async {
-        let result = await XcodeOpenCheck().run(context(pin: "26.4\n", launch: "applied APPS/Xcode-26.4.app/Contents/Developer\n"))
-        #expect(result.status == .pass)
-        #expect(result.message == "Xcode isn't open")
-    }
-
-    /// The headless Xcode MCP serves with no Xcode window open, and runs no Xcode app the process list shows.
-    @Test func noOpenXcodeWithTheHeadlessMCPSaysItIsEnabled() async {
-        let result = await XcodeOpenCheck().run(context(mcpStatus: "Permission: enabled\nApproved agents:\n  com.anthropic.claude-code\n"))
-        #expect(result == .pass("no Xcode window is open; the headless Xcode MCP is enabled"))
     }
 }
 

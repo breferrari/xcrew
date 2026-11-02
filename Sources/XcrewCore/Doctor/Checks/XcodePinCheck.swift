@@ -1,7 +1,7 @@
 import Foundation
 
-/// The project's `.xcode-version` names an installed Xcode, and MobileBuildMCP's server started with it. Without a pin,
-/// one is suggested only when several Xcodes are installed and CI names its own: a pin is the team's choice.
+/// The project's `.xcode-version` names an installed Xcode, and MobileBuildMCP's server started with it. Without a pin it
+/// passes: a pin to suggest is said on a failure it can explain (`XcodeFailureNotes`).
 struct XcodePinCheck: Check {
     let id = "xcode/pin"
     let title = "The project's Xcode pin applies"
@@ -37,11 +37,7 @@ struct XcodePinCheck: Check {
         let pinned = xcodes.pin?.version ?? ""
         switch xcodes.pinState {
         case .none:
-            let builds = xcodes.forBuilds?.version
-            guard xcodes.installed.count > 1, let ci = xcodes.ci.first, !xcodes.ci.contains(where: { named in builds.map { CIXcodes.covers(named.version, $0) } == true }) else {
-                return .pass("no pin, and nothing to choose between")
-            }
-            return .warn("several Xcodes are installed and CI uses Xcode \(ci.version) (\(ci.file):\(ci.line)), but nothing pins one, so builds use \(using): pin CI's with echo \(ci.version) > \(Project.xcodePinFile)")
+            return .pass("no pin")
         case let .notInstalled(pin, file):
             let install = Self.install(pin, hasXcodes: context.runner.which("xcodes") != nil)
             // Every mismatch is a warning: the Mac still builds, with another Xcode than the project expects.

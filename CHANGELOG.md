@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- What the doctor checked ahead of time about which Xcode builds is said on a failed MobileBuildMCP build or test it can explain, one whose errors another SDK or toolchain gives: CI on another Xcode, a pin to suggest, and an open Xcode other than the one building, each only when it holds. The doctor no longer checks them, nor for an xcodebuild left running, which a build that finds its database locked already names.
 - The doctor no longer scans the disk: this project's MobileBuildMCP storage against its budget, and the simulators a removed worktree left behind, are in `xcrew space`, which shows them when you ask.
 - The line above the prompt no longer runs the doctor again every 30 seconds after a prompt: the doctor runs at session start, after setup, and when `/xcrew doctor` asks, which also clears a problem fixed since.
 - A Swift Testing run through a test plan of several configurations counts its tests through the first configuration and then says `testing`, rather than counting past its total as `testing · 10 done`.

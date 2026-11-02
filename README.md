@@ -205,13 +205,10 @@ ok    mobilebuildmcp/version             version 2.7.1
 ok    mobilebuildmcp/no-legacy-binary    none
 ok    mobilebuildmcp/project-config      .mobilebuildmcp/config.yaml
 ok    mobilebuildmcp/config-loaded       loaded at its start
-ok    mobilebuildmcp/no-xcodebuild-left  no xcodebuild left running for this project
 ok    mobilebuildmcp/simulators          iPhone 17
 ok    xcode-mcp/headless-enabled         enabled
 ok    xcode-mcp/handshake                a new Xcode MCP bridge answers: xcode-tools 25464
 ok    xcode/pin                          Xcode 27.2, at /Applications/Xcode-27.2.app
-ok    xcode/ci                           CI uses Xcode 27.2 too
-ok    xcode/open                         the open Xcode 27.2 is the one MobileBuildMCP builds with
 warn  xcode-mcp/claude-approved          not approved yet: have Claude call XcodeOpenWorkspace, then allow it in Xcode's dialog
 ok    xcode-mcp/unsigned-agents-off      off
 ok    xcrew/up-to-date                   0.8.9, the latest release
