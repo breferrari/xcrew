@@ -244,6 +244,10 @@ public struct Report: Sendable, Equatable, Codable {
         var summary = bundleCounts.map { $0.summary(succeeded: final.summary.ok) } ?? final.summary
 
         var notes = ToolErrorNotes.notes(for: output)
+        if isTest, let project, let target = OutsideScheme.target(in: read.text) {
+            let scheme = read.buildLog(home: home).flatMap { RunLog.scheme(ofLogAt: URL(fileURLWithPath: $0)) }
+            notes.append(OutsideScheme.note(target: target, scheme: scheme, in: project))
+        }
         let tests = bundleCounts?.ran ?? final.testTotal
         if isTest, tests == 0 {
             if let discovered = read.discovered, discovered > 0 {
