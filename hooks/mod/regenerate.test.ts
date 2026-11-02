@@ -28,6 +28,8 @@ function tuistProject(on: On, failing: string[] = [], hashes: { hold?: () => Pro
   })
   on('tool.call', (_, e) => {
     if (e.tool === 'Bash' && failing.includes(e.command)) return { isError: true, result: 'Exit code 1', text: 'Exit code 1' }
+    // An undo the edit tools don't see, as git makes one.
+    if (e.tool === 'Bash' && e.command === RESTORE) versions.set(MANIFEST, 0)
     if (e.tool === 'Edit') versions.set(e.file_path, (versions.get(e.file_path) ?? 0) + (e.new_string === 'a' ? -1 : 1))
     if (e.tool === 'Write') versions.set(e.file_path, (versions.get(e.file_path) ?? 0) + 1)
     return { result: {}, text: 'done' }
@@ -35,6 +37,7 @@ function tuistProject(on: On, failing: string[] = [], hashes: { hold?: () => Pro
   return calls
 }
 
+const RESTORE = 'git checkout -- ios/Project.swift'
 const editManifest = (tool: Parameters<typeof callTool>[0]) => callTool(tool, 'Edit', { file_path: MANIFEST, old_string: 'a', new_string: 'b' })
 const undoEdit = (tool: Parameters<typeof callTool>[0]) => callTool(tool, 'Edit', { file_path: MANIFEST, old_string: 'b', new_string: 'a' })
 const build = (tool: Parameters<typeof callTool>[0], name = 'mcp__plugin_xcrew_MobileBuildMCP__build_sim') => callTool(tool, name)
@@ -82,6 +85,27 @@ test('an edit undone after its build was refused still holds the build back', as
   expect((await build($)).deny).toContain(GENERATE)
 })
 
+/** Held back again after an undo, the refusal says why, and that the next build goes through. */
+test('a build held back after an undo says the edit was refused for, so a generate may have run, and the next goes through', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  await build($)
+  await undoEdit($)
+  const refused = await build($)
+  expect(refused.deny).toBe(
+    `xcrew: the manifest edit a build was refused for is undone, but the project may have been generated from that edit since, in the person's own terminal, so the generated project may still hold it. Run \`${GENERATE}\` from the project's root, then try again. If it wasn't generated, try again: it goes through.`,
+  )
+  expect((await build($)).deny).toBeUndefined()
+})
+
+/** An undo that leaves the manifests as the last generate read them asks for no generate. */
+test('the undo itself says the next build needs no generate', async ($, on) => {
+  tuistProject(on)
+  await editManifest($)
+  const undone = await undoEdit($)
+  expect(contextOf(undone)).toBe("xcrew: this edit puts the project's manifests back as the last generate read them, so the next build or test needs no generate.")
+})
+
 /** Of two edited files, one undone leaves the other's edit standing. */
 test('an app with one of two edits undone is still refused', async ($, on) => {
   tuistProject(on)
@@ -91,7 +115,10 @@ test('an app with one of two edits undone is still refused', async ($, on) => {
   expect((await build($)).deny).toContain(GENERATE)
 })
 
-/** An edit made while a build reads the hashes is kept: what was undone goes, not what the build read before. */
+/**
+ * An edit made while a build reads the hashes is kept: what was undone goes, not what the build read before. The undo is
+ * one the edit tools don't see, so the build is what finds it.
+ */
 test('an edit made while a build reads the hashes keeps its mark', async ($, on) => {
   let release = () => {}
   let reached = () => {}
@@ -100,7 +127,7 @@ test('an edit made while a build reads the hashes keeps its mark', async ($, on)
   const reading = new Promise<void>(resolve => (reached = resolve))
   tuistProject(on, [], { hold: () => (holding ? (reached(), held) : Promise.resolve()) })
   await editManifest($)
-  await undoEdit($)
+  await callTool($, 'Bash', { command: RESTORE })
   holding = true
   const building = build($)
   await reading

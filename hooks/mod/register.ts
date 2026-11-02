@@ -19,7 +19,7 @@ import { afterFullRun, type Crossing, loopNote } from './loop'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
 import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
-import { afterGenerate, editedNote, isUndone, letThroughNote, marked, marksOf, refusal, refused, withoutUndone } from './regenerate'
+import { afterGenerate, editedNote, isUndone, isUndoneAfterRefusal, letThroughNote, marked, marksOf, refusal, refusalAfterUndo, refused, UNDONE_NOTE, withoutUndone } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, FAILED_PREFIX, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
@@ -76,12 +76,13 @@ export const register: Register = on => {
     const target = parsed && (forwardedTool(parsed, e as unknown as Record<string, unknown>) ?? parsed)
     const stored = target && buildsProject(target) ? await quietly(() => read($, staleState)) : undefined
     // Edits undone since leave the manifests as the last generate read them: those marks go.
-    const stale = stored && (await dropUndone($, stored))
+    const dropped = stored ? await dropUndone($, stored) : undefined
+    const stale = dropped?.stale
     const generates = marksOf(stale).map(mark => mark.generate)
     if (!stale || generates.length === 0) return next(e)
     if (!stale.refused) {
       // Refused only once the mark says so: a refusal it can't record would repeat for good.
-      if (await markStale($, refused)) return { deny: refusal(generates) }
+      if (await markStale($, refused)) return { deny: dropped?.undoneAfterRefusal ? refusalAfterUndo(generates) : refusal(generates) }
       return next(e)
     }
     // An edit meanwhile left a mark not yet refused for, which stays.
@@ -122,7 +123,11 @@ export const register: Register = on => {
     if (path === undefined || result.deny !== undefined || result.isError || !mayBeManifest(path)) return result
     const edit = manifestEditOf(await answer($, ['project', '--manifest', path], 10_000))
     if (!edit) return result
-    return (await markStale($, stale => marked(stale, edit, { path, before: before ?? null }))) ? withContext(result, editedNote(edit.generate)) : result
+    if (!(await markStale($, stale => marked(stale, edit, { path, before: before ?? null })))) return result
+    // An edit that puts the manifests back clears the app's mark, and needs no generate.
+    const after = await quietly(() => read($, staleState))
+    const isCleared = after && !marksOf((await dropUndone($, after)).stale).some(mark => mark.app === edit.app)
+    return withContext(result, isCleared ? UNDONE_NOTE : editedNote(edit.generate))
   }).catch(async ($, e, next) => next(e))
   on('tool.call', async ($, e, next) => {
     const parsed = parseTool(e.tool)
@@ -465,16 +470,20 @@ async function anotherRunGoing($: EngineInterface): Promise<boolean> {
   return going !== undefined && going !== null && !going.ended
 }
 
-/** The stale project without the marks whose edits are undone, each edited file back to its hash from before. */
-async function dropUndone($: EngineInterface, stale: StaleProject): Promise<StaleProject | null> {
+/**
+ * The stale project without the marks whose edits are undone, each edited file back to its hash from before, and
+ * whether a mark a build was refused for is undone too: that one stays.
+ */
+async function dropUndone($: EngineInterface, stale: StaleProject): Promise<{ stale: StaleProject | null; undoneAfterRefusal: boolean }> {
   const files = [...new Set(marksOf(stale).flatMap(mark => Object.keys(mark.files ?? {})))]
-  if (files.length === 0) return stale
+  if (files.length === 0) return { stale, undoneAfterRefusal: false }
   const now = Object.fromEntries(await Promise.all(files.map(async file => [file, hashOf(await answer($, ['project', '--hash', file], 10_000))] as const)))
+  const undoneAfterRefusal = marksOf(stale).some(mark => isUndoneAfterRefusal(mark, now))
   const undone = marksOf(stale).filter(mark => isUndone(mark, now))
-  if (undone.length === 0) return stale
+  if (undone.length === 0) return { stale, undoneAfterRefusal }
   let left: StaleProject | null = stale
   await quietly(() => update($, staleState, current => (left = withoutUndone(current, undone))))
-  return left
+  return { stale: left, undoneAfterRefusal }
 }
 
 /** Changes the marks of a stale project; false when the state couldn't be written. */
