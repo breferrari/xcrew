@@ -95,14 +95,28 @@ import XcrewTestSupport
 
     @Test func thisProjectsWorkspaceIsNamedWithTheCommandThatWouldReclaimIt() async throws {
         let text = try await report().text
-        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData,logs,resultBundles,stateTransients,testProducts\n"), "\(text)")
+        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes testProducts,logs,resultBundles,stateTransients\n  App's DerivedData, 77.9 MB, costs a cold build to make again\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData\n"), "\(text)")
+        #expect(text.hasPrefix(SpaceReport.unitsNote + "\n\n"), "\(text)")
         #expect(text.contains("  Each `--dry-run` lists what it would delete; with `--delete` in its place and `--confirm delete-mobilebuildmcp-storage`, it deletes.\n"), "\(text)")
+    }
+
+    /// The figures of a large workspace, as a field report gave them (October 31, 2026): test products, the most of it,
+    /// counted in bundles, and DerivedData apart, since it costs a cold build. A build writing to it is said.
+    @Test func aWorkspacesTestProductsAreCountedInBundlesAndItsDerivedDataIsApart() {
+        let found = { (bytes: Int) in StorageReport.StorageClass(bytes: bytes, exists: true, newest: nil, isReclaimable: true) }
+        let workspace = StorageReport.Workspace(key: "App-1", folder: "~/w", bytes: 126_200_000_000, classes: ["testProducts": found(95_000_000_000), "derivedData": found(24_200_000_000), "logs": found(322_000_000)])
+        let lines = Space.workspaceLines(workspace, name: "App", root: "/work/App", newest: "today", bundles: 105, isBuilding: true)
+        #expect(lines.map(\.text) == [
+            "App, /work/App: 126.2 GB, test products 95.0 GB in 105 bundles of about 904.8 MB each, DerivedData 24.2 GB, newest today; a build is writing to its DerivedData now",
+            "App's DerivedData, 24.2 GB, costs a cold build to make again",
+        ])
+        #expect(lines.map(\.command) == ["mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes testProducts,logs", "mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes derivedData"])
     }
 
     /// Only a root its log names and its key confirms is said to be gone; the rest are counted, with what age would take.
     @Test func aGoneProjectsWorkspaceIsNamedAndTheUnknownAreCounted() async throws {
         let text = try await report().text
-        #expect(text.contains("  \(goneKey): 305.5 KB; its project, \(goneRoot), is gone\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(goneKey) --classes logs,resultBundles,stateTransients,testProducts\n"), "\(text)")
+        #expect(text.contains("  \(goneKey): 305.5 KB; its project, \(goneRoot), is gone\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(goneKey) --classes testProducts,logs,resultBundles,stateTransients\n"), "\(text)")
         #expect(text.contains("  2 workspaces whose project isn't known: 3.3 MB; `mobilebuildmcp purge --report --json` lists each\n"), "\(text)")
         #expect(!text.contains("--scope all"), "a command over every workspace would reach this project's too")
     }

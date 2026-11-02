@@ -20,8 +20,11 @@ public struct SpaceReport: Sendable, Equatable, Codable {
 
     public let parts: [Part]
 
+    /// The unit every size is in, said first: `du -h` and a field reading took GB for GiB (docs/findings.md, *Disk space*).
+    public static let unitsNote = "Sizes are decimal, as Finder counts them: 1 GB is 1,000,000,000 bytes, where `du -h`'s G is 1,073,741,824."
+
     public var text: String {
-        parts.map { part in
+        Self.unitsNote + "\n\n" + parts.map { part in
             var lines = [part.title]
             for line in part.lines {
                 lines.append("  \(line.text)")
@@ -44,6 +47,18 @@ public struct SpaceReport: Sendable, Equatable, Codable {
             unit += 1
         }
         return value.formatted(.number.precision(.fractionLength(1)).grouping(.never).locale(Locale(identifier: "en_US_POSIX"))) + " " + units[unit]
+    }
+
+    /// `80.9 MiB`, `117.5 GiB`: binary units, as `du -h` counts them.
+    static func binarySize(_ bytes: Int) -> String {
+        var value = Double(bytes)
+        var unit = 0
+        let units = ["B", "KiB", "MiB", "GiB", "TiB"]
+        while value >= 1024, unit < units.count - 1 {
+            value /= 1024
+            unit += 1
+        }
+        return value.formatted(.number.precision(.fractionLength(unit == 0 ? 0 : 1)).grouping(.never).locale(Locale(identifier: "en_US_POSIX"))) + " " + units[unit]
     }
 
     /// `today`, `1 d ago`, `12 d ago`.

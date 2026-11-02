@@ -34,7 +34,7 @@ import XcrewTestSupport
     }
 
     /// The captured Mac: this project's workspace and its worktree's, each answering its own workspace's report.
-    func runner(environment: [String: String] = [:], purgeAnswers: Bool = true) throws -> FakeRunner {
+    func runner(environment: [String: String] = [:], purgeAnswers: Bool = true, ps: String? = nil) throws -> FakeRunner {
         let all = SpaceTests.purgeReport(key: RunLog.workspaceKey(root: root), renamed: ["field-05686ffe76ea": RunLog.workspaceKey(root: worktree)])
         var responses = SpaceTests.git(root: root, worktrees: [worktree])
         if purgeAnswers {
@@ -43,6 +43,7 @@ import XcrewTestSupport
                 responses["mobilebuildmcp purge --report --scope workspace --workspace-key \(key) --json"] = .init(status: 0, stdout: try Self.scoped(all, key: key))
             }
         }
+        if let ps { responses["ps -axo pid=,ppid=,etime=,command="] = .init(status: 0, stdout: ps) }
         return FakeRunner(installed: ["mobilebuildmcp"], responses: responses)
     }
 
@@ -66,13 +67,21 @@ import XcrewTestSupport
     /// The main checkout's and the worktree's together.
     @Test func withinTheBudgetItPassesWithTheTotalAndTheBudget() async throws {
         let result = await StorageBudgetCheck().run(try context())
-        #expect(result == .pass("this project's MobileBuildMCP workspaces take 84.8 MB, within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)"))
+        #expect(result == .pass("this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)"))
     }
 
-    @Test func pastTheBudgetItNamesTheLargestWorkspaceAndTheDryRun() async throws {
+    /// One line: the total, in both units, the class that takes the most, and where the rest is said.
+    @Test func pastTheBudgetItNamesTheLargestClassAndXcrewSpace() async throws {
         let result = await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: ["XCREW_STORAGE_BUDGET_GB": "0.05"], home: home, runner: try runner())))
-        let key = RunLog.workspaceKey(root: root)
-        #expect(result == .warn("this project's MobileBuildMCP workspaces take 84.8 MB, past its budget of 0.05 GB (XCREW_STORAGE_BUDGET_GB sets another); the largest, App (\(root)), takes 81.5 MB: `mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes \(Self.classes)` lists what it would delete"))
+        #expect(result == .warn("this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), past its budget of 0.05 GB (XCREW_STORAGE_BUDGET_GB sets another); DerivedData takes the most, 77.9 MB: `xcrew space` names what each part would reclaim"))
+    }
+
+    /// Read while a build writes to one of its workspaces, the figure is that build's too, and says so.
+    @Test func aFigureTakenWhileABuildWritesSaysSo() async throws {
+        let derived = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root))/DerivedData").path
+        let ps = "  10 1 05:00 /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme App -derivedDataPath \(derived) -destination id=1\n"
+        let result = await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: [:], home: home, runner: try runner(ps: ps))))
+        #expect(result == .pass("this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another); a build is writing to them now, so they take more than they will after it"))
     }
 
     /// A budget it can't use, not a finite positive number of GB it can say, is the default.

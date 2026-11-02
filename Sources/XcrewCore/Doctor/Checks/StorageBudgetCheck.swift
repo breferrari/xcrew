@@ -29,8 +29,22 @@ struct StorageBudgetCheck: Check {
             .sorted { $0.workspace.bytes > $1.workspace.bytes }
         let budget = Self.budget(machine)
         let total = live.map(\.workspace.bytes).reduce(0, +)
-        if let past = Self.pastBudget(live, total: total, budget: budget) { return .warn(past) }
-        return .pass("this project's MobileBuildMCP workspaces take \(SpaceReport.size(total)), within its budget of \(Self.said(budget))")
+        let processes = await context.processes.value()
+        let building = live.contains { Space.isBuilding(into: $0.workspace, processes: processes, home: machine.home) } ? "; a build is writing to them now, so they take more than they will after it" : ""
+        let taken = "this project's MobileBuildMCP workspaces take \(SpaceReport.size(total)) (\(SpaceReport.binarySize(total)) as `du -h` counts)"
+        if Double(total) > budget * 1e9 { return .warn("\(taken), past its budget of \(Self.said(budget))\(Self.largestClass(live.map(\.workspace)))\(building)") }
+        return .pass("\(taken), within its budget of \(Self.said(budget))\(building)")
+    }
+
+    /// What MobileBuildMCP calls each class, as a person reads it.
+    static let classNames = ["derivedData": "DerivedData", "testProducts": "test products", "resultBundles": "result bundles", "logs": "logs", "stateTransients": "state transients", "locks": "locks"]
+
+    /// `; DerivedData takes the most, 77.9 MB: …`, the class that takes the most across the workspaces, and where the rest
+    /// is said; nothing when no class holds anything.
+    static func largestClass(_ workspaces: [StorageReport.Workspace]) -> String {
+        let sums = workspaces.flatMap(\.classes).reduce(into: [String: Int]()) { $0[$1.key, default: 0] += $1.value.bytes }
+        guard let largest = sums.filter({ $0.value > 0 }).max(by: { ($0.value, $1.key) < ($1.value, $0.key) }) else { return "" }
+        return "; \(classNames[largest.key] ?? largest.key) takes the most, \(SpaceReport.size(largest.value)): `xcrew space` names what each part would reclaim"
     }
 
     /// `XCREW_STORAGE_BUDGET_GB` when it's a finite number of GB above nothing and at most `largestGB`, else the default.
@@ -42,12 +56,5 @@ struct StorageBudgetCheck: Check {
     /// `40 GB (XCREW_STORAGE_BUDGET_GB sets another)`, for a budget `budget(_:)` gave, which a whole `Int` holds.
     static func said(_ budget: Double) -> String {
         "\(budget.rounded() == budget ? String(Int(budget)) : String(budget)) GB (\(budgetVariable) sets another)"
-    }
-
-    static func pastBudget(_ live: [(workspace: StorageReport.Workspace, checkout: ProjectWorkspaces.Checkout)], total: Int, budget: Double) -> String? {
-        guard Double(total) > budget * 1e9, let largest = live.first else { return nil }
-        let name = URL(fileURLWithPath: largest.checkout.root).lastPathComponent
-        let dryRun = Space.purge(largest.workspace).map { ": `\($0)` lists what it would delete" } ?? ""
-        return "this project's MobileBuildMCP workspaces take \(SpaceReport.size(total)), past its budget of \(said(budget)); the largest, \(name) (\(largest.checkout.root)), takes \(SpaceReport.size(largest.workspace.bytes))\(dryRun)"
     }
 }
