@@ -41,6 +41,23 @@ struct FailedNotificationTests {
         #expect(report.result.map { $0.hasPrefix("<task-notification>\n<task-id>kftef69ug</task-id>\n<status>failed</status>") } ?? true, "\(shape)")
     }
 
+    /// The field's case: hundreds of warnings, none in a line the branch changed, come back as one line that counts them,
+    /// in the notification, with the failing test still named.
+    @Test(arguments: [("summary", 0), ("result", 1)])
+    func aFailedRunsWarningsOutsideChangedLinesAreCounted(shape: String, index: Int) async throws {
+        let project = Project.temporary(containing: ["Sources"])
+        let runner = FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Sources/Other.swift"], diffed: [], diff: ""))
+        let text = try Self.text()
+        let notification = index == 0 ? Self.inSummary(text) : Self.inResult(text)
+        let report = await Report.make(kind: .test, notification: notification, log: nil, server: .mobileBuildMCP, home: Captured.home, runner: runner, project: project)
+        let result = try #require(report.result, "\(shape): no shorter result")
+        #expect(result.contains("\(Self.warningCount) warnings outside the lines this branch changed left out; the full list is in "), "\(shape)")
+        #expect(!result.contains("Legacy1.swift"), "\(shape)")
+        #expect(result.contains("testFails"), "\(shape)")
+        #expect(result.hasPrefix("<task-notification>\n<task-id>kftef69ug</task-id>\n<status>failed</status>"), "\(shape)")
+        #expect(result.count < notification.count / 4, "\(shape): \(result.count) of \(notification.count) characters")
+    }
+
     /// The shorter text xcrew writes goes where the server's text was, in either shape.
     @Test func aShorterTextGoesWhereTheServersWas() throws {
         let summary = try #require(TaskNotification(Self.inSummary("long")))

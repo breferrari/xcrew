@@ -360,6 +360,39 @@ struct MobileText: Sendable {
         return MobileText(lines: kept)
     }
 
+    /// The text with only the warnings `keep` holds, each with its location line, and one line in their section saying
+    /// how many it left out; nil when it leaves none out.
+    func keepingWarnings(_ keep: (RepeatedWarnings.Warning) -> Bool, leftOut: (Int) -> String) -> MobileText? {
+        let all = warnings
+        var kept: [Line] = []
+        var dropped = 0
+        var next = 0
+        var skipping = Set<Int>()
+        for (index, line) in lines.enumerated() {
+            if skipping.contains(index) { continue }
+            guard line.warning != nil else {
+                kept.append(line)
+                continue
+            }
+            let warning = all[next]
+            next += 1
+            if keep(warning) {
+                kept.append(line)
+                continue
+            }
+            dropped += 1
+            // Its location line goes with it, and the blank line after, so the section keeps one between warnings.
+            if location(after: index) != nil { skipping.insert(index + 1) }
+            let after = location(after: index) != nil ? index + 2 : index + 1
+            if after < lines.count, lines[after].isBlank { skipping.insert(after) }
+        }
+        guard dropped > 0 else { return nil }
+        let heading = kept.firstIndex { $0.text.hasPrefix("Warnings (") }
+        let at = heading.map { $0 + 1 < kept.count && kept[$0 + 1].isBlank ? $0 + 2 : $0 + 1 } ?? 0
+        kept.insert(contentsOf: [Line("  " + leftOut(dropped)), Line("")], at: at)
+        return MobileText(lines: kept)
+    }
+
     /// A warning that fires in several places is listed once for each, its message and then its
     /// location; this lists it once, with how many times and every place, where it was first listed.
     func collapsingWarnings() -> MobileText? {

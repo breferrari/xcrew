@@ -242,7 +242,8 @@ public struct ToolOutput: Sendable {
                 data["testCases"] = "per-test list left out to keep this result short; the counts above are complete, and the full result is in \(savedPath)"
                 edited = true
             }
-            if var diagnostics = data["diagnostics"] as? [String: Any], let warnings = diagnostics["warnings"] as? [[String: Any]], !warnings.isEmpty {
+            // Warnings already cut to those in changed lines stay: those are Claude's to fix.
+            if var diagnostics = data["diagnostics"] as? [String: Any], diagnostics["warningsLeftOut"] == nil, let warnings = diagnostics["warnings"] as? [[String: Any]], !warnings.isEmpty {
                 // A warning collapsed with its repeats counts each.
                 let count = warnings.map { $0["count"] as? Int ?? 1 }.reduce(0, +)
                 diagnostics["warnings"] = "\(count) \(count == 1 ? "warning" : "warnings") left out to keep this result short; the full result is in \(savedPath)"
@@ -254,6 +255,35 @@ public struct ToolOutput: Sendable {
     }
 
     /// The output with each repeated warning listed once, with its count and every place; nil when none repeats.
+    /// The result with only the warnings `keep` holds listed, and the rest counted in one line that names where the full
+    /// list is; nil when it leaves none out.
+    func keepingWarnings(_ keep: Set<Warning>, pointer: String) -> ToolOutput? {
+        let kept = { (warning: RepeatedWarnings.Warning) in Self.placed([warning]).first.map(keep.contains) ?? false }
+        switch shape {
+        case let .mobileBuildMCPText(text):
+            return text.keepingWarnings(kept) { "(\(Self.leftOut($0, pointer: pointer)))" }.map { ToolOutput($0, isError: isError) }
+        case let .mobileBuildMCPJSON(result):
+            guard let warnings = result.data?.diagnostics?.warnings else { return nil }
+            let listed = Self.listed(warnings)
+            return editingData { data in
+                guard var diagnostics = data["diagnostics"] as? [String: Any], let entries = diagnostics["warnings"] as? [[String: Any]], entries.count == listed.count else { return false }
+                let staying = zip(entries, listed).filter { kept($0.1) }.map(\.0)
+                guard staying.count < entries.count else { return false }
+                diagnostics["warnings"] = staying
+                diagnostics["warningsLeftOut"] = Self.leftOut(entries.count - staying.count, pointer: pointer)
+                data["diagnostics"] = diagnostics
+                return true
+            }.map { ToolOutput(text: $0, server: server, isError: isError) }
+        case .xcodeMCPJSON, .unrecognized:
+            return nil
+        }
+    }
+
+    /// What a result says in place of the warnings it leaves out.
+    static func leftOut(_ count: Int, pointer: String) -> String {
+        "\(count) \(count == 1 ? "warning" : "warnings") outside the lines this branch changed left out; the full list is in \(pointer)"
+    }
+
     func collapsingWarnings() -> ToolOutput? {
         switch shape {
         case let .mobileBuildMCPText(text):
