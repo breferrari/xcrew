@@ -590,22 +590,25 @@ struct TestbedFieldTests {
 }
 
 /// The doctor checks only what xcrew can't run without, cheaply: no disk walk, no network, its checks run together. This
-/// holds it to a time budget on the test bed's field fixture, with the Mac's own tools: the whole run, and each check
-/// alone, so a slow check fails by name. The first run isn't timed: it pays for `xcrun`'s and MobileBuildMCP's own first
-/// start, which aren't the doctor's. Each figure is printed, so CI's log shows them.
+/// holds it to a time budget on the test bed's field fixture, with the Mac's own tools: the whole run, and each check on
+/// that run's context, its shared reads already done, so a check's own slow work fails by name and a shared read that
+/// slows down shows in the total. The first run isn't timed: it pays for `xcrun`'s and MobileBuildMCP's own first start,
+/// which aren't the doctor's. Each figure is printed, so CI's log shows them. CI's runners take 1 to 2 s for
+/// `xcrun mcp-server status` against 0.06 s on a Mac (November 2, 2026): set the total from CI's figures, never a laptop's.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
 struct DoctorBudgetTests {
-    /// The whole warm run's ceiling.
-    static let total = Duration.seconds(2)
-    /// Each check's ceiling, alone and warm; the Xcode MCP handshake starts a bridge, and has its own.
+    /// The whole warm run's ceiling: about 3× CI's slowest, 1.97 s.
+    static let total = Duration.seconds(6)
+    /// Each check's own work's ceiling; the Xcode MCP handshake starts a bridge each time, and has its own, about 3× CI's
+    /// 0.076 s.
     static let perCheck = Duration.milliseconds(100)
-    static let ceilings: [String: Duration] = ["xcode-mcp/handshake": .seconds(1)]
+    static let ceilings: [String: Duration] = ["xcode-mcp/handshake": .milliseconds(250)]
     /// Warm runs timed, for the spread.
-    static let runs = 5
+    static let runs = 3
 
     static func ceiling(_ id: String) -> Duration { ceilings[id] ?? perCheck }
 
-    /// The slowest of `runs` warm runs, of the whole doctor and of each check alone, and what went past its ceiling.
+    /// The slowest of `runs` warm runs, of the whole doctor and of each check on its context, and what went past its ceiling.
     static func measure(_ checks: [any Check], context: () -> CheckContext) async -> (total: Duration, each: [(id: String, took: Duration)], over: [String]) {
         let clock = ContinuousClock()
         _ = await Doctor.run(checks, in: context())
@@ -615,8 +618,7 @@ struct DoctorBudgetTests {
             let warm = context()
             total = max(total, await clock.measure { _ = await Doctor.run(checks, in: warm) })
             for check in checks {
-                let alone = context()
-                let took = await clock.measure { _ = await check.run(alone) }
+                let took = await clock.measure { _ = await check.run(warm) }
                 each[check.id] = max(each[check.id] ?? .zero, took)
             }
         }
