@@ -136,19 +136,30 @@ public enum RunLog {
         await find(since: since, project: project, machine: machine) { $0.hasPrefix("\(tool)_") }
     }
 
-    /// The log of the run a call started at `since`, read once the run has ended: the first `tool` log named at or after
-    /// `since`, by the time MobileBuildMCP names it with when it opens it (docs/findings.md, *Which log is the run's*). A
-    /// later call's log, written since, is another run's. Only this session's servers' logs count, as for `find`.
-    public static func first(tool: String, since: Date, project: URL, machine: Machine) async -> URL? {
-        await find(since: since, project: project, machine: machine, firstNamed: true) { $0.hasPrefix("\(tool)_") }
+    /// The log of the run a call started at `since`, in milliseconds since 1970, read once the run has ended: the first
+    /// `tool` log opened at or after `since`, by the time MobileBuildMCP names it with (docs/findings.md, *Which log is the
+    /// run's*). A later call's log, written since, is another run's. Only this session's servers' logs count, as for
+    /// `find`.
+    public static func first(tool: String, since: Int, project: URL, machine: Machine) async -> URL? {
+        guard first(tool: tool, since: since, project: project, home: machine.home) != nil else { return nil }
+        return first(tool: tool, since: since, project: project, home: machine.home, servers: await sessionServers(on: machine))
     }
 
-    /// When MobileBuildMCP opened a log, from its name, `<tool>_<ISO 8601 time, ':' and '.' as '-'>_pid…`
-    /// (MobileBuildMCP 2.7.1, `utils/log-naming.js`).
-    static func namedAt(_ name: String) -> Date? {
-        guard let stamp = name.firstMatch(of: /_(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_pid/) else { return nil }
-        let text = "\(stamp.1)T\(stamp.2):\(stamp.3):\(stamp.4).\(stamp.5)Z"
-        return try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(text)
+    static func first(tool: String, since: Int, project: URL, home: URL, servers: Set<Int32>? = nil) -> URL? {
+        let opened = candidates(project: project, home: home, servers: servers) { $0.hasPrefix("\(tool)_") }
+            .compactMap { log in openedAt(log.lastPathComponent, tool: tool).map { (log, $0) } }
+        return opened.filter { $0.1 >= since }.min { $0.1 < $1.1 }?.0
+    }
+
+    /// When MobileBuildMCP opened a `tool` log, in whole milliseconds since 1970, from its name:
+    /// `<tool>_<ISO 8601 time in UTC, ':' and '.' as '-'>_pid…` (`utils/log-naming.js`). Nothing for another tool's log.
+    static func openedAt(_ name: String, tool: String) -> Int? {
+        guard name.hasPrefix("\(tool)_"),
+              let stamp = name.dropFirst(tool.count + 1).prefixMatch(of: /(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_pid/),
+              let second = try? Date.ISO8601FormatStyle().parse("\(stamp.1)T\(stamp.2):\(stamp.3):\(stamp.4)Z"),
+              let milliseconds = Int(stamp.5)
+        else { return nil }
+        return Int(second.timeIntervalSince1970) * 1000 + milliseconds
     }
 
     /// The newest log MobileBuildMCP wrote for a build or test of this project, whichever tool ran it (`build_sim_…`,
@@ -158,10 +169,15 @@ public enum RunLog {
         find(since: .distantPast, project: project, home: home) { ($0.hasPrefix("build") || $0.hasPrefix("test")) && $0.hasSuffix(".log") }
     }
 
-    static func find(in folder: String = "logs", since: Date, project: URL, machine: Machine, firstNamed: Bool = false, named matches: (String) -> Bool) async -> URL? {
-        guard find(in: folder, since: since, project: project, home: machine.home, firstNamed: firstNamed, named: matches) != nil else { return nil }
+    static func find(in folder: String = "logs", since: Date, project: URL, machine: Machine, named matches: (String) -> Bool) async -> URL? {
+        guard find(in: folder, since: since, project: project, home: machine.home, named: matches) != nil else { return nil }
+        return find(in: folder, since: since, project: project, home: machine.home, servers: await sessionServers(on: machine), named: matches)
+    }
+
+    /// The MobileBuildMCP servers under the Claude Code session above this process; nothing when there's no session.
+    static func sessionServers(on machine: Machine) async -> Set<Int32>? {
         let (session, servers) = await ProcessList.load(using: machine.runner).mobileBuildMCPServers(forSessionOf: machine.processID)
-        return find(in: folder, since: since, project: project, home: machine.home, servers: session == nil ? nil : Set(servers.map(\.id)), firstNamed: firstNamed, named: matches)
+        return session == nil ? nil : Set(servers.map(\.id))
     }
 
     /// The log of the MobileBuildMCP run that started at `since`: the newest `<tool>_…log` written since then, in this
@@ -175,30 +191,24 @@ public enum RunLog {
 
     /// The newest log `matches` names, as `find(tool:…)` picks it; or, with `folder`, the newest item of another of the
     /// workspace's folders, such as `result-bundles`.
-    /// The newest log written since `since`; with `firstNamed`, the first named at or after it instead.
-    static func find(in folder: String = "logs", since: Date, project: URL, home: URL, servers: Set<Int32>? = nil, firstNamed: Bool = false, named matches: (String) -> Bool) -> URL? {
+    static func find(in folder: String = "logs", since: Date, project: URL, home: URL, servers: Set<Int32>? = nil, named matches: (String) -> Bool) -> URL? {
+        let written = candidates(in: folder, project: project, home: home, servers: servers, named: matches)
+            .compactMap { item in (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate.map { (item, $0) } }
+        return written.filter { $0.1 >= since }.max { $0.1 < $1.1 }?.0
+    }
+
+    /// The items of the project's own workspace folder that `matches` names, and when `servers` is given, that one of them
+    /// wrote (`_pid<server>_`); with no servers recognised, every server's.
+    static func candidates(in folder: String = "logs", project: URL, home: URL, servers: Set<Int32>?, named matches: (String) -> Bool) -> [URL] {
         let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
         let servers = servers.flatMap { $0.isEmpty ? nil : $0 }
         let roots = [project.path, ProjectLayout.canonical(project)]
-        let manager = FileManager.default
-        var chosen: (url: URL, at: Date)?
-        for key in Set(roots.map(workspaceKey(root:))) {
-            let logs = workspaces.appending(path: key).appending(path: folder)
-            for name in (try? manager.contentsOfDirectory(atPath: logs.path)) ?? [] where !name.contains("parser-debug") && matches(name) {
-                if let servers, !servers.contains(where: { name.contains("_pid\($0)_") }) { continue }
-                let url = logs.appending(path: name)
-                if firstNamed {
-                    guard let named = namedAt(name), named >= since, named < (chosen?.at ?? .distantFuture) else { continue }
-                    chosen = (url, named)
-                } else {
-                    guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-                          modified >= since, modified > (chosen?.at ?? .distantPast)
-                    else { continue }
-                    chosen = (url, modified)
-                }
-            }
+        return Set(roots.map(workspaceKey(root:))).flatMap { key in
+            let items = workspaces.appending(path: key).appending(path: folder)
+            return ((try? FileManager.default.contentsOfDirectory(atPath: items.path)) ?? [])
+                .filter { name in !name.contains("parser-debug") && matches(name) && (servers.map { $0.contains { name.contains("_pid\($0)_") } } ?? true) }
+                .map { items.appending(path: $0) }
         }
-        return chosen?.url
     }
 }
 

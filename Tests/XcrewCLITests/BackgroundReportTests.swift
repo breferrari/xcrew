@@ -125,11 +125,6 @@ import XcrewTestSupport
         #expect(report["isUnread"] == nil)
     }
 
-    /// A call's start that isn't milliseconds is the mod's mistake, said as one, as `phase` says it.
-    @Test func aStartThatIsntANumberIsAUsageError() async {
-        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", "test_sim", "--since", "soon", stdin: Self.notification("", status: "killed"))
-        #expect(run.status != 0)
-    }
 
     /// The run's log is the first MobileBuildMCP named at or after the call's start, by the time in its name: a later
     /// call's log, written since, is another run's, and one named before the start is an earlier run's. The call started
@@ -149,6 +144,53 @@ import XcrewTestSupport
         try modified("2026-11-02T10-00-05-000Z", 1_793_613_700)
         try modified("2026-11-02T10-04-00-000Z", 1_793_613_900)
         let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", "test_sim", "--since", "1793613600000", context: context, stdin: Self.notification("", status: "killed"))
+        let scheme = try Self.json(run)["scheme"] as? String
+        #expect(scheme == "Feature")
+    }
+
+    /// A result read as it came, with the tool and the call's start, names the scheme of the run's log, as a run too fast
+    /// for the band to have read its log needs; the outcome is still the result's.
+    @Test func aResultWithTheToolAndStartNamesItsLogsScheme() async throws {
+        let context = CheckContext.fake()
+        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        try "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -scheme Feature -destination id=0000\n\n** BUILD FAILED **\n".write(to: logs.appending(path: "build_sim_2026-11-02T10-00-01-000Z_pid1_abcd1234.log"), atomically: true, encoding: .utf8)
+        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "build", "--tool", "build_sim", "--since", "1793613600000", context: context, stdin: "✅ Build succeeded for scheme Feature.")
+        let report = try Self.json(run)
+        #expect(report["scheme"] as? String == "Feature")
+        #expect(report["ok"] as? Bool == true)
+    }
+
+    /// A notification's report found with the tool and the call's start, over the logs `named` (time in the name, scheme).
+    static func notified(since: String, logs named: [(String, String)], tool: String = "test_sim") async throws -> Run {
+        let context = CheckContext.fake()
+        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        for (name, scheme) in named {
+            try "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme \(scheme) -destination id=0000\n\n** TEST EXECUTE SUCCEEDED **\n".write(to: logs.appending(path: name), atomically: true, encoding: .utf8)
+        }
+        return await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", tool, "--since", since, context: context, stdin: Self.notification("", status: "killed"))
+    }
+
+    /// A log opened in the same millisecond as the call began is the run's: 10:00:00.259 UTC on November 2, 2026 is
+    /// 1,793,613,600,259 ms after the epoch.
+    @Test func aLogOpenedInTheCallsOwnMillisecondIsItsRuns() async throws {
+        let run = try await Self.notified(since: "1793613600259", logs: [("test_sim_2026-11-02T10-00-00-259Z_pid1_abcd1234.log", "Feature")])
+        let scheme = try Self.json(run)["scheme"] as? String
+        #expect(scheme == "Feature")
+    }
+
+    /// The call's start is whole milliseconds, as the mod's clock gives it: anything else is the mod's mistake.
+    @Test(arguments: ["soon", "nan", "inf", "1e12", "1793613600259.5"])
+    func aStartThatIsntWholeMillisecondsIsAUsageError(since: String) async throws {
+        let run = try await Self.notified(since: since, logs: [])
+        #expect(run.status != 0)
+        #expect(run.errors == ["report --tool needs --since, in milliseconds"])
+    }
+
+    /// Another tool whose name starts with this one's, as `test_sim_foo` would, logs another run.
+    @Test func aLongerToolsLogIsntTheRuns() async throws {
+        let run = try await Self.notified(since: "1793613600000", logs: [("test_sim_foo_2026-11-02T10-00-01-000Z_pid1_abcd1234.log", "Other"), ("test_sim_2026-11-02T10-00-02-000Z_pid1_abcd1234.log", "Feature")])
         let scheme = try Self.json(run)["scheme"] as? String
         #expect(scheme == "Feature")
     }

@@ -671,6 +671,21 @@ func failingRunText(passing: Int) -> String {
         #expect(capture.contains("_pid${process.pid}_"), "MobileBuildMCP's build/utils/xcodebuild-log-capture.js no longer names a log with _pid<server pid>_: RunLog.find's session filter has to follow it")
     }
 
+    /// A log's name gives when it was opened, as MobileBuildMCP's own `formatLogTimestamp` writes it, checked against the
+    /// installed one wherever MobileBuildMCP is installed. The times: the epoch, 10:00:00.259 UTC on November 2, 2026, and
+    /// 23:59:59.999 UTC on December 31, 2099.
+    @Test(.enabled(if: mobileBuildMCP != nil))
+    func aLogsOpeningTimeIsReadAsTheInstalledMobileBuildMCPNamesIt() async throws {
+        let libexec = try #require(Self.mobileBuildMCP)
+        let source = libexec.appending(path: "build/utils/log-naming.js")
+        for milliseconds in [0, 1_793_613_600_259, 4_102_444_799_999] {
+            let script = "import(process.argv[1]).then(m => console.log(m.formatLogTimestamp(new Date(Number(process.argv[2])))))"
+            let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, source.path, String(milliseconds)], stdin: nil, timeout: .seconds(30))
+            let stamp = ran.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(RunLog.openedAt("test_sim_\(stamp)_pid1_abcd1234.log", tool: "test_sim") == milliseconds, "MobileBuildMCP's formatLogTimestamp in build/utils/log-naming.js names \(milliseconds) ms \(stamp): RunLog.openedAt has to follow it (\(ran.stderr))")
+        }
+    }
+
     static func age(_ path: String, in home: Project, to seconds: TimeInterval) throws {
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: seconds)], ofItemAtPath: home.root.appending(path: "\(workspaces)/\(path)").path)
     }
