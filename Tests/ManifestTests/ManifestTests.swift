@@ -782,6 +782,19 @@ import Testing
         #expect(changes.contains(/if \[ "\$EVENT" = push \]; then\n\s+code=true\n\s+distribution=true\n/))
     }
 
+    /// The CLI's release build is timed on CI's macOS runner on each push to main, and only there: those times are the
+    /// basis the build's guard waits on (docs/findings.md, *Building after a reload*), and a pull request's run gains
+    /// no release compile. It builds as the shim builds.
+    @Test func theReleaseBuildIsTimedOnPushesToMainAsTheShimBuilds() throws {
+        let ci = try text(".github/workflows/ci.yml")
+        let job = try #require(ci.firstMatch(of: /(?s)\n  release-build:\n(.*?)(?=\n  [a-z-]+:\n|\z)/), "no release-build job").output.1
+        #expect(job.contains("if: github.event_name == 'push'"))
+        #expect(job.contains("runs-on: macos-26"))
+        #expect(job.contains("swift build -c release --product xcrew"))
+        #expect(job.contains("GITHUB_STEP_SUMMARY"))
+        #expect(try text("bin/xcrew").contains("swift build -c release --product xcrew"))
+    }
+
     /// The deadlines and the durations they come from, as docs/findings.md's *Deadlines* table records them, by the key
     /// each deadline's comment names: the slowest measured, in seconds, and the deadline in the table's unit.
     func deadlineRows() throws -> [String: (slowest: Double, deadline: Int, unit: String)] {
