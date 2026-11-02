@@ -30,7 +30,8 @@ public enum EvidencePack {
             var lines = ["Tests this branch took from red to green:"]
             for ((entry, green), found) in zip(shown, looked) {
                 let message = entry.red.message.map { " (\(quoted($0)))" } ?? ""
-                lines.append("- `\(entry.test)`: failed in `\(entry.red.scope)`\(message), then passed in `\(green.scope)`.\(found.said)")
+                let flaky = entry.flaky.flatMap { flaky in flaky.needed.map { " Flaky: it failed \(flaky.failed) of \(flaky.runs) runs, then passed \(flaky.passes ?? 0) in a row, of \($0) needed." } } ?? ""
+                lines.append("- `\(entry.test)`: failed in `\(entry.red.scope)`\(message), then passed in `\(green.scope)`.\(found.said)\(flaky)")
                 if let paths = found.paths { attach += ["- `\(entry.test)`, \(found.label.lowercased()):"] + paths.map { "  \($0)" } }
             }
             parts.append(lines + more(greened.count))
@@ -39,10 +40,13 @@ public enum EvidencePack {
         let red = input.ledger.filter { $0.green == nil }
         if !red.isEmpty {
             let lines = red.prefix(mostTests).map { entry in
-                "- `\(entry.test)`: " + quoted(entry.red.message ?? "failed") + (entry.flaky.map { ", flaky, failing \($0.failed) of \($0.runs) runs" } ?? "")
+                "- `\(entry.test)`: " + quoted(entry.red.message ?? "failed") + (entry.flaky.map { flaky in
+                    ", flaky, failing \(flaky.failed) of \(flaky.runs) runs" + (flaky.needed.map { ", passed \(flaky.passes ?? 0) of the \($0) needed since" } ?? "")
+                } ?? "")
             }
             parts.append(["Still red:"] + lines + more(red.count))
         }
+        if input.ledger.contains(where: { $0.flaky?.needed != nil }) { parts.append([FlakyMark.neededMeaning]) }
 
         let changedLines = await changed
         if !changedLines.isEmpty { parts.append(["Changed lines:"] + changedLines) }

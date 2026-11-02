@@ -155,6 +155,20 @@ import Testing
         for key in keys { #expect(type.contains(" \(key)?:") || type.contains(" \(key):"), "cli.ts's Passed doesn't name `\(key)`") }
     }
 
+    /// Every field of a flaky mark `xcrew flaky` answers is one the mod's type for it names, and every field the mod's
+    /// ledger keeps of it is one the evidence reads back: the ledger turns a flaky test green by them.
+    @Test func theModsFlakyMarkTypeNamesEachFieldTheCLIAnswers() throws {
+        let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(FlakyMark(test: "Suite/test", failed: 1, runs: 5, passes: 0))) as? [String: Any]).keys
+        let type = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export type FlakyMark = \{([^}]*)\}/)?.1)
+        for key in keys { #expect(type.contains(" \(key)?:") || type.contains(" \(key):"), "cli.ts's FlakyMark doesn't name `\(key)`") }
+    }
+
+    /// The ledger, `/xcrew flaky` and the evidence say what the passes needed are in the same words.
+    @Test func theModAndTheEvidenceSayWhatThePassesNeededAreAlike() throws {
+        let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const PASSES_NEEDED = '([^']*)'/)?.1)
+        #expect(String(said) == FlakyMark.neededMeaning)
+    }
+
     /// Every option the mod sends `xcrew report` is one the command takes: one it doesn't is a usage error, which the mod
     /// reads as a report it couldn't get, and the ledger records nothing.
     @Test func everyOptionTheModSendsReportIsOneItTakes() throws {
@@ -215,6 +229,7 @@ import Testing
             Report.noTestsNote,
             Report.noTestsInBundleNote,
             Report.selectedNoneNote(discovered: 2, plan: nil),
+            FlakyMark.neededMeaning,
             FailureNotes.noCrashLog,
             FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
             ResultBundle.noRepetitionsNote,

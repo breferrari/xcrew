@@ -12,9 +12,14 @@ public struct EvidenceInput: Sendable, Decodable {
         public let bundle: String?
     }
 
+    /// A flaky mark: its counts, and with `xcrew flaky`'s answer, the passes in a row since its last failure, the passes
+    /// needed and whether it has them; those are absent in a mark kept before.
     public struct Flaky: Sendable, Decodable {
         public let failed: Int
         public let runs: Int
+        public let passes: Int?
+        public let needed: Int?
+        public let settled: Bool?
     }
 
     public struct Entry: Sendable, Decodable {

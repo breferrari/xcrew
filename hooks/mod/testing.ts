@@ -77,6 +77,8 @@ export function stubCli(
     session?: (stdin: string | undefined) => unknown
     /** What `xcrew runs` answers each time: the other worktrees' runs, or the Error it fails with. */
     runs?: () => unknown
+    /** What `xcrew flaky` answers for the marks and repeated run the mod pipes in: the marks after the run. */
+    flaky?: (stdin: string | undefined) => unknown
     noBuild?: boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
   } = {},
@@ -112,6 +114,7 @@ export function stubCli(
       : args[0] === 'setup' ? (answers.setup?.(args) ?? null)
       : args[0] === 'note' ? { notes: answers.notes?.(args, e.init?.stdin) ?? [] }
       : args[0] === 'runs' ? (runs ?? [])
+      : args[0] === 'flaky' ? (answers.flaky?.(e.init?.stdin) ?? null)
       : args[0] === 'session' ? (answers.session?.(e.init?.stdin) ?? {})
       : null
     )

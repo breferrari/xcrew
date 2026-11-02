@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A test marked flaky turns green only after enough passes in a row from repeated runs: enough that, failing at the rate it was seen failing, it would pass them all under 5% of the time (14 after failing 1 of 5 runs). The ledger, the card, `/xcrew flaky` and the evidence say how many it has, `passed 10 of the 14 needed since`. Before, one repeated run passing it every time turned it green.
 - A test that crashed is listed as that test's failure when the result bundle files the crash under `System Failures`, as it can on iOS 26: in the failures pane, on its row and in the ledger. Before, the run showed a failure but named no test.
 - A MobileBuildMCP test run whose filter matched tests that then didn't execute says so in its note to Claude, naming the test plan's configurations when it has several, rather than blaming a filter that matched nothing. A run of no tests that doesn't list what it matched names every cause that does this, without claiming one.
 - The full `xcrew doctor` is faster on a Mac with many MobileBuildMCP workspaces: its storage check sizes only this project's checkouts' workspaces, where it sized every workspace on the Mac, and it no longer names other projects' workspaces whose folder is gone; `xcrew space` still covers the whole Mac. Reading CI's Xcode from the workflows is quicker too.
