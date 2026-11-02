@@ -144,8 +144,9 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// A call moved to the background, from its task's notification: the server's text, of a task that completed or
     /// failed, read as the call's own, its shorter result put back in the notification Claude reads; else the run's log at
-    /// `log`, when there is one; else no outcome.
-    public static func make(kind: Kind, notification text: String, log: String?, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
+    /// `log`, when there is one, read with `launches` as a call's that installs and launches after its build, whose
+    /// build's success is no outcome; else no outcome.
+    public static func make(kind: Kind, notification text: String, log: String?, launches: Bool = false, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
         let notification = TaskNotification(text)
         // A failed task's text is the run's only when it's in MobileBuildMCP's own forms: "the server went away" is no run.
         if let notification, let output = notification.serverOutput, !(output.isError && ToolOutput(text: output.text, server: server, isError: true).isNotTheServers) {
@@ -156,7 +157,7 @@ public struct Report: Sendable, Equatable, Codable {
             }
         }
         guard let log else { return unread }
-        return await make(kind: kind, log: RunLog.end(ofLogAt: log), runner: runner, repeated: repeated, listsPassed: listsPassed)
+        return await make(kind: launches ? .run : kind, log: RunLog.end(ofLogAt: log), runner: runner, repeated: repeated, listsPassed: listsPassed)
     }
 
     /// A result Claude Code saved to a file is read back from it.

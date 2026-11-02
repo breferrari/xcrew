@@ -565,13 +565,13 @@ import XcrewTestSupport
     }
 
     /// A build and run's log ends on its build's verdict, before the app is installed and launched: a failed build ends
-    /// the run, a successful one doesn't, and its notification says how it ended.
+    /// the run, a successful one doesn't, and its notification says how it ended. The mod says the call launches.
     @Test(arguments: [("** BUILD SUCCEEDED **", nil), ("** BUILD FAILED **", false)] as [(String, Bool?)])
     func aBuildAndRunsLogEndsItOnlyOnAFailedBuild(verdict: String, outcome: Bool?) async throws {
         let project = Project.temporary()
         project.write("CompileSwift normal arm64 /w/A.swift (in target 'App' from project 'App')\n\(verdict)\n", to: "build_run_sim_1.log")
         let log = project.root.appending(path: "build_run_sim_1.log").path
-        let answer = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "build_run_sim", "--since", "0", "--log", log).text.utf8)) as? [String: Any])
+        let answer = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "build_run_sim", "--launches", "--since", "0", "--log", log).text.utf8)) as? [String: Any])
         #expect(answer["outcome"] as? Bool == outcome, "\(answer)")
     }
 

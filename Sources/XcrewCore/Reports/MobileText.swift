@@ -390,13 +390,8 @@ struct MobileText: Sendable {
         guard dropped > 0 else { return nil }
         let heading = kept.firstIndex { $0.text.hasPrefix("Warnings (") }
         if let heading { kept[heading] = Line("Warnings (\(all.count - dropped)):") }
-        let at: Int
-        if let heading {
-            at = heading + 1 < kept.count && kept[heading + 1].isBlank ? heading + 2 : heading + 1
-        } else {
-            let header = kept.firstIndex { !$0.isBlank } ?? 0
-            at = header + 1 < kept.count && kept[header + 1].isBlank ? header + 2 : header + 1
-        }
+        let anchor = heading ?? kept.firstIndex { !$0.isBlank && $0.warning == nil } ?? 0
+        let at = anchor + 1 < kept.count && kept[anchor + 1].isBlank ? anchor + 2 : anchor + 1
         kept.insert(contentsOf: [Line("  " + leftOut(dropped)), Line("")], at: min(at, kept.count))
         return MobileText(lines: kept)
     }

@@ -196,6 +196,18 @@ import XcrewTestSupport
         #expect(scheme == "Feature")
     }
 
+    /// A notification read from a build and run's log, when its own text can't be read: the build's success is no
+    /// outcome, since the app was installed and launched after it; a failed build is.
+    @Test(arguments: [("** BUILD SUCCEEDED **", true), ("** BUILD FAILED **", false)])
+    func aBuildAndRunsLogGivesOnlyAFailedBuildAsItsOutcome(verdict: String, unread: Bool) async throws {
+        let project = Project.temporary()
+        project.write("CompileSwift normal arm64 /w/A.swift (in target 'App' from project 'App')\n\(verdict)\n", to: "build_run_sim_1.log")
+        let log = project.root.appending(path: "build_run_sim_1.log").path
+        let report = try Self.json(await Run("report", "--server", "MobileBuildMCP", "--kind", "build", "--notification", "--launches", "--log", log, stdin: Self.notification("", status: "killed")))
+        #expect((report["isUnread"] as? Bool == true) == unread, "\(report)")
+        if !unread { #expect(report["ok"] as? Bool == false) }
+    }
+
     /// A log with no verdict yet, or none at all, says no outcome.
     @Test func aLogWithoutAVerdictIsUnread() async throws {
         let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "build", "--log", "/nonexistent/build_sim.log")

@@ -23,7 +23,7 @@ import { afterGenerate, editedNote, isUndone, isUndoneAfterRefusal, letThroughNo
 import { DURATIONS_PREFIX, drawsBand, endingOf, FAILED_PREFIX, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { keptTimings, SLOW_PRECALL_MS, type Step, TIMINGS_KEY, timingsText } from './timings'
-import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, isYaml, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
+import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, isYaml, kindOf, launchesAfterBuild, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -75,24 +75,30 @@ export const register: Register = on => {
   on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const parsed = parseTool(e.tool)
     const target = parsed && (forwardedTool(parsed, e as unknown as Record<string, unknown>) ?? parsed)
-    const checkedFrom = await quietly(() => $.clock.now())
-    const stored = target && buildsProject(target) ? await quietly(() => read($, staleState)) : undefined
+    const builds = target !== undefined && buildsProject(target)
+    // Timed only when the call's own tool has a kind, as the hook that times its wait keys on: a forwarded build isn't.
+    const timed = builds && parsed !== undefined && kindOf(parsed) !== undefined
+    const checkedFrom = timed ? await quietly(() => $.clock.now()) : undefined
+    const stored = builds ? await quietly(() => read($, staleState)) : undefined
     // Edits undone since leave the manifests as the last generate read them: those marks go.
     const dropped = stored ? await dropUndone($, stored) : undefined
-    const checkedTo = await quietly(() => $.clock.now())
-    // Only a call that builds the project has its wait timed, which reads and drops this; another would keep it for good.
-    if (e.tool_use_id && target && buildsProject(target) && checkedFrom !== undefined && checkedTo !== undefined) staleChecks.set(e.tool_use_id, checkedTo - checkedFrom)
+    const checkedTo = timed ? await quietly(() => $.clock.now()) : undefined
+    // The check's time is kept for the call's wait to read, only once the call goes on: a refused call has no wait.
+    const goOn = () => {
+      if (e.tool_use_id && checkedFrom !== undefined && checkedTo !== undefined) staleChecks.set(e.tool_use_id, checkedTo - checkedFrom)
+      return next(e)
+    }
     const stale = dropped?.stale
     const generates = marksOf(stale).map(mark => mark.generate)
-    if (!stale || generates.length === 0) return next(e)
+    if (!stale || generates.length === 0) return goOn()
     if (!stale.refused) {
       // Refused only once the mark says so: a refusal it can't record would repeat for good.
       if (await markStale($, refused)) return { deny: dropped?.undoneAfterRefusal ? refusalAfterUndo(generates) : refusal(generates) }
-      return next(e)
+      return goOn()
     }
     // An edit meanwhile left a mark not yet refused for, which stays.
     await markStale($, current => (current?.refused ? null : current))
-    const result = await next(e)
+    const result = await goOn()
     return result.deny === undefined ? withContext(result, letThroughNote(generates)) : result
   }).catch(async ($, e, next) => next(e))
   // The session's first MobileBuildMCP build or test says to offer setup while there's no scheme to build with. The mark
@@ -140,6 +146,7 @@ export const register: Register = on => {
     if (!parsed) return next(e)
     const name = parsed.tool
     const kind = kindOf(parsed)
+    const launches = launchesAfterBuild(parsed)
     if (!kind) {
       // Not timed, but its answer may say what the next build will use.
       const result = await next(e)
@@ -203,7 +210,7 @@ export const register: Register = on => {
     // Moved to the background, the call answers with a handle while its run goes on: its log is followed until it ends.
     let inBackground = false
     const readPhase = async (since: number): Promise<Phase> => {
-      const found = (await quietly(() => runPhase($, name, since, expectedTests, following.logPath))) ?? {}
+      const found = (await quietly(() => runPhase($, name, launches, since, expectedTests, following.logPath))) ?? {}
       const step = phaseStep(following, found, writesLog)
       following = step.following
       // Once the log names the scheme, the run is that scheme's, its progress counted out of that scheme's tests.
@@ -293,7 +300,7 @@ export const register: Register = on => {
       if (outcome.backgroundTask) {
         // A run whose log is followed stays on the band, going, until its log or its notification ends it.
         inBackground = followsLog && ticker !== undefined
-        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
+        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, launches, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
         // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
         // A call dropped stops following its log: no notification will end it now.
         for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) {
@@ -474,7 +481,7 @@ export const register: Register = on => {
 type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
-type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
+type Backgrounded = Ending & { startedAt: number; repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
 
 /**
  * Records how a run ended: its time in the history, apart when it failed, its failures, the ledger when the CLI read the run (`isRead`) and
@@ -518,7 +525,7 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start;
   // the Xcode MCP writes none.
   const finds = call.log === undefined && call.server === 'MobileBuildMCP'
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
@@ -637,8 +644,8 @@ async function answer($: EngineInterface, args: string[], timeoutMs = 60_000, st
   return answerOf(await xcrew($, args, timeoutMs, stdin).catch(() => undefined))
 }
 
-function runPhase($: EngineInterface, tool: string, since: number, expectedTests: number | undefined, log: string | undefined) {
-  return answer($, phaseArgs(tool, since, expectedTests, log), 10_000).then(phaseOf)
+function runPhase($: EngineInterface, tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined) {
+  return answer($, phaseArgs(tool, launches, since, expectedTests, log), 10_000).then(phaseOf)
 }
 
 /** Whether the project's generator reads YAML, asked once a session and again after setup or a generate. */
