@@ -584,6 +584,24 @@ func failingRunText(passing: Int) -> String {
         #expect(added.contains("Test crashed with signal trap.\n      Fatal error: Index out of range\n      \(FailureNotes.noCrashLog)"), "\(added)")
     }
 
+    /// The `timing` capture cut to its crashed test alone, as a run filtered with `-only-testing` to that test gives it:
+    /// its other failures and results left out, and its summary counting the one test.
+    static func crashedAlone() throws -> String {
+        let text = try Raw.text("timing").replacingOccurrences(of: "Crash: xctest at CrashTests.testOutOfRange()", with: "Test crashed with signal trap.")
+        let failures = try #require(text.range(of: "\n  ✗ ProbeTests / testFails:"))
+        let summary = try #require(text.range(of: "❌ 3 tests failed, 1 passed, 1 skipped"))
+        return String(text[..<failures.lowerBound]) + "\n" + "❌ 1 test failed, 0 passed, 0 skipped" + String(text[summary.upperBound...])
+    }
+
+    /// A crash in a run of that one test: running it alone was done, so the note names what wasn't, running it without
+    /// parallel testing, which runs a test on a clone of the simulator (Xcode 10's release notes).
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashThatRanAloneWithoutACrashLogNamesParallelTesting() async throws {
+        let bundle = ResultBundle(path: "/b.xcresult", runner: FakeRunner(), exportFolder: { FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)") })
+        let added = await FailureNotes.addingText(to: try Self.crashedAlone(), from: bundle)
+        #expect(added.contains("Test crashed with signal trap.\n      Fatal error: Index out of range\n      no crash log came with this run, though it ran this test alone; `-parallel-testing-enabled NO` in `extraArgs` runs it without parallel testing, which runs a test on a clone of the simulator"), "\(added)")
+    }
+
     @Test func doctorProblemsSaysWhenThereAreNone() {
         #expect(Doctor.problemsText(lines: []) == ["No problems."])
         #expect(Doctor.problemsText(lines: ["warn  a/b  c"]) == ["warn  a/b  c"])

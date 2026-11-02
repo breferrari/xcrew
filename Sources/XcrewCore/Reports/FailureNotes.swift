@@ -19,6 +19,10 @@ public enum FailureNotes {
 
     /// Under a crash whose run attached no crash log, so Claude knows why there are no frames.
     public static let noCrashLog = "no crash log came with this run; running the test alone, without parallel testing, may attach one"
+    /// The same, under a crash in a run of that one test, so it names what running it alone didn't try: running it
+    /// without parallel testing, under which each runner is on a clone of the simulator (Xcode 10's release notes;
+    /// `-parallel-testing-enabled` overrides the scheme's setting, `man xcodebuild`).
+    public static let noCrashLogAlone = "no crash log came with this run, though it ran this test alone; `-parallel-testing-enabled NO` in `extraArgs` runs it without parallel testing, which runs a test on a clone of the simulator"
 
     /// MobileBuildMCP words a crash `Crash: xctest at …` when a crash log came with the run, and
     /// `Test crashed with signal …` when none did.
@@ -136,6 +140,8 @@ public enum FailureNotes {
         guard !lookups.isEmpty || isSkipping || !repetitions.isEmpty else { return nil }
         // A Swift runtime error stops the process before XCTest records a message, so the run lists it under Errors, once
         // plainly and once with the xctest log's prefix. With one crashed test, it's that test's.
+        // A run whose summary counts one test ran that test alone.
+        let missingCrashLog = text.counts.map { ($0.passed ?? 0) + ($0.failed ?? 0) + ($0.skipped ?? 0) } == 1 ? noCrashLogAlone : noCrashLog
         let crashError = crashed.count == 1 ? text.reportedErrors.compactMap { MobileBuildMCPLine.runtimeError($0.message) }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } } : []
 
         if let imagesFolder, !lookups.isEmpty { FailureImages.prune(in: imagesFolder) }
@@ -157,7 +163,7 @@ public enum FailureNotes {
                         added.append("    \(location)")
                     }
                     if isCrashed {
-                        let summary = crash?.summary ?? [noCrashLog]
+                        let summary = crash?.summary ?? [missingCrashLog]
                         // The error goes under the exception's line, or heads the frames when the log names no exception.
                         let headed = summary.first?.hasPrefix("crashed:") == true ? 1 : 0
                         added += (Array(summary.prefix(headed)) + crashError + summary.dropFirst(headed)).map { "      \($0)" }
