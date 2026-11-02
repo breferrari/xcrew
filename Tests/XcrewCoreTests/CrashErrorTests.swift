@@ -29,6 +29,20 @@ struct CrashErrorTests {
         #expect(output.failures.first?.message == "Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()")
     }
 
+    /// The same crash filed under `System Failures`, as a field run on iOS 26.5 had it: MobileBuildMCP names the suite
+    /// the result bundle gives, `System Failures`, and the test case it gives whole, `xctest (<pid>) encountered an
+    /// error` (`utils/xcresult-test-failures.js:44-68`, `utils/renderers/domain-result-text.js:136-139`, MobileBuildMCP
+    /// 2.7.1). Field shape, names neutralised: the 27.2 capture with its failure line written that way, its own pid.
+    /// The message names the test, which is the crash's.
+    @Test func aCrashFiledUnderSystemFailuresIsItsTestsFailure() throws {
+        let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"
+        let text = try Raw.text("system-failure-crash")
+        #expect(text.contains(filed))
+        let output = ToolOutput(text: text.replacingOccurrences(of: filed, with: "  ✗ System Failures / xctest (80341) encountered an error: Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"), server: .mobileBuildMCP, isError: true)
+        #expect(output.summary == .init(ok: false, detail: "1 of 1 failed · AssertCrashTests/test_crash"))
+        #expect(output.failures == [.init(title: "AssertCrashTests/test_crash", message: "Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()", isTest: true)])
+    }
+
     /// Another error in the same run, here a real one from `captures/environment/module-cache-invalid.txt` written
     /// into the crash's Errors, is still listed: only the crashed test's own error goes.
     @Test func anotherErrorBesideACrashStaysListed() throws {
