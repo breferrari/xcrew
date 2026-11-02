@@ -69,3 +69,40 @@ test('a background build that names no binary leaves the known build as it was',
   await clock.settle()
   expect(cli.filter(call => call.args[0] === 'report').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
 })
+
+/**
+ * At a reload the background build is the only builder: a call made meanwhile asks the shim only whether a build is
+ * there, starts none and stops none, and waits for it no longer than its own time, then answers without its note.
+ */
+test("a quick call during the background build doesn't build, doesn't stop it, and gives up in its own time", async ($, on) => {
+  let finish: () => void = () => {}
+  const held = new Promise<void>(resolve => { finish = resolve })
+  let built = false
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('tool.describe', (_, e) => ({ description: e.description }))
+  on('session.surfaces', () => ({ value: ['vscode'] }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', () => ({ result: { ok: true } }))
+  const cli = stubCli(on, { built: () => built, spawn: { held }, project: () => ({ isGenerated: true }) })
+  await start($)
+  let answered = false
+  const call = callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' }).then(result => {
+    answered = true
+    return result
+  })
+  await clock.advance(9_000)
+  expect(answered).toBe(false)
+  await clock.advance(2_000)
+  await call
+  expect(answered).toBe(true)
+  expect(cli.filter(call => call.spawned)).toHaveLength(1)
+  expect(cli.filter(call => !call.spawned && !call.ifBuilt)).toEqual([])
+  built = true
+  finish()
+  await clock.settle()
+})

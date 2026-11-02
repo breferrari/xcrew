@@ -802,7 +802,9 @@ test('callers at once share one question to the shim, and a build it can\'t name
   await Promise.all([1, 2, 3].map(() => callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })))
   await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'b', content: '' })
 
-  expect(seen.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
+  // One question, and one build started for the callers to wait on, which named nothing: both are remembered.
+  expect(seen.filter(call => !call.spawned && call.args[0] === '--binary-path')).toHaveLength(1)
+  expect(seen.filter(call => call.spawned)).toHaveLength(1)
   expect(seen.filter(call => call.args[0] === 'project')).toHaveLength(4)
 })
 

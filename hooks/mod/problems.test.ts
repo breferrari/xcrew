@@ -291,7 +291,7 @@ test('after setup, a doctor read already in flight is followed by a fresh one', 
   let release = () => {}
   const released = new Promise<void>(resolve => (release = resolve))
   on('process.run', async (_, e) => {
-    const args = e.argv.slice(1)
+    const args = e.argv.slice(1).filter(argument => argument !== '--if-built')
     if (args[0] === 'doctor') {
       doctorRuns += 1
       const seen = doctorRuns === 1 ? [] : [...problems]
