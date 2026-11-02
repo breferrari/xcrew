@@ -110,7 +110,6 @@ import XcrewTestSupport
         #expect(report["isVerdictOnly"] as? Bool == true)
     }
 
-    /// A log with no verdict yet, or none at all, says no outcome.
     /// A notification read with the tool and the call's start, and no log, finds the run's own log in its workspace: the
     /// log may appear only after Claude Code moved the call, when nothing followed it any more.
     @Test func aNotificationWithoutALogFindsTheRunsLog() async throws {
@@ -126,6 +125,35 @@ import XcrewTestSupport
         #expect(report["isUnread"] == nil)
     }
 
+    /// A call's start that isn't milliseconds is the mod's mistake, said as one, as `phase` says it.
+    @Test func aStartThatIsntANumberIsAUsageError() async {
+        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", "test_sim", "--since", "soon", stdin: Self.notification("", status: "killed"))
+        #expect(run.status != 0)
+    }
+
+    /// The run's log is the first MobileBuildMCP named at or after the call's start, by the time in its name: a later
+    /// call's log, written since, is another run's, and one named before the start is an earlier run's. The call started
+    /// at 10:00:00 UTC on November 2, 2026, 1,793,613,600,000 ms after the epoch.
+    @Test func aNotificationsLogIsTheFirstNamedSinceTheCallStarted() async throws {
+        let context = CheckContext.fake()
+        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        for (name, scheme) in [("2026-11-02T09-59-00-000Z", "Earlier"), ("2026-11-02T10-00-05-000Z", "Feature"), ("2026-11-02T10-04-00-000Z", "Later")] {
+            let log = logs.appending(path: "test_sim_\(name)_pid1_abcd1234.log")
+            try "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme \(scheme) -destination id=0000\n\n** TEST EXECUTE SUCCEEDED **\n".write(to: log, atomically: true, encoding: .utf8)
+        }
+        let modified = { (name: String, at: TimeInterval) in
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: at)], ofItemAtPath: logs.appending(path: "test_sim_\(name)_pid1_abcd1234.log").path)
+        }
+        try modified("2026-11-02T09-59-00-000Z", 1_793_613_660)
+        try modified("2026-11-02T10-00-05-000Z", 1_793_613_700)
+        try modified("2026-11-02T10-04-00-000Z", 1_793_613_900)
+        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", "test_sim", "--since", "1793613600000", context: context, stdin: Self.notification("", status: "killed"))
+        let scheme = try Self.json(run)["scheme"] as? String
+        #expect(scheme == "Feature")
+    }
+
+    /// A log with no verdict yet, or none at all, says no outcome.
     @Test func aLogWithoutAVerdictIsUnread() async throws {
         let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "build", "--log", "/nonexistent/build_sim.log")
         #expect(try Self.json(run)["isUnread"] as? Bool == true)

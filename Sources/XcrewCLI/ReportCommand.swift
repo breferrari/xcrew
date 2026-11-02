@@ -9,7 +9,7 @@ struct ReportCommand: Command {
     let valuedOptions: Set<String> = ["server", "kind", "log", "tool", "since"]
     let flags: Set<String> = ["error", "repeated", "notification", "passed"]
     let usage = [
-        "report --server S --kind K [--error] [--repeated] [--passed] [--notification [--tool T --since MS]] [--log PATH]   (mod) read a build, test or run result on stdin; print its report as JSON; --repeated reads each repeated test's runs; --passed lists the tests the results give as passed, for the ledger; --notification reads the result in a background task's notification, with --tool and --since (the call's start, in milliseconds) finding the run's log when no --log is given; --log reads a MobileBuildMCP run's log and the result bundle it names, after the notification when both are given",
+        "report --server S --kind K [--error] [--repeated] [--passed] [--notification [--tool T --since MS]] [--log PATH]   (mod) read a build, test or run result on stdin; print its report as JSON; --repeated reads each repeated test's runs; --passed lists the tests the results give as passed, for the ledger; --notification reads the result in a background task's notification, with --tool and --since (the call's start, in milliseconds) finding the run's log when no --log is given: the first that tool's server named since; --log reads a MobileBuildMCP run's log and the result bundle it names, after the notification when both are given",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -26,9 +26,9 @@ struct ReportCommand: Command {
         var log = invocation.arguments["log"]
         if invocation.arguments.has("notification") {
             let text = String(decoding: await invocation.standardInput(), as: UTF8.self)
-            // A log that appeared only after the call moved to the background, found as the band finds a run's log.
-            if log == nil, let tool = invocation.arguments["tool"], let since = invocation.arguments["since"].flatMap(Double.init) {
-                log = await RunLog.find(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: invocation.context.project.root, machine: machine)?.path
+            if log == nil, let tool = invocation.arguments["tool"] {
+                guard let since = invocation.arguments["since"].flatMap(Double.init) else { throw UsageError(description: "report --tool needs --since, in milliseconds") }
+                log = await RunLog.first(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: invocation.context.project.root, machine: machine)?.path
             }
             report = await Report.make(kind: kind, notification: text, log: log, server: server, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         } else if let log = invocation.arguments["log"] {

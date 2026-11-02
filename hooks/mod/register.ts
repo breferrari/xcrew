@@ -509,9 +509,10 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
  * how the run ended, from the call to the notification. Nothing, when neither says.
  */
 async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
-  // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start.
-  const log = call.log === undefined ? ['--tool', call.tool, '--since', String(call.startedAt)] : ['--log', call.log]
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...log]
+  // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start;
+  // the Xcode MCP writes none.
+  const finds = call.log === undefined && call.server === 'MobileBuildMCP'
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined

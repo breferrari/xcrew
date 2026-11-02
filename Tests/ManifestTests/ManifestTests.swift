@@ -1147,7 +1147,9 @@ import Testing
         var calls = 0
         for source in sources {
             for line in try text("hooks/mod/\(source)").components(separatedBy: "\n") {
-                guard let name = line.firstMatch(of: /\[\s*'([\w-]+)'/)?.1, let command = CLI.commands.first(where: { $0.name == name }) else { continue }
+                let named = [line.firstMatch(of: /\[\s*'([\w-]+)'/)?.1, line.firstMatch(of: /\.\.\.([a-z]+)Args\(/)?.1].compactMap { $0.map(String.init) }
+                guard let command = CLI.commands.first(where: { named.contains($0.name) }) else { continue }
+                let name = command.name
                 calls += 1
                 for option in line.matches(of: /'--([\w-]+)'/).map({ String($0.1) }) {
                     #expect(command.valuedOptions.contains(option) || command.flags.contains(option), "\(source): xcrew \(name) --\(option)")
