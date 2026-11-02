@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -907,11 +907,10 @@ async function pruneHistory($: EngineInterface): Promise<void> {
   await Promise.all(ledgers.filter(key => gone.has(ledgerRoot(key) ?? '')).map(key => quietly(() => $.store.delete(key))))
 }
 
-/** The checkouts among `roots` whose folder isn't there, each looked at once: one that can't be looked at is kept. */
+/** The checkouts among `roots` whose folder isn't there, as the CLI finds them, each asked about once; none when it can't say. */
 async function goneCheckouts($: EngineInterface, roots: (string | undefined)[]): Promise<Set<string>> {
   const named = [...new Set(roots.filter((root): root is string => root !== undefined))]
-  const found = await Promise.all(named.map(async root => ({ root, exists: await quietly(() => $.fs.exists(root)) })))
-  return new Set(found.filter(entry => entry.exists === false).map(entry => entry.root))
+  return named.length === 0 ? new Set() : new Set(goneOf(await answer($, ['gone', ...named], 10_000)))
 }
 
 /** Counts a full-suite run toward the loop budget: the runs that crossed it, when this one did. */

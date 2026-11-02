@@ -179,6 +179,12 @@ export function elsewhereOf(answer: unknown): ElsewhereRun[] | undefined {
   })
 }
 
+/** The folders `xcrew gone` found aren't there any more; none when its answer can't be read. */
+export function goneOf(answer: unknown): string[] {
+  const gone = (answer ?? {}) as { gone?: unknown }
+  return Array.isArray(gone.gone) ? gone.gone.filter((folder): folder is string => typeof folder === 'string') : []
+}
+
 /** The scheme selected in Xcode, as `xcrew project --xcode` answers. */
 export function xcodeSchemeOf(answer: unknown): string | undefined {
   const scheme = (answer as { xcodeScheme?: unknown } | undefined)?.xcodeScheme

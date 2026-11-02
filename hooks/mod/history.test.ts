@@ -14,8 +14,10 @@ const DAY = 24 * 60 * 60_000
  */
 function session(
   on: On,
-  { root = '/work/App', scheme, took = [], reports = [{ ok: true }], stored = {}, rootFails = 0, cwd = root, profiles = {}, xcode, xcodeServerAfter = 0, xcodeHeld, selections = [], outputs = {}, logScheme }: {
+  { root = '/work/App', scheme, took = [], reports = [{ ok: true }], stored = {}, rootFails = 0, cwd = root, profiles = {}, xcode, xcodeServerAfter = 0, xcodeHeld, selections = [], outputs = {}, logScheme, gone }: {
     root?: string; scheme?: string; took?: number[]; reports?: Partial<Report>[]; stored?: Record<string, unknown>; rootFails?: number; cwd?: string
+    /** What `xcrew gone` answers for the folders it's asked about; no answer when undefined. */
+    gone?: (folders: readonly string[]) => unknown
     /** The scheme the run's log names once `xcrew phase` finds it; no log when undefined. */
     logScheme?: string
     /** Each profile's scheme, as `--profiles --profile <name>` answers it. */
@@ -63,6 +65,7 @@ function session(
     },
     reports,
     phase: () => (logScheme === undefined ? {} : { log: '/logs/test_sim_1.log', scheme: logScheme }),
+    ...(gone ? { gone } : {}),
   })
   on('tool.call', async (_, e) => {
     const output = outputs[e.tool.split('__').pop() ?? '']
@@ -286,8 +289,7 @@ test("a session's start drops the history and ledgers of a checkout that's gone"
     [historyKey(gone)]: [90_000], [updatedKey(gone)]: NOW - DAY, [testsKey(gone)]: 959,
     'ledger./work/App @ main': ledger, 'ledger./work/App-old @ feat/old': ledger,
   }
-  const { clock, store } = session(on, { stored })
-  on('fs.exists', (_, e) => ({ value: e.path !== '/work/App-old' }))
+  const { clock, store } = session(on, { stored, gone: folders => ({ gone: folders.filter(folder => folder === '/work/App-old') }) })
   await start($, clock)
   expect([...store.keys()].filter(key => !key.startsWith('card.')).sort()).toEqual([historyKey(here), updatedKey(here), 'ledger./work/App @ main'].sort())
 })
@@ -295,18 +297,16 @@ test("a session's start drops the history and ledgers of a checkout that's gone"
 /** A ledger's checkout is read up to the last ` @ `, as a branch's name has no space: a folder may. */
 test("a gone checkout whose path holds ' @ ' has its ledger dropped", async ($, on) => {
   const stored = { 'ledger./work/App @ main': { entries: [], updated: NOW - DAY }, 'ledger./work/a @ b @ feat/x': { entries: [], updated: NOW - DAY } }
-  const { clock, store } = session(on, { stored })
-  on('fs.exists', (_, e) => ({ value: e.path !== '/work/a @ b' }))
+  const { clock, store } = session(on, { stored, gone: folders => ({ gone: folders.filter(folder => folder === '/work/a @ b') }) })
   await start($, clock)
   expect([...store.keys()].filter(key => key.startsWith('ledger.'))).toEqual(['ledger./work/App @ main'])
 })
 
-/** A checkout whose presence can't be read keeps what it stored: a folder not found is the only reason to drop it. */
+/** When the CLI can't say which checkouts are gone, each keeps what it stored: a folder not found is the only reason to drop it. */
 test("a checkout that can't be looked at keeps its history", async ($, on) => {
   const here = scopeKey('/work/App', 'build_sim · App')
   const stored = { [historyKey(here)]: [30_000], [updatedKey(here)]: NOW - DAY, 'ledger./work/App @ main': { entries: [], updated: NOW - DAY } }
-  const { clock, store } = session(on, { stored })
-  on('fs.exists', () => { throw new Error('a network location') })
+  const { clock, store } = session(on, { stored, gone: () => new Error('timed out') })
   await start($, clock)
   expect([...store.keys()].filter(key => !key.startsWith('card.')).sort()).toEqual([historyKey(here), updatedKey(here), 'ledger./work/App @ main'].sort())
 })
