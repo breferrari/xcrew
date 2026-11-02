@@ -23,8 +23,18 @@ struct MobileBuildMCPResult: Decodable, Sendable {
         @Lenient var warnings: [Warning]?
     }
 
+    /// The tests a filter selected: `{"discovered": {"total": 1, "items": […]}}`.
+    struct Tests: Decodable, Sendable {
+        struct Discovered: Decodable, Sendable {
+            @Lenient var total: Int?
+        }
+
+        @Lenient var discovered: Discovered?
+    }
+
     struct Payload: Decodable, Sendable {
         @Lenient var summary: Summary?
+        @Lenient var tests: Tests?
         @Lenient var artifacts: Artifacts?
         @Lenient var diagnostics: Diagnostics?
     }

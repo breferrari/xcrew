@@ -214,6 +214,7 @@ import Testing
         let runNotes: [String] = [
             Report.noTestsNote,
             Report.noTestsInBundleNote,
+            Report.selectedNoneNote(discovered: 2, plan: nil),
             FailureNotes.noCrashLog,
             FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
             ResultBundle.noRepetitionsNote,

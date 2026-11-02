@@ -479,7 +479,7 @@ func failingRunText(passing: Int) -> String {
     }
 
     @Test func theBundleNoteSaysWhatIsKnown() {
-        #expect(Report.noTestsInBundleNote == "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this.")
+        #expect(Report.noTestsInBundleNote == "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this, as do a test plan that skips the tests or leaves their target out and tests compiled out of the build; the result doesn't say which.")
     }
 
     /// With no bundle summary to read, nothing more is known than the text says: a pass, with no count.
@@ -518,7 +518,7 @@ func failingRunText(passing: Int) -> String {
     }
 
     @Test func theNoTestsNoteSaysWhatIsKnown() {
-        #expect(Report.noTestsNote == "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this.")
+        #expect(Report.noTestsNote == "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. An -only-testing or -skip-testing filter whose target or class names match nothing does this, as do a test plan that skips the tests or leaves their target out and tests compiled out of the build; the result doesn't say which.")
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))

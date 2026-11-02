@@ -57,8 +57,15 @@ public struct Report: Sendable, Equatable, Codable {
         return "\(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
     }
 
-    /// What makes a run of no tests, after either note's evidence.
-    static let noTestsCause = "An -only-testing or -skip-testing filter whose target or class names match nothing does this."
+    /// What makes a run of no tests, after either note's evidence: the result doesn't tell them apart (docs/findings.md,
+    /// *Discovered tests*).
+    static let noTestsCause = "An -only-testing or -skip-testing filter whose target or class names match nothing does this, as do a test plan that skips the tests or leaves their target out and tests compiled out of the build; the result doesn't say which."
+
+    /// A run of no tests whose filter matched some, which MobileBuildMCP lists, with the plan of several configurations
+    /// its scheme runs by default.
+    static func selectedNoneNote(discovered: Int, plan: TestPlans.Configured?) -> String {
+        "xcrew: this test run executed no tests, though it reports SUCCEEDED and its filter matched \(discovered == 1 ? "1 test" : "\(discovered) tests"), which MobileBuildMCP lists as discovered: the filter matched, and none executed." + (plan.map { " " + $0.sentence } ?? "")
+    }
     static let noTestsNote = "xcrew: this test run ran no tests (passed, failed and skipped are all 0), though it reports SUCCEEDED. \(noTestsCause)"
     /// The same, for a run whose text gave no count and whose result bundle counts 0 tests.
     static let noTestsInBundleNote = "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. \(noTestsCause)"
@@ -215,7 +222,14 @@ public struct Report: Sendable, Equatable, Codable {
 
         var notes = ToolErrorNotes.notes(for: output)
         let tests = bundleCounts?.ran ?? final.testTotal
-        if isTest, tests == 0 { notes.append(bundleCounts == nil ? noTestsNote : noTestsInBundleNote) }
+        if isTest, tests == 0 {
+            if let discovered = read.discovered, discovered > 0 {
+                let scheme = read.buildLog(home: home).flatMap { RunLog.scheme(ofLogAt: URL(fileURLWithPath: $0)) }
+                notes.append(selectedNoneNote(discovered: discovered, plan: project.flatMap { project in scheme.flatMap { TestPlans.configured(forScheme: $0, in: project) } }))
+            } else {
+                notes.append(bundleCounts == nil ? noTestsNote : noTestsInBundleNote)
+            }
+        }
         if let bundle, let summary = await bundleSummary {
             // The test list is only asked for when the summary counts expected failures to name.
             let listing = ResultBundle.expectedFailureCount(summary: summary) > 0 ? await bundle.tests() : ""

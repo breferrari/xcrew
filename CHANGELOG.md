@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A MobileBuildMCP test run whose filter matched tests that then didn't execute says so in its note to Claude, naming the test plan's configurations when it has several, rather than blaming a filter that matched nothing. A run of no tests that doesn't list what it matched names every cause that does this, without claiming one.
 - The full `xcrew doctor` is faster on a Mac with many MobileBuildMCP workspaces: its storage check sizes only this project's checkouts' workspaces, where it sized every workspace on the Mac, and it no longer names other projects' workspaces whose folder is gone; `xcrew space` still covers the whole Mac. Reading CI's Xcode from the workflows is quicker too.
 - The doctor's `xcode-mcp/macro-copy-phase` check is gone: Tuist 4.203 removed the copy phase it looked for.
 - The doctor's `simulators/memory` check is gone: its two measures of a simulator's memory disagreed by about 40%, so neither could be trusted as the figure.
