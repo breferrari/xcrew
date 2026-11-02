@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.1 — 2026-11-02
+
 - `/xcrew doctor` checks the session it runs in, so `xcrew/briefing-current` and `xcrew/mod-loaded` say something there. In 0.13.0 they always skipped with "not run from a Claude Code session".
 - `mcs doctor` no longer offers `defaults write … IDEAllowUnauthenticatedAgents` as the fix for "Claude Code approved in Xcode", which approved nothing; its MobileBuildMCP version fix is the CLI's own, `brew upgrade mobilebuildmcp`. The README, SECURITY.md and the reference skill now describe the doctor as it is: no network request, no storage scan.
 - `xcrew/briefing-current` passes as "the running xcrew's", without a version, so the README's sample doctor report stays true across releases.
