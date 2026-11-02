@@ -78,6 +78,12 @@ import Testing
         #expect(try text("techpack.yaml").contains("minMCSVersion: \"\(ModLoadedCheck.minMCSVersion)\""))
     }
 
+    /// The README names the mcs the mod-loaded check names: the one a pack's mod needs.
+    @Test func readmeMinimumMCSIsTheOneTheModLoadedCheckNames() throws {
+        let named = try #require(try text("README.md").firstMatch(of: /\[mcs CLI\]\([^)]*\) (\d{4}\.\d{1,2}\.\d{1,2}) or later/)?.1)
+        #expect(String(named) == ModLoadedCheck.minMCSVersion)
+    }
+
     @Test func hooksLoadTheMod() async throws {
         let modules = try #require(try json("hooks/hooks.json")["modules"] as? [String])
         #expect(modules == ["./mod/register.ts"])
@@ -1146,10 +1152,13 @@ import Testing
         }
     }
 
-    /// A failed test's images are kept as long as the shim keeps a build no checkout has run.
-    @Test func failureImagesAreKeptAsLongAsAnUnusedBuild() throws {
-        let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
-        #expect(Int(shim) == FailureImages.keptDays)
+    /// A failed test's images, and a session's stamp no session end removed, are kept as long as the shim keeps a build
+    /// no checkout has run, and a root's key: one number of days.
+    @Test func failureImagesAndSessionStampsAreKeptAsLongAsAnUnusedBuild() throws {
+        let ages = try text("bin/xcrew").matches(of: /-mtime \+(\d+)/).map { Int($0.output.1) }
+        #expect(ages.count == 2 && Set(ages).count == 1, "\(ages)")
+        #expect(ages.first == FailureImages.keptDays)
+        #expect(ages.first == SessionStamp.keptDays)
     }
 
     /// The routing rules guard a failed snapshot test's reference, on the line naming the word its notes list images
