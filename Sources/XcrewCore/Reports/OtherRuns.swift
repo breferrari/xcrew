@@ -21,12 +21,13 @@ public enum OtherRuns {
 
     /// Each of the project's other worktrees' newest xcodebuild log written within `quietFor` that has no verdict yet; none
     /// outside git, and none from a worktree whose folder is gone or whose workspace can't be read.
-    public static func going(project: Project, machine: Machine, now: Date) async -> [Run] {
-        await others(of: project, machine: machine).compactMap { root, top -> Run? in
+    public static func going(project: Project, machine: Machine) async -> [Run] {
+        let now = machine.now()
+        return await others(of: project, machine: machine).compactMap { root, top -> Run? in
             guard FileManager.default.fileExists(atPath: root),
                   let log = RunLog.find(since: now.addingTimeInterval(-quietFor), project: URL(fileURLWithPath: root), home: machine.home, named: { $0.firstMatch(of: runLog) != nil }),
                   let tool = log.lastPathComponent.firstMatch(of: runLog).map({ String($0.1) }) else { return nil }
-            let followed = RunLog.follow(logAt: log, expectedTests: nil, kind: tool.hasPrefix("test") ? .test : .build, keptIn: RunLog.readings(on: machine))
+            let followed = RunLog.follow(logAt: log, expectedTests: nil, kind: tool.hasPrefix("test") ? .test : .build, keptIn: RunLog.readingsKept(on: machine))
             guard followed?.outcome == nil else { return nil }
             return Run(worktree: URL(fileURLWithPath: top).lastPathComponent, tool: tool, phase: followed?.phase)
         }.sorted { $0.worktree < $1.worktree }
@@ -44,7 +45,7 @@ public enum OtherRuns {
             }
             let wrote = !RunLog.newest(logs, since: from).isEmpty
             let quiet = { RunLog.newest(logs, since: from.addingTimeInterval(-quietFor)).contains { log in
-                RunLog.follow(logAt: log, expectedTests: nil, kind: log.lastPathComponent.hasPrefix("test") ? .test : .build, keptIn: RunLog.readings(on: machine))?.outcome == nil
+                RunLog.follow(logAt: log, expectedTests: nil, kind: log.lastPathComponent.hasPrefix("test") ? .test : .build, keptIn: RunLog.readingsKept(on: machine))?.outcome == nil
             } }
             return wrote || quiet() ? URL(fileURLWithPath: top).lastPathComponent : nil
         }

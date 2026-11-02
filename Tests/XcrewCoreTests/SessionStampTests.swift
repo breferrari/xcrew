@@ -57,12 +57,14 @@ import XcrewTestSupport
     /// A session's first record removes the stamps no session end removed for longer than they're kept, a session's
     /// folder or an older xcrew's file, and leaves the newer ones: one left 15 days ago goes, one left 13 days ago stays.
     @Test func aSessionsFirstRecordRemovesTheStampsLeftTooLong() throws {
-        let machine = context(nil).machine
+        let given = context(nil).machine
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
+        let machine = Machine(environment: given.environment, home: given.home, runner: given.runner, processID: given.processID, now: { now })
         let sessions = machine.cacheFolder.appending(path: "sessions")
         SessionStamp.record("old", on: machine, .mod, version: "0.13.0")
         SessionStamp.record("recent", on: machine, .mod, version: "0.13.0")
         try Data("{}".utf8).write(to: sessions.appending(path: "older.json"))
-        let ago = { (days: Double) in Date.now.addingTimeInterval(-days * 24 * 3600) }
+        let ago = { (days: Double) in now.addingTimeInterval(-days * 24 * 3600) }
         try FileManager.default.setAttributes([.modificationDate: ago(15)], ofItemAtPath: sessions.appending(path: "old").path)
         try FileManager.default.setAttributes([.modificationDate: ago(15)], ofItemAtPath: sessions.appending(path: "older.json").path)
         try FileManager.default.setAttributes([.modificationDate: ago(13)], ofItemAtPath: sessions.appending(path: "recent").path)

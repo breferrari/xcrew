@@ -25,7 +25,7 @@ struct ReportCommand: Command {
         var report: Report
         let given = invocation.arguments["log"]
         let since = invocation.arguments["since"].flatMap(Double.init)
-        let asked = Date()
+        let asked = machine.now()
         var found: String?
         if given == nil, let tool = invocation.arguments["tool"] {
             guard let since = since.flatMap({ Int(exactly: $0.rounded(.down)) }) else { throw UsageError(description: "report --tool needs --since, in milliseconds") }

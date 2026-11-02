@@ -76,7 +76,7 @@ public struct FailureImages: Sendable, Equatable {
     /// Removes each run's images kept longer than `keptDays`, then the oldest runs' while all of them take more than
     /// `limit`; the newest run's stay whatever their size. Each run's size is read from its record, so pruning costs the
     /// same however many runs are kept; a run kept before sizes were recorded is measured once and recorded.
-    static func prune(in folder: URL, keepingAtMost limit: Int = keptBytes, now: Date = .now) {
+    static func prune(in folder: URL, keepingAtMost limit: Int = keptBytes, now: Date) {
         let runs = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
         let oldest = now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
         let dated = runs.map { (run: $0, written: (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? now) }

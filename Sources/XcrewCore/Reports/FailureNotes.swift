@@ -120,9 +120,11 @@ public enum FailureNotes {
         let images: [TestID: FailureImages]
     }
 
-    /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `imagesFolder`, each failed
-    /// test's images are kept there, and runs kept there too long are removed.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn imagesFolder: URL? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = []) async -> Added? {
+    /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `images`, each failed
+    /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
+    /// are removed.
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = []) async -> Added? {
+        let imagesFolder = images?.folder
         var order: [TestID] = []
         var located: Set<TestID> = []
         var crashed: Set<TestID> = []
@@ -149,7 +151,7 @@ public enum FailureNotes {
         let crashError = crashed.count == 1 ? text.reportedErrors.compactMap { MobileBuildMCPLine.runtimeError($0.message) }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } } : []
 
         let (oneCrashed, discovered) = (crashed.count == 1, text.discovered)
-        if let imagesFolder, !lookups.isEmpty { FailureImages.prune(in: imagesFolder) }
+        if let images, !lookups.isEmpty { FailureImages.prune(in: images.folder, now: images.now) }
         var notes = Notes()
         var images: [TestID: FailureImages] = [:]
         // Each test's lookups are their own xcresulttool calls, so a few run side by side.

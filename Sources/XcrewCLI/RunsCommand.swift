@@ -10,7 +10,7 @@ struct RunsCommand: Command {
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
-        let runs = await OtherRuns.going(project: invocation.context.project, machine: invocation.context.machine, now: Date())
+        let runs = await OtherRuns.going(project: invocation.context.project, machine: invocation.context.machine)
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(runs), as: UTF8.self))
         return 0
     }

@@ -465,7 +465,7 @@ struct TestbedSnapshotTests {
         let (bundle, root) = Self.bundle("mobilebuildmcp")
         defer { try? FileManager.default.removeItem(at: root) }
         let text = try String(contentsOf: Self.captures.appending(path: "test_sim.txt"), encoding: .utf8)
-        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: root.appending(path: "images"))).text.text
+        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: (root.appending(path: "images"), Date()))).text.text
         let listed = added.components(separatedBy: "\n").filter { $0.hasPrefix("      image: ") }.map { URL(fileURLWithPath: String($0.dropFirst("      image: ".count))).lastPathComponent }
         #expect(listed == [
             "reference_0_00000000-0000-0000-0000-000000000016.png", "failure_0_00000000-0000-0000-0000-000000000008.png", "difference_0_00000000-0000-0000-0000-000000000014.png",

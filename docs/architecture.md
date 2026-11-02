@@ -58,7 +58,7 @@ Tests/
   XcrewTestSupport/     FakeRunner and temporary projects, shared by the suites
 ```
 
-Everything that touches the machine goes through `Machine` (environment, home folder, `CommandRunning`). Production passes `Machine.live`; tests pass a `FakeRunner` and a temporary home, so no test depends on how the Mac running it is set up.
+Everything that touches the machine goes through `Machine` (environment, home folder, `CommandRunning`, the time). Production passes `Machine.live`; tests pass a `FakeRunner` and a temporary home, so no test depends on how the Mac running it is set up.
 
 ## The mod
 

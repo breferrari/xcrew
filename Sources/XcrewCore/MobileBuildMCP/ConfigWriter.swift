@@ -18,14 +18,14 @@ public enum ConfigWriter {
         simulatorIDs: [String: String] = [:],
         carried: CarriedDefaults = .init(),
         force: Bool = false,
-        now: Date = Date()
+        now: Date
     ) throws -> Outcome {
         try write(ConfigRenderer.render(answers, root: project.root, simulatorIDs: simulatorIDs, carried: carried), to: project, force: force, now: now)
     }
 
     /// Writes `yaml` as the config, under the same rules: a config xcrew didn't write, or one edited since, is kept
     /// unless `force`, with a backup when replaced.
-    public static func write(_ yaml: String, to project: Project, force: Bool = false, now: Date = Date()) throws -> Outcome {
+    public static func write(_ yaml: String, to project: Project, force: Bool = false, now: Date) throws -> Outcome {
         let fileManager = FileManager.default
         let config = project.mobileBuildMCPConfig
         let existing = try? Data(contentsOf: config)

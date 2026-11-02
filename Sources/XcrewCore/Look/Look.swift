@@ -12,12 +12,12 @@ public enum Look {
 
     /// What `look` says about one test in `bundle`, or, with none named, about its failed UI tests: those whose failed
     /// runs kept a screen recording. Screens are kept under `folder`, in a folder per run, and runs kept there too long
-    /// are removed.
-    public static func report(bundle: ResultBundle, named: String?, keptIn folder: URL) async -> String {
+    /// before `now` are removed.
+    public static func report(bundle: ResultBundle, named: String?, keptIn folder: URL, now: Date) async -> String {
         let listing = ResultBundle.parse(await bundle.tests())
         let nodes = ResultBundle.nodes(listing)
         let cases = ResultBundle.testCases(in: nodes)
-        return await report(bundle: bundle, test: named.map { test($0, among: cases) }, cases: cases, failed: listing == nil ? nil : ResultBundle.failedTests(in: nodes), keptIn: folder)
+        return await report(bundle: bundle, test: named.map { test($0, among: cases) }, cases: cases, failed: listing == nil ? nil : ResultBundle.failedTests(in: nodes), keptIn: folder, now: now)
     }
 
     /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,
@@ -35,10 +35,10 @@ public enum Look {
     /// `failed` is the run's failed tests, nil when its test list couldn't be read. The run's size is recorded once all its
     /// tests are looked at: they're looked at side by side, and a measure taken before another's write would record too
     /// few.
-    static func report(bundle: ResultBundle, test: TestID?, cases: [TestID: [[String: Any]]], failed: [TestID]?, keptIn folder: URL) async -> String {
+    static func report(bundle: ResultBundle, test: TestID?, cases: [TestID: [[String: Any]]], failed: [TestID]?, keptIn folder: URL, now: Date) async -> String {
         let name = URL(fileURLWithPath: bundle.path).lastPathComponent
         let run = bundle.runFolder(in: folder)
-        FailureImages.prune(in: folder)
+        FailureImages.prune(in: folder, now: now)
         if let test {
             let passedUnder = FailedRun.passedConfigurations(of: cases[test] ?? [])
             guard let read = FailedRun.read(activities: await bundle.activities(of: test), passedUnder: passedUnder) else {
