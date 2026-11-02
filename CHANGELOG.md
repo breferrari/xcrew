@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `affected` names the one scheme that tests everything a change reaches when that's most of the suite, rather than listing hundreds of module schemes. A narrower change still lists the schemes that test only selected targets, the first ten named and the rest counted, and a target none of them tests is named with the scheme that tests it with the fewest others, as `` `Mixed` tests AppUITests with 1 more``.
 - A screenshot of a simulator with two displays gets its note again, naming `simctl`'s `--display` option. simctl gives its reason on the error's third line, which xcrew didn't read, so the note never showed.
 - A build held back after a manifest edit is undone says why: a build was refused for that edit, so the project may have been generated from it since, and the next build goes through. An edit that puts the manifests back no longer asks for a generate before the next build.
 - A failing MobileBuildMCP test run repeated with `-test-iterations` lists each failing test with its message and file and line, from the result bundle, and lists each test once with its runs counted, rather than once per run. A failing test run no longer lists the coverage runtime's `default.profraw` error, as a failing build already didn't.

@@ -47,7 +47,7 @@ test('a selection names the test targets and the -only-testing arguments that ru
 
 test('each scheme that tests only selected targets is named with its own targets, and so is what none of them tests', async ($, on) => {
   session(on, { changed: ['Modules/Feature/Sources/Feature.swift'], selections: ['AppTests', 'AppUITests', 'CoreTests', 'FeatureTests'], schemes: [{ name: 'Feature', container: 'Modules/Feature/Feature.xcodeproj', targets: ['FeatureTests'] }, { name: 'App', container: 'Modules/App/App.xcodeproj', targets: ['AppTests', 'AppUITests'] }] })
-  expect(await ask($)).toContain(' Schemes that test only selected targets: `Feature` (FeatureTests) and `App` (AppTests, AppUITests). None of them tests CoreTests.')
+  expect(await ask($)).toContain(' Schemes that test only selected targets: `Feature` (FeatureTests) and `App` (AppTests, AppUITests). No shared scheme tests CoreTests.')
 })
 
 test('schemes that between them test every selected target are said to', async ($, on) => {
@@ -136,5 +136,38 @@ test('past 20 targets of a kind, no arguments are given', async ($, on) => {
 test('a scheme of many targets is counted rather than listed', async ($, on) => {
   const unit = named('U', 30)
   session(on, { changed: ['Core/Store.swift'], selections: unit, schemes: [{ name: 'Feature', container: 'App.xcworkspace', targets: unit.slice(0, 15) }] })
-  expect(await ask($)).toContain(' Schemes that test only selected targets: `Feature` (15 targets). None of them tests 15 of the selected targets.')
+  expect(await ask($)).toContain(' Schemes that test only selected targets: `Feature` (15 targets). No shared scheme tests 15 of the selected targets.')
+})
+
+/** Most of the suite: the CLI names the scheme that tests all of it, and no other is listed. */
+test('when the changes reach most of the suite, the scheme that tests all of it is named alone', async ($, on) => {
+  const all = ['AppTests', 'AppUITests', 'CoreTests', 'DataTests', 'FeatureTests']
+  session(on, { changed: ['Core.swift'], selections: all, whole: { name: 'Everything', container: 'Field.xcworkspace', tests: all, more: 0 } })
+  const text = await ask($)
+  expect(text).toEndWith(' The changes reach most of the suite: `Everything` tests every selected target.')
+  expect(text).not.toContain('Schemes that test')
+})
+
+test('the scheme that tests most of the suite says how many targets it tests beyond it', async ($, on) => {
+  const all = ['AppTests', 'CoreTests', 'FeatureTests']
+  session(on, { changed: ['Core.swift'], selections: all, whole: { name: 'App-Workspace', container: 'App.xcworkspace', tests: all, more: 2 } })
+  expect(await ask($)).toEndWith(' The changes reach most of the suite: `App-Workspace` tests every selected target and 2 more.')
+})
+
+/** A target no listed scheme tests is named with the scheme that tests it with the fewest more, as the CLI chose it. */
+test('a selected target no listed scheme tests is named with the scheme that tests it with a few more', async ($, on) => {
+  session(on, {
+    changed: ['Feature.swift'],
+    selections: ['AppUITests', 'FeatureTests'],
+    schemes: [{ name: 'Feature', container: 'Modules/Feature/Feature.xcodeproj', targets: ['FeatureTests'] }],
+    nearest: [{ name: 'Mixed', container: 'Field.xcworkspace', tests: ['AppUITests'], more: 1 }],
+  })
+  expect(await ask($)).toEndWith(' Schemes that test only selected targets: `Feature` (FeatureTests). `Mixed` tests AppUITests with 1 more.')
+})
+
+/** Many schemes are capped as many targets are: the first named, the rest counted, and where they all are. */
+test('many schemes are capped, the rest counted', async ($, on) => {
+  const unit = named('U', 12)
+  session(on, { changed: ['Core.swift'], selections: unit, schemes: unit.map(target => ({ name: target, container: 'App.xcworkspace', targets: [target] })) })
+  expect(await ask($)).toContain(` Schemes that test only selected targets: ${unit.slice(0, 10).map(target => `\`${target}\` (${target})`).join(', ')} and 2 more; ${ALL}. Between them they test every selected target.`)
 })
