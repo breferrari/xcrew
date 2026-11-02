@@ -277,6 +277,40 @@ test("a session's start drops old-format, stale and empty history", async ($, on
   expect([...store.keys()].sort()).toEqual([historyKey(kept), updatedKey(kept)].sort())
 })
 
+/** A checkout removed since, as a worktree deleted days ago, leaves nothing behind: its times and its ledgers go at the next start. */
+test("a session's start drops the history and ledgers of a checkout that's gone", async ($, on) => {
+  const here = scopeKey('/work/App', 'build_sim · App'), gone = scopeKey('/work/App-old', 'test_sim · App')
+  const ledger = { entries: [], updated: NOW - DAY }
+  const stored = {
+    [historyKey(here)]: [30_000], [updatedKey(here)]: NOW - DAY,
+    [historyKey(gone)]: [90_000], [updatedKey(gone)]: NOW - DAY, [testsKey(gone)]: 959,
+    'ledger./work/App @ main': ledger, 'ledger./work/App-old @ feat/old': ledger,
+  }
+  const { clock, store } = session(on, { stored })
+  on('fs.exists', (_, e) => ({ value: e.path !== '/work/App-old' }))
+  await start($, clock)
+  expect([...store.keys()].filter(key => !key.startsWith('card.')).sort()).toEqual([historyKey(here), updatedKey(here), 'ledger./work/App @ main'].sort())
+})
+
+/** A ledger's checkout is read up to the last ` @ `, as a branch's name has no space: a folder may. */
+test("a gone checkout whose path holds ' @ ' has its ledger dropped", async ($, on) => {
+  const stored = { 'ledger./work/App @ main': { entries: [], updated: NOW - DAY }, 'ledger./work/a @ b @ feat/x': { entries: [], updated: NOW - DAY } }
+  const { clock, store } = session(on, { stored })
+  on('fs.exists', (_, e) => ({ value: e.path !== '/work/a @ b' }))
+  await start($, clock)
+  expect([...store.keys()].filter(key => key.startsWith('ledger.'))).toEqual(['ledger./work/App @ main'])
+})
+
+/** A checkout whose presence can't be read keeps what it stored: a folder not found is the only reason to drop it. */
+test("a checkout that can't be looked at keeps its history", async ($, on) => {
+  const here = scopeKey('/work/App', 'build_sim · App')
+  const stored = { [historyKey(here)]: [30_000], [updatedKey(here)]: NOW - DAY, 'ledger./work/App @ main': { entries: [], updated: NOW - DAY } }
+  const { clock, store } = session(on, { stored })
+  on('fs.exists', () => { throw new Error('a network location') })
+  await start($, clock)
+  expect([...store.keys()].filter(key => !key.startsWith('card.')).sort()).toEqual([historyKey(here), updatedKey(here), 'ledger./work/App @ main'].sort())
+})
+
 /** A failed run on a scope no run has updated for weeks starts it over: the old runs don't come back as usual times. */
 test('a failed run after weeks away brings no old runs back', async ($, on) => {
   const key = scopeKey('/work/App', 'BuildProject')

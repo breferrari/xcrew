@@ -12,7 +12,7 @@ import { CARD_VERSION, cardText, type SavedCard } from './card'
 import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, runsAllOfScope, lost, namesScheme, observe, observeSession, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
-import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
+import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerRoot, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { drawsForm, type FormElements, formTree, NO_FORM, PICK_KEYS, setupArgs, setupFact, startingPicks, WROTE } from './form'
 import { afterFullRun, type Crossing, loopNote } from './loop'
@@ -895,12 +895,23 @@ async function pruneHistory($: EngineInterface): Promise<void> {
     const prefix = SCOPE_PREFIXES.find(candidate => stored.startsWith(candidate))
     if (prefix) scopes.add(stored.slice(prefix.length))
   }
+  const ledgers = keys.filter(key => ledgerRoot(key) !== undefined)
+  const gone = await goneCheckouts($, [...scopes].map(key => keyParts(key)?.root).concat(ledgers.map(ledgerRoot)))
   await Promise.all([...scopes].map(async key => {
     const [runs, failed, updated] = await Promise.all([historyKey(key), failedKey(key), updatedKey(key)].map(name => $.store.get(name)))
     const isEmpty = (!Array.isArray(runs) || runs.length === 0) && (!Array.isArray(failed) || failed.length === 0)
-    if (keyParts(key) && !isEmpty && !isStale(updated, now)) return
+    const root = keyParts(key)?.root
+    if (root !== undefined && !gone.has(root) && !isEmpty && !isStale(updated, now)) return
     await dropScope($, key)
   }))
+  await Promise.all(ledgers.filter(key => gone.has(ledgerRoot(key) ?? '')).map(key => quietly(() => $.store.delete(key))))
+}
+
+/** The checkouts among `roots` whose folder isn't there, each looked at once: one that can't be looked at is kept. */
+async function goneCheckouts($: EngineInterface, roots: (string | undefined)[]): Promise<Set<string>> {
+  const named = [...new Set(roots.filter((root): root is string => root !== undefined))]
+  const found = await Promise.all(named.map(async root => ({ root, exists: await quietly(() => $.fs.exists(root)) })))
+  return new Set(found.filter(entry => entry.exists === false).map(entry => entry.root))
 }
 
 /** Counts a full-suite run toward the loop budget: the runs that crossed it, when this one did. */
