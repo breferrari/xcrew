@@ -462,6 +462,36 @@ test('the mod sends the CLI the marks it keeps and the run\'s repeated tests', a
   ])
 })
 
+test('a plain run that fails a flaky test starts its passes over, and asks the CLI nothing', async ($, on) => {
+  const { calls } = project(on, [FAILED, MIXED, CLEAN, FAILED], { flaky: [MARKED(0), MARKED(5)] })
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await repeat($)
+  await run($, 'AppTests/GreetingTests/testHello')
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
+  expect(calls.filter(call => call.args[0] === 'flaky')).toHaveLength(2)
+})
+
+test('a flaky test turned green by its passes goes red again on a plain failure, its passes started over', async ($, on) => {
+  project(on, [FAILED, MIXED, CLEAN, CLEAN, FAILED], { flaky: [MARKED(0), MARKED(5), MARKED(10, true)] })
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await repeat($)
+  await repeat($)
+  await run($, 'AppTests/GreetingTests/testHello')
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
+})
+
+test('a repeated run whose verdicts leave out a flaky test it failed starts that test\'s passes over', async ($, on) => {
+  const leftOut: Partial<Report> = { ...FAILED, repeated: [{ test: 'Other/testOther', failed: 0, passed: 5, runs: 5, verdict: 'passed' }] }
+  project(on, [FAILED, MIXED, CLEAN, leftOut], { flaky: [MARKED(0), MARKED(5), []] })
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await repeat($)
+  await repeat($)
+  expect(await ledgerText($)).toContain(`- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
+})
+
 test('when the CLI can\'t work out the marks, a flaky run still marks its test, and no repeated run greens it', async ($, on) => {
   project(on, [FAILED, MIXED, CLEAN])
   await run($, 'AppTests/GreetingTests/testHello')
