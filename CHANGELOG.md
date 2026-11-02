@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The doctor's worktree-simulator check says "none of those made for this repository's worktrees is left" once every simulator setup made for them is deleted, rather than "0 made …, each still there".
 - In a worktree set up by `xcrew setup --worktree`, the doctor checks its simulators by the ID the config names, and fails when one is gone. Before, it skipped them, saying no simulators were named.
 - `xcrew space` stops naming a gone project's MobileBuildMCP workspace with a purge once it holds only what `mobilebuildmcp purge` keeps, logs from the last hour and its state, and counts such folders on one line instead. Before, the same purge was offered again though it freed nothing.
 - The session's routing rules say a git worktree gets a session of its own, `claude --worktree <name>` set up there with `/xcrew:setup`, since each session's MobileBuildMCP serves its own checkout, and that a build or test run from Bash, the `mobilebuildmcp` CLI's included, gets no timing, ledger or line above the prompt.
