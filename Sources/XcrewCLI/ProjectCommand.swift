@@ -22,12 +22,12 @@ struct ProjectCommand: Command {
         var setup: String?
         /// With `--profiles`: the scheme MobileBuildMCP builds with when a call names none; with `--profile`, that profile's.
         var scheme: String?
-        /// With `--xcode`, when Xcode hosts MobileBuildMCP's server: the profile active at its start, whose scheme it
-        /// writes Xcode's selection over, `(default)` for the global defaults; the `xcuserstate` it reads; and whether it
-        /// follows that file after its start.
         /// Whether the generator reads YAML, as XcodeGen's spec and the specs it includes are: the mod asks about a YAML
         /// edit only then.
         var readsYaml: Bool?
+        /// With `--xcode`, when Xcode hosts MobileBuildMCP's server: the profile active at its start, whose scheme it
+        /// writes Xcode's selection over, `(default)` for the global defaults; the `xcuserstate` it reads; and whether it
+        /// follows that file after its start.
         var activeProfile: String?
         var xcodeState: String?
         var followsXcode: Bool?

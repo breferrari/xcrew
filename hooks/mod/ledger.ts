@@ -115,15 +115,14 @@ export function isWholeScope(scope: string): boolean {
  * - A failing test enters red, or turns red again after a green, keeping its first red's date and bundle; either way it
  *   now fails in this run's scope, with this run's message.
  * - A flaky test that fails with no repeated verdict for it, as in a plain run, starts its passes in a row over.
+ * - A repeated test takes the CLI's verdict and marks: a flaky one stays red, marked so, until the CLI says its passes in
+ *   a row are enough, as one run passing it is no evidence; one failing every run is a real failure, flaky no longer.
  * - A run turns green each red test its results list as passed (`passes`), a failing run included. A run whose
  *   results the CLI couldn't read turns nothing green.
  * - An entry no run has written for as long as the history is kept is dropped.
  */
 export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: readonly FlakyMark[]): Ledger {
   const failed = new Map(run.failures.filter(failure => failure.isTest).map(failure => [failure.title, failure]))
-  // The CLI's verdict on each repeated test, and its marks after the run. A flaky test stays red, marked so, until the
-  // CLI says its passes in a row are enough; one run passing it is no evidence. A test failing every run is a real
-  // failure, flaky no longer.
   const repeated = new Map((run.repeated ?? []).map(test => [test.test, test]))
   const marked = new Map((marks ?? []).map(mark => [mark.test, mark]))
   const failing = new Set([...failed.keys(), ...[...repeated.values()].filter(test => test.verdict === 'flaky' || test.verdict === 'real').map(test => test.test)])

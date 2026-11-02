@@ -127,7 +127,6 @@ public struct ToolOutput: Sendable {
         }
     }
 
-    /// How many tests a test run ran, from either server's counts.
     /// How many tests the run's filter selected, when MobileBuildMCP lists them: it does only for a filter, and for every
     /// outcome (docs/findings.md, *Discovered tests*).
     var discovered: Int? {
@@ -138,6 +137,7 @@ public struct ToolOutput: Sendable {
         }
     }
 
+    /// How many tests a test run ran, from either server's counts.
     public var testTotal: Int? {
         switch shape {
         case let .mobileBuildMCPJSON(result): result.testTotal
@@ -254,7 +254,6 @@ public struct ToolOutput: Sendable {
         }
     }
 
-    /// The output with each repeated warning listed once, with its count and every place; nil when none repeats.
     /// The result with only the warnings `keep` holds listed, and the rest counted in one line that names where the full
     /// list is; nil when it leaves none out.
     func keepingWarnings(_ keep: Set<Warning>, pointer: String) -> ToolOutput? {
@@ -284,6 +283,7 @@ public struct ToolOutput: Sendable {
         "\(count) \(count == 1 ? "warning" : "warnings") outside the lines this branch changed left out; the full list is in \(pointer)"
     }
 
+    /// The output with each repeated warning listed once, with its count and every place; nil when none repeats.
     func collapsingWarnings() -> ToolOutput? {
         switch shape {
         case let .mobileBuildMCPText(text):

@@ -660,12 +660,11 @@ function runPhase($: EngineInterface, tool: string, launches: boolean, since: nu
   return answer($, phaseArgs(tool, launches, since, expectedTests, log), 10_000).then(phaseOf)
 }
 
-/** Whether the project's generator reads YAML, asked once a session and again after setup or a generate. */
+/** Whether the project's generator reads YAML, asked once a session, again after setup or a generate, and next time when the CLI couldn't answer. */
 let yamlRead: Promise<boolean> | undefined
 
 function readsYaml($: EngineInterface): Promise<boolean> {
   yamlRead ??= answer($, ['project'], 10_000).then(answered => {
-    // An answer the CLI couldn't give is asked again next time.
     if (answered === undefined) yamlRead = undefined
     return readsYamlOf(answered)
   })
