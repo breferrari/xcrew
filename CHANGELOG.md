@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `/xcrew setup` and `xcrew setup --choices` show how many unit-test and UI-test targets each scheme runs, and setup gives the `unit` profile the scheme that runs the most, rather than the app's scheme that may test one module. A scheme that builds several apps names the one it launches.
+- When a UI test's query found nothing and the failure has a screen, `xcrew look` says the elements it lists are the app's only: a system alert covering the app shows only in the screenshot.
 - In an Xcode project, the coverage note no longer lists a changed test file as missing from the run's coverage. A run of one module's tests had named a changed UI test file it never built.
 - A build or test result Claude reads lists only the warnings in lines your branch changed, and counts the rest in one line that says where the full list is: the saved result, or the run's build log. That holds for a failed run moved to the background too. Outside git, every warning stays listed.
 - A failed test run that Claude Code moved to the background is read like the same run in the foreground: its failing tests are named and recorded, with xcrew's notes. Before, its notification came back as MobileBuildMCP's whole text, with nothing of xcrew's.
