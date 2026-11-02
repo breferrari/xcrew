@@ -1,6 +1,6 @@
 import type { ElementConstructor, RenderElement } from 'claude-code'
 import type { BandProblems, BandRun, ElsewhereRun, ResultRow } from '../../types'
-import { elsewhereText } from './elsewhere'
+import { ELSEWHERE_LABEL, elsewhereText } from './elsewhere'
 import { estimate, stopwatch } from './format'
 
 /** How long a finished run stays on the band: a pass asks for nothing, a failure asks to be looked at. */
@@ -132,9 +132,9 @@ function line({ Box, Text }: Elements, parts: Segment[]): RenderElement {
   return Box({ flexDirection: 'row', children })
 }
 
-/** The other worktrees' runs, dim, under what the band shows first. */
+/** The other worktrees' runs under what the band shows first, behind a dim label. */
 export function elsewhereTree({ Text }: Elements, runs: ElsewhereRun[]): RenderElement {
-  return Text({ color: 'subtle', wrap: 'truncate-end', children: [elsewhereText(runs)] })
+  return Text({ wrap: 'truncate-end', children: [Text({ color: 'subtle', children: [ELSEWHERE_LABEL] }), Text({ children: [elsewhereText(runs)] })] })
 }
 
 /** The run above the prompt. */
