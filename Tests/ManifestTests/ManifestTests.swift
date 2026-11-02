@@ -170,6 +170,14 @@ import Testing
         for key in keys { #expect(type.contains(" \(key)?:") || type.contains(" \(key):"), "cli.ts's FlakyMark doesn't name `\(key)`") }
     }
 
+    /// The mod reads `xcrew gone`'s answer by the key it encodes: renamed on one side, nothing would ever be dropped.
+    @Test func theModReadsGonesAnswerByItsKey() throws {
+        let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(GoneCommand.Answer(gone: ["/a"]))) as? [String: Any]).keys
+        let reader = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export function goneOf[\s\S]*?\n}/)?.0)
+        #expect(Array(keys) == ["gone"])
+        for key in keys { #expect(reader.contains("{ \(key)?: unknown }") && reader.contains(".\(key)"), "cli.ts's goneOf doesn't read `\(key)`") }
+    }
+
     /// The ledger, `/xcrew flaky` and the evidence say what the passes needed are in the same words.
     @Test func theModAndTheEvidenceSayWhatThePassesNeededAreAlike() throws {
         let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const PASSES_NEEDED = '([^']*)'/)?.1)

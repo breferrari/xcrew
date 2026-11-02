@@ -443,6 +443,7 @@ export const register: Register = on => {
     void quietly(() => readXcodeStart($))
     // The card is saved from the history as it's left: fresh, and this version's.
     void quietly(() => pruneHistory($)).then(() => saveCard($))
+    void quietly(() => pruneGone($))
     return started
   })
   // A `/clear` or a `/resume` fires no session start, the process going on under another conversation: that one starts
@@ -890,27 +891,45 @@ async function dropScope($: EngineInterface, key: string): Promise<void> {
  */
 async function pruneHistory($: EngineInterface): Promise<void> {
   const [keys, now] = await Promise.all([$.store.keys(), $.clock.now()])
+  await Promise.all([...storedScopes(keys)].map(async key => {
+    const [runs, failed, updated] = await Promise.all([historyKey(key), failedKey(key), updatedKey(key)].map(name => $.store.get(name)))
+    const isEmpty = (!Array.isArray(runs) || runs.length === 0) && (!Array.isArray(failed) || failed.length === 0)
+    if (keyParts(key) && !isEmpty && !isStale(updated, now)) return
+    await dropScope($, key)
+  }))
+}
+
+/** The scopes the store holds a key of, each once, by the key without its prefix. */
+function storedScopes(keys: readonly string[]): Set<string> {
   const scopes = new Set<string>()
   for (const stored of keys) {
     const prefix = SCOPE_PREFIXES.find(candidate => stored.startsWith(candidate))
     if (prefix) scopes.add(stored.slice(prefix.length))
   }
-  const ledgers = keys.filter(key => ledgerRoot(key) !== undefined)
-  const gone = await goneCheckouts($, [...scopes].map(key => keyParts(key)?.root).concat(ledgers.map(ledgerRoot)))
-  await Promise.all([...scopes].map(async key => {
-    const [runs, failed, updated] = await Promise.all([historyKey(key), failedKey(key), updatedKey(key)].map(name => $.store.get(name)))
-    const isEmpty = (!Array.isArray(runs) || runs.length === 0) && (!Array.isArray(failed) || failed.length === 0)
-    const root = keyParts(key)?.root
-    if (root !== undefined && !gone.has(root) && !isEmpty && !isStale(updated, now)) return
-    await dropScope($, key)
-  }))
-  await Promise.all(ledgers.filter(key => gone.has(ledgerRoot(key) ?? '')).map(key => quietly(() => $.store.delete(key))))
+  return scopes
 }
 
-/** The checkouts among `roots` whose folder isn't there, as the CLI finds them, each asked about once; none when it can't say. */
-async function goneCheckouts($: EngineInterface, roots: (string | undefined)[]): Promise<Set<string>> {
-  const named = [...new Set(roots.filter((root): root is string => root !== undefined))]
-  return named.length === 0 ? new Set() : new Set(goneOf(await answer($, ['gone', ...named], 10_000)))
+/**
+ * Drops the scopes and ledgers of checkouts that are gone, as a worktree removed since, as the CLI finds them: each
+ * checkout asked about once, apart from the card, which covers only the session's own; nothing when the CLI can't say.
+ */
+async function pruneGone($: EngineInterface): Promise<void> {
+  const keys = await $.store.keys()
+  const scopes = [...storedScopes(keys)].flatMap(key => {
+    const root = keyParts(key)?.root
+    return root ? [{ key, root }] : []
+  })
+  const ledgers = keys.flatMap(key => {
+    const root = ledgerRoot(key)
+    return root ? [{ key, root }] : []
+  })
+  const roots = [...new Set([...scopes, ...ledgers].map(entry => entry.root))]
+  if (roots.length === 0) return
+  const gone = new Set(goneOf(await answer($, ['gone', ...roots], 10_000)))
+  await Promise.all([
+    ...scopes.filter(entry => gone.has(entry.root)).map(entry => dropScope($, entry.key)),
+    ...ledgers.filter(entry => gone.has(entry.root)).map(entry => quietly(() => $.store.delete(entry.key))),
+  ])
 }
 
 /** Counts a full-suite run toward the loop budget: the runs that crossed it, when this one did. */

@@ -48,7 +48,7 @@ export function ledgerKey(head: Head): string {
   return `${LEDGER_PREFIX}${head.root} @ ${label(head, false)}`
 }
 
-/** The checkout a stored ledger's key names: up to its last ` @ `, as a branch's name holds no space. */
+/** The checkout a stored ledger's key names: up to its last ` @ `, as the label after it, a branch's name or `commit <sha>`, holds no ` @ `. */
 export function ledgerRoot(key: string): string | undefined {
   if (!key.startsWith(LEDGER_PREFIX)) return undefined
   const at = key.lastIndexOf(' @ ')
