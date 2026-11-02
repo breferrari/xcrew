@@ -211,8 +211,14 @@ public struct Report: Sendable, Equatable, Codable {
         var final = read
         var edited = false
         var images: [TestID: FailureImages] = [:]
+        // Only the warnings in lines this branch changed are listed, Claude's to fix; the rest are counted, with where the
+        // full list is: the saved result, else the run's build log. Without the branch's changes, every one stays.
+        let changedWarnings = await inChanged
+        if let changedWarnings, let kept = read.keepingWarnings(Set(changedWarnings), pointer: saved ?? read.buildLog(home: home) ?? "the run's build log") {
+            (final, edited) = (kept, true)
+        }
         // A saved result stays saved unless it's compacted below: Claude Code saved it for its size, which the collapse alone may not cut enough.
-        if let collapsed = read.collapsingWarnings() { (final, edited) = (collapsed, saved == nil) }
+        if let collapsed = final.collapsingWarnings() { (final, edited) = (collapsed, edited || saved == nil) }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
         let repetitions = if repeated, let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
         if var text = final.mobileText {
@@ -257,7 +263,7 @@ public struct Report: Sendable, Equatable, Codable {
 
         // The warnings in lines this branch changed, named: those are Claude's to fix. Nothing is said about the rest, or
         // about warnings the change causes in lines it left alone.
-        if let inChanged = await inChanged, let note = warningsNote(inChanged, of: warnings.count) { notes.append(note) }
+        if let changedWarnings, let note = warningsNote(changedWarnings, of: warnings.count) { notes.append(note) }
 
         if let note = await coverage?.note { notes.append(note) }
 

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A build or test result Claude reads lists only the warnings in lines your branch changed, and counts the rest in one line that says where the full list is: the saved result, or the run's build log. That holds for a failed run moved to the background too. Outside git, every warning stays listed.
 - A failed test run that Claude Code moved to the background is read like the same run in the foreground: its failing tests are named and recorded, with xcrew's notes. Before, its notification came back as MobileBuildMCP's whole text, with nothing of xcrew's.
 
 ## 0.13.1 — 2026-11-02

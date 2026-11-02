@@ -44,6 +44,22 @@ struct SavedWarningsTests {
         #expect(data["artifacts"] != nil)
     }
 
+    /// A warning in a line the branch changed stays listed in the saved result Claude reads; the rest are counted, with
+    /// the saved file named.
+    @Test func aSavedResultKeepsTheWarningsInChangedLines() async throws {
+        let project = Project.temporary(containing: ["Modules/Feature/Sources"])
+        let root = ProjectLayout.canonical(project.root)
+        let json = try Self.json().replacingOccurrences(of: "/testbed/field", with: root)
+        let saved = SavedResultTests.saved(json)
+        let runner = FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Modules/Feature/Sources/Legacy7.swift"], diffed: ["\(root)/Modules/Feature/Sources/Legacy7.swift"], diff: "+++ Modules/Feature/Sources/Legacy7.swift\n@@ -2,0 +3 @@\n"))
+        let report = await Report.make(kind: .test, output: ToolOutput(text: Self.notice(saved), server: .mobileBuildMCP), home: Captured.home, runner: runner, project: project)
+        let result = try #require(report.result, "no shorter result")
+        let diagnostics = try #require(((ResultBundle.parse(result) as? [String: Any])?["data"] as? [String: Any])?["diagnostics"] as? [String: Any])
+        let kept = try #require(diagnostics["warnings"] as? [[String: String]])
+        #expect(kept.map { $0["location"] } == ["\(root)/Modules/Feature/Sources/Legacy7.swift:3"])
+        #expect(diagnostics["warningsLeftOut"] as? String == "353 warnings outside the lines this branch changed left out; the full list is in \(saved)")
+    }
+
     /// A failed build's errors are what Claude acts on: never left out.
     @Test func errorsAreNeverLeftOut() async throws {
         let errors = [["message": "cannot find 'Greeting' in scope", "location": "/testbed/field/Modules/Feature/Sources/Feature.swift:7"]]
