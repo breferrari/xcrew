@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The line above the prompt no longer runs the doctor again every 30 seconds after a prompt: the doctor runs at session start, after setup, and when `/xcrew doctor` asks, which also clears a problem fixed since.
 - A Swift Testing run through a test plan of several configurations counts its tests through the first configuration and then says `testing`, rather than counting past its total as `testing · 10 done`.
 - The doctor's worktree-simulator check says "none of those made for this repository's worktrees is left" once every simulator setup made for them is deleted, rather than "0 made …, each still there".
 - In a worktree set up by `xcrew setup --worktree`, the doctor checks its simulators by the ID the config names, and fails when one is gone. Before, it skipped them, saying no simulators were named.
