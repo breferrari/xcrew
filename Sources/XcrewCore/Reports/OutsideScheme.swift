@@ -14,9 +14,14 @@ enum OutsideScheme {
 
     /// The note for `targets`, refused under `scheme` when the run's log named it, from the schemes `project` shares.
     static func note(targets: [String], scheme: String?, in project: Project) -> String {
+        note(targets: targets, scheme: scheme, other: running(Set(targets), in: project.repositoryContainers))
+    }
+
+    /// The note for `targets` refused under `scheme`, with `other`, a shared scheme that runs them all, when one does.
+    static func note(targets: [String], scheme: String?, other: String?) -> String {
         let (named, them) = targets.count == 1 ? (targets[0], "it") : (targets.dropLast().joined(separator: ", ") + " and " + (targets.last ?? ""), "them")
         let refused = "xcrew: \(scheme.map { "the \($0) scheme" } ?? "this run's scheme") doesn't test \(named), the target\(targets.count == 1 ? "" : "s") `-only-testing:` names, so Xcode ran none."
-        guard let other = running(Set(targets), in: project.repositoryContainers), let call = LiveDefaults.call(["scheme": other]) else {
+        guard let other, let call = LiveDefaults.call(["scheme": other]) else {
             return refused + " xcrew found no shared scheme that runs \(them) by default."
         }
         return refused + " The \(other) scheme tests \(them): `\(call)` makes \(other) the active profile's scheme."
