@@ -244,17 +244,16 @@ public struct Report: Sendable, Equatable, Codable {
         var summary = bundleCounts.map { $0.summary(succeeded: final.summary.ok) } ?? final.summary
 
         var notes = ToolErrorNotes.notes(for: output)
-        if isTest, let project, let target = OutsideScheme.target(in: read.text) {
-            let scheme = read.buildLog(home: home).flatMap { RunLog.scheme(ofLogAt: URL(fileURLWithPath: $0)) }
-            notes.append(OutsideScheme.note(target: target, scheme: scheme, in: project))
-        }
+        let runScheme = { read.buildLog(home: home).flatMap { RunLog.scheme(ofLogAt: URL(fileURLWithPath: $0)) } }
+        // Xcode refused the run's filter: that, not an empty filter or plan, is why none ran.
+        let refused = isTest && read.server == .mobileBuildMCP ? OutsideScheme.targets(in: read.text) : []
+        if let project, !refused.isEmpty { notes.append(OutsideScheme.note(targets: refused, scheme: runScheme(), in: project)) }
         let tests = bundleCounts?.ran ?? final.testTotal
-        if isTest, tests == 0 {
+        if isTest, tests == 0, refused.isEmpty {
             if let discovered = read.discovered, discovered > 0 {
                 // The filter matched: none ran is what happened, not that no test was there to run.
                 summary = ToolOutput.Summary(ok: false, detail: "\(discovered) selected, none ran")
-                let scheme = read.buildLog(home: home).flatMap { RunLog.scheme(ofLogAt: URL(fileURLWithPath: $0)) }
-                notes.append(selectedNoneNote(discovered: discovered, plan: project.flatMap { project in scheme.flatMap { TestPlans.configured(forScheme: $0, in: project) } }))
+                notes.append(selectedNoneNote(discovered: discovered, plan: project.flatMap { project in runScheme().flatMap { TestPlans.configured(forScheme: $0, in: project) } }))
             } else {
                 notes.append(bundleCounts == nil ? noTestsNote : noTestsInBundleNote)
             }

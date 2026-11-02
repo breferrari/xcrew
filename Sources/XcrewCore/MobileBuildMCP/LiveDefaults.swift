@@ -17,10 +17,13 @@ public enum LiveDefaults {
         if calls.isEmpty, let global = sessions.global { calls.append((nil, Self.defaults(global, root: root, home: home))) }
         let isActive = { (call: (name: String?, arguments: [String: Any])) in call.name != nil && call.name == active }
         let ordered = calls.filter { !isActive($0) } + calls.filter(isActive)
-        return ordered.compactMap { call in
-            (try? JSONSerialization.data(withJSONObject: call.arguments, options: [.sortedKeys, .withoutEscapingSlashes]))
-                .map { "session_set_defaults " + String(decoding: $0, as: UTF8.self) }
-        }
+        return ordered.compactMap { Self.call($0.arguments) }
+    }
+
+    /// A `session_set_defaults` call with these arguments in JSON, its keys sorted and its slashes as they are.
+    static func call(_ arguments: [String: Any]) -> String? {
+        (try? JSONSerialization.data(withJSONObject: arguments, options: [.sortedKeys, .withoutEscapingSlashes]))
+            .map { "session_set_defaults " + String(decoding: $0, as: UTF8.self) }
     }
 
     /// One block's keys and values, as YAML reads them (`ConfigRenderer.entries`): a scalar as a string, or a boolean

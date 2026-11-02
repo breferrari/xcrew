@@ -12,11 +12,11 @@ struct OutsideSchemeTests {
     static let refusal = "Tests in the target “CoreTests” can’t be run because “CoreTests” isn’t a member of the specified test plan or scheme."
 
     /// `empty-filter`'s JSON, failed with Xcode's refusal as its error.
-    static func json() throws -> String {
+    static func json(refusals: [String] = [refusal]) throws -> String {
         var structured = try #require(try Raw.capture("empty-filter")["structuredContent"] as? [String: Any])
         var data = try #require(structured["data"] as? [String: Any])
         var diagnostics = try #require(data["diagnostics"] as? [String: Any])
-        diagnostics["errors"] = [["message": refusal]]
+        diagnostics["errors"] = refusals.map { ["message": $0] }
         data["diagnostics"] = diagnostics
         structured["data"] = data
         return String(decoding: try JSONSerialization.data(withJSONObject: structured, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
@@ -49,7 +49,8 @@ struct OutsideSchemeTests {
 
     /// The note names the run's scheme, the narrowest scheme that tests the target, and the call that switches to it.
     @Test func aTargetOutsideTheRunsSchemeNamesASchemeThatTestsIt() async throws {
-        #expect(try await Self.notes().contains(#"xcrew: the Feature scheme doesn't test CoreTests, the target `-only-testing:` names, so Xcode ran none. The Core scheme tests it: `session_set_defaults {"scheme":"Core"}` makes Core the active profile's scheme."#))
+        let notes = try await Self.notes()
+        #expect(notes == [#"xcrew: the Feature scheme doesn't test CoreTests, the target `-only-testing:` names, so Xcode ran none. The Core scheme tests it: `session_set_defaults {"scheme":"Core"}` makes Core the active profile's scheme."#], "\(notes)")
     }
 
     /// With no log to name the run's scheme, the note says this run's.
@@ -57,9 +58,9 @@ struct OutsideSchemeTests {
         #expect(try await Self.notes(log: false).contains(#"xcrew: this run's scheme doesn't test CoreTests, the target `-only-testing:` names, so Xcode ran none. The Core scheme tests it: `session_set_defaults {"scheme":"Core"}` makes Core the active profile's scheme."#))
     }
 
-    /// No shared scheme tests the target: the note says so, and offers no call.
+    /// No shared scheme runs the target by default, as far as xcrew can read: the note says so, and offers no call.
     @Test func noSchemeTestingTheTargetIsSaid() async throws {
-        #expect(try await Self.notes(coreSchemes: false).contains("xcrew: the Feature scheme doesn't test CoreTests, the target `-only-testing:` names, so Xcode ran none. No shared scheme tests it."))
+        #expect(try await Self.notes(coreSchemes: false).contains("xcrew: the Feature scheme doesn't test CoreTests, the target `-only-testing:` names, so Xcode ran none. xcrew found no shared scheme that runs it by default."))
     }
 
     /// The scheme Xcode refused is never the one named, though a test plan it doesn't run by default lists the target.
@@ -83,7 +84,36 @@ struct OutsideSchemeTests {
         let harness = try Data(contentsOf: URL(fileURLWithPath: xcode.path).appending(path: "Contents/SharedFrameworks/XCTHarness.framework/XCTHarness"))
         let pieces = ["Tests in the target “", "” can’t be run because “", "” isn’t a member of the specified test plan or scheme."]
         for piece in pieces { #expect(harness.range(of: Data(piece.utf8)) != nil, "\(xcode.path) no longer says \(piece)") }
-        #expect(OutsideScheme.target(in: pieces[0] + "CoreTests" + pieces[1] + "CoreTests" + pieces[2]) == "CoreTests")
+        #expect(OutsideScheme.targets(in: pieces[0] + "CoreTests" + pieces[1] + "CoreTests" + pieces[2]) == ["CoreTests"])
+    }
+
+    /// A scheme that lists the target only in a test plan it doesn't run by default would be refused the same way.
+    @Test func aSchemeWhoseDefaultPlanLeavesTheTargetOutIsntNamed() async throws {
+        let (project, home) = try Self.setting(coreSchemes: false)
+        project.write(#"{"testTargets":[{"target":{"containerPath":"container:App.xcodeproj","name":"FeatureTests"}}],"version":1}"#, to: "Smoke.xctestplan")
+        project.write(#"{"testTargets":[{"target":{"containerPath":"container:App.xcodeproj","name":"CoreTests"}}],"version":1}"#, to: "Extra.xctestplan")
+        project.write(#"<?xml version="1.0" encoding="UTF-8"?><Scheme><TestAction><TestPlans><TestPlanReference default = "YES" reference = "container:Smoke.xctestplan"></TestPlanReference><TestPlanReference reference = "container:Extra.xctestplan"></TestPlanReference></TestPlans></TestAction></Scheme>"#, to: "App.xcodeproj/xcshareddata/xcschemes/Another.xcscheme")
+        project.writeScheme("Core", testing: ["CoreTests", "FeatureTests"])
+        let output = ToolOutput(text: try Self.json(), server: .mobileBuildMCP, isError: true)
+        let notes = await Report.make(kind: .test, output: output, home: home, runner: FakeRunner(), project: project).notes
+        #expect(notes.contains { $0.contains(#"The Core scheme tests it: `session_set_defaults {"scheme":"Core"}`"#) }, "\(notes)")
+    }
+
+    /// Every target refused is named, and the scheme named tests them all.
+    @Test func severalRefusedTargetsAreNamedWithASchemeThatTestsThemAll() async throws {
+        let (project, home) = try Self.setting()
+        let refusals = [Self.refusal, Self.refusal.replacing("CoreTests", with: "FeatureTests")]
+        let output = ToolOutput(text: try Self.json(refusals: refusals), server: .mobileBuildMCP, isError: true)
+        let notes = await Report.make(kind: .test, output: output, home: home, runner: FakeRunner(), project: project).notes
+        #expect(notes.contains(#"xcrew: the Feature scheme doesn't test CoreTests and FeatureTests, the targets `-only-testing:` names, so Xcode ran none. The Everything scheme tests them: `session_set_defaults {"scheme":"Everything"}` makes Everything the active profile's scheme."#), "\(notes)")
+    }
+
+    /// The call is MobileBuildMCP's: the Xcode MCP's result gets no note naming it.
+    @Test func anXcodeMCPResultAddsNoNote() async throws {
+        let (project, home) = try Self.setting()
+        let output = ToolOutput(text: Self.refusal, server: .xcode, isError: true)
+        let notes = await Report.make(kind: .test, output: output, home: home, runner: FakeRunner(), project: project).notes
+        #expect(!notes.contains { $0.contains("session_set_defaults") }, "\(notes)")
     }
 
     /// A build's result says nothing of it.
