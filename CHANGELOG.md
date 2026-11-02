@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A test run asks `xcrew project --branch` once for its ledger and card where it asked up to four times: an answer under five seconds old is shared, and a Bash call, which may switch branches, drops it.
 - Editing a YAML file, such as a CI workflow, in a project XcodeGen doesn't generate no longer starts two `xcrew` calls on the edit's path; `project` says whether the project reads YAML (`readsYaml`).
 - A test run's report reaches Claude about 0.6 s sooner: a result bundle without coverage is no longer handed to `xccov`, and one with coverage asks it one question fewer.
 - After `/clear` or `/resume`, the new conversation starts with a clean slate: a pin to suggest is named again on the next failing build it may explain, and the doctor's warnings show again from its first prompt. Before, they counted as already said.

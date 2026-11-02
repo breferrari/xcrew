@@ -234,11 +234,15 @@ test('a compile error never enters the ledger', async ($, on) => {
   expect(await ledgerText($)).toBe('No test has failed on feat/ledger yet.')
 })
 
+/** Past how long the mod shares the branch it last read: a switch outside the session shows after it. */
+const BRANCH_FRESH_MS = 5_000
+
 test('each branch keeps its own ledger, in the store, across sessions', async ($, on) => {
   let branch = 'feat/ledger'
-  project(on, [FAILED], { branch: () => branch })
+  const { clock } = project(on, [FAILED], { branch: () => branch })
   await run($)
   branch = 'main'
+  await clock.advance(BRANCH_FRESH_MS)
   expect(await ledgerText($)).toBe('No test has failed on main yet.')
   branch = 'feat/ledger'
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
@@ -249,13 +253,39 @@ test('a branch\'s ledger no run has written for two weeks is dropped', async ($,
   const old = { entries: [{ test: 'Old/testGone', red: { scope: 'test_sim', at: 0, message: 'gone' } }], updated: Date.UTC(2026, 9, 1) }
   const fresh = { entries: [{ test: 'New/testKept', red: { scope: 'test_sim', at: 0, message: 'kept' } }], updated: Date.UTC(2026, 9, 29) }
   let branch = 'feat/ledger'
-  project(on, [FAILED], { branch: () => branch, stored: { 'ledger./work/App @ old': old, 'ledger./work/App @ fresh': fresh } })
+  const { clock } = project(on, [FAILED], { branch: () => branch, stored: { 'ledger./work/App @ old': old, 'ledger./work/App @ fresh': fresh } })
   // Writing this branch's ledger drops the ones no run has written for two weeks.
   await run($)
   branch = 'old'
+  await clock.advance(BRANCH_FRESH_MS)
   expect(await ledgerText($)).toBe('No test has failed on old yet.')
   branch = 'fresh'
+  await clock.advance(BRANCH_FRESH_MS)
   expect(await ledgerText($)).toContain('New/testKept')
+})
+
+test('a test run, its ledger and its card share one answer to which branch is checked out', async ($, on) => {
+  const { calls } = project(on, [FAILED, FAILED])
+  await run($)
+  await run($)
+  expect(await ledgerText($)).toContain(TEST)
+  expect(calls.filter(call => call.args.includes('--branch'))).toHaveLength(1)
+})
+
+test('a branch switched in Bash, or outside the session once the answer is old, is read again', async ($, on) => {
+  let branch = 'feat/ledger'
+  const { clock, calls } = project(on, [FAILED], { branch: () => branch })
+  await run($)
+  expect(await ledgerText($)).toContain(TEST)
+  branch = 'main'
+  await callTool($, 'Bash', { command: 'git switch main' })
+  expect(await ledgerText($)).toBe('No test has failed on main yet.')
+  branch = 'feat/ledger'
+  await clock.advance(BRANCH_FRESH_MS - 1)
+  expect(await ledgerText($)).toBe('No test has failed on main yet.')
+  await clock.advance(1)
+  expect(await ledgerText($)).toContain(TEST)
+  expect(calls.filter(call => call.args.includes('--branch'))).toHaveLength(3)
 })
 
 test('Claude reads the ledger through a tool registered behind ToolSearch, and /xcrew ledger shows the same text', async ($, on) => {
@@ -492,9 +522,10 @@ test('/xcrew flaky says when a flaky test has since passed the runs needed', asy
 
 test('/xcrew flaky with none marked says so, and without a branch says why', async ($, on) => {
   let branch: string | Error = 'feat/ledger'
-  project(on, [FAILED], { branch: () => branch })
+  const { clock } = project(on, [FAILED], { branch: () => branch })
   await run($, 'AppTests/GreetingTests/testHello')
   expect((await runCommand($, 'xcrew', 'flaky')).text).toBe('No test is marked flaky on feat/ledger.')
   branch = new Error('timed out')
+  await clock.advance(BRANCH_FRESH_MS)
   expect((await runCommand($, 'xcrew', 'flaky')).text).toBe("The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out. Run `/xcrew doctor`.")
 })

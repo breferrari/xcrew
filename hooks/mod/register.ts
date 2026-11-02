@@ -436,6 +436,7 @@ export const register: Register = on => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
     if (e.tool !== 'Bash') return result
+    headRead = undefined
     if (runsSetup(e.command) || runsGenerate(e.command)) yamlRead = undefined
     if (runsSetup(e.command)) afterSetup($)
     if (runsGenerate(e.command) && !e.run_in_background && result.deny === undefined && !result.isError) await markStale($, stale => afterGenerate(stale, e.command))
@@ -777,7 +778,7 @@ let sessionRootRead: string | undefined
 
 async function sessionRoot($: EngineInterface): Promise<string> {
   if (sessionRootRead !== undefined) return sessionRootRead
-  const named = headOf(await answer($, ['project', '--branch'], 10_000))?.root
+  const named = (await currentHead($))?.root
   // Only a root the CLI named is kept: one it couldn't name yet, as while it builds, is asked for again.
   if (named !== undefined) sessionRootRead = named
   return named ?? (await quietly(() => $.session.cwd())) ?? ''
@@ -868,9 +869,25 @@ async function countFullRun($: EngineInterface, scope: string, run: FullRun) {
   return crossed
 }
 
+/**
+ * The checkout the CLI last named and when: a run's start and end, its ledger and its card ask within moments, so an
+ * answer under `HEAD_FRESH_MS` old is shared. A Bash call, which may switch branches, drops it; a switch outside the
+ * session shows once it's that old. Only an answer is kept, never a read still waiting.
+ */
+let headRead: { at: number; head: Head } | undefined
+const HEAD_FRESH_MS = 5_000
+
+async function currentHead($: EngineInterface): Promise<Head | undefined> {
+  const now = await quietly(() => $.clock.now())
+  if (headRead && now !== undefined && now - headRead.at < HEAD_FRESH_MS) return headRead.head
+  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  if (head && now !== undefined) headRead = { at: now, head }
+  return head
+}
+
 /** The checkout the CLI names, and its ledger. */
 async function branchLedger($: EngineInterface): Promise<{ head?: Head; ledger?: Ledger }> {
-  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  const head = await currentHead($)
   if (!head) return {}
   const ledger = ledgerOf(await $.store.get(ledgerKey(head)))
   return { head, ...(ledger ? { ledger } : {}) }
@@ -882,6 +899,7 @@ let doctorOnNextPrompt = false
 /** Forgets what the conversation was told: a new one's warnings show again, and the pin is named again. */
 function startOver(): void {
   sessionRootRead = undefined
+  headRead = undefined
   sessionProfileSchemes = new Map()
   found = []
   pinsNamed.clear()
@@ -1009,7 +1027,7 @@ function recordLedger($: EngineInterface, run: TestRun): void {
 
 /** Writes a run into its branch's ledger, and drops the ledgers no run has written for as long as the history is kept. */
 async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
-  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  const head = await currentHead($)
   if (!head) return
   const key = ledgerKey(head)
   const ledger = ledgerOf(await $.store.get(key))
