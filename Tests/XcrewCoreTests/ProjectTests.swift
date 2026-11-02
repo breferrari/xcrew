@@ -117,15 +117,15 @@ import XcrewTestSupport
     }
 
     @Test func aTuistProjectInASubfolderCounts() {
-        #expect(Project.temporary(containing: ["ios/Tuist.swift"]).isTuistProject)
-        #expect(Project.temporary(containing: ["apps/ios/Project.swift", "apps/ios/Tuist"]).isTuistProject)
+        #expect(Project.temporary(containing: ["ios/Tuist.swift"]).layout(.anywhereButHome).generator?.generator == .tuist)
+        #expect(Project.temporary(containing: ["apps/ios/Project.swift", "apps/ios/Tuist"]).layout(.anywhereButHome).generator?.generator == .tuist)
         #expect(Project.temporary(containing: ["apps/ios/project.yml"]).isGenerated)
     }
 
     @Test func aClassicProjectIsNeither() {
         let project = Project.temporary(containing: ["App.xcodeproj", "Sources"])
         #expect(!project.isGenerated)
-        #expect(!project.isTuistProject)
+        #expect(project.layout(.anywhereButHome).generator?.generator != .tuist)
     }
 
     @Test func aManifestCountsWhateverItsCase() {
@@ -142,7 +142,7 @@ import XcrewTestSupport
         project.write("struct Project {}", to: "App/Models/Project.swift")
         project.write("struct Workspace {}", to: "App/Workspace.swift")
         #expect(!project.isGenerated)
-        #expect(!project.isTuistProject)
+        #expect(project.layout(.anywhereButHome).generator?.generator != .tuist)
     }
 
     @Test func aTuistAppRootedByGitIsGenerated() {
@@ -151,7 +151,7 @@ import XcrewTestSupport
         project.write("import ProjectDescription\n\nlet workspace = Workspace(name: \"App\", projects: [\"Projects/*\"])\n", to: "ios/Workspace.swift")
         project.write("import ProjectDescriptionHelpers\n\nlet project = Project.app(name: \"App\")\n", to: "ios/Projects/App/Project.swift")
         #expect(project.isGenerated)
-        #expect(project.isTuistProject)
+        #expect(project.layout(.anywhereButHome).generator?.generator == .tuist)
     }
 
     @Test func aProjectSwiftThatOnlyMentionsProjectDescriptionDoesntCount() {
@@ -163,7 +163,7 @@ import XcrewTestSupport
     @Test func aNestedTuistAppOutsideGitIsStillGenerated() {
         // A miss here lets Claude edit a project the next generate overwrites.
         #expect(Project.temporary(containing: ["ios/Tuist.swift"]).isGenerated)
-        #expect(Project.temporary(containing: ["apps/ios/Tuist"]).isTuistProject)
+        #expect(Project.temporary(containing: ["apps/ios/Tuist"]).layout(.anywhereButHome).generator?.generator == .tuist)
     }
 
     @Test func theHomeFolderIsNeverWalked() {

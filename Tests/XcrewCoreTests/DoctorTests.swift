@@ -10,6 +10,19 @@ import XcrewTestSupport
         #expect(ids.allSatisfy { $0.split(separator: "/").count == 2 })
     }
 
+    /// A doctor run looks at the Mac's Xcodes once, however many checks read them, and sizes this project's workspaces
+    /// alone, never every workspace on the Mac: both were what made `xcrew doctor` slow.
+    @Test func aRunLooksAtTheXcodesOnceAndSizesOnlyThisProjectsWorkspaces() async {
+        let project = Project.temporary(containing: ["A.xcworkspace"])
+        project.write("26.4\n", to: ".xcode-version")
+        let runner = RecordingRunner(FakeRunner(installed: ["mobilebuildmcp", "xcodes"], responses: [:]))
+        _ = await Doctor.run(in: CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner)))
+        #expect(runner.asked.filter { $0 == "xcode-select -p" }.count == 1, "\(runner.asked)")
+        let reports = runner.asked.filter { $0.hasPrefix("mobilebuildmcp purge --report") }
+        #expect(!reports.isEmpty && reports.allSatisfy { $0.contains("--scope workspace --workspace-key ") }, "\(reports)")
+        #expect(Set(reports).count == reports.count, "\(reports)")
+    }
+
     @Test func worstIgnoresSkipsInAnyOrder() async {
         func entry(_ status: CheckStatus) -> Doctor.Entry { .init(check: LegacyBinaryCheck(), result: .init(status: status, message: "")) }
         #expect(Doctor.worst([entry(.pass), entry(.skip)]) == .pass)

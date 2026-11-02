@@ -61,7 +61,7 @@ struct TestbedTests {
         _ = await Run("setup", "--test-simulator", "iPhone 18", "--app-scheme", "App", context: context)
         let config = (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)) ?? ""
         let profiles = ConfigRenderer.profiles(in: config)
-        let doctor = await Doctor.run([ProjectConfigCheck(), MacroCopyPhaseCheck()], in: context)
+        let doctor = await Doctor.run([ProjectConfigCheck()], in: context)
         return Outcome(
             isApplePlatformProject: project.isApplePlatformProject,
             generator: manifests.map { $0.generator == .tuist ? "tuist" : "xcodegen" },

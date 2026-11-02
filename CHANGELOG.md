@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The full `xcrew doctor` is faster on a Mac with many MobileBuildMCP workspaces: its storage check sizes only this project's checkouts' workspaces, where it sized every workspace on the Mac, and it no longer names other projects' workspaces whose folder is gone; `xcrew space` still covers the whole Mac. Reading CI's Xcode from the workflows is quicker too.
+- The doctor's `xcode-mcp/macro-copy-phase` check is gone: Tuist 4.203 removed the copy phase it looked for.
+- The doctor's `simulators/memory` check is gone: its two measures of a simulator's memory disagreed by about 40%, so neither could be trusted as the figure.
 - A MobileBuildMCP run that names no scheme keeps its time, test count and red-to-green record under the scheme its own log says it built, so a run is never filed under a scheme xcrew guessed wrong. A run whose log never appears is shown but not recorded.
 - The ledger and the evidence block mark a test passed only when the run's results list it as passed, so a test deleted or renamed since it failed no longer shows as fixed. Before, a later run whose selection included the test was taken to have passed it. A test an older version marked fixed that way shows as failing again until a run lists it as passed.
 

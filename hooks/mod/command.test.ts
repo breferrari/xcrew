@@ -34,14 +34,14 @@ test('the session offers /xcrew', async ($, on) => {
 
 test('/xcrew doctor shows the doctor\'s report without a turn for Claude', async ($, on) => {
   mock.store(on)
-  const seen = engine(on, { doctor: 'ok    xcode-mcp/headless-enabled  enabled\nwarn  xcode-mcp/macro-copy-phase  TRMacros…\n' })
+  const seen = engine(on, { doctor: 'ok    xcode-mcp/headless-enabled  enabled\nwarn  xcode/pin  Xcode 26.4 is not installed\n' })
   await start($)
 
   const ran = await runCommand($, 'xcrew', 'doctor')
 
   expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor']])
   expect(seen.runs[0]?.[0]).toMatch(/\/bin\/xcrew$/)
-  expect(ran.text).toContain('warn  xcode-mcp/macro-copy-phase')
+  expect(ran.text).toContain('warn  xcode/pin')
   expect(ran.context).toBeUndefined()
 })
 
