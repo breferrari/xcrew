@@ -182,8 +182,9 @@ test("an overlapped run's ending carries no comparison with the usual time", asy
 
 /** A CLI that can't say whether the run overlapped another shows its ending compared, as its time is stored. */
 test("a run's ending is compared when the overlap check can't answer", async ($, on) => {
-  const answers: unknown[] = [[], new Error('timed out')]
-  const { clock, toasts } = session(on, { took: [60_000, 90_000], overlapped: () => answers.shift() ?? [] })
+  // The first run's check answers; every ask after it fails, the shim's second try included.
+  let asked = 0
+  const { clock, toasts } = session(on, { took: [60_000, 90_000], overlapped: () => (asked++ === 0 ? [] : new Error('timed out')) })
   await start($, clock)
   for (let run = 0; run < 2; run += 1) {
     await callTool($, 'mcp__xcode__BuildProject')
