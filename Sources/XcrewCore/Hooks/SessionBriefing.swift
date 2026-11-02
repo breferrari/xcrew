@@ -56,8 +56,7 @@ public struct SessionBriefing: Sendable {
     static func testPlans(in containers: [URL]) async -> [String] {
         let (plans, complete) = TestPlans.configured(containers: containers)
         let named = plans.prefix(ResultBundle.mostNamed).map { found in
-            let schemes = String(ResultBundle.listed(found.schemes.map { "`\($0)`" }).dropFirst(2))
-            return "Test plan `\(found.plan)`, the default of \(found.schemes.count == 1 ? "scheme" : "schemes") \(schemes), runs each test under each of its configurations\(ResultBundle.listed(found.configurations)). A test can fail under one and pass under another; `look` names which."
+            "\(found.sentence) A test can fail under one and pass under another; `look` names which."
         }
         let more = plans.count - named.count
         let counted = complete ? "\(more)" : "at least \(more)"

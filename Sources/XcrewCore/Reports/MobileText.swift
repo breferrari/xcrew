@@ -149,6 +149,11 @@ struct MobileText: Sendable {
     }
 
     /// The `.xcresult` path the text lists: the workspace folder, then the bundle under it.
+    /// How many tests the run's filter selected, when MobileBuildMCP lists them.
+    var discovered: Int? {
+        lines.lazy.compactMap { MobileBuildMCPLine.discovered($0.text) }.first
+    }
+
     var resultBundle: String? {
         guard let folder = workspaceFolder, let bundle = lines.lazy.compactMap({ MobileBuildMCPLine.resultBundle($0.text) }).first else { return nil }
         return folder + bundle

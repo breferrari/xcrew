@@ -8,6 +8,17 @@ enum TestPlans {
         /// The schemes whose default it is, each once, in the order their names sort.
         let schemes: [String]
         let configurations: [String]
+
+        /// The plan, the schemes it's the default of, and its configurations, in a sentence.
+        var sentence: String {
+            let named = String(ResultBundle.listed(schemes.map { "`\($0)`" }).dropFirst(2))
+            return "Test plan `\(plan)`, the default of \(schemes.count == 1 ? "scheme" : "schemes") \(named), runs each test under each of its configurations\(ResultBundle.listed(configurations))."
+        }
+    }
+
+    /// The plan of several configurations a scheme runs by default, if any, from the project's containers.
+    static func configured(forScheme scheme: String, in project: Project) -> Configured? {
+        configured(containers: project.layout(.repository).containers.map { project.root.appending(path: $0) }).plans.first { $0.schemes.contains(scheme) }
     }
 
     /// Schemes read at most: the briefing reads them at every session start, and a large modular app has hundreds.

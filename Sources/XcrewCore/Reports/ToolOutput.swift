@@ -128,6 +128,16 @@ public struct ToolOutput: Sendable {
     }
 
     /// How many tests a test run ran, from either server's counts.
+    /// How many tests the run's filter selected, when MobileBuildMCP lists them: it does only for a filter, and for every
+    /// outcome (docs/findings.md, *Discovered tests*).
+    var discovered: Int? {
+        switch shape {
+        case let .mobileBuildMCPJSON(result): result.data?.tests?.discovered?.total
+        case let .mobileBuildMCPText(text): text.discovered
+        case .xcodeMCPJSON, .unrecognized: nil
+        }
+    }
+
     public var testTotal: Int? {
         switch shape {
         case let .mobileBuildMCPJSON(result): result.testTotal
