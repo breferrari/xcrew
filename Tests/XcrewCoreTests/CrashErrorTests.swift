@@ -20,6 +20,15 @@ struct CrashErrorTests {
         #expect(try Raw.output("timing").failures.map(\.title) == ["CrashTests/testOutOfRange", "ProbeTests/testFails", "ProbeTests/testFlaky"])
     }
 
+    /// A crash inside an assertion's autoclosure, which a field run on iOS 26.5 saw filed under `System Failures`, is
+    /// filed under its test on iOS 27.2 (`captures/raw/system-failure-crash`): xcrew names the test, and lists it alone.
+    @Test func aCrashInsideAnAssertionIsNamedByItsTest() throws {
+        let output = try Raw.output("system-failure-crash")
+        #expect(output.summary == .init(ok: false, detail: "1 of 1 failed · AssertCrashTests/test_crash"))
+        #expect(output.failures.map(\.title) == ["AssertCrashTests/test_crash"])
+        #expect(output.failures.first?.message == "Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()")
+    }
+
     /// Another error in the same run, here a real one from `captures/environment/module-cache-invalid.txt` written
     /// into the crash's Errors, is still listed: only the crashed test's own error goes.
     @Test func anotherErrorBesideACrashStaysListed() throws {
