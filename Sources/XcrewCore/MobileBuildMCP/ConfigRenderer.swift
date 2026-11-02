@@ -194,14 +194,18 @@ public enum ConfigRenderer {
     }
 
     /// The config without its session defaults, global or by profile, and the active profile's name: what only a
-    /// restart loads into a running MobileBuildMCP.
+    /// restart loads into a running MobileBuildMCP. A comment line ends no section: it goes with the one it's in.
     public static func serverPart(of yaml: String) -> String {
-        let sessionKeys: Set<Substring> = ["sessionDefaults", "sessionDefaultsProfiles", "activeSessionDefaultsProfile"]
+        let sessionKeys: Set<String> = ["sessionDefaults", "sessionDefaultsProfiles", "activeSessionDefaultsProfile"]
         var dropping = false
         var kept: [Substring] = []
         for line in yaml.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("#") {
+                if !dropping { kept.append(line) }
+                continue
+            }
             if let first = line.first, first != " ", first != "\t", first != "-" {
-                dropping = sessionKeys.contains(line.prefix { $0 != ":" })
+                dropping = key(of: line).map(sessionKeys.contains) ?? false
             }
             if !dropping { kept.append(line) }
         }
