@@ -208,7 +208,7 @@ ok    mobilebuildmcp/config-loaded       loaded at its start
 ok    mobilebuildmcp/no-xcodebuild-left  no xcodebuild left running for this project
 ok    mobilebuildmcp/simulators          iPhone 17
 ok    simulators/worktree-leftovers      2 made for this repository's worktrees, each still there
-ok    mobilebuildmcp/storage             this project's MobileBuildMCP workspaces take 3.2 GB, within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)
+ok    mobilebuildmcp/storage             this project's MobileBuildMCP workspaces take 3.2 GB (3.0 GiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)
 ok    xcode-mcp/headless-enabled         enabled
 ok    xcode-mcp/handshake                a new Xcode MCP bridge answers: xcode-tools 25464
 ok    xcode/pin                          Xcode 27.2, at /Applications/Xcode-27.2.app

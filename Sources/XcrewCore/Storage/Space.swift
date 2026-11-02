@@ -28,24 +28,56 @@ public enum Space {
     /// What follows each `--dry-run`, said once.
     static let purgeNote = "Each `--dry-run` lists what it would delete; with `--delete` in its place and `--confirm delete-mobilebuildmcp-storage`, it deletes."
 
-    /// The dry run of `purge` for one workspace's classes that exist and may be deleted; none when it has none.
-    static func purge(_ workspace: StorageReport.Workspace) -> String? {
-        let classes = StorageReport.reclaimable(workspace)
-        return classes.isEmpty ? nil : "mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(workspace.key) --classes \(classes.joined(separator: ","))"
+    /// The dry run of `purge` for one workspace's `classes`; none for none.
+    static func purge(_ workspace: StorageReport.Workspace, classes: [String]) -> String? {
+        classes.isEmpty ? nil : "mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(workspace.key) --classes \(classes.joined(separator: ","))"
+    }
+
+    /// A workspace's classes that exist and may be deleted, the cheapest to make again first: test products, which the
+    /// next test run makes again, then the rest, then DerivedData, which costs a cold build (docs/findings.md, *Disk space*).
+    static func reclaimable(_ workspace: StorageReport.Workspace) -> [String] {
+        let rank = { (name: String) in name == "testProducts" ? 0 : name == "derivedData" ? 2 : 1 }
+        return StorageReport.reclaimable(workspace).sorted { (rank($0), $0) < (rank($1), $1) }
+    }
+
+    /// The `.xctestproducts` bundles in a workspace's test products, one per test run; 0 when it can't be read.
+    static func bundles(in workspace: StorageReport.Workspace, home: URL) -> Int {
+        let folder = ToolOutput.expandingHome(workspace.folder, home: home.path) + "/test-products"
+        return ((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? []).count { $0.hasSuffix(".xctestproducts") }
+    }
+
+    /// Whether an xcodebuild is writing to a workspace's DerivedData now: its figure is that build's too.
+    static func isBuilding(into workspace: StorageReport.Workspace, processes: ProcessList, home: URL) -> Bool {
+        let folder = ProjectLayout.canonicalPath(ToolOutput.expandingHome(workspace.folder, home: home.path)) + "/"
+        return processes.processes.contains { $0.isXcodebuild && !$0.asksOnly && ($0.derivedDataPath.map { ($0 + "/").hasPrefix(folder) } ?? false) }
+    }
+
+    /// One of this project's workspaces: its size, its test products counted in bundles, its DerivedData, and the dry
+    /// run of everything but DerivedData; then its DerivedData apart, with its own dry run, since it costs a cold build.
+    static func workspaceLines(_ workspace: StorageReport.Workspace, name: String, root: String, newest: String?, bundles: Int, isBuilding: Bool) -> [SpaceReport.Line] {
+        let present = { (name: String) in workspace.classes[name].flatMap { $0.exists && $0.bytes > 0 ? $0.bytes : nil } }
+        let products = present("testProducts").map { bytes in
+            ", test products \(SpaceReport.size(bytes))" + (bundles > 0 ? " in \(counted(bundles, "bundle")) of about \(SpaceReport.size(bytes / bundles)) each" : "")
+        } ?? ""
+        let derived = present("derivedData")
+        let building = isBuilding ? "; a build is writing to its DerivedData now" : ""
+        let classes = reclaimable(workspace)
+        let line = SpaceReport.Line(text: "\(name), \(root): \(SpaceReport.size(workspace.bytes))\(products)\(derived.map { ", DerivedData \(SpaceReport.size($0))" } ?? "")\(newest.map { ", newest \($0)" } ?? "")\(building)", bytes: workspace.bytes, command: purge(workspace, classes: classes.filter { $0 != "derivedData" }))
+        guard let derived, classes.contains("derivedData") else { return [line] }
+        return [line, .init(text: "\(name)'s DerivedData, \(SpaceReport.size(derived)), costs a cold build to make again", bytes: derived, command: purge(workspace, classes: ["derivedData"]))]
     }
 
     static func mobileBuildMCP(live: Task<[ProjectWorkspaces.Checkout], Never>, machine: Machine, now: Date) async -> SpaceReport.Part {
         let title = "MobileBuildMCP"
         guard let report = await StorageReport.read(.all, using: machine.runner) else { return SpaceReport.notRead(title, by: "mobilebuildmcp purge --report") }
         let grouped = ProjectWorkspaces.grouped(report, origins: await ProjectWorkspaces.origins(of: report, live: await live.value, home: machine.home))
-        var lines: [SpaceReport.Line] = grouped.live.map { workspace, checkout in
-            let name = URL(fileURLWithPath: checkout.root).lastPathComponent
-            let derived = workspace.classes["derivedData"].flatMap { $0.exists && $0.bytes > 0 ? ", DerivedData \(SpaceReport.size($0.bytes))" : nil } ?? ""
-            let newest = workspace.classes.values.compactMap(\.newest).max().map { ", newest \(SpaceReport.age(of: $0, now: now))" } ?? ""
-            return .init(text: "\(name), \(checkout.root): \(SpaceReport.size(workspace.bytes))\(derived)\(newest)", bytes: workspace.bytes, command: purge(workspace))
+        let processes = grouped.live.isEmpty ? ProcessList(ps: "") : await ProcessList.load(using: machine.runner)
+        var lines: [SpaceReport.Line] = grouped.live.flatMap { workspace, checkout in
+            workspaceLines(workspace, name: URL(fileURLWithPath: checkout.root).lastPathComponent, root: checkout.root, newest: workspace.classes.values.compactMap(\.newest).max().map { SpaceReport.age(of: $0, now: now) },
+                           bundles: bundles(in: workspace, home: machine.home), isBuilding: isBuilding(into: workspace, processes: processes, home: machine.home))
         }
         lines += grouped.gone.map { workspace, root in
-            .init(text: "\(workspace.key): \(SpaceReport.size(workspace.bytes)); its project, \(root), is gone", bytes: workspace.bytes, command: purge(workspace))
+            .init(text: "\(workspace.key): \(SpaceReport.size(workspace.bytes)); its project, \(root), is gone", bytes: workspace.bytes, command: purge(workspace, classes: reclaimable(workspace)))
         }
         let (elsewhere, unknown) = (grouped.elsewhere, grouped.unknown)
         lines += [
