@@ -39,9 +39,17 @@ export function submitPrompt($: Engine, text: string) {
 /** What `xcrew project` answers: with `--profiles`, the line offering setup when MobileBuildMCP has no scheme to build with; with `--manifest`, the command that regenerates the project when the file is a manifest. */
 type ProjectAnswer = { isGenerated: boolean; readsYaml?: boolean; setup?: string; scheme?: string; activeProfile?: string; xcodeState?: string; xcodeScheme?: string; followsXcode?: boolean; xcodeHostsServer?: boolean; generate?: string; app?: string; root?: string; branch?: string; commit?: string; manifest?: string }
 
-/** One call the mod made to the Swift CLI: its arguments, what it piped in, and the program when it wasn't the shim. */
-/** A CLI call a stub answered: its arguments, what was piped in, the program when not the shim, its time limit, and whether it was spawned rather than run. */
-export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number; spawned?: true }
+/**
+ * A CLI call a stub answered: its arguments, what was piped in, the program when not the shim, its time limit, whether
+ * it was spawned rather than run, and whether the shim was asked to run only a build that's there (`--if-built`, left
+ * out of `args`).
+ */
+export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number; spawned?: true; ifBuilt?: true }
+
+/** A command's arguments as the shim runs them, without a leading `--if-built`, which only asks it to run a build that's there. */
+export function withoutIfBuilt(args: readonly string[]): readonly string[] {
+  return args[0] === '--if-built' ? args.slice(1) : args
+}
 
 /**
  * Answers every `$.process.spawn`: a spawn of `--binary-path` names `BUILT_BINARY`, after `held` when given; `fails`
@@ -100,20 +108,27 @@ export function stubCli(
     flaky?: (stdin: string | undefined) => unknown
     /** What `xcrew gone` answers for the folders it's asked about, or the Error it fails with. */
     gone?: (folders: readonly string[]) => unknown
+    /** No build for this version: the shim's `--if-built` answers 75, and the background build names none. */
     noBuild?: boolean
+    /** Whether a build is there yet, for the shim's `--if-built`, as it changes while a build goes. */
+    built?: () => boolean
     build?: { fails: 'to start' } | { fails: 'by timing out'; clock: { advance: (ms: number) => Promise<void> } }
     /** How the session start's background build goes: held until a promise settles, or unable to start. */
     spawn?: { held?: Promise<void>; fails?: boolean; printsNothing?: boolean }
   } = {},
 ): CliCall[] {
   const calls: CliCall[] = []
-  stubSpawn(on, calls, answers.spawn)
+  stubSpawn(on, calls, { ...answers.spawn, ...(answers.noBuild ? { printsNothing: true } : {}) })
   const reports = [...(answers.reports ?? [])]
   on('process.run', async (_, e) => {
-    const args = e.argv.slice(1)
+    const asked = e.argv.slice(1)
     const program = e.argv[0] ?? ''
     const timeoutMs = e.init?.timeoutMs
-    calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
+    // The shim's `--if-built` runs only a build that's there, and answers 75 (EX_TEMPFAIL) when there's none.
+    const ifBuilt = asked[0] === '--if-built'
+    const args = withoutIfBuilt(asked)
+    calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }), ...(ifBuilt ? { ifBuilt: true as const } : {}) })
+    if (ifBuilt && (answers.noBuild || answers.built?.() === false)) return { value: { exitCode: 75, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
     const asksOverlap = args[0] === 'runs' && args.includes('--overlapped')

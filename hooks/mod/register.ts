@@ -625,49 +625,103 @@ function start($: EngineInterface, program: string, args: string[], timeoutMs: n
 }
 
 /** The question to the shim in flight, which callers at the same moment share rather than each starting a shim. */
-let asking: Promise<string | undefined> | undefined
+let asking: Promise<string | null> | undefined
+
+/** The background build in flight: the one build of this version, which callers wait on rather than start. */
+let building: Promise<string | null> | undefined
+
+/** Whether the background build couldn't be started at all, which leaves a call to build through the shim as before. */
+let cannotSpawn = false
+
+/** What `build` answers when the caller's time ran out waiting for the build, which goes on. */
+const STILL_BUILDING = Symbol('still building')
 
 /**
- * The build the shim runs, asked for at most every 30 s, within the caller's own time: when the
- * shim must first build, a caller with ten seconds doesn't wait two minutes.
+ * The build to run, asked for at most every 30 s. The shim is only asked whether a build is there (`--if-built`), so no
+ * caller builds under its own time, and none stops a build. With none there, the caller starts the one background
+ * build when none is in flight, and waits for it within its own time, giving up without stopping it. A build that
+ * named nothing is remembered for 30 s, so calls don't each start another (docs/findings.md, *Building after a
+ * reload*).
  */
-async function build($: EngineInterface, timeoutMs: number): Promise<string | undefined> {
+async function build($: EngineInterface, timeoutMs: number): Promise<string | undefined | typeof STILL_BUILDING> {
   const now = await $.clock.now()
   const known = knownBuild(await read($, buildState), now)
   if (known !== 'ask') return known
-  asking ??= start($, shimPath($.plugin.root), ['--binary-path'], timeoutMs)
-    .then(async ran => {
-      const named = namedBuild(ran.stdout)
-      await update($, buildState, () => ({ path: named, at: now }))
-      return named ?? undefined
-    })
+  asking ??= start($, shimPath($.plugin.root), ['--if-built', '--binary-path'], timeoutMs)
+    .then(ran => namedBuild(ran.stdout))
     .finally(() => {
       asking = undefined
     })
-  return asking
+  const there = await asking
+  if (there !== null) {
+    await update($, buildState, () => ({ path: there, at: now }))
+    return there
+  }
+  // Another caller may have recorded a build, or one that named nothing, while this one asked.
+  const recorded = knownBuild(await read($, buildState), await $.clock.now())
+  if (recorded !== 'ask') return recorded
+  const left = Math.max(0, timeoutMs - ((await $.clock.now()) - now))
+  const built = await Promise.race([
+    buildInBackground($),
+    new Promise<typeof STILL_BUILDING>(resolve => {
+      // A clock that won't time the wait ends it at once, rather than leave the caller waiting on the build unbounded.
+      try {
+        $.clock.after(left, () => resolve(STILL_BUILDING))
+      } catch {
+        resolve(STILL_BUILDING)
+      }
+    }),
+  ])
+  if (built === STILL_BUILDING || cannotSpawn) return built === STILL_BUILDING ? built : undefined
+  if (built === null) {
+    const failed = await $.clock.now()
+    await update($, buildState, () => ({ path: null, at: failed }))
+  }
+  return built ?? undefined
 }
 
 /**
  * Starts the shim on its cheapest command, `--binary-path`, not waited on and under no time limit, so a build for this
  * version runs to its end however short the limits of the calls that wait on it (docs/findings.md, *Building after a
- * reload*). The build it names is the one later calls run; one that names none, killed or failed, records nothing.
+ * reload*). One at a time: a caller that finds no build waits on the one in flight. The build it names is the one
+ * later calls run; one that names none, killed or failed, records nothing.
  */
-async function buildInBackground($: EngineInterface): Promise<void> {
-  let printed = ''
-  for await (const piece of $.process.spawn({ argv: [shimPath($.plugin.root), '--binary-path'], env: { XCREW_ROOT: $.plugin.root } })) if (piece.stream === 'stdout') printed += piece.text
-  const named = namedBuild(printed)
-  if (named === null) return
-  const at = await $.clock.now()
-  await update($, buildState, () => ({ path: named, at }))
+function buildInBackground($: EngineInterface): Promise<string | null> {
+  building ??= (async () => {
+    const child = $.process.spawn({ argv: [shimPath($.plugin.root), '--binary-path'], env: { XCREW_ROOT: $.plugin.root } })
+    // The stream rejects its first pull when the child can't start; that alone leaves calls to build as before.
+    let piece: Awaited<ReturnType<typeof child.next>>
+    try {
+      piece = await child.next()
+    } catch {
+      cannotSpawn = true
+      return null
+    }
+    cannotSpawn = false
+    let printed = ''
+    for (; !piece.done; piece = await child.next()) if (piece.value.stream === 'stdout') printed += piece.value.text
+    const named = namedBuild(printed)
+    if (named === null) return null
+    const at = await $.clock.now()
+    await update($, buildState, () => ({ path: named, at }))
+    return named
+  })()
+    .catch(() => null)
+    .finally(() => {
+      building = undefined
+    })
+  return building
 }
 
 /**
  * Runs the CLI. The shim's own work is several times the build's, and the band asks once a second,
- * so the build it names runs directly. When the build can't be started, the shim runs instead; a
- * command that ran out of time isn't started again, which would double the wait.
+ * so the build it names runs directly. When the build can't be started, the shim runs instead, on a build that's
+ * there only (`--if-built`), so it never builds under a caller's time; a command that ran out of time isn't started
+ * again, which would double the wait.
  */
 async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string): Promise<Ran> {
   const binary = await build($, timeoutMs).catch(() => undefined)
+  if (binary === STILL_BUILDING) throw new Error('the CLI is still being built for this version')
   if (binary) {
     const startedAt = await $.clock.now()
     try {
@@ -677,7 +731,7 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
       await update($, buildState, () => null)
     }
   }
-  return start($, shimPath($.plugin.root), args, timeoutMs, stdin)
+  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], timeoutMs, stdin)
 }
 
 /**
@@ -1055,6 +1109,7 @@ let retriedRead = false
 /** Forgets what the conversation was told: a new one's warnings show again, and the pin is named again. */
 function startOver(): void {
   retriedRead = false
+  cannotSpawn = false
   sessionRootRead = undefined
   headRead = undefined
   sessionProfileSchemes = new Map()

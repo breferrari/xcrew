@@ -49,15 +49,23 @@ test("the background build is dispatched first of the session start's calls on t
   expect(shim.length).toBeGreaterThan(1)
 })
 
-/** A background build that can't start changes nothing: the first CLI call builds, as it did before. */
+/** With no build and a background build that can't start, a call builds through the shim as it did before. */
 test("a background build that can't start leaves the first CLI call to build", async ($, on) => {
-  const { clock, cli } = session(on, { fails: true })
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('session.surfaces', () => ({ value: ['vscode'] }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+  const cli = stubCli(on, { built: () => false, spawn: { fails: true } })
   await start($)
   await clock.settle()
-  expect(cli.filter(call => call.spawned)).toHaveLength(1)
   await callTool($, 'mcp__xcode__BuildProject')
   await clock.settle()
-  expect(cli.filter(call => call.args[0] === 'report').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
+  expect(cli.filter(call => call.args[0] === 'report').map(call => [call.program ?? 'the shim', call.ifBuilt ?? false])).toEqual([['the shim', false]])
 })
 
 /** A background build that ends naming no binary, as one killed or failed does, records nothing: calls keep the build they found. */
@@ -68,4 +76,48 @@ test('a background build that names no binary leaves the known build as it was',
   await callTool($, 'mcp__xcode__BuildProject')
   await clock.settle()
   expect(cli.filter(call => call.args[0] === 'report').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
+})
+
+/**
+ * At a reload the background build is the only builder: a call made meanwhile asks the shim only whether a build is
+ * there, starts none and stops none, and waits for it no longer than its own time, then answers without its note.
+ */
+test("a quick call during the background build doesn't build, doesn't stop it, and gives up in its own time", async ($, on) => {
+  let finish: () => void = () => {}
+  const held = new Promise<void>(resolve => { finish = resolve })
+  let built = false
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('tool.describe', (_, e) => ({ description: e.description }))
+  on('session.surfaces', () => ({ value: ['vscode'] }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', () => ({ result: { ok: true } }))
+  const cli = stubCli(on, { built: () => built, spawn: { held }, project: () => ({ isGenerated: true }) })
+  await start($)
+  const before = cli.length
+  let answered = false
+  const call = callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' }).then(result => {
+    answered = true
+    return result
+  })
+  await clock.advance(9_000)
+  expect(answered).toBe(false)
+  await clock.advance(2_000)
+  // Without the CLI's answer the edit goes through as the server takes it: the note it would have added is dropped.
+  expect((await call).result).toEqual({ ok: true })
+  expect(cli.filter(call => call.spawned)).toHaveLength(1)
+  // Every call only asked whether a build is there, and none ran its command through the shim once its time was up.
+  const asked = cli.slice(before).filter(call => !call.spawned)
+  expect(asked.every(call => call.ifBuilt && call.args[0] === '--binary-path')).toBe(true)
+  expect(asked.map(call => call.timeoutMs)).toContain(10_000)
+  built = true
+  finish()
+  await clock.settle()
+  // The build went on to its end, and the next call runs it.
+  await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' })
+  expect(cli.filter(call => call.args[0] === 'project').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
 })

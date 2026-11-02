@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { historyKey, scopeKey, updatedKey } from './timing'
-import { callTool, runCommand } from './testing'
+import { callTool, runCommand, withoutIfBuilt } from './testing'
 
 /** Stands for the engine: registers commands, and answers `bin/xcrew` with `outputs[subcommand]`. */
 function engine(on: On, outputs: Record<string, string> = {}) {
@@ -14,9 +14,11 @@ function engine(on: On, outputs: Record<string, string> = {}) {
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('process.run', (_, e) => {
+    // The shim's `--if-built` runs the build that's there; a command's run is the same with or without it.
+    const argv = [e.argv[0] ?? '', ...withoutIfBuilt(e.argv.slice(1))]
     // The session start's own look for problems, and its read of Xcode's selection, aren't a command's run.
-    if (!e.argv.includes('--problems') && !e.argv.includes('--xcode')) runs.push(e.argv)
-    return { value: { exitCode: 0, stdout: outputs[e.argv[1] ?? ''] ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    if (!argv.includes('--problems') && !argv.includes('--xcode')) runs.push(argv)
+    return { value: { exitCode: 0, stdout: outputs[argv[1] ?? ''] ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return { registered, runs }
 }
