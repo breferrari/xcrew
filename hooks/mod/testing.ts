@@ -77,6 +77,8 @@ export function stubCli(
     session?: (stdin: string | undefined) => unknown
     /** What `xcrew runs` answers each time: the other worktrees' runs, or the Error it fails with. */
     runs?: () => unknown
+    /** What `xcrew runs --overlapped` answers, for its arguments: the worktrees whose run went meanwhile, a promise of them that answers later, or the Error it fails with. */
+    overlapped?: (args: readonly string[]) => unknown
     /** What `xcrew flaky` answers for the marks and repeated run the mod pipes in: the marks after the run. */
     flaky?: (stdin: string | undefined) => unknown
     /** What `xcrew gone` answers for the folders it's asked about, or the Error it fails with. */
@@ -94,8 +96,11 @@ export function stubCli(
     calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }) })
     if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
-    const runs = args[0] === 'runs' ? answers.runs?.() : undefined
+    const asksOverlap = args[0] === 'runs' && args.includes('--overlapped')
+    const runs = args[0] === 'runs' && !asksOverlap ? answers.runs?.() : undefined
     if (runs instanceof Error) throw runs
+    const overlapped = asksOverlap ? await answers.overlapped?.(args) : undefined
+    if (overlapped instanceof Error) throw overlapped
     const gone = args[0] === 'gone' ? answers.gone?.(args.slice(1)) : undefined
     if (gone instanceof Error) throw gone
     // The commands that print text rather than JSON.
@@ -117,6 +122,7 @@ export function stubCli(
       : args[0] === 'affected' ? (answers.affected?.(args) ?? null)
       : args[0] === 'setup' ? (answers.setup?.(args) ?? null)
       : args[0] === 'note' ? { notes: answers.notes?.(args, e.init?.stdin) ?? [] }
+      : asksOverlap ? (overlapped ?? [])
       : args[0] === 'runs' ? (runs ?? [])
       : args[0] === 'flaky' ? (answers.flaky?.(e.init?.stdin) ?? null)
       : args[0] === 'session' ? (answers.session?.(e.init?.stdin) ?? {})

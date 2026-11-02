@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -283,7 +283,7 @@ export const register: Register = on => {
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
     const findsScheme = needsScheme && key === undefined
-    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name] : []), '--since', String(started)], 120_000, result.text ?? '')
+    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], 120_000, result.text ?? '')
     const reportedOutcome = reportOf(reported, result.isError === true)
     // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
     if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
@@ -295,12 +295,12 @@ export const register: Register = on => {
     // The runs before this one are its own scheme's, read again when its log named another than the one worked out; a run
     // whose log named none is measured against the usual time it was shown with.
     const { passed: earlier, failed: earlierFailed } = key === undefined || key === estimate ? { passed: estimated, failed: estimatedFailed } : await earlierRuns($, key, started)
-    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), allOfScope: runsAllOfScope(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
+    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), startedAt: started, earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), allOfScope: runsAllOfScope(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
         // A run whose log is followed stays on the band, going, until its log or its notification ends it.
         inBackground = followsLog && ticker !== undefined
-        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, launches, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
+        backgrounded.set(outcome.backgroundTask, { ...run, repeated, launches, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
         // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
         // A call dropped stops following its log: no notification will end it now.
         for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) {
@@ -488,27 +488,28 @@ export const register: Register = on => {
 }
 
 /** A finished build, test or run call, as its ending is recorded. */
-type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; allOfScope: boolean; toolUseId?: string; by?: string }
+type Ending = { tool: string; scope: string; key?: string; startedAt: number; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; allOfScope: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
-type Backgrounded = Ending & { startedAt: number; repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
+type Backgrounded = Ending & { repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
 
 /**
- * Records how a run ended: its time in the history, apart when it failed and not at all, nor compared with the usual
- * time, when it overlapped another checkout's run, which shared the Mac; its failures, the ledger when the CLI read the run (`isRead`) and
- * read more than a log's verdict, the card, its row and the band; the loop note, when a full run crossed the budget.
+ * Records how a run ended: its failures, the ledger when the CLI read the run (`isRead`) and
+ * read more than a log's verdict, and the card; then, once the result is returned, its row, the band or a toast, the
+ * notification for a long run, and its time in the history (`endAfterResult`); the loop note, when a full run crossed
+ * the budget.
  */
 async function recordEnding($: EngineInterface, run: Ending, outcome: Report, isRead: boolean, ended: number, elapsed: number): Promise<string | undefined> {
-  const { tool, scope, key, kind, earlier, earlierFailed } = run
-  const overlapped = (outcome.overlapped?.length ?? 0) > 0
-  if (key !== undefined && !overlapped) {
-    // A failed run's time is kept apart: one that fails early would pull the usual time down. Both lists are written as
-    // read when the run began, so a scope gone stale starts over whichever way the run ended.
-    const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
-    await quietly(() => $.store.set(historyKey(key), outcome.ok ? add(earlier) : [...earlier]))
-    await quietly(() => $.store.set(failedKey(key), outcome.ok ? [...earlierFailed] : add(earlierFailed)))
-    await quietly(() => $.store.set(updatedKey(key), ended))
+  const { tool, scope, key, kind, earlier } = run
+  const show = async (overlapped: boolean) => {
+    const ending = endingOf(outcome, ended, elapsed, overlapped ? [] : earlier)
+    const requestId = run.toolUseId
+    if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
+    await showEnding($, tool, ending, run.usesBand, run.by, run.startedAt)
+    // Long enough that the person has likely looked away; their notification settings decide how it arrives.
+    if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
   }
+  void quietly(() => endAfterResult($, run, outcome.ok, ended, elapsed, show))
   await quietly(() => recordRun($, scope, outcome.ok, outcome.failures, outcome.cause))
   // Only what the CLI read goes in the ledger: without it, or from a log's verdict alone, the outcome says no test's own.
   const readTests = kind === 'test' && isRead && !outcome.isVerdictOnly
@@ -516,18 +517,48 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
   // A failed run may have stopped early: its count is no total for the next run's.
   if (key !== undefined && outcome.ok && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
   saveCard($)
-  const ending = endingOf(outcome, ended, elapsed, overlapped ? [] : earlier)
-  const requestId = run.toolUseId
-  if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
-  await showEnding($, tool, ending, run.usesBand, run.by)
-  // Long enough that the person has likely looked away; their notification settings decide how it arrives.
-  if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
   // A whole suite run again and again: past the budget, the tests the change can break would do.
   // Only a run the CLI read and that ran tests counts: a test build that failed ran none.
   const ranTests = outcome.tests === undefined ? outcome.ok || outcome.failures.some(failure => failure.isTest) : outcome.tests > 0
   const loop = readTests && ranTests && run.fullSuite ? await quietly(() => countFullRun($, scope, { at: ended, ms: elapsed })) : undefined
   return loop ? loopNote(scope, loop, run.server === 'MobileBuildMCP') : undefined
 }
+
+/**
+ * What follows a run's result, which Claude reads first: whether the CLI says another checkout's run went while it did
+ * (`xcrew runs --overlapped`), then its ending, `show`n compared with the usual time only when none did, then its time
+ * in its scope's history, apart when it failed, unless one did. That run shared the Mac, so its time says nothing of a
+ * run on its own (docs/findings.md, *Runs that overlap another checkout's*). A CLI that can't answer counts as none, as
+ * before the check; a run kept under no scope asks nothing.
+ */
+async function endAfterResult($: EngineInterface, run: Ending, ok: boolean, ended: number, elapsed: number, show: (overlapped: boolean) => Promise<void>): Promise<void> {
+  const key = run.key
+  // The run went from the call's start for `elapsed`: the server's own duration where it gives one, else until the call
+  // answered, or for a call moved to the background, until its notification.
+  const overlapped = key !== undefined && overlappedOf(await answer($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)], 10_000)).length > 0
+  await quietly(() => show(overlapped))
+  if (key === undefined || overlapped) return
+  // Another run of the scope may have ended while this one's check was out: the history is read again just before it's
+  // written, one write a scope at a time, so neither run's time is lost.
+  const write = (durationWrites.get(key) ?? Promise.resolve()).then(async () => {
+    // A failed run's time is kept apart: one that fails early would pull the usual time down. A scope gone stale since
+    // the run began starts over whichever way the run ended.
+    const { passed, failed } = await earlierRuns($, key, run.startedAt)
+    const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
+    await quietly(() => $.store.set(historyKey(key), ok ? add(passed) : [...passed]))
+    await quietly(() => $.store.set(failedKey(key), ok ? [...failed] : add(failed)))
+    const updated = await quietly(() => $.store.get(updatedKey(key)))
+    await quietly(() => $.store.set(updatedKey(key), typeof updated === 'number' ? Math.max(updated, ended) : ended))
+  })
+  durationWrites.set(key, write)
+  await write
+  if (durationWrites.get(key) === write) durationWrites.delete(key)
+  // The card's dates come from the run scopes, this one's now written.
+  saveCard($)
+}
+
+/** Each scope's duration writes in flight, one after another, so two runs ending together each keep their time. */
+const durationWrites = new Map<string, Promise<void>>()
 
 /**
  * Reads a backgrounded call's notification for its result, or the run's log when that has none to read, and records
@@ -537,7 +568,7 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start;
   // the Xcode MCP writes none.
   const finds = call.log === undefined && call.server === 'MobileBuildMCP'
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool] : []), '--since', String(call.startedAt)]
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
@@ -638,9 +669,23 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
  * Shows how a run ended: on the band where one draws, the run going there ending with it, for as long as an ending
  * stays; elsewhere a toast carries the same line.
  */
-async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean, by?: string): Promise<void> {
+/**
+ * Shows a run's ending on the band, or where no band draws in a toast. With `startedAt`, as when the ending waited for
+ * the overlap check, it ends only that run's entry: a run that started meanwhile stays going, and this ending goes to a
+ * toast. A failure the person closed after its result came back (`failureClosedAt`) isn't put back.
+ */
+async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean, by?: string, startedAt?: number): Promise<void> {
   if (!usesBand) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
-  await quietly(() => update($, runState, run => (run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending, ...(by === undefined ? {} : { by }) })))
+  if (!ending.ok && failureClosedAt !== undefined && failureClosedAt >= ending.at) return
+  let another = false
+  await quietly(() => update($, runState, run => {
+    if (run && !run.ended && startedAt !== undefined && run.startedAt !== startedAt) {
+      another = true
+      return run
+    }
+    return run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending, ...(by === undefined ? {} : { by }) }
+  }))
+  if (another) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
   // The outcome leaves the band on its own; a later run has replaced it by then, or it's this one.
   await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
 }
@@ -1056,8 +1101,12 @@ async function showVisibleProblems($: EngineInterface): Promise<void> {
 
 /** Looking at the failures, or closing them, takes the failed run off the band. */
 async function dismissFailedRun($: EngineInterface): Promise<void> {
+  failureClosedAt = await quietly(() => $.clock.now())
   await quietly(() => update($, runState, run => (run?.ended && !run.ended.ok ? null : run)))
 }
+
+/** When the person last closed a failed run: one whose ending was still waiting for the overlap check stays closed. */
+let failureClosedAt: number | undefined
 
 async function recordRun($: EngineInterface, run: string, ok: boolean, items: Failure[], cause?: string): Promise<void> {
   const list = await read($, failuresState)

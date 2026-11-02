@@ -20,9 +20,9 @@ import XcrewTestSupport
         #expect(runs.map(\.tool) == ["test_sim"])
     }
 
-    /// Given the run's start, the report names the other worktrees whose run went meanwhile, for the mod to keep the
-    /// run out of the usual time.
-    @Test func theReportNamesTheWorktreesWhoseRunOverlappedIt() async throws {
+    /// Given a run's start and end, `runs --overlapped` names the other worktrees whose run went meanwhile, for the mod
+    /// to keep the run out of the usual time.
+    @Test func overlappedNamesTheWorktreesWhoseRunWentMeanwhile() async throws {
         let main = Project.temporary()
         let feature = main.root.deletingLastPathComponent().appending(path: "\(main.root.lastPathComponent)-trees/feature").path
         try FileManager.default.createDirectory(atPath: feature, withIntermediateDirectories: true)
@@ -33,9 +33,8 @@ import XcrewTestSupport
         let now = Date(timeIntervalSince1970: 1_793_577_600)
         try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-30)], ofItemAtPath: log.path)
         let runner = FakeRunner(responses: FakeRunner.worktreeResponses(project: main, main: main.root.path, linked: [feature]))
-        let since = String(Int(now.addingTimeInterval(-60).timeIntervalSince1970 * 1000))
-        let text = await Run("report", "--server", "xcode", "--kind", "build", "--since", since, context: .fake(runner, project: main, now: now), stdin: "done").text
-        let report = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
-        #expect(report?["overlapped"] as? [String] == ["feature"], "\(text)")
+        let since = String(Int(now.addingTimeInterval(-60).timeIntervalSince1970 * 1000)), until = String(Int(now.timeIntervalSince1970 * 1000))
+        let text = await Run("runs", "--overlapped", "--since", since, "--until", until, context: .fake(runner, project: main, now: now)).text
+        #expect(text == #"["feature"]"#, "\(text)")
     }
 }

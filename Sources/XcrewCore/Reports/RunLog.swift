@@ -207,13 +207,28 @@ public enum RunLog {
             .filter { $0.1 >= since }.sorted { $0.1 > $1.1 }.map(\.0)
     }
 
+    /// The logs in the project's own workspace folder, each by its folder and name, with when it was last written, read
+    /// with the listing: a caller that keeps few of many builds the URLs of those alone.
+    static func dated(in folder: String = "logs", project: URL, home: URL) -> [(folder: URL, name: String, modified: Date)] {
+        listed(in: folder, project: project, home: home, dated: true).compactMap { item in item.modified.map { (item.folder, item.name, $0) } }
+    }
+
     /// The items of the project's own workspace folder that `matches` names.
     static func candidates(in folder: String = "logs", project: URL, home: URL, named matches: (String) -> Bool) -> [URL] {
+        listed(in: folder, project: project, home: home, dated: false).filter { matches($0.name) }.map { $0.folder.appending(path: $0.name) }
+    }
+
+    /// The items of the project's own workspace folder, a parser's debug logs left out, each by the folder as given and its
+    /// name, with when it was last written when `dated`, read with the listing. MobileBuildMCP keys the folder by the root
+    /// as it found its config, or by its real path without one, so both are listed.
+    static func listed(in folder: String, project: URL, home: URL, dated: Bool) -> [(folder: URL, name: String, modified: Date?)] {
         let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
-        let roots = [project.path, ProjectLayout.canonical(project)]
-        return Set(roots.map(workspaceKey(root:))).flatMap { key in
+        return Set([project.path, ProjectLayout.canonical(project)].map(workspaceKey(root:))).flatMap { key in
             let items = workspaces.appending(path: key).appending(path: folder)
-            return ((try? FileManager.default.contentsOfDirectory(atPath: items.path)) ?? []).filter { !$0.contains("parser-debug") && matches($0) }.map { items.appending(path: $0) }
+            let keys: [URLResourceKey] = dated ? [.contentModificationDateKey] : []
+            return ((try? FileManager.default.contentsOfDirectory(at: items, includingPropertiesForKeys: keys)) ?? []).filter { !$0.lastPathComponent.contains("parser-debug") }.map { item in
+                (items, item.lastPathComponent, dated ? (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate : nil)
+            }
         }
     }
 }

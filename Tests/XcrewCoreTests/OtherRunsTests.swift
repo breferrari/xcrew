@@ -77,13 +77,6 @@ import XcrewTestSupport
         #expect(try await overlapped(worktrees: ["feature"], from: 300, prefix: "App") == ["feature"])
     }
 
-    /// The run went from the call's start for the server's own duration when it gives one, else until the report was asked.
-    @Test func theRunsTimeIsItsDurationFromItsStart() {
-        let asked = Date(timeIntervalSince1970: 2_000)
-        #expect(OtherRuns.window(since: 1_000_000, durationMs: 30_000, asked: asked) == (Date(timeIntervalSince1970: 1_000), Date(timeIntervalSince1970: 1_030)))
-        #expect(OtherRuns.window(since: 1_000_000, durationMs: nil, asked: asked) == (Date(timeIntervalSince1970: 1_000), asked))
-    }
-
     static let testing = "Test Suite 'All tests' started at 2026-10-31 04:19:12.301.\nTest Case '-[AppTests.GreetingTests testHello]' started.\n"
 
     @Test func anotherWorktreesRunIsListedWithItsToolAndPhase() async throws {
