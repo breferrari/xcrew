@@ -30,7 +30,7 @@ import XcrewTestSupport
     }
 
     @Test func rulesFromTheRunningVersionPass() async {
-        #expect(await BriefingCurrentCheck().run(context(SessionStamp(briefing: XcrewVersion.current))) == .pass("xcrew \(XcrewVersion.current)'s"))
+        #expect(await BriefingCurrentCheck().run(context(SessionStamp(briefing: XcrewVersion.current))) == .pass("the running xcrew's"))
     }
 
     /// A plugin updated in an open session, `/reload-plugins` included, keeps the rules its start hook gave.
