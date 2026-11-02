@@ -590,20 +590,61 @@ struct TestbedFieldTests {
 }
 
 /// The doctor checks only what xcrew can't run without, cheaply: no disk walk, no network, its checks run together. This
-/// holds it to a time budget on the test bed's field fixture, with this Mac's own tools, so a check that costs more shows
-/// red. The second run is timed: the first pays for `xcrun`'s and MobileBuildMCP's own first start, which aren't the
-/// doctor's. Measured November 2, 2026 at 0.20 s warm (macOS 27.2, Xcode 27.2), most of it the Xcode MCP handshake.
+/// holds it to a time budget on the test bed's field fixture, with the Mac's own tools: the whole run, and each check
+/// alone, so a slow check fails by name. The first run isn't timed: it pays for `xcrun`'s and MobileBuildMCP's own first
+/// start, which aren't the doctor's. Each figure is printed, so CI's log shows them.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
 struct DoctorBudgetTests {
-    static let budget = Duration.seconds(2)
+    /// The whole warm run's ceiling.
+    static let total = Duration.seconds(2)
+    /// Each check's ceiling, alone and warm; the Xcode MCP handshake starts a bridge, and has its own.
+    static let perCheck = Duration.milliseconds(100)
+    static let ceilings: [String: Duration] = ["xcode-mcp/handshake": .seconds(1)]
+    /// Warm runs timed, for the spread.
+    static let runs = 5
+
+    static func ceiling(_ id: String) -> Duration { ceilings[id] ?? perCheck }
+
+    /// The slowest of `runs` warm runs, of the whole doctor and of each check alone, and what went past its ceiling.
+    static func measure(_ checks: [any Check], context: () -> CheckContext) async -> (total: Duration, each: [(id: String, took: Duration)], over: [String]) {
+        let clock = ContinuousClock()
+        _ = await Doctor.run(checks, in: context())
+        var total = Duration.zero
+        var each: [String: Duration] = [:]
+        for _ in 0..<runs {
+            let warm = context()
+            total = max(total, await clock.measure { _ = await Doctor.run(checks, in: warm) })
+            for check in checks {
+                let alone = context()
+                let took = await clock.measure { _ = await check.run(alone) }
+                each[check.id] = max(each[check.id] ?? .zero, took)
+            }
+        }
+        let listed = checks.map { (id: $0.id, took: each[$0.id] ?? .zero) }
+        let over = listed.filter { $0.took >= ceiling($0.id) }.map { "\($0.id) took \($0.took), past \(ceiling($0.id))" } + (total >= Self.total ? ["the doctor took \(total), past \(Self.total)"] : [])
+        return (total, listed, over)
+    }
 
     @Test func theDoctorRunsWithinItsBudget() async throws {
         let project = Project(root: try TestbedTests.copy("field"))
-        let context = CheckContext(project: project, machine: .live)
-        _ = await Doctor.run(in: context)
-        let warm = CheckContext(project: project, machine: .live)
-        let took = await ContinuousClock().measure { _ = await Doctor.run(in: warm) }
-        #expect(took < Self.budget, "the doctor took \(took), past its budget of \(Self.budget)")
+        let measured = await Self.measure(Doctor.checks) { CheckContext(project: project, machine: .live) }
+        print("doctor budget: slowest of \(Self.runs) warm runs \(measured.total); " + measured.each.map { "\($0.id) \($0.took)" }.joined(separator: ", "))
+        #expect(measured.over.isEmpty, "\(measured.over)")
+    }
+
+    /// A check that takes 150 ms is named past its ceiling, the whole doctor within its own.
+    @Test func aSlowCheckFailsByName() async {
+        struct Sleeping: Check {
+            let id = "test/sleeps"
+            let title = "Sleeps"
+            func run(_ context: CheckContext) async -> CheckResult {
+                try? await Task.sleep(for: .milliseconds(150))
+                return .pass("slept")
+            }
+        }
+        let measured = await Self.measure([Sleeping()]) { .fake() }
+        #expect(measured.over.count == 1)
+        #expect(measured.over.first?.hasPrefix("test/sleeps took ") == true, "\(measured.over)")
     }
 }
 
