@@ -434,7 +434,7 @@ test('a flaky test stays red, marked flaky, and a later pass of one run doesn\'t
   await repeat($)
   await run($, 'AppTests/GreetingTests/testHello')
   const text = await ledgerText($)
-  expect(text).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed since)`)
+  expect(text).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
   expect(text).not.toContain('Red, then green')
 })
 
@@ -443,9 +443,9 @@ test('a flaky test that passes every run of a repeated run stays red until it ha
   await run($, 'AppTests/GreetingTests/testHello')
   await repeat($)
   await repeat($)
-  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 5 of the 6 needed since)`)
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 5 of the 6 needed in repeated runs since)`)
   await repeat($)
-  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 10 in a row since, of 6 needed)`)
+  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 10 in a row in repeated runs since, of 6 needed)`)
 })
 
 test('the mod sends the CLI the marks it keeps and the run\'s repeated tests', async ($, on) => {
@@ -484,7 +484,7 @@ test('a mixed result is flaky even when the failures leave the test out', async 
   project(on, [FAILED, { ok: true, repeated: [{ test: TEST, failed: 2, passed: 3, runs: 5, verdict: 'flaky' }] }], { flaky: [MARKED(0)] })
   await run($, 'AppTests/GreetingTests/testHello')
   await repeat($)
-  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed since)`)
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
 })
 
 test('a test that failed every repeated run, with no failure of its own listed, reads as the verdict says', async ($, on) => {
@@ -502,7 +502,7 @@ test('a flaky test\'s counts are said once, in its label, as each run updates th
   await repeat($)
   await repeat($)
   const text = await ledgerText($)
-  expect(text).toContain(`- ${TEST} (flaky: failed 5 of 10 runs; passed 0 of the 5 needed since): red`)
+  expect(text).toContain(`- ${TEST} (flaky: failed 5 of 10 runs; passed 0 of the 5 needed in repeated runs since): red`)
   expect(text).not.toContain('2 of 5')
 })
 
@@ -530,7 +530,7 @@ test('/xcrew flaky lists the tests marked flaky on this branch, and no other red
   await run($, 'AppTests/GreetingTests/testWave')
   await run($, 'AppTests/GreetingTests/testHello')
   await repeat($)
-  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(`Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 0 of the 6 needed since\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`)
+  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(`Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 0 of the 6 needed in repeated runs since\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`)
 })
 
 test('/xcrew flaky names the repeated run that found it flaky, not a later plain run that failed it', async ($, on) => {
@@ -548,7 +548,7 @@ test('/xcrew flaky lists the test found flaky last first, whatever touched the o
   await clock.advance(60_000)
   await run($)
   expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(
-    `Flaky on feat/ledger (2 tests):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 0 of the 6 needed since\n- ${OTHER}: failed 1 of 5 runs, in test_sim › AppTests/GreetingTests/testWave; passed 0 of the 14 needed since\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`,
+    `Flaky on feat/ledger (2 tests):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 0 of the 6 needed in repeated runs since\n- ${OTHER}: failed 1 of 5 runs, in test_sim › AppTests/GreetingTests/testWave; passed 0 of the 14 needed in repeated runs since\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`,
   )
 })
 
@@ -558,7 +558,7 @@ test('/xcrew flaky says when a flaky test has since passed the runs needed', asy
   await repeat($)
   await repeat($)
   expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(
-    `Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 10 in a row since, of 6 needed, the last in test_sim › AppTests/GreetingTests/testHello\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`,
+    `Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 10 in a row in repeated runs since, of 6 needed, the last in test_sim › AppTests/GreetingTests/testHello\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`,
   )
 })
 

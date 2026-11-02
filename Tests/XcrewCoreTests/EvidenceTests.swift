@@ -58,10 +58,10 @@ import XcrewTestSupport
             ## Evidence
 
             Tests this branch took from red to green:
-            - `Suite/testFixed`: failed in `test_sim · App` ("failed"), then passed in `test_sim · App`. Its images aren't known: its failing run was recorded before xcrew kept the run's result bundle. Flaky: it failed 1 of 5 runs, then passed 14 in a row, of 14 needed.
+            - `Suite/testFixed`: failed in `test_sim · App` ("failed"), then passed in `test_sim · App`. Its images aren't known: its failing run was recorded before xcrew kept the run's result bundle. Flaky: it failed 1 of 5 runs, then passed 14 in a row in repeated runs, of 14 needed.
 
             Still red:
-            - `Suite/testFlaky`: "failed", flaky, failing 1 of 5 runs, passed 10 of the 14 needed since
+            - `Suite/testFlaky`: "failed", flaky, failing 1 of 5 runs, passed 10 of the 14 needed in repeated runs since
 
             Passes needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.
             """)
