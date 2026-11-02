@@ -71,8 +71,9 @@ public struct Report: Sendable, Equatable, Codable {
     static let noTestsInBundleNote = "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. \(noTestsCause)"
 
     /// The size at which Claude Code saves a text result to a file and leaves a notice in its place: 50,000 characters
-    /// (code.claude.com/docs/en/mcp, *MCP output limits and warnings*, read October 2026; docs/findings.md). A saved
-    /// result xcrew shortens comes back in the notice's place only below it.
+    /// (code.claude.com/docs/en/mcp, *MCP output limits and warnings*, read October 2026; docs/findings.md), counted as
+    /// JavaScript counts a string's length, in UTF-16 units. A saved result xcrew edits comes back in the notice's place
+    /// only below it, JSON included, which the docs give no point of its own; one compacted is far below it.
     static let savedFrom = 50_000
 
     /// The longest text read as a notice: far below the size at which Claude Code saves a result (docs/findings.md),
@@ -222,8 +223,7 @@ public struct Report: Sendable, Equatable, Codable {
         if let changedWarnings, let kept = read.keepingWarnings(Set(changedWarnings), pointer: saved ?? read.buildLog(home: home) ?? "the run's build log") {
             (final, edited) = (kept, true)
         }
-        // A saved result stays saved unless it's compacted below: Claude Code saved it for its size, which the collapse alone may not cut enough.
-        if let collapsed = final.collapsingWarnings() { (final, edited) = (collapsed, edited || saved == nil) }
+        if let collapsed = final.collapsingWarnings() { (final, edited) = (collapsed, true) }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
         let repetitions = if repeated, let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
         if var text = final.mobileText {
@@ -296,13 +296,17 @@ public struct Report: Sendable, Equatable, Codable {
         }
         let isUnread = kind != .run && !final.isError && final.isNotTheServers
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
+        // What xcrew made of the result comes back in its place, but for a saved result only once it's under the size Claude
+        // Code saves: compacting leaves the errors and failures, which can run long themselves.
+        let shortened = compact ?? (edited ? final.text : nil)
+        let comesBack = shortened.map { saved == nil || $0.utf16.count < Self.savedFrom } ?? false
         return Report(
             ok: summary.ok,
             detail: Self.naming(summary.detail, first: failures.first(where: \.isTest)?.title, insteadOf: final.failures.first(where: \.isTest)?.title),
             durationMs: final.reportedDuration,
             tests: tests,
             failures: summary.ok ? [] : Self.attaching(images, targets: targets, to: failures),
-            result: compact ?? (edited && (saved == nil || final.text.count < Self.savedFrom) ? final.text : nil),
+            result: comesBack ? shortened : nil,
             notes: notes,
             repeated: repeatedTests,
             passed: passedTests,

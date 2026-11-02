@@ -68,12 +68,12 @@ struct SavedWarningsTests {
         let text = try Raw.text("build_sim").replacingOccurrences(of: "/testbed/concurrency", with: root)
         let saved = SavedResultTests.saved(text + String(repeating: "   Compiling one of the app's many source files, a line that isn't a warning, to make it long.\n", count: filler))
         let runner = FakeRunner(responses: FakeRunner.branch(at: project.root, changed: ["Kit/Kit.swift"], diffed: ["\(root)/Kit/Kit.swift"], diff: "+++ Kit/Kit.swift\n@@ -12,0 +13 @@\n"))
-        let notice = "Error: result (61,000 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: Text"
+        let notice = "Error: result (57,000 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: Text"
         return await Report.make(kind: .build, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: runner, project: project)
     }
 
     /// A saved text result whose bulk isn't warnings stays saved when its warnings are left out: what's left, 600 lines of
-    /// 95 characters, is still past the 50,000 characters at which Claude Code saves a text result (docs/findings.md).
+    /// 95 characters, 57,000, is still past the 50,000 characters at which Claude Code saves a text result (docs/findings.md).
     @Test func aSavedTextStillLongWithoutItsWarningsStaysSaved() async throws {
         let report = try await Self.savedText(filler: 600)
         #expect(report.result == nil)
@@ -93,6 +93,15 @@ struct SavedWarningsTests {
         let saved = SavedResultTests.saved(text + String(repeating: "   Compiling one of the app's many source files, a line that isn't a warning, to make it long.\n", count: 600))
         let notice = "Error: result (57,000 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: Text"
         let report = await Report.make(kind: .test, output: ToolOutput(text: notice, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: FakeRunner())
+        #expect(report.result == nil)
+    }
+
+    /// A saved result still long once compacted stays saved too: its errors, which compacting never leaves out, are 600 of
+    /// about 100 characters each, past the 50,000 at which Claude Code saves a result.
+    @Test func aSavedResultStillLongOnceCompactedStaysSaved() async throws {
+        let errors = (1...600).map { index in ["message": "cannot find 'Greeting\(index)' in scope, so this line of the build's error list runs on", "location": "/testbed/field/Modules/Feature/Sources/Feature\(index).swift:7"] }
+        let saved = SavedResultTests.saved(try Self.json(errors: errors))
+        let report = await Report.make(kind: .test, output: ToolOutput(text: Self.notice(saved), server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
         #expect(report.result == nil)
     }
 
