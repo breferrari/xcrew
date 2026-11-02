@@ -23,6 +23,14 @@ struct LogReading: Codable, Equatable, Sendable {
     var step: String?
     /// The line still being written at the end: counted in this reading's phase, read again whole by the next.
     var pending: String?
+    /// The scheme the log's invocation names, read from its first lines as `RunLog.scheme(in:)` reads them.
+    var scheme: String?
+    /// The invocation's heading was the last line read, so the next is the invocation itself.
+    var awaitsInvocation = false
+    /// The lines read so far among the first `RunLog.invocationWithin`, where the invocation is.
+    var headLines = 0
+    /// The latest `** … **` verdict xcodebuild wrote.
+    var verdict: String?
 
     /// Reads the log at `url` on from `kept`; afresh when `kept` read another file, or more than the log now holds.
     static func reading(_ url: URL, after kept: LogReading?) -> LogReading? {
@@ -43,7 +51,15 @@ struct LogReading: Codable, Equatable, Sendable {
         let newline = UInt8(ascii: "\n")
         let whole = appended.lastIndex(of: newline).map { $0 + 1 } ?? appended.startIndex
         var isFirst = offset == 0
-        for line in appended[..<whole].split(separator: newline) {
+        for line in appended[..<whole].dropLast().split(separator: newline, omittingEmptySubsequences: false) where whole > appended.startIndex {
+            if scheme == nil, headLines < RunLog.invocationWithin || awaitsInvocation {
+                let text = String(decoding: line, as: UTF8.self)
+                if awaitsInvocation { scheme = RunLog.scheme(inInvocation: text) }
+                awaitsInvocation = !awaitsInvocation && text.hasPrefix("Command line invocation:")
+                headLines += 1
+            }
+            if let found = Self.verdict(in: line) { verdict = found }
+            if line.isEmpty { isFirst = false; continue }
             if start != .none || line.first.map(Self.mayBegin) == true {
                 read(line: String(decoding: line, as: UTF8.self)[...], isFirst: isFirst)
             }
@@ -52,6 +68,14 @@ struct LogReading: Codable, Equatable, Sendable {
         if let found = Self.lastStep(in: appended[..<whole]) { step = found }
         offset += UInt64(whole - appended.startIndex)
         pending = whole < appended.endIndex ? String(decoding: appended[whole...], as: UTF8.self) : nil
+        if let pending, let found = Self.verdict(in: Data(pending.utf8)[...]) { verdict = found }
+    }
+
+    /// A `** … **` verdict, as xcodebuild writes one, its line trimmed; nil for any other line.
+    static func verdict(in line: Data.SubSequence) -> String? {
+        guard line.contains(UInt8(ascii: "*")) else { return nil }
+        let text = String(decoding: line, as: UTF8.self).trimmingCharacters(in: .whitespaces)
+        return text.hasPrefix("** ") && text.hasSuffix(" **") ? text : nil
     }
 
     /// The first bytes of the lines read before testing starts: `Test Suite '`, `Testing started`, `◇ Test run started.`

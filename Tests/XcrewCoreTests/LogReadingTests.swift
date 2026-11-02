@@ -22,6 +22,52 @@ import XcrewTestSupport
         try handle.write(contentsOf: Data(text.utf8))
     }
 
+    /// The scheme the log's invocation names and its latest verdict are kept with the reading, so a tick reads neither
+    /// again from the log: the invocation's next line may come in a later read.
+    @Test func aReadingKeepsTheSchemeAndTheLatestVerdict() throws {
+        let project = Project.temporary()
+        project.write("Command line invocation:\n", to: "test_sim_1.log")
+        let log = project.root.appending(path: "test_sim_1.log")
+        let first = try #require(LogReading.reading(log, after: nil))
+        #expect(first.scheme == nil)
+        try append("    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme App -destination id=0000\n\n** TEST BUILD SUCCEEDED **\n" + Self.start + Self.passed("testOne"), to: log)
+        let second = try #require(LogReading.reading(log, after: first))
+        #expect(second.scheme == "App")
+        #expect(second.verdict == "** TEST BUILD SUCCEEDED **")
+        try append("** TEST EXECUTE SUCCEEDED **\n", to: log)
+        #expect(LogReading.reading(log, after: second)?.verdict == "** TEST EXECUTE SUCCEEDED **")
+    }
+
+    /// A test's name is kept as its 64-bit FNV-1a hash, the published test vector's for "a".
+    @Test func aTestsNameIsKeptAsItsFNV1aHash() {
+        #expect(TestProgress.key("a") == 0xaf63_dc4c_8601_ec8c)
+    }
+
+    /// The invocation's heading may be the last of the first 64 lines: the line after it still names the scheme.
+    @Test func anInvocationOnTheSixtyFifthLineIsRead() throws {
+        let project = Project.temporary()
+        project.write(String(repeating: "note\n", count: 63) + "Command line invocation:\n    xcodebuild test -scheme App\n", to: "test_sim_1.log")
+        #expect(LogReading.reading(project.root.appending(path: "test_sim_1.log"), after: nil)?.scheme == "App")
+    }
+
+    /// A verdict still being written, its line unended, or written indented, is the run's verdict.
+    @Test func aVerdictUnendedOrIndentedIsRead() throws {
+        let project = Project.temporary()
+        project.write(Self.start + "** TEST EXECUTE SUCCEEDED **", to: "test_sim_1.log")
+        #expect(LogReading.reading(project.root.appending(path: "test_sim_1.log"), after: nil)?.verdict == "** TEST EXECUTE SUCCEEDED **")
+        project.write(Self.start + "  ** BUILD FAILED **\n", to: "build_sim_1.log")
+        #expect(LogReading.reading(project.root.appending(path: "build_sim_1.log"), after: nil)?.verdict == "** BUILD FAILED **")
+    }
+
+    /// A kept reading holds no test's name: its size, read and written each tick, grows by a number a test, not a name.
+    @Test func aKeptReadingHoldsNoTestsName() throws {
+        let project = Project.temporary()
+        project.write(Self.start + (0..<50).map { Self.passed("testSomethingWithAFairlyDescriptiveName\($0)") }.joined(), to: "test_sim_1.log")
+        let reading = try #require(LogReading.reading(project.root.appending(path: "test_sim_1.log"), after: nil))
+        let kept = String(decoding: try JSONEncoder().encode(reading), as: UTF8.self)
+        #expect(!kept.contains("testSomethingWithAFairlyDescriptiveName"))
+    }
+
     /// The bytes read before are changed under the reading: only what was appended since counts.
     @Test func aReadingReadsOnlyWhatWasAppended() throws {
         let project = Project.temporary()

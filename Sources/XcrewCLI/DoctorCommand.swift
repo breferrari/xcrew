@@ -3,21 +3,32 @@ import Foundation
 import XcrewCore
 
 struct DoctorCommand: Command {
+    /// The report and the band's problems from one run, for `/xcrew doctor`.
+    struct TextAndProblems: Codable {
+        let text: String
+        let problems: [JSONLine]
+    }
+
     struct JSONLine: Codable, Equatable {
         let status: String
         let id: String
         let message: String
+
+        init(_ entry: Doctor.Entry) {
+            (status, id, message) = (entry.result.status.tag.lowercased(), entry.check.id, entry.result.message)
+        }
     }
 
     let name = "doctor"
     let valuedOptions: Set<String> = ["check", "session"]
-    let flags: Set<String> = ["list", "problems", "json"]
+    let flags: Set<String> = ["list", "problems", "json", "text-and-problems"]
     let usage = [
         "doctor [--check ID]   run the health checks (exit: 1 failed, 2 warned, 3 every check skipped, else 0)",
         "doctor --list         list the check ids",
         "doctor --session ID   (mod) record that the mod is loaded in session ID first, and check that session",
         "doctor --problems     only what failed or warned, worst first, or \"No problems.\", then the checks kept off the prompt; nothing outside an Apple-platform project (exit 0)",
         "doctor --json         the same, as JSON: each check's status, id and message (the mod reads it)",
+        "doctor --text-and-problems   (mod) both from one run of the checks, as JSON: the report doctor prints, and the problems doctor --problems --json gives",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
@@ -38,6 +49,13 @@ struct DoctorCommand: Command {
             invocation.print(result.message)
             return result.status.rawValue
         }
+        if invocation.arguments.has("text-and-problems") {
+            let ran = await Doctor.run(Doctor.checks, in: context)
+            let problems = context.project.isApplePlatformProject ? Self.onTheBand(Doctor.problems(ran.filter(\.check.isOnPrompt))) : []
+            let both = TextAndProblems(text: Self.lines(ran).joined(separator: "\n"), problems: problems.map(JSONLine.init))
+            invocation.print(String(decoding: try JSONEncoder.sorted.encode(both), as: UTF8.self))
+            return 0
+        }
         // The mod shows these on the band; outside an Apple project every project check would fail.
         let onlyProblems = invocation.arguments.has("problems")
         if onlyProblems, !context.project.isApplePlatformProject { return 0 }
@@ -46,20 +64,30 @@ struct DoctorCommand: Command {
         let checks = Doctor.checks.filter { !onlyProblems || $0.isOnPrompt }
         let ran = await Doctor.run(checks, in: context)
         let problems = onlyProblems ? Doctor.problems(ran) : []
-        let entries = onlyProblems ? problems.filter { !$0.result.isOffThePrompt } : ran
+        let entries = onlyProblems ? Self.onTheBand(problems) : ran
         if invocation.arguments.has("json") {
-            let lines = entries.map { JSONLine(status: $0.result.status.tag.lowercased(), id: $0.check.id, message: $0.result.message) }
+            let lines = entries.map(JSONLine.init)
             invocation.print(String(decoding: try JSONEncoder.sorted.encode(lines), as: UTF8.self))
             return onlyProblems ? 0 : Doctor.worst(entries).rawValue
         }
+        let lines = Self.lines(entries)
+        let kept = problems.filter(\.result.isOffThePrompt).map(\.check.id)
+        (onlyProblems ? Doctor.problemsText(lines: lines, kept: kept) : lines).forEach(invocation.print)
+        return onlyProblems ? 0 : Doctor.worst(entries).rawValue
+    }
+
+    /// The problems the line above the prompt shows: those not kept off it.
+    static func onTheBand(_ problems: [Doctor.Entry]) -> [Doctor.Entry] {
+        problems.filter { !$0.result.isOffThePrompt }
+    }
+
+    /// Each result as the report prints it: its tag, its check's id, and its message, aligned.
+    static func lines(_ entries: [Doctor.Entry]) -> [String] {
         let width = entries.map(\.check.id.count).max() ?? 0
-        let lines = entries.map { entry in
+        return entries.map { entry in
             let tag = entry.result.status.tag.padding(toLength: 4, withPad: " ", startingAt: 0)
             let id = entry.check.id.padding(toLength: width, withPad: " ", startingAt: 0)
             return "\(tag)  \(id)  \(entry.result.message)"
         }
-        let kept = problems.filter(\.result.isOffThePrompt).map(\.check.id)
-        (onlyProblems ? Doctor.problemsText(lines: lines, kept: kept) : lines).forEach(invocation.print)
-        return onlyProblems ? 0 : Doctor.worst(entries).rawValue
     }
 }

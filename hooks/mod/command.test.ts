@@ -34,21 +34,22 @@ test('the session offers /xcrew', async ($, on) => {
 
 test('/xcrew doctor names its session, so the doctor checks the session it runs in', async ($, on) => {
   mock.store(on)
-  const seen = engine(on, { doctor: 'ok    xcrew/briefing-current  the running xcrew\'s\n' })
+  const seen = engine(on, { doctor: JSON.stringify({ text: 'ok    xcrew/briefing-current  the running xcrew\'s', problems: [] }) })
   on('session.id', () => ({ value: '5f0c1a2b-0000-4000-8000-000000000004' }))
   await start($)
   await runCommand($, 'xcrew', 'doctor')
-  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor', '--session', '5f0c1a2b-0000-4000-8000-000000000004']])
+  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor', '--text-and-problems', '--session', '5f0c1a2b-0000-4000-8000-000000000004']])
 })
 
 test('/xcrew doctor shows the doctor\'s report without a turn for Claude', async ($, on) => {
   mock.store(on)
-  const seen = engine(on, { doctor: 'ok    xcode-mcp/headless-enabled  enabled\nwarn  xcode/pin  Xcode 26.4 is not installed\n' })
+  const seen = engine(on, { doctor: JSON.stringify({ text: 'ok    xcode-mcp/headless-enabled  enabled\nwarn  xcode/pin  Xcode 26.4 is not installed', problems: [] }) })
   await start($)
 
   const ran = await runCommand($, 'xcrew', 'doctor')
 
-  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor']])
+  // One run of the checks gives both the report and the band's problems.
+  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor', '--text-and-problems']])
   expect(seen.runs[0]?.[0]).toMatch(/\/bin\/xcrew$/)
   expect(ran.text).toContain('warn  xcode/pin')
   expect(ran.context).toBeUndefined()

@@ -129,6 +129,12 @@ export function problemsOf(answer: unknown): Problem[] {
   return (answer as Problem[] | undefined) ?? []
 }
 
+/** `xcrew doctor --text-and-problems`'s answer: the report and the band's problems from one run; nothing when it gave neither. */
+export function textAndProblemsOf(answer: unknown): { text: string; problems: Problem[] } | undefined {
+  const both = answer as { text?: unknown; problems?: unknown } | undefined
+  return typeof both?.text === 'string' && Array.isArray(both.problems) ? { text: both.text, problems: both.problems as Problem[] } : undefined
+}
+
 /** Whether Tuist or XcodeGen generates this project; false when the CLI can't say, which leaves XcodeWrite allowed. */
 export function isGeneratedOf(answer: unknown): boolean {
   return (answer as { isGenerated?: boolean } | undefined)?.isGenerated === true

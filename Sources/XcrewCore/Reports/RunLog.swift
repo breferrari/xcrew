@@ -12,6 +12,12 @@ public enum RunLog {
     /// The phase of the log at `url`. With `folder`, read on from the reading kept there for it, and that reading kept
     /// again: a clean build's log runs to tens of megabytes, and the band asks once a second.
     public static func phase(ofLogAt url: URL, expectedTests: Int?, keptIn folder: URL? = nil) -> String? {
+        follow(logAt: url, expectedTests: expectedTests, kind: .build, keptIn: folder)?.phase
+    }
+
+    /// What a tick of the band reads of a running log, from its kept reading alone: the phase, the scheme its invocation
+    /// names and its latest verdict as `kind`'s outcome, with nothing read again from the log's start or end.
+    public static func follow(logAt url: URL, expectedTests: Int?, kind: Report.Kind, keptIn folder: URL? = nil) -> (phase: String?, scheme: String?, outcome: Bool?)? {
         let kept = folder.map { $0.appending(path: SHA256.hash(data: Data(url.path.utf8)).hex + ".json") }
         let before = kept.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(LogReading.self, from: $0) }
         guard let reading = LogReading.reading(url, after: before) else { return nil }
@@ -20,7 +26,7 @@ public enum RunLog {
             try? FileManager.default.createDirectory(at: kept.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? encoded.write(to: kept, options: .atomic)
         }
-        return reading.phase(expectedTests: expectedTests)
+        return (reading.phase(expectedTests: expectedTests), reading.scheme, reading.verdict.flatMap { outcome(ofVerdict: $0, kind: kind) })
     }
 
     /// Removes the readings no one has kept for a day: a run's log is followed only while it runs.
@@ -36,9 +42,6 @@ public enum RunLog {
     public static func readings(on machine: Machine) -> URL {
         machine.cacheFolder.appending(path: "phases")
     }
-
-    /// How much of a log's end holds its latest lines, nearly always.
-    static let tailBytes = 64 * 1024
 
     /// A short phase for the band, or nil before the first task. `expectedTests` is the last run's total. From the
     /// end of the tests' build until testing starts, the phase is testing, with no count (docs/findings.md, *Test progress
@@ -214,15 +217,20 @@ public enum RunLog {
 }
 
 extension RunLog {
-    /// Whether the log's run succeeded, by the last verdict xcodebuild printed (`** BUILD SUCCEEDED **`,
-    /// `** TEST EXECUTE FAILED **`); nil before it printed one, when that verdict is neither, as for a run interrupted,
-    /// and for a test run when it isn't its tests' own, as after building for testing.
+    /// How many of a log's first lines its invocation's heading is looked for in: it heads the log.
+    static let invocationWithin = 64
+
     /// The scheme the run built, from the `Command line invocation:` MobileBuildMCP's log opens with: the line after it is
     /// xcodebuild's command, `-scheme Feature` or `-scheme "My App"`.
     public static func scheme(in log: String) -> String? {
-        let lines = log.split(separator: "\n", maxSplits: 64, omittingEmptySubsequences: false)
+        let lines = log.split(separator: "\n", maxSplits: invocationWithin, omittingEmptySubsequences: false)
         guard let heading = lines.firstIndex(where: { $0.hasPrefix("Command line invocation:") }), heading + 1 < lines.count else { return nil }
-        guard let match = lines[heading + 1].firstMatch(of: /\s-scheme\s+(?:"([^"]+)"|(\S+))/) else { return nil }
+        return scheme(inInvocation: lines[heading + 1])
+    }
+
+    /// The scheme xcodebuild's command line names: `-scheme Feature` or `-scheme "My App"`.
+    static func scheme(inInvocation line: some StringProtocol) -> String? {
+        guard let match = String(line).firstMatch(of: /\s-scheme\s+(?:"([^"]+)"|(\S+))/) else { return nil }
         return String(match.1 ?? match.2 ?? "")
     }
 
@@ -239,15 +247,14 @@ extension RunLog {
     /// and comes before the app is installed and launched.
     public static func outcome(of log: String, kind: Report.Kind) -> Bool? {
         guard let verdict = log.split(separator: "\n").reversed().lazy.map({ $0.trimmingCharacters(in: .whitespaces) }).first(where: { $0.hasPrefix("** ") && $0.hasSuffix(" **") }) else { return nil }
+        return outcome(ofVerdict: verdict, kind: kind)
+    }
+
+    /// Whether a verdict, `** TEST EXECUTE FAILED **`, says `kind`'s run succeeded, by `outcome(of:kind:)`'s rule.
+    static func outcome(ofVerdict verdict: String, kind: Report.Kind) -> Bool? {
         if kind == .test, !verdict.hasPrefix("** TEST ") || verdict.hasPrefix("** TEST BUILD ") { return nil }
         if kind == .run { return verdict.hasSuffix(" FAILED **") ? false : nil }
         return verdict.hasSuffix(" SUCCEEDED **") ? true : verdict.hasSuffix(" FAILED **") ? false : nil
-    }
-
-    /// The last `tailBytes` of the log at `url`, where a running log's latest lines are; empty when it can't be read.
-    public static func tail(ofLogAt url: URL) -> String {
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return "" }
-        return String(decoding: data.suffix(tailBytes), as: UTF8.self)
     }
 
     /// How much of a finished log's end holds its verdict and the result bundle it names, with a long list of failing

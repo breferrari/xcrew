@@ -424,6 +424,19 @@ import XcrewTestSupport
         #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
     }
 
+    /// The report and the band's problems from one run of the checks, for `/xcrew doctor`: with no MobileBuildMCP, its
+    /// version check fails in both, every check is in the report, and only failures and warnings are on the band.
+    @Test func theReportAndTheProblemsComeFromOneRun() async throws {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let both = try #require(try JSONSerialization.jsonObject(with: Data(await Run("doctor", "--text-and-problems", context: .fake(project: project)).text.utf8)) as? [String: Any])
+        let text = try #require(both["text"] as? String)
+        let problems = try #require(both["problems"] as? [[String: String]])
+        #expect(text.split(separator: "\n").contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
+        #expect(text.split(separator: "\n").count == Doctor.checks.count)
+        #expect(problems.contains { $0["id"] == "mobilebuildmcp/version" && $0["status"] == "fail" })
+        #expect(problems.allSatisfy { $0["status"] == "fail" || $0["status"] == "warn" })
+    }
+
     @Test func problemsAsJSONGiveEachChecksStatusIdAndMessage() async throws {
         let project = Project.temporary(containing: ["App.xcworkspace"])
         let run = await Run("doctor", "--problems", "--json", context: .fake(project: project))
