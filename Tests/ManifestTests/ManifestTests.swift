@@ -227,6 +227,19 @@ import Testing
         }
     }
 
+    /// The routing rules guard DerivedData: deleted only when the person asks. A note that hands Claude a command deleting
+    /// part of it says so, so it never reads as Claude's to run; the command ends the note, so nothing of the sentence
+    /// around it is copied into it.
+    @Test func aNoteThatDeletesPartOfDerivedDataLeavesItToThePerson() throws {
+        #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
+        let condition = "That deletes part of DerivedData, so it's the person's to agree to"
+        let deleting = try toldWhole().filter { $0.contains("rm -rf") }
+        #expect(!deleting.isEmpty, "no note to Claude gives an rm -rf any more; this test has nothing to hold")
+        for note in deleting { #expect(note.contains(condition), "\(note)") }
+        #expect(CorruptModuleCache.fix(derivedData: nil).hasSuffix(condition + "."))
+        #expect(CorruptModuleCache.fix(derivedData: "/d").hasSuffix("SDKExplicitPrecompiledModules'"))
+    }
+
     /// xcrew routes work across its servers; it doesn't prescribe how Claude reports or works. So the words of a rule
     /// ("always", "must", "never", "before", "after") appear in what it tells Claude only in the sentences named here,
     /// each routing work across the servers or guarding the person's work against harm.
@@ -240,6 +253,15 @@ import Testing
 
     /// Every sentence xcrew tells Claude in the routing rules, the session briefing's notes, and the notes a run adds.
     func toldToClaude() throws -> [String] {
+        var sentences: [String] = []
+        for text in try toldWhole() {
+            for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }
+        }
+        return sentences
+    }
+
+    /// Every text xcrew tells Claude, each whole, as `toldToClaude` splits them into sentences.
+    func toldWhole() throws -> [String] {
         let loop = try #require(try text("hooks/mod/loop.ts").firstMatch(of: /export function loopNote[\s\S]*?\n}/)).output
         let setupFact = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const SETUP_FACT = '([^']*)'/)?.1)
         let concurrencyNote = try #require(ConcurrencyReport(count: 12, modules: [.init(name: "Kit", count: 8), .init(name: "Feature", count: 4)]).summary?.note)
@@ -293,12 +315,7 @@ import Testing
         try #require(xcodeNotes.count == expected.count && expected.allSatisfy { start in xcodeNotes.contains { $0.hasPrefix(start) } }, "each snapshot no longer gives the note it's built for: \(xcodeNotes)")
         let machineNotes: [String] = [ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
         let modTools: [String] = try Self.modTools.map { try toolDescription($0.constant, in: $0.file) }
-        let texts: [String] = briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + xcodeNotes + machineNotes + modTools
-        var sentences: [String] = []
-        for text in texts {
-            for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }
-        }
-        return sentences
+        return briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + xcodeNotes + machineNotes + modTools
     }
 
     /// The tools the mod registers for Claude at session start, as `register.ts` lists them: each one's constant, and the
