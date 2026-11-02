@@ -45,7 +45,7 @@ public final class CommandPool: CommandRunning {
 
     public func which(_ name: String) -> String? { base.which(name) }
 
-    /// How many commands wait for a slot.
+    /// How many commands wait for a slot, for tests that wait for a queue to form.
     var waiting: Int { slots.withLock { $0.waiting.count } }
 
     /// Whether a slot was taken: false when the task was cancelled while it waited.
