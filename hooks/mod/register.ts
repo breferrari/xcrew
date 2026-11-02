@@ -80,7 +80,8 @@ export const register: Register = on => {
     // Edits undone since leave the manifests as the last generate read them: those marks go.
     const dropped = stored ? await dropUndone($, stored) : undefined
     const checkedTo = await quietly(() => $.clock.now())
-    if (e.tool_use_id && checkedFrom !== undefined && checkedTo !== undefined) staleChecks.set(e.tool_use_id, checkedTo - checkedFrom)
+    // Only a call that builds the project has its wait timed, which reads and drops this; another would keep it for good.
+    if (e.tool_use_id && target && buildsProject(target) && checkedFrom !== undefined && checkedTo !== undefined) staleChecks.set(e.tool_use_id, checkedTo - checkedFrom)
     const stale = dropped?.stale
     const generates = marksOf(stale).map(mark => mark.generate)
     if (!stale || generates.length === 0) return next(e)

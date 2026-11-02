@@ -34,7 +34,7 @@ struct PhaseCommand: Command {
             log = await RunLog.find(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: context.project.root, machine: context.machine)
         }
         let phase = log.flatMap { RunLog.phase(ofLogAt: $0, expectedTests: invocation.arguments["expected"].flatMap(Int.init), keptIn: RunLog.readings(on: context.machine)) }
-        let kind: Report.Kind = tool.hasPrefix("test") ? .test : .build
+        let kind: Report.Kind = tool.hasPrefix("test") ? .test : tool.hasPrefix("build_run") ? .run : .build
         let outcome = log.flatMap { RunLog.outcome(of: RunLog.tail(ofLogAt: $0), kind: kind) }
         let written = log.flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         let began = Date(timeIntervalSince1970: since / 1000)

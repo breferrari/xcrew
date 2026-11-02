@@ -361,7 +361,8 @@ struct MobileText: Sendable {
     }
 
     /// The text with only the warnings `keep` holds, each with its location line, and one line in their section saying
-    /// how many it left out; nil when it leaves none out.
+    /// how many it left out, under a heading that then counts the warnings it lists, or with no heading after the run's
+    /// header; nil when it leaves none out.
     func keepingWarnings(_ keep: (RepeatedWarnings.Warning) -> Bool, leftOut: (Int) -> String) -> MobileText? {
         let all = warnings
         var kept: [Line] = []
@@ -388,8 +389,15 @@ struct MobileText: Sendable {
         }
         guard dropped > 0 else { return nil }
         let heading = kept.firstIndex { $0.text.hasPrefix("Warnings (") }
-        let at = heading.map { $0 + 1 < kept.count && kept[$0 + 1].isBlank ? $0 + 2 : $0 + 1 } ?? 0
-        kept.insert(contentsOf: [Line("  " + leftOut(dropped)), Line("")], at: at)
+        if let heading { kept[heading] = Line("Warnings (\(all.count - dropped)):") }
+        let at: Int
+        if let heading {
+            at = heading + 1 < kept.count && kept[heading + 1].isBlank ? heading + 2 : heading + 1
+        } else {
+            let header = kept.firstIndex { !$0.isBlank } ?? 0
+            at = header + 1 < kept.count && kept[header + 1].isBlank ? header + 2 : header + 1
+        }
+        kept.insert(contentsOf: [Line("  " + leftOut(dropped)), Line("")], at: min(at, kept.count))
         return MobileText(lines: kept)
     }
 
