@@ -106,11 +106,32 @@ test('a red turns green from another tool of the same scheme whose results list 
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
-test('a green an older xcrew inferred from a run\'s selection is read as still red', async ($, on) => {
+/** A green an older xcrew inferred from a run's selection can't be trusted, and its red is long over: the entry goes. */
+test('a green an older xcrew inferred from a run\'s selection is left out, and its red with it', async ($, on) => {
   const at = Date.UTC(2026, 9, 30, 11, 0)
-  const entry = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', green: { scope: 'test_sim › AppTests', at }, last: at }
-  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [entry], updated: at } } })
-  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+  const inferred = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', green: { scope: 'test_sim › AppTests', at }, last: at }
+  const red = { test: 'GreetingTests/testBye', red: { scope: 'test_sim', at, message: 'still failing' }, failing: 'test_sim', last: at }
+  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [inferred, red], updated: at } } })
+  const text = await ledgerText($)
+  expect(text).toContain('Still red (1):\n- GreetingTests/testBye: red')
+  expect(text).not.toContain(TEST)
+})
+
+/** A flaky test an older xcrew turned green after one clean repeated run still needs its passes: it stays, red, marked. */
+test('a flaky test an older xcrew turned green is kept red with its mark', async ($, on) => {
+  const at = Date.UTC(2026, 9, 30, 11, 0)
+  const inferred = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', flaky: { failed: 2, runs: 5 }, green: { scope: 'test_sim › AppTests', at }, last: at }
+  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [inferred], updated: at } } })
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs): red`)
+})
+
+/** With only inferred greens left, no red waits for a run's passed tests, so none are asked for. */
+test('a ledger whose only entries an older xcrew turned green asks a test run for no passed tests', async ($, on) => {
+  const at = Date.UTC(2026, 9, 30, 11, 0)
+  const inferred = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', green: { scope: 'test_sim › AppTests', at }, last: at }
+  const { calls } = project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [inferred], updated: at } } })
+  await run($, 'AppTests')
+  expect(calls.filter(call => call.args[0] === 'report' && call.args.includes('--passed'))).toEqual([])
 })
 
 test('a pass in a scheme that shares the red scheme\'s first part leaves the red red', async ($, on) => {
