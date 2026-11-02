@@ -2,12 +2,10 @@ import Foundation
 
 /// No simulator `setup --worktree` recorded making is left behind: its worktree removed, or its runtime gone, where setup
 /// would make another. Only the record is judged, never a name, which another clone of a folder of the same name shares.
-/// Names each with the command that removes it; deletes nothing.
-struct WorktreeLeftoversCheck: Check {
-    let id = "simulators/worktree-leftovers"
-    let title = "No simulators left by removed worktrees"
-
-    func run(_ context: CheckContext) async -> CheckResult {
+/// Names each with the command that removes it; deletes nothing. Said by `xcrew space`, which shows it as a part of its
+/// own; a skip shows none.
+enum WorktreeLeftovers {
+    static func run(_ context: CheckContext) async -> CheckResult {
         guard let file = await WorktreeSimulatorRecord.file(for: context.project.root, using: context.runner) else { return .skip("not in git") }
         let record = WorktreeSimulatorRecord.read(file)
         guard !record.entries.isEmpty else { return .skip("setup --worktree has recorded none") }

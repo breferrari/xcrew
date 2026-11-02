@@ -51,52 +51,40 @@ import XcrewTestSupport
         CheckContext(project: project, machine: Machine(environment: environment, home: home, runner: try runner(purgeAnswers: purgeAnswers)))
     }
 
-    /// Sizing every workspace on a Mac took 21.7 s where this project's alone took 0.8 s (a field report, about 190 GB):
-    /// the check asks for each of this project's checkouts' workspaces, once each, and never for the whole Mac. A checkout
-    /// is keyed by its path as written and as the file system spells it, since MobileBuildMCP keys by the path it's given:
-    /// the temporary root is `/var/…` as written, `/private/var/…` spelled.
-    @Test func itReadsOnlyThisProjectsWorkspacesOnceEach() async throws {
-        let recording = RecordingRunner(try runner())
-        _ = await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: [:], home: home, runner: recording)))
-        let reports = recording.asked.filter { $0.hasPrefix("mobilebuildmcp purge --report") }
-        let keys = Set([root, ProjectLayout.canonicalPath(root), worktree].map(RunLog.workspaceKey(root:)))
-        #expect(reports.sorted() == keys.map { "mobilebuildmcp purge --report --scope workspace --workspace-key \($0) --json" }.sorted())
-        #expect(!reports.contains { $0.contains("--scope all") })
+    /// The captured Mac's workspaces of this project, its main checkout's and its worktree's, as `xcrew space` reads them.
+    func live() throws -> [(workspace: StorageReport.Workspace, checkout: ProjectWorkspaces.Checkout)] {
+        let all = SpaceTests.purgeReport(key: RunLog.workspaceKey(root: root), renamed: ["field-05686ffe76ea": RunLog.workspaceKey(root: worktree)])
+        let report = try #require(StorageReport(json: Data(all.utf8)))
+        return [root, worktree].compactMap { checkout in
+            let key = RunLog.workspaceKey(root: checkout)
+            return report.workspaces.first { $0.key == key }.map { (workspace: $0, checkout: ProjectWorkspaces.Checkout(root: checkout, key: key)) }
+        }
+    }
+
+    func line(environment: [String: String] = [:], ps: String = "") throws -> String {
+        StorageBudget.line(try live(), machine: Machine(environment: environment, home: home, runner: FakeRunner()), processes: ProcessList(ps: ps))
     }
 
     /// The main checkout's and the worktree's together.
     @Test func withinTheBudgetItPassesWithTheTotalAndTheBudget() async throws {
-        let result = await StorageBudgetCheck().run(try context())
-        #expect(result == .pass("this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)"))
+        #expect(try line() == "this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)")
     }
 
-    /// One line: the total, in both units, the class that takes the most, and where the rest is said.
-    @Test func pastTheBudgetItNamesTheLargestClassAndXcrewSpace() async throws {
-        let result = await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: ["XCREW_STORAGE_BUDGET_GB": "0.05"], home: home, runner: try runner())))
-        #expect(result == .warn("this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), past its budget of 0.05 GB (XCREW_STORAGE_BUDGET_GB sets another); DerivedData takes the most, 77.9 MB: `xcrew space` names what each part would reclaim"))
+    /// One line: the total, in both units, and the class that takes the most.
+    @Test func pastTheBudgetItNamesTheLargestClass() async throws {
+        #expect(try line(environment: ["XCREW_STORAGE_BUDGET_GB": "0.05"]) == "this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), past its budget of 0.05 GB (XCREW_STORAGE_BUDGET_GB sets another); DerivedData takes the most, 77.9 MB")
     }
 
     /// Read while a build writes to one of its workspaces, the figure is that build's too, and says so.
     @Test func aFigureTakenWhileABuildWritesSaysSo() async throws {
         let derived = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root))/DerivedData").path
         let ps = "  10 1 05:00 /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme App -derivedDataPath \(derived) -destination id=1\n"
-        let result = await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: [:], home: home, runner: try runner(ps: ps))))
-        #expect(result == .pass("this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another); a build is writing to them now, so they take more than they will after it"))
+        #expect(try line(ps: ps) == "this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another); a build is writing to them now, so they take more than they will after it")
     }
 
     /// A budget it can't use, not a finite positive number of GB it can say, is the default.
     @Test(arguments: ["lots", "0", "-5", "inf", "nan", "1e20"])
     func aBudgetItCantUseIsTheDefault(_ value: String) async throws {
-        #expect(await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: ["XCREW_STORAGE_BUDGET_GB": value], home: home, runner: try runner()))).message.hasSuffix("within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)"))
-    }
-
-    @Test func withoutAReportItSkips() async throws {
-        #expect(await StorageBudgetCheck().run(try context(purgeAnswers: false)).status == .skip)
-    }
-
-    /// It walks every file, so the line above the prompt never waits on it.
-    @Test func itStaysOffThePromptsDoctor() {
-        #expect(!StorageBudgetCheck().isOnPrompt)
-        #expect(Doctor.checks.contains { $0.id == "mobilebuildmcp/storage" })
+        #expect(try line(environment: ["XCREW_STORAGE_BUDGET_GB": value]).hasSuffix("within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)"))
     }
 }
