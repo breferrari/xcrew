@@ -21,8 +21,6 @@ function asksForRestart(problem: Problem): boolean {
 
 /** A warning shows on the band this long after it's first found; it asks for nothing urgent. */
 export const WARNING_FOR_MS = 2 * 60_000
-/** The doctor runs again after a prompt at most this often. */
-export const REREAD_EVERY_MS = 30_000
 
 /** When each problem was first found: the times already known, and `now` for the new ones. */
 export function noticed(found: Problem[], seenAt: Readonly<Record<string, number>>, now: number): Record<string, number> {

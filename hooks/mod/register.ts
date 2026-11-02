@@ -18,7 +18,7 @@ import { drawsForm, type FormElements, formTree, NO_FORM, PICK_KEYS, SETUP_FACT,
 import { afterFullRun, type Crossing, loopNote } from './loop'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
-import { mostSerious, noticed, REREAD_EVERY_MS, visible, WARNING_FOR_MS } from './problems'
+import { mostSerious, noticed, visible, WARNING_FOR_MS } from './problems'
 import { afterGenerate, editedNote, isUndone, isUndoneAfterRefusal, letThroughNote, marked, marksOf, refusal, refusalAfterUndo, refused, UNDONE_NOTE, withoutUndone } from './regenerate'
 import { DURATIONS_PREFIX, drawsBand, endingOf, FAILED_PREFIX, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
@@ -359,7 +359,11 @@ export const register: Register = on => {
   on('tool.call', { tool: EVIDENCE_TOOL_NAME }, async $ => ({ result: await evidenceNow($) }))
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
-    if (subcommand === 'doctor') return { text: await cliText($, ['doctor']) }
+    if (subcommand === 'doctor') {
+      // Asked for, the doctor's problems are read again for the band: a problem fixed since leaves it.
+      void loadProblems($, true).catch(() => undefined)
+      return { text: await cliText($, ['doctor']) }
+    }
     if (subcommand === 'xcode') return { text: await cliText($, ['xcode']) }
     if (subcommand === 'history') return { text: await history($) }
     if (subcommand === 'ledger') return { text: await ledgerNow($) }
@@ -401,7 +405,8 @@ export const register: Register = on => {
     void quietly(() => pruneHistory($)).then(() => saveCard($))
     return started
   })
-  // The one unmatched prompt hook: a problem fixed any way at all leaves the band by the next prompt. Never awaited.
+  // The one unmatched prompt hook. The doctor isn't read again here: what it checks, what xcrew needs to run, a prompt
+  // doesn't change, so it runs at session start, after setup, and when asked. Never awaited.
   on('prompt.submit', async ($, e, next) => {
     // A config the form wrote is told once: the session's MobileBuildMCP still runs on the old one. A read first, so
     // a prompt writes nothing when there's nothing to tell.
@@ -412,7 +417,6 @@ export const register: Register = on => {
     void (async () => {
       if (!drawsBand((await quietly(() => $.session.surfaces())) ?? [])) return
       void quietly(() => followElsewhere($))
-      if ((await $.clock.now()) - lastRead >= REREAD_EVERY_MS) await loadProblems($)
     })().catch(() => undefined)
     return next(e)
   })
@@ -851,9 +855,8 @@ async function branchLedger($: EngineInterface): Promise<{ head?: Head; ledger?:
 /** The doctor's last answer, and when each problem was first found: bookkeeping a reload may start over. */
 let found: Problem[] = []
 let seenAt: Record<string, number> = {}
-let lastRead = Number.NEGATIVE_INFINITY
 
-/** The doctor's run in flight, which a prompt meanwhile shares, so an older answer never lands after a newer one. */
+/** The doctor's run in flight, which another reading meanwhile shares, so an older answer never lands after a newer one. */
 let reading: Promise<void> | undefined
 
 /** Asks the doctor what's wrong and keeps what the band shows, with a redraw when new warnings' time ends. */
@@ -868,7 +871,6 @@ function loadProblems($: EngineInterface, fresh = false): Promise<void> {
 
 async function readProblems($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
-  lastRead = now
   const answered = await answer($, ['doctor', '--problems', '--json'])
   // A doctor that couldn't run says nothing about what's fixed: the band stays as it was.
   if (answered === undefined) return

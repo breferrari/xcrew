@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Problem } from './cli'
 import { RESTART_CHECK } from './problems'
-import { stubCli, submitPrompt } from './testing'
+import { runCommand, stubCli, submitPrompt } from './testing'
 
 const BAND = {
   plugin: 'xcrew',
@@ -95,7 +95,7 @@ test('a warning leaves the band two minutes after it first shows, with nothing e
   await ui.unmount()
 })
 
-test('a failure stays until a re-read after a prompt finds it fixed', async ($, on) => {
+test('a failure stays until the doctor, run again, finds it fixed', async ($, on) => {
   const problems = [NOT_APPROVED]
   const { clock } = sessionWith(on, problems)
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
@@ -107,24 +107,28 @@ test('a failure stays until a re-read after a prompt finds it fixed', async ($, 
   problems.splice(0)
   await submitPrompt($, 'build it')
   await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /isn't approved/ })).toBeDefined()
+  await runCommand($, 'xcrew', 'doctor')
+  await clock.settle()
   expect(await ui.find({ type: 'Text', text: /isn't approved/ })).toBeUndefined()
   await ui.unmount()
 })
 
-test('a prompt reads the doctor again at most every 30 seconds, without holding the prompt up', async ($, on) => {
+/** The doctor holds what xcrew needs to run, which a prompt doesn't change: it runs at session start, and again only when asked or after setup. */
+test('a prompt never runs the doctor again', async ($, on) => {
   const { calls, clock } = sessionWith(on, [PIN])
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   await clock.settle()
-  const doctorRuns = () => calls.filter(call => call.args[0] === 'doctor').length
-
-  await submitPrompt($, 'one')
-  await clock.settle()
+  const doctorRuns = () => calls.filter(call => call.args[0] === 'doctor' && call.args.includes('--problems')).length
   expect(doctorRuns()).toBe(1)
 
+  await submitPrompt($, 'one')
   await clock.advance(31_000)
   await submitPrompt($, 'two')
+  await clock.advance(10 * 60_000)
+  await submitPrompt($, 'three')
   await clock.settle()
-  expect(doctorRuns()).toBe(2)
+  expect(doctorRuns()).toBe(1)
 })
 
 test('a warning found later shows for its own two minutes', async ($, on) => {
@@ -135,7 +139,7 @@ test('a warning found later shows for its own two minutes', async ($, on) => {
   await clock.advance(3 * 60_000)
 
   problems.push(UNSIGNED)
-  await submitPrompt($, 'again')
+  await runCommand($, 'xcrew', 'doctor')
   await clock.settle()
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /unsigned agents/ })).toBeDefined()
