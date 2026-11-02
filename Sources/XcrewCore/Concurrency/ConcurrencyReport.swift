@@ -61,8 +61,8 @@ public struct ConcurrencyReport: Sendable, Equatable, Codable {
         }, onlyChanged: onlyChanged, readsChanges: readsChanges, using: machine.runner)
     }
 
-    /// The log's concurrency diagnostics, the modules from the project's targets. `changed` limits them to lines the
-    /// branch changed, when given.
+    /// The log's concurrency diagnostics, the modules from the project's targets. `onlyChanged` limits them to lines
+    /// the branch changed.
     public static func read(log: URL, project: Project, groups docs: @Sendable (URL?) async -> ConcurrencyGroups, onlyChanged: Bool = false, readsChanges: Bool = true, using runner: any CommandRunning) async throws -> ConcurrencyReport {
         var listed: [(diagnostic: CompilerDiagnostic, target: String?)] = []
         var target: String?

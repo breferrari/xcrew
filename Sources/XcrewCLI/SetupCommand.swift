@@ -156,9 +156,9 @@ struct SetupCommand: Command {
         return 0
     }
 
-    /// What became of the config: kept as it was, with what `--force` would do, or written, with `written`'s lines.
-    /// What setup did with the config. Written, it names the `session_set_defaults` calls that give a running
-    /// MobileBuildMCP its session defaults, and asks for a restart only when the part those can't set changed `since`.
+    /// What setup did with the config: kept as it was, with what `--force` would do, or written, with `written`'s lines.
+    /// Written, it names the `session_set_defaults` calls that give a running MobileBuildMCP its session defaults, and
+    /// asks for a restart only when the part those can't set changed `since`.
     static func report(_ outcome: ConfigWriter.Outcome, in invocation: Invocation, written: [String], since began: Date) {
         switch outcome {
         case .keptEdited:
