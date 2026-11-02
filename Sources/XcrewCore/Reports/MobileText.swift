@@ -286,6 +286,54 @@ struct MobileText: Sendable {
         return MobileText(lines: Array(lines[...start]) + [Line(note)] + kept + Array(lines[end...]))
     }
 
+    /// A Test Failures section for failures the text doesn't list, as a repeated run's, before its Test Results or its
+    /// summary, each in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place. Nil when the text lists its
+    /// failures already, or has neither place to put them.
+    func addingFailures(_ failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
+        guard !failures.isEmpty, !lines.contains(where: { $0.isHeading(.testFailures) }),
+              let at = lines.firstIndex(where: { $0.isHeading(.testResults) }) ?? lines.firstIndex(where: \.isSummary) else { return nil }
+        let listed = failures.flatMap { failure in
+            [Line("  ✗ \(failure.test.suite) / \(failure.test.name)(): \(failure.message)")] + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
+        }
+        return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
+    }
+
+    /// With `showTestTiming`, a repeated run's Test Results list each test once for each of its runs: this lists each test
+    /// once, a repeated one with its runs counted, as `✅ Suite/test(): passed 5 of 5 runs`. Nil when nothing repeats.
+    func listingRunsOnce(_ repetitions: [ResultBundle.Repeated]) -> MobileText? {
+        guard let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
+        let counted = Dictionary(repetitions.map { ($0.test, $0) }, uniquingKeysWith: { first, _ in first })
+        var end = start + 1
+        while end < lines.count, !lines[end].isBlank, !lines[end].isSummary { end += 1 }
+        var seen: Set<String> = [], kept: [Line] = [], keepsReason = true, changed = false
+        for line in lines[(start + 1)..<end] {
+            if case .skipReason = line.kind {
+                if keepsReason { kept.append(line) }
+                continue
+            }
+            guard let listed = line.text.firstMatch(of: #/^(\s*)\S+\s+(\S+?\/\S+) \([\d.]+s\)$/#) else {
+                kept.append(line)
+                keepsReason = true
+                continue
+            }
+            let name = String(listed.2)
+            keepsReason = seen.insert(name).inserted
+            guard keepsReason else {
+                changed = true
+                continue
+            }
+            if let runs = counted[TestID(xcresultID: name).shown], runs.verdict != .none {
+                let said = runs.failed > 0 ? "❌ \(name): failed \(runs.failed) of \(runs.runs) runs" : "✅ \(name): passed \(runs.passed) of \(runs.runs) runs"
+                kept.append(Line(String(listed.1) + said))
+                changed = true
+            } else {
+                kept.append(line)
+            }
+        }
+        guard changed else { return nil }
+        return MobileText(lines: Array(lines[...start]) + kept + Array(lines[end...]))
+    }
+
     /// MobileBuildMCP lists a compile error twice: the message, and the compiler's caret line
     /// (`✗ |   \`- error: …`) as an error of its own. This drops the caret line and corrects the count.
     func withoutExcerpts() -> MobileText? {
@@ -301,7 +349,13 @@ struct MobileText: Sendable {
         }
         guard dropped > 0 else { return nil }
         if let index = kept.firstIndex(where: { $0.isHeading(.errors) }), let header = MobileBuildMCPLine.errorCount(in: kept[index].text) {
-            kept[index] = Line(kept[index].text.replacingCharacters(in: header.range, with: "Errors (\(max(1, header.count - dropped))):"))
+            if header.count > dropped {
+                kept[index] = Line(kept[index].text.replacingCharacters(in: header.range, with: "Errors (\(header.count - dropped)):"))
+            } else {
+                // Nothing it listed was an error of the run's: the section goes, with the blank line after it.
+                kept.remove(at: index)
+                if index < kept.count, kept[index].isBlank { kept.remove(at: index) }
+            }
         }
         return MobileText(lines: kept)
     }
