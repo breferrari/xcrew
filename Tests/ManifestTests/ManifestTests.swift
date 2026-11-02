@@ -178,14 +178,15 @@ import Testing
 
     /// The ledger, the card, `/xcrew flaky` and the evidence's still-red line say where a flaky test's passes come from
     /// in the same words.
-    @Test func theModAndTheEvidenceSayARedTestWasntInTheNewestRunAlike() throws {
-        let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const NOT_IN_NEWEST = '([^']*)'/)?.1)
-        #expect(String(said) == EvidencePack.notInNewestRun)
-    }
-
     @Test func theModAndTheEvidenceSayWherePassesComeFromAlike() throws {
         let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const PASSES_COUNTED = '([^']*)'/)?.1)
         #expect(String(said) == FlakyMark.passesCountedFrom)
+    }
+
+    /// The ledger and the evidence's still-red line say a red test wasn't in the newest run of its scope in the same words.
+    @Test func theModAndTheEvidenceSayARedTestWasntInTheNewestRunAlike() throws {
+        let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const NOT_IN_NEWEST = '([^']*)'/)?.1)
+        #expect(String(said) == EvidencePack.notInNewestRun)
     }
 
     /// Every option the mod sends `xcrew report` is one the command takes: one it doesn't is a usage error, which the mod

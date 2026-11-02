@@ -83,6 +83,15 @@ export function passes(scope: string, passed: readonly Passed[], entry: LedgerEn
   return passed.some(each => bare(each.test) === test && (each.target === undefined || entry.target === undefined || each.target === entry.target))
 }
 
+/** Whether a run of `scope` would have run a red of `failing`'s: the same scheme, and its whole suite, or a selection holding each of the red run's own. */
+export function wouldRun(scope: string, failing: string): boolean {
+  if (schemeOfScope(scope) !== schemeOfScope(failing)) return false
+  if (isWholeScope(scope)) return true
+  const selected = new Set(scopeParts(scope).selections)
+  const reds = scopeParts(failing).selections
+  return reds.length > 0 && reds.every(selection => selected.has(selection))
+}
+
 /** A test's name without a Swift Testing method's `()`. */
 function bare(test: string): string {
   return test.endsWith('()') ? test.slice(0, -2) : test
@@ -131,11 +140,24 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
     const flaky = flakyAfter(entry.test, entry.flaky)
     const updated = flaky === entry.flaky ? entry : { ...entry, ...(flaky ? { flaky } : {}), last: run.at }
     const cleared = !flaky || (repeated.get(entry.test)?.verdict === 'passed' && flaky.settled === true)
-    const isGreen = !entry.green && cleared && run.passed !== undefined && passes(run.scope, run.passed, entry)
-    if (isGreen) return { ...updated, green: { scope: run.scope, at: run.at, listed: true }, last: run.at }
-    // A run of the red's own scope that read its results and didn't list it, as for a test deleted since: said, and the
-    // entry's age left as it was, so it goes once no run has failed it for as long as the history is kept.
-    const isUnseen = !entry.green && run.passed !== undefined && run.scope === entry.failing && !repeated.has(entry.test) && !passes(run.scope, run.passed, entry)
+    const read = !entry.green && run.passed !== undefined
+    const listed = read && passes(run.scope, run.passed ?? [], entry)
+    if (listed && cleared) {
+      const { unseen: _, ...green } = updated
+      return { ...green, green: { scope: run.scope, at: run.at, listed: true }, last: run.at }
+    }
+    // A run that ran it, listing it passed or repeating it, ends a note that one didn't.
+    const ranIt = listed || repeated.has(entry.test)
+    if (ranIt && updated.unseen) {
+      const { unseen: _, ...ran } = updated
+      return ran
+    }
+    // A run whose passed tests are listed whole, from its result bundle, that didn't list it, of its scheme's whole suite or
+    // of a selection holding the red's own, as for a test deleted since: said, and the entry's age left as it was, so it
+    // goes once no run has failed it for as long as the history is kept. The Xcode MCP's list stops at 100 results, and a
+    // run that passed nothing, as a failed build, lists none.
+    const listsWhole = run.bundle !== undefined && (run.passed?.length ?? 0) > 0
+    const isUnseen = read && !ranIt && listsWhole && wouldRun(run.scope, entry.failing)
     return isUnseen ? { ...updated, unseen: { scope: run.scope, at: run.at } } : updated
   })
   for (const test of failing) {
@@ -229,10 +251,10 @@ export function flakyLabel(entry: LedgerEntry): string {
   return ` (flaky: ${flakyCounts(entry.flaky)}${entry.flaky.needed === undefined ? '' : `; ${passedSince(entry.flaky)}`})`
 }
 
-/** Where a mark's passes come from: only a repeated run's count. The evidence block says it in the same words. */
 /** What a red test the newest run in its scope didn't run is said to be; the evidence block says it in the same words. */
 export const NOT_IN_NEWEST = 'not in the newest run of its scope'
 
+/** Where a mark's passes come from: only a repeated run's count. The evidence block says it in the same words. */
 export const PASSES_COUNTED = 'in repeated runs since'
 
 /** What the passes needed are, said once where they're listed. */
