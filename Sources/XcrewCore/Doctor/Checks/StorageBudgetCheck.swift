@@ -1,8 +1,9 @@
 import Foundation
 
-/// This project's MobileBuildMCP storage, its live checkouts' workspaces together, against a budget; and on this Mac, the
-/// workspaces whose project folder is gone. Each with the dry run that lists what `purge` would delete; it never deletes,
-/// and never names `--scope all`. The report walks every file, so it runs only in the full doctor.
+/// This project's MobileBuildMCP storage, its live checkouts' workspaces together, against a budget, with the dry run that
+/// lists what `purge` would delete; it never deletes. It asks for each checkout's workspace alone: sizing every workspace
+/// on a Mac took 21.7 s where one project's took 0.8 s (a field report, about 190 GB). `xcrew space` gives the whole Mac.
+/// The report walks the workspace's files, so it runs only in the full doctor.
 struct StorageBudgetCheck: Check {
     let id = "mobilebuildmcp/storage"
     let title = "This project's MobileBuildMCP storage is within its budget"
@@ -18,13 +19,17 @@ struct StorageBudgetCheck: Check {
     func run(_ context: CheckContext) async -> CheckResult {
         let machine = context.machine
         guard machine.hasMobileBuildMCP else { return .skip("MobileBuildMCP isn't installed") }
-        async let live = ProjectWorkspaces.live(of: context.project, using: machine.runner)
-        guard let report = await StorageReport.read(.all, using: machine.runner) else { return .skip("`mobilebuildmcp purge --report` didn't answer") }
-        let grouped = ProjectWorkspaces.grouped(report, origins: await ProjectWorkspaces.origins(of: report, live: await live, home: machine.home))
+        let checkouts = await ProjectWorkspaces.live(of: context.project, using: machine.runner)
+        let reports = await withTaskGroup(of: (ProjectWorkspaces.Checkout, StorageReport?).self) { group in
+            for checkout in checkouts { group.addTask { (checkout, await StorageReport.read(.workspace(checkout.key), using: machine.runner)) } }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        guard reports.contains(where: { $0.1 != nil }) else { return .skip("`mobilebuildmcp purge --report` didn't answer") }
+        let live = reports.flatMap { checkout, report in (report?.workspaces ?? []).filter { $0.key == checkout.key }.map { (workspace: $0, checkout: checkout) } }
+            .sorted { $0.workspace.bytes > $1.workspace.bytes }
         let budget = Self.budget(machine)
-        let total = grouped.live.map(\.workspace.bytes).reduce(0, +)
-        let found = [Self.pastBudget(grouped.live, total: total, budget: budget), Self.gone(grouped.gone)].compactMap(\.self)
-        guard found.isEmpty else { return .warn(found.joined(separator: "; ")) }
+        let total = live.map(\.workspace.bytes).reduce(0, +)
+        if let past = Self.pastBudget(live, total: total, budget: budget) { return .warn(past) }
         return .pass("this project's MobileBuildMCP workspaces take \(SpaceReport.size(total)), within its budget of \(Self.said(budget))")
     }
 
@@ -44,19 +49,5 @@ struct StorageBudgetCheck: Check {
         let name = URL(fileURLWithPath: largest.checkout.root).lastPathComponent
         let dryRun = Space.purge(largest.workspace).map { ": `\($0)` lists what it would delete" } ?? ""
         return "this project's MobileBuildMCP workspaces take \(SpaceReport.size(total)), past its budget of \(said(budget)); the largest, \(name) (\(largest.checkout.root)), takes \(SpaceReport.size(largest.workspace.bytes))\(dryRun)"
-    }
-
-    /// The Mac's, not this project's: a confirmed-gone root is no one's.
-    static func gone(_ gone: [(workspace: StorageReport.Workspace, root: String)]) -> String? {
-        guard !gone.isEmpty else { return nil }
-        let dryRuns = gone.compactMap { Space.purge($0.workspace) }.map { "`\($0)`" }
-        let listed = switch dryRuns.count {
-        case 0: ""
-        case 1: ": \(dryRuns[0]) lists what it would delete"
-        default: ": \(dryRuns.joined(separator: ", ")) list what they would delete"
-        }
-        let verb = gone.count == 1 ? "takes" : "take"
-        let size = SpaceReport.size(gone.map(\.workspace.bytes).reduce(0, +))
-        return "on this Mac, \(Space.counted(gone.count, "workspace")) whose project folder is gone \(verb) \(size) (\(gone.map(\.root).joined(separator: ", ")))\(listed)"
     }
 }

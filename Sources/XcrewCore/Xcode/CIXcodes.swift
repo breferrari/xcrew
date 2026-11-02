@@ -18,10 +18,11 @@ public enum CIXcodes {
         let pinned = { (path: String) in project.pinned(at: path).flatMap { $0.wholeMatch(of: /\d+(?:\.\d+)*/).map { String($0.output) } } }
         let folder = project.root.appending(path: ".github/workflows")
         let files = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.sorted()
+        let patterns = Patterns()
         return files.flatMap { name in
             let text = (try? String(contentsOf: folder.appending(path: name), encoding: .utf8)) ?? ""
             return text.split(separator: "\n", omittingEmptySubsequences: false).enumerated().compactMap { index, line in
-                version(in: String(line), pinned: pinned).map { Named(file: ".github/workflows/\(name)", line: index + 1, version: $0) }
+                version(in: String(line), pinned: pinned, patterns: patterns).map { Named(file: ".github/workflows/\(name)", line: index + 1, version: $0) }
             }
         }
     }
@@ -36,12 +37,12 @@ public enum CIXcodes {
 
     /// The version a workflow line names, past any YAML comment, which is an old setup's: written out, or in the pin file
     /// it reads, as `pinned` reads a path from the project's root.
-    static func version(in written: String, pinned: (String) -> String? = { _ in nil }) -> String? {
+    static func version(in written: String, pinned: (String) -> String? = { _ in nil }, patterns: Patterns = Patterns()) -> String? {
         let line = code(of: written)
-        if let input = line.firstMatch(of: /xcode-version:\s*['"]?(\d+(?:\.\d+)*)(?=['"\s#]|$)/) { return String(input.1) }
-        if let path = pinRead(by: line), let version = pinned(path) { return version }
+        if let input = line.firstMatch(of: patterns.versionInput) { return String(input.1) }
+        if let path = pinRead(by: line, patterns: patterns), let version = pinned(path) { return version }
         guard line.contains("xcode-select") || line.contains("DEVELOPER_DIR") else { return nil }
-        return line.firstMatch(of: /Xcode[_-]?(\d+(?:\.\d+)*)[^\/\s]*\.app/).map { String($0.1) }
+        return line.firstMatch(of: patterns.app).map { String($0.1) }
     }
 
     /// The pin file a workflow line reads to choose an Xcode, from the project's root: an action's `xcode-version-file`,
@@ -49,13 +50,22 @@ public enum CIXcodes {
     /// its install's version-file lookup, docs/findings.md), or `cat` or `<` of it on a line that selects an Xcode, assigns
     /// what it read, or adds it to `$GITHUB_ENV`. Printing or checking it, hashing it for a cache key, or a path filter,
     /// chooses nothing.
-    static func pinRead(by line: String) -> String? {
-        if let input = line.firstMatch(of: /xcode-version-file:\s*["']?(?:\.\/)?([^\s"'#]+)/) { return String(input.1) }
-        if line.contains(/\bxcodes\s+(?:select|install)\b(?!\s+["']?\d)/) { return Project.xcodePinFile }
-        guard line.contains(/xcode-select|DEVELOPER_DIR|\w+=\$\(|GITHUB_ENV/),
-              let read = line.firstMatch(of: /(?:\bcat\s+|<\s*)["']?(?:\.\/)?([\w.\/-]*\.xcode-version)(?=["'\s)]|$)/)
-        else { return nil }
+    static func pinRead(by line: String, patterns: Patterns = Patterns()) -> String? {
+        if let input = line.firstMatch(of: patterns.versionFile) { return String(input.1) }
+        if line.contains(patterns.xcodesReadingPin) { return Project.xcodePinFile }
+        guard line.contains(patterns.choosing), let read = line.firstMatch(of: patterns.pinFileRead) else { return nil }
         return String(read.1)
+    }
+
+    /// The expressions a workflow line is read with, made once per scan: a regular expression literal is compiled each time
+    /// it's evaluated, and a scan reads every line of every workflow.
+    struct Patterns {
+        let versionInput = /xcode-version:\s*['"]?(\d+(?:\.\d+)*)(?=['"\s#]|$)/
+        let app = /Xcode[_-]?(\d+(?:\.\d+)*)[^\/\s]*\.app/
+        let versionFile = /xcode-version-file:\s*["']?(?:\.\/)?([^\s"'#]+)/
+        let xcodesReadingPin = /\bxcodes\s+(?:select|install)\b(?!\s+["']?\d)/
+        let choosing = /xcode-select|DEVELOPER_DIR|\w+=\$\(|GITHUB_ENV/
+        let pinFileRead = /(?:\bcat\s+|<\s*)["']?(?:\.\/)?([\w.\/-]*\.xcode-version)(?=["'\s)]|$)/
     }
 
     /// A line without its comment: from a `#` that starts it or follows a space.

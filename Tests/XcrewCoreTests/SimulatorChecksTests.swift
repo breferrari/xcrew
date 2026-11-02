@@ -4,7 +4,7 @@ import XcrewTestSupport
 
 @testable import XcrewCore
 
-/// The doctor's simulator upkeep: what `setup --worktree` left behind, and what the booted ones take of the Mac's memory.
+/// The doctor's simulator upkeep: what `setup --worktree` left behind.
 @Suite struct SimulatorChecksTests {
     /// `simctl list devices --json` with these devices on iOS 27.2, each `(name, udid, state, isAvailable)`.
     static func devices(_ devices: [(String, String, String, Bool)]) -> CommandResult {
@@ -67,44 +67,6 @@ import XcrewTestSupport
         #expect(await WorktreeLeftoversCheck().run(.fake(FakeRunner(responses: ["xcrun simctl list devices --json": Self.devices([])]))).status == .skip)
     }
 
-    /// `hw.memsize` for a Mac of `gigabytes` GB.
-    static func memory(_ booted: Int, gigabytes: Int?) -> FakeRunner {
-        let devices = (0..<booted).map { ("iPhone \($0)", "B\($0)", "Booted", true) } + [("iPad", "S1", "Shutdown", true)]
-        var responses: [String: CommandResult] = [
-            "pgrep -x com.apple.CoreSimulator.CoreSimulatorService": .init(status: 0, stdout: "1\n"),
-            "xcrun simctl list devices booted --json": Self.devices(devices),
-        ]
-        if let gigabytes { responses["sysctl -n hw.memsize"] = .init(status: 0, stdout: "\(gigabytes << 30)\n") }
-        return FakeRunner(responses: responses)
-    }
-
-    @Test func belowThreeQuartersOfMemoryByTheLowerMeasureItPasses() async {
-        let result = await SimulatorMemoryCheck().run(.fake(Self.memory(3, gigabytes: 32)))
-        #expect(result == .pass("3 booted: about 19–33 GB by two measures that disagree (measured on one Mac), of 32 GB"))
-    }
-
-    /// Four settled simulators take 26 GB by the lower measure, past three quarters of 32 GB.
-    @Test func atThreeQuartersItWarnsOffThePromptNamingTheBootedOnes() async {
-        let result = await SimulatorMemoryCheck().run(.fake(Self.memory(4, gigabytes: 32)))
-        #expect(result == .warn("4 booted simulators take about 26–44 GB by two measures that disagree (measured on one Mac), of 32 GB; `xcrun simctl shutdown <name>` shuts one down: iPhone 0, iPhone 1, iPhone 2, iPhone 3"))
-        #expect(result.isOffThePrompt)
-    }
-
-    @Test func noneBootedPassesAndAnUnknownMemorySkips() async {
-        #expect(await SimulatorMemoryCheck().run(.fake(Self.memory(0, gigabytes: 32))) == .pass("none booted"))
-        #expect(await SimulatorMemoryCheck().run(.fake(Self.memory(2, gigabytes: nil))).status == .skip)
-    }
-
-    /// With no CoreSimulator service running, none is booted, and `simctl` isn't asked, since `xcrun` would start it. A
-    /// `simctl` that doesn't answer says nothing booted or not.
-    @Test func noServiceIsNoneBootedAndASilentSimctlSkips() async {
-        var runner = Self.memory(2, gigabytes: 32)
-        runner.responses["pgrep -x com.apple.CoreSimulator.CoreSimulatorService"] = .init(status: 1)
-        #expect(await SimulatorMemoryCheck().run(.fake(runner)) == .pass("none booted"))
-        runner = Self.memory(2, gigabytes: 32)
-        runner.responses["xcrun simctl list devices booted --json"] = .timedOut
-        #expect(await SimulatorMemoryCheck().run(.fake(runner)).status == .skip)
-    }
 }
 
 /// What `setup --worktree` keeps of the simulators it made, so the doctor never guesses from a name.

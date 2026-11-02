@@ -35,7 +35,7 @@ One CLI keeps one implementation of each behaviour, tested with Swift Testing in
 Sources/
   XcrewCore/            the behaviour, no I/O beyond what Machine allows
     System/             CommandRunning (the seam every process call goes through), Machine, Version, Once
-    Project/            the project root, the files xcrew reads or writes there, git exclusion, Tuist's old macro copy phase
+    Project/            the project root, the files xcrew reads or writes there, git exclusion
     MobileBuildMCP/     profile answers, config rendering and writing, the simulator catalog, and what the setup form offers
     Doctor/             the Check protocol, the registry, and one file per check in Checks/
     Hooks/              hook input and replies, the session briefing

@@ -3,8 +3,8 @@ import Testing
 @testable import XcrewCore
 import XcrewTestSupport
 
-/// The doctor's storage budget: this project's MobileBuildMCP workspaces against a budget, and the Mac's workspaces whose
-/// project folder is gone, from the captured `purge --report`, with the dry run that lists what would go and no deletion.
+/// The doctor's storage budget: this project's MobileBuildMCP workspaces against a budget, from `purge --report` for each
+/// of its checkouts' workspaces, with the dry run that lists what would go and no deletion.
 @Suite struct StorageBudgetTests {
     /// In the temporary folder as the file system spells it, `/private` included, as a listing gives its paths back.
     let home = URL(fileURLWithPath: ProjectLayout.canonicalPath(FileManager.default.temporaryDirectory.path)).appending(path: "xcrew-tests-\(UUID().uuidString)")
@@ -23,20 +23,44 @@ import XcrewTestSupport
     static let classes = "derivedData,logs,resultBundles,stateTransients,testProducts"
     static let goneClasses = "logs,resultBundles,stateTransients,testProducts"
 
-    /// The captured Mac: this project's workspace and its worktree's; and for each of `gone`, a capture's workspace whose
-    /// log names a project folder of that name gone from this test's home.
-    func context(gone: [(fixture: String, name: String)] = [], environment: [String: String] = [:], purgeAnswers: Bool = true) throws -> CheckContext {
-        var renamed = ["field-05686ffe76ea": RunLog.workspaceKey(root: worktree)]
-        for entry in gone {
-            let goneRoot = home.appending(path: entry.name).path
-            renamed[entry.fixture] = RunLog.workspaceKey(root: goneRoot)
-            try SpaceTests.writeLog(home: home, key: RunLog.workspaceKey(root: goneRoot), root: goneRoot)
-        }
+    /// The captured Mac's report, `purge --report --scope workspace` for one workspace: the capture's `--scope all` report
+    /// with that workspace alone in it, as MobileBuildMCP scopes one.
+    static func scoped(_ all: String, key: String) throws -> String {
+        var report = try #require(try JSONSerialization.jsonObject(with: Data(all.utf8)) as? [String: Any])
+        let workspaces = (report["workspaces"] as? [[String: Any]] ?? []).filter { $0["workspaceKey"] as? String == key }
+        report["workspaces"] = workspaces
+        report["totals"] = ["bytes": workspaces.compactMap { ($0["totals"] as? [String: Any])?["bytes"] as? Int }.reduce(0, +)]
+        return String(decoding: try JSONSerialization.data(withJSONObject: report), as: UTF8.self)
+    }
+
+    /// The captured Mac: this project's workspace and its worktree's, each answering its own workspace's report.
+    func runner(environment: [String: String] = [:], purgeAnswers: Bool = true) throws -> FakeRunner {
+        let all = SpaceTests.purgeReport(key: RunLog.workspaceKey(root: root), renamed: ["field-05686ffe76ea": RunLog.workspaceKey(root: worktree)])
         var responses = SpaceTests.git(root: root, worktrees: [worktree])
         if purgeAnswers {
-            responses["mobilebuildmcp purge --report --scope all --json"] = .init(status: 0, stdout: SpaceTests.purgeReport(key: RunLog.workspaceKey(root: root), renamed: renamed))
+            for checkout in [root, worktree] {
+                let key = RunLog.workspaceKey(root: checkout)
+                responses["mobilebuildmcp purge --report --scope workspace --workspace-key \(key) --json"] = .init(status: 0, stdout: try Self.scoped(all, key: key))
+            }
         }
-        return CheckContext(project: project, machine: Machine(environment: environment, home: home, runner: FakeRunner(installed: ["mobilebuildmcp"], responses: responses)))
+        return FakeRunner(installed: ["mobilebuildmcp"], responses: responses)
+    }
+
+    func context(environment: [String: String] = [:], purgeAnswers: Bool = true) throws -> CheckContext {
+        CheckContext(project: project, machine: Machine(environment: environment, home: home, runner: try runner(purgeAnswers: purgeAnswers)))
+    }
+
+    /// Sizing every workspace on a Mac took 21.7 s where this project's alone took 0.8 s (a field report, about 190 GB):
+    /// the check asks for each of this project's checkouts' workspaces, once each, and never for the whole Mac. A checkout
+    /// is keyed by its path as written and as the file system spells it, since MobileBuildMCP keys by the path it's given:
+    /// the temporary root is `/var/…` as written, `/private/var/…` spelled.
+    @Test func itReadsOnlyThisProjectsWorkspacesOnceEach() async throws {
+        let recording = RecordingRunner(try runner())
+        _ = await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: [:], home: home, runner: recording)))
+        let reports = recording.asked.filter { $0.hasPrefix("mobilebuildmcp purge --report") }
+        let keys = Set([root, ProjectLayout.canonicalPath(root), worktree].map(RunLog.workspaceKey(root:)))
+        #expect(reports.sorted() == keys.map { "mobilebuildmcp purge --report --scope workspace --workspace-key \($0) --json" }.sorted())
+        #expect(!reports.contains { $0.contains("--scope all") })
     }
 
     /// The main checkout's and the worktree's together.
@@ -46,24 +70,15 @@ import XcrewTestSupport
     }
 
     @Test func pastTheBudgetItNamesTheLargestWorkspaceAndTheDryRun() async throws {
-        let result = await StorageBudgetCheck().run(try context(environment: ["XCREW_STORAGE_BUDGET_GB": "0.05"]))
+        let result = await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: ["XCREW_STORAGE_BUDGET_GB": "0.05"], home: home, runner: try runner())))
         let key = RunLog.workspaceKey(root: root)
         #expect(result == .warn("this project's MobileBuildMCP workspaces take 84.8 MB, past its budget of 0.05 GB (XCREW_STORAGE_BUDGET_GB sets another); the largest, App (\(root)), takes 81.5 MB: `mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes \(Self.classes)` lists what it would delete"))
-    }
-
-    /// A confirmed-gone root is no one's: named whatever the budget, as the Mac's, largest first, each by its own key.
-    @Test func workspacesWhoseProjectFolderIsGoneAreNamedAsTheMacs() async throws {
-        let result = await StorageBudgetCheck().run(try context(gone: [("field-09f4495eb86d", "Gone"), ("app-7f5863af5761", "Old")]))
-        let (gone, old) = (home.appending(path: "Gone").path, home.appending(path: "Old").path)
-        let (goneKey, oldKey) = (RunLog.workspaceKey(root: gone), RunLog.workspaceKey(root: old))
-        #expect(result == .warn("on this Mac, 2 workspaces whose project folder is gone take 305.6 KB (\(gone), \(old)): `mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(goneKey) --classes \(Self.goneClasses)`, `mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(oldKey) --classes \(Self.goneClasses)` list what they would delete"))
-        #expect(!result.message.contains("--scope all"))
     }
 
     /// A budget it can't use, not a finite positive number of GB it can say, is the default.
     @Test(arguments: ["lots", "0", "-5", "inf", "nan", "1e20"])
     func aBudgetItCantUseIsTheDefault(_ value: String) async throws {
-        #expect(await StorageBudgetCheck().run(try context(environment: ["XCREW_STORAGE_BUDGET_GB": value])).message.hasSuffix("within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)"))
+        #expect(await StorageBudgetCheck().run(CheckContext(project: project, machine: Machine(environment: ["XCREW_STORAGE_BUDGET_GB": value], home: home, runner: try runner()))).message.hasSuffix("within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)"))
     }
 
     @Test func withoutAReportItSkips() async throws {

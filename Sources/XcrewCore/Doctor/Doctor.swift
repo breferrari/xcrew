@@ -9,7 +9,6 @@ public enum Doctor {
         XcodebuildLeftRunningCheck(),
         SimulatorsCheck(),
         WorktreeLeftoversCheck(),
-        SimulatorMemoryCheck(),
         StorageBudgetCheck(),
         HeadlessXcodeMCPCheck(),
         XcodeMCPHandshakeCheck(),
@@ -18,7 +17,6 @@ public enum Doctor {
         XcodeOpenCheck(),
         ClaudeApprovedCheck(),
         UnsignedAgentsCheck(),
-        MacroCopyPhaseCheck(),
         XcrewUpdateCheck(),
     ]
 
