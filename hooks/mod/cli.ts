@@ -72,6 +72,19 @@ export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 /** A finished program's output, as the hooks module hands it back. */
 export type Ran = { stdout: string; stderr: string }
 
+/**
+ * The time all of xcrew's work on a tool's result has, after the tool's own: 10 s, the limit for keeping a person's
+ * attention on a wait (Nielsen, *Usability Engineering*, 1993, ch. 5), past which the server's own result serves
+ * better than one that waits on xcrew's notes (docs/findings.md, *Deadlines inside the CLI*).
+ */
+export const ON_RESULT_MS = 10_000
+
+/**
+ * The time what a person or Claude asks of xcrew has, a `/xcrew` command or the evidence: Claude Code's own point where
+ * a command stops holding the conversation, `BASH_DEFAULT_TIMEOUT_MS`'s 120 s. The CLI takes the same when given none.
+ */
+export const ASKED_MS = 120_000
+
 /** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
 const RECHECK_MS = 30_000
 

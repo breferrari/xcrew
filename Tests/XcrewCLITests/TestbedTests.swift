@@ -624,6 +624,18 @@ struct TestbedEvidenceTests {
         #expect(slow.peakArchiveReads == 2)
     }
 
+    /// The runs are read until the call's deadline: past it, none is read, and the block says how many were left out.
+    @Test func theBranchsRunsAreReadUntilTheCallsDeadline() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        // Each of Xcode's reads takes 300 ms, and the call has 700 ms, its last 500 kept to answer: none of the runs' reads ends in time.
+        let slow = Machine(environment: ["XCREW_WITHIN_MS": "700"], home: context.machine.home, runner: DelayingRunner(context.machine.runner, xcrun: .milliseconds(300)), processID: context.machine.processID, applications: context.machine.applications)
+        let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)
+        #expect(run.text.contains("- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."), "\(run.text)")
+        // What the deadline cut is said in one line, after the block's own.
+        #expect(run.text.contains("\n- This call's time ran out before xcresulttool answered, so what it reads is left out of this block."), "\(run.text)")
+    }
+
     /// A run of no test, as one whose filter matched nothing, counts nothing as run, so it's left out.
     @Test func aRunOfNoTestIsLeftOut() async throws {
         let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600), earlierTests: 0)
@@ -1071,6 +1083,25 @@ final class SlowRunner: CommandRunning {
         try? await Task.sleep(for: .milliseconds(50))
         reads.withLock { $0.now -= 1 }
         return await base.run(argv, stdin: stdin, timeout: timeout)
+    }
+
+    func which(_ name: String) -> String? { base.which(name) }
+}
+
+/// A runner that answers as another does, each `xcrun` command after `xcrun`'s wait, or timed out when its limit is shorter.
+final class DelayingRunner: CommandRunning {
+    let base: any CommandRunning
+    let xcrun: Duration
+
+    init(_ base: any CommandRunning, xcrun: Duration) {
+        self.base = base
+        self.xcrun = xcrun
+    }
+
+    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        guard argv.first == "xcrun" else { return await base.run(argv, stdin: stdin, timeout: timeout) }
+        try? await Task.sleep(for: min(xcrun, timeout))
+        return timeout < xcrun ? .timedOut : await base.run(argv, stdin: stdin, timeout: timeout)
     }
 
     func which(_ name: String) -> String? { base.which(name) }

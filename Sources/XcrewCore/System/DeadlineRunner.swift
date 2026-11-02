@@ -54,12 +54,12 @@ public final class DeadlineRunner: CommandRunning {
     /// The programs the deadline cut, in the order cut, each once: `xcrun`'s tool by its own name.
     public var cut: [String] { cutCommands.withLock { $0 } }
 
-    /// The line a result carries when the deadline cut a command: which programs didn't answer in time, so what they
-    /// read is left out; nil when nothing was cut. A fact, for Claude to read beside the result.
-    public static func leftOut(_ cut: [String]) -> String? {
+    /// What a call's answer says when the deadline cut a command: which programs didn't answer in time, so what they
+    /// read is left out of `answer`, "this result" or "this block"; nil when nothing was cut. A fact, to read beside it.
+    public static func leftOut(_ cut: [String], of answer: String = "this result") -> String? {
         guard !cut.isEmpty else { return nil }
         let named = cut.count == 1 ? cut[0] : cut.dropLast().joined(separator: ", ") + " and " + (cut.last ?? "")
-        return "xcrew: this call's time ran out before \(named) answered, so what \(cut.count == 1 ? "it reads is" : "they read is") left out of this result."
+        return "This call's time ran out before \(named) answered, so what \(cut.count == 1 ? "it reads is" : "they read is") left out of \(answer)."
     }
 
     /// Programs whose answer no result shows, so a cut one leaves nothing out of it: the pool's question of how many

@@ -12,14 +12,17 @@ public struct Machine: Sendable {
     public let applications: URL
     /// The time now: the wall clock, or a test's own.
     public let now: @Sendable () -> Date
+    /// When the call this machine runs must have answered by; nil outside a call, as in a test that sets none.
+    public let deadline: Date?
 
-    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications"), now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications"), now: @escaping @Sendable () -> Date = { Date() }, deadline: Date? = nil) {
         self.environment = environment
         self.home = home
         self.runner = runner
         self.processID = processID
         self.applications = applications
         self.now = now
+        self.deadline = deadline
     }
 
     public static let live = Machine(
@@ -38,12 +41,22 @@ public struct Machine: Sendable {
 
     /// This machine with `name` set to `value` in its environment.
     public func setting(_ name: String, to value: String) -> Machine {
-        Machine(environment: environment.merging([name: value]) { $1 }, home: home, runner: runner, processID: processID, applications: applications, now: now)
+        Machine(environment: environment.merging([name: value]) { $1 }, home: home, runner: runner, processID: processID, applications: applications, now: now, deadline: deadline)
     }
 
     /// This machine with its commands run by `runner`.
     public func running(_ runner: any CommandRunning) -> Machine {
-        Machine(environment: environment, home: home, runner: runner, processID: processID, applications: applications, now: now)
+        Machine(environment: environment, home: home, runner: runner, processID: processID, applications: applications, now: now, deadline: deadline)
+    }
+
+    /// This machine for a call that must have answered by `deadline`, each command it starts given what's left of it.
+    public func answering(by deadline: Date) -> Machine {
+        Machine(environment: environment, home: home, runner: DeadlineRunner(runner, deadline: deadline, now: now), processID: processID, applications: applications, now: now, deadline: deadline)
+    }
+
+    /// The time left before the deadline, none once it's past; `otherwise` with no deadline.
+    public func timeLeft(otherwise: Duration) -> Duration {
+        deadline.map { .seconds(max(0, $0.timeIntervalSince(now()))) } ?? otherwise
     }
 
     /// A variable's value, treating an empty one as unset.

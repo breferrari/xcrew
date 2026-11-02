@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -111,14 +111,14 @@ export const register: Register = on => {
     if (!isFirst) return next(e)
     const result = await next(e)
     if (result.deny !== undefined) return result
-    const offer = setupOfferOf(await answer($, ['project', '--profiles'], 10_000))
+    const offer = setupOfferOf(await answer($, ['project', '--profiles'], ON_RESULT_MS))
     return offer === undefined ? result : withContext(result, offer)
   }).catch(async ($, e, next) => next(e))
   on('tool.call', { tool: FILE_EDITOR }, async ($, e, next) => {
     const path = e.tool === 'Write' || e.tool === 'Edit' ? e.file_path : undefined
     // An edit to a file a generator writes waits for the person: the next generate would overwrite it.
     if (path !== undefined && mayBeGenerated(path)) {
-      const generated = generatedOf(await answer($, ['project', '--generated', path], 10_000))
+      const generated = generatedOf(await answer($, ['project', '--generated', path], ON_RESULT_MS))
       if (generated) {
         const shown = generatedPart(path)
         const question = editQuestion(shown, generated)
@@ -130,10 +130,10 @@ export const register: Register = on => {
     // for a name a manifest may have: a YAML file's only in a project whose generator reads YAML.
     const mayBe = path !== undefined && mayBeManifest(path, isYaml(path) && (await quietly(() => readsYaml($))) === true)
     const isFirstEdit = path !== undefined && mayBe && !marksOf(await quietly(() => read($, staleState))).some(mark => path in (mark.files ?? {}))
-    const before = isFirstEdit ? hashOf(await answer($, ['project', '--hash', path], 10_000)) : undefined
+    const before = isFirstEdit ? hashOf(await answer($, ['project', '--hash', path], ON_RESULT_MS)) : undefined
     const result = await next(e)
     if (path === undefined || result.deny !== undefined || result.isError || !mayBe) return result
-    const edit = manifestEditOf(await answer($, ['project', '--manifest', path], 10_000))
+    const edit = manifestEditOf(await answer($, ['project', '--manifest', path], ON_RESULT_MS))
     if (!edit) return result
     if (!(await markStale($, stale => marked(stale, edit, { path, before: before ?? null })))) return result
     // An edit that puts the manifests back clears the app's mark, and needs no generate.
@@ -153,12 +153,12 @@ export const register: Register = on => {
       const forwarded = forwardedTool(parsed, e as unknown as Record<string, unknown>)
       if (forwarded) lost(forwarded)
       // MobileBuildMCP answers its session tools in text, which the CLI reads.
-      else if (observe(parsed, result.text ?? '').needsReading) await quietly(async () => observeSession(sessionOf(await answer($, ['session'], 10_000, result.text ?? ''))))
+      else if (observe(parsed, result.text ?? '').needsReading) await quietly(async () => observeSession(sessionOf(await answer($, ['session'], ON_RESULT_MS, result.text ?? ''))))
       // A call that failed may have a way around it, which the CLI names: an Xcode MCP call whose connection closed, or a
       // MobileBuildMCP error with another route. Not an Xcode MCP tool MobileBuildMCP proxies, through a bridge of its own
       // that reconnecting the plugin's server doesn't restart.
       if (parsed.proxied || result.isError !== true) return result
-      const notes = notesOf(await answer($, ['note', '--server', parsed.server, '--error'], 10_000, result.text ?? ''))
+      const notes = notesOf(await answer($, ['note', '--server', parsed.server, '--error'], ON_RESULT_MS, result.text ?? ''))
       return notes.length > 0 ? withContext(result, ...notes) : result
     }
     const target = describe(parsed, e as unknown as Record<string, unknown>)
@@ -283,7 +283,7 @@ export const register: Register = on => {
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
     const findsScheme = needsScheme && key === undefined
-    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], 120_000, result.text ?? '')
+    const reported = await answer($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], ON_RESULT_MS, result.text ?? '')
     const reportedOutcome = reportOf(reported, result.isError === true)
     // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
     if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
@@ -385,7 +385,7 @@ export const register: Register = on => {
   })
   // Claude's question before a full test run: which tests the branch's changes can break.
   // The time `/xcrew doctor` gets: the first call after an update builds the CLI.
-  on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => ({ result: affectedText(await answer($, affectedArgs(e as unknown as Record<string, unknown>), 120_000)) }))
+  on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => ({ result: affectedText(await answer($, affectedArgs(e as unknown as Record<string, unknown>), ON_RESULT_MS)) }))
   // Claude's read of the ledger, for a pull request's test plan.
   on('tool.call', { tool: LEDGER_TOOL_NAME }, async $ => ({ result: await ledgerNow($) }))
   // Claude's look at a failed UI test: the steps before the failure and the screen at it.
@@ -399,7 +399,7 @@ export const register: Register = on => {
       const session = await quietly(() => $.session.id())
       // One run of the checks gives the report and the band's problems: a problem fixed since leaves the band.
       const args = ['doctor', '--text-and-problems', ...(session ? ['--session', session] : [])]
-      const both = textAndProblemsOf(await answer($, args, 120_000))
+      const both = textAndProblemsOf(await answer($, args, ASKED_MS))
       // A doctor that couldn't run isn't run again here: the band reads it on the next prompt, as after any failed read.
       if (!both) {
         doctorOnNextPrompt = true
@@ -570,7 +570,7 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   // the Xcode MCP writes none.
   const finds = call.log === undefined && call.server === 'MobileBuildMCP'
   const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
-  const reported = await answer($, args, 120_000, text)
+  const reported = await answer($, args, ON_RESULT_MS, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
   // A run whose log appeared only after it was moved to the background is kept under the scheme the log names.
@@ -600,7 +600,7 @@ async function anotherRunGoing($: EngineInterface, startedAt?: number): Promise<
 async function dropUndone($: EngineInterface, stale: StaleProject): Promise<{ stale: StaleProject | null; undoneAfterRefusal: boolean }> {
   const files = [...new Set(marksOf(stale).flatMap(mark => Object.keys(mark.files ?? {})))]
   if (files.length === 0) return { stale, undoneAfterRefusal: false }
-  const now = Object.fromEntries(await Promise.all(files.map(async file => [file, hashOf(await answer($, ['project', '--hash', file], 10_000))] as const)))
+  const now = Object.fromEntries(await Promise.all(files.map(async file => [file, hashOf(await answer($, ['project', '--hash', file], ON_RESULT_MS))] as const)))
   const undoneAfterRefusal = marksOf(stale).some(mark => isUndoneAfterRefusal(mark, now))
   const undone = marksOf(stale).filter(mark => isUndone(mark, now))
   if (undone.length === 0) return { stale, undoneAfterRefusal }
@@ -621,7 +621,7 @@ function ask($: EngineInterface, question: Question): Promise<string | undefined
 
 /** Runs a program of the CLI's to its end, within `timeoutMs`: every CLI call but the session start's background build. */
 function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string) {
-  return $.process.run([program, ...args], { timeoutMs, env: { XCREW_ROOT: $.plugin.root }, ...(stdin === undefined ? {} : { stdin }) })
+  return $.process.run([program, ...args], { timeoutMs, env: { XCREW_ROOT: $.plugin.root, XCREW_WITHIN_MS: String(timeoutMs) }, ...(stdin === undefined ? {} : { stdin }) })
 }
 
 /** The question to the shim in flight, which callers at the same moment share rather than each starting a shim. */
@@ -791,7 +791,7 @@ async function isGeneratedProject($: EngineInterface): Promise<boolean> {
 
 /** A CLI command's own text, or why it couldn't run. */
 function cliText($: EngineInterface, args: string[]): Promise<string> {
-  return xcrew($, args, 120_000).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
+  return xcrew($, args, ASKED_MS).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
 }
 
 /** Opens the setup form and reads its choices behind it; where nothing draws pickers, names the skill. */
@@ -807,7 +807,7 @@ async function openForm($: EngineInterface): Promise<string> {
 
 /** Reads what setup offers, for `container` when the person picked one, and starts the picks from it. */
 async function readChoices($: EngineInterface, container?: string, written?: string[]): Promise<void> {
-  const answered = await answer($, ['setup', '--choices', ...(container ? ['--container', container] : [])], 120_000)
+  const answered = await answer($, ['setup', '--choices', ...(container ? ['--container', container] : [])], ASKED_MS)
   const choices = answered !== null && typeof answered === 'object' && Array.isArray((answered as SetupChoices).containers) ? (answered as SetupChoices) : undefined
   await update($, formState, form => (choices
     ? { choices, picks: { ...startingPicks(choices), ...(container ? { container } : {}) }, ...(written ? { written } : {}) }

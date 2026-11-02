@@ -96,10 +96,11 @@ test('without a base the answer names none', async ($, on) => {
   expect(await ask($)).not.toContain('Compared with')
 })
 
-test('the CLI gets the time a first build needs', async ($, on) => {
+/** Its answer is Claude's result, so it has what xcrew's work on a result has; the build no longer runs under it. */
+test('the affected tests have the time a call on a result has, 10 s', async ($, on) => {
   const seen = session(on, { base: 'b', changed: [], selections: [] })
   await ask($)
-  expect(seen.calls.find(call => call.args[0] === 'affected')?.timeoutMs).toBe(120_000)
+  expect(seen.calls.find(call => call.args[0] === 'affected')?.timeoutMs).toBe(10_000)
 })
 
 test('session start registers exactly the ledger, affected, look and evidence tools, once each', async ($, on) => {

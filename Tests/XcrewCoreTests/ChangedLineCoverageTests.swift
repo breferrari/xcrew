@@ -13,16 +13,6 @@ import XcrewTestSupport
         #expect(ChangedLineCoverage.lines(json) == [2: false, 3: true])
     }
 
-    /// Past its budget the reading is dropped, so a slow archive can't cost the rest of the report.
-    @Test func aReadingPastItsBudgetIsDropped() async {
-        let slow = await ChangedLineCoverage.within(.milliseconds(50)) {
-            try? await Task.sleep(for: .seconds(30))
-            return ChangedLineCoverage(lines: ["/a": [1: true]])
-        }
-        #expect(slow == nil)
-        #expect(await ChangedLineCoverage.within(.seconds(30)) { ChangedLineCoverage(lines: ["/a": [1: true]]) } == ChangedLineCoverage(lines: ["/a": [1: true]]))
-    }
-
     /// Across a branch's runs, a changed line ran when any run ran it; a file is outside the coverage, and a target
     /// unreached, only when it is in every run.
     @Test func runsMergeIntoWhatAnyOfThemRan() {
@@ -85,17 +75,6 @@ import XcrewTestSupport
         let second = ChangedLineCoverage(lines: [ProjectLayout.canonicalPath(file.path): [4: false, 5: false]])
         #expect(ChangedLineCoverage.merged([first, second]).ran == 1)
         #expect(ChangedLineCoverage.merged([first, second]).notRun.map(\.lines) == [[5]])
-    }
-
-    /// A reading that finds nothing in time is told from one cut off at the limit, which leaves its run out.
-    @Test func aReadingThatFoundNothingIsToldFromOneCutOff() async {
-        let none = await ChangedLineCoverage.within(.seconds(30)) { Optional<ChangedLineCoverage>.none }
-        #expect(none.map { _ in "answered" } == "answered")
-        let cut = await ChangedLineCoverage.within(.milliseconds(50)) { () async -> ChangedLineCoverage? in
-            try? await Task.sleep(for: .seconds(30))
-            return nil
-        }
-        #expect(cut.map { _ in "answered" } == nil)
     }
 
     /// A stale file two runs spell two ways is named once.

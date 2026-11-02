@@ -19,7 +19,8 @@ struct EvidenceCommand: Command {
             invocation.print(Self.nothing)
             return 0
         }
-        invocation.print(pack.block)
+        let cut = (invocation.context.machine.runner as? DeadlineRunner).flatMap { DeadlineRunner.leftOut($0.cut, of: "this block") }
+        invocation.print(pack.block + (cut.map { "\n- " + $0 } ?? ""))
         if let attach = pack.attach { invocation.print("\n" + attach) }
         return 0
     }
