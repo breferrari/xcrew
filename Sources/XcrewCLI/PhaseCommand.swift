@@ -18,7 +18,8 @@ struct PhaseCommand: Command {
         let scheme: String?
         /// The log's xcodebuild verdict, once printed: a run moved to the background is followed until it.
         var outcome: Bool?
-        /// True when the log has gone unwritten as long as `OtherRuns.quietFor`: its run stopped without a verdict.
+        /// True when the log has gone unwritten as long as `OtherRuns.quietFor`, or hasn't appeared that long after the
+        /// call began: its run stopped without a verdict, or never wrote one.
         var quiet: Bool?
     }
 
@@ -36,7 +37,8 @@ struct PhaseCommand: Command {
         let kind: Report.Kind = tool.hasPrefix("test") ? .test : .build
         let outcome = log.flatMap { RunLog.outcome(of: RunLog.tail(ofLogAt: $0), kind: kind) }
         let written = log.flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
-        let quiet = written.map { Date().timeIntervalSince($0) >= OtherRuns.quietFor } == true && outcome == nil
+        let began = Date(timeIntervalSince1970: since / 1000)
+        let quiet = outcome == nil && (written.map { Date().timeIntervalSince($0) >= OtherRuns.quietFor } ?? (log == nil && Date().timeIntervalSince(began) >= OtherRuns.quietFor))
         let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: phase, scheme: log.flatMap(RunLog.scheme(ofLogAt:)), outcome: outcome, quiet: quiet ? true : nil))
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0

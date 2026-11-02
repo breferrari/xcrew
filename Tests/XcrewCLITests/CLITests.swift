@@ -559,8 +559,18 @@ import XcrewTestSupport
         #expect(answer["outcome"] == nil, "\(answer)")
     }
 
+    /// A call whose log hasn't appeared by as long as a log may stay quiet is quiet too: its run never wrote one, so a
+    /// backgrounded call's ticker stops. Sooner than that, it's just not there yet.
+    @Test func noLogPastTheQuietTimeIsQuiet() async throws {
+        let long = Date().addingTimeInterval(-OtherRuns.quietFor - 5).timeIntervalSince1970 * 1000
+        let quiet = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "test_sim", "--since", String(Int(long))).text.utf8)) as? [String: Any])
+        #expect(quiet["quiet"] as? Bool == true, "\(quiet)")
+        let now = Date().timeIntervalSince1970 * 1000
+        #expect(await Run("phase", "--tool", "test_sim", "--since", String(Int(now))).text == "{}")
+    }
+
     @Test func beforeTheLogAppearsThereIsNeitherLogNorPhase() async {
-        #expect(await Run("phase", "--tool", "test_sim", "--since", "0").text == "{}")
+        #expect(await Run("phase", "--tool", "test_sim", "--since", String(Int(Date().timeIntervalSince1970 * 1000))).text == "{}")
     }
 
     /// Two sessions in one checkout share MobileBuildMCP's workspace; each follows the log its own server writes.

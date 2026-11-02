@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A build or test run moved to the background stops being followed once its log never appears, or once more calls wait for their notifications than xcrew keeps. Before, its once-a-second read of the run's phase went on for the rest of the session.
 - Which Xcode CI selects is read through the local composite actions a workflow uses (`uses: ./…`), however deep, so a bare `xcodes select` in one counts as CI selecting the project's `.xcode-version`. Before, a workflow that chose its Xcode in a local action was taken to name none.
 
 ## 0.12.0 — 2026-11-02
