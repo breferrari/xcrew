@@ -766,6 +766,62 @@ import Testing
         #expect(changes.contains(/if \[ "\$EVENT" = push \]; then\n\s+code=true\n\s+distribution=true\n/))
     }
 
+    /// The deadlines and the durations they come from, as docs/findings.md's *Deadlines* table records them, by the key
+    /// each deadline's comment names: the slowest measured, in seconds, and the deadline in the table's unit.
+    func deadlineRows() throws -> [String: (slowest: Double, deadline: Int, unit: String)] {
+        let findings = try text("docs/findings.md")
+        let section = try #require(findings.firstMatch(of: #/(?s)\n## Deadlines\n(.*?)\n## /#)).output.1
+        var rows: [String: (slowest: Double, deadline: Int, unit: String)] = [:]
+        for row in section.matches(of: /(?m)^\| `([^`]+)` \| ([\d.]+) s \| \d+ \| (\d+) (min|s) \|$/) {
+            rows[String(row.output.1)] = (Double(row.output.2) ?? 0, Int(row.output.3) ?? 0, String(row.output.4))
+        }
+        return rows
+    }
+
+    /// A hung job or step stops at a deadline of its own, not at GitHub's six hours, and the release script's waits and
+    /// the canary's fetches end too: each names its row in findings' *Deadlines*, whose number it holds, and each row's
+    /// deadline is the rule's: 3 × the slowest, in whole minutes and at least 5 for a job or step, at least 300 s for a
+    /// script's wait; for a fetch, 3 × the slowest up to the next 10 seconds.
+    @Test func everyDeadlineIsItsRowsAndTheRowIsTheRules() throws {
+        let rows = try deadlineRows()
+        #expect(rows.count >= 14, "the Deadlines table reads as fewer rows than it holds: \(rows.keys.sorted())")
+        func check(_ key: String, _ value: Int, in file: String) {
+            guard let row = rows[key] else { Issue.record("\(file): no Deadlines row \(key)"); return }
+            #expect(value == row.deadline, "\(file): \(key) is \(value), its row says \(row.deadline)")
+            let rule = switch row.unit {
+            case "min": max(Int((3 * row.slowest / 60).rounded(.up)), 5)
+            case _ where key.hasSuffix(" curl"): Int((3 * row.slowest / 10).rounded(.up)) * 10
+            default: max(Int((3 * row.slowest).rounded(.up)), 300)
+            }
+            #expect(row.deadline == rule, "\(key)'s row says \(row.deadline), the rule gives \(rule)")
+        }
+        for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml", ".github/workflows/release.yml"] {
+            let text = try text(workflow)
+            let jobs = try #require(text.firstMatch(of: /(?s)\njobs:\n(.*)/)).output.1
+            let names = jobs.matches(of: /(?m)^  ([a-z0-9_][a-z0-9_-]*):$/).map { String($0.output.1) }
+            #expect(!names.isEmpty, "\(workflow)")
+            let deadlines = text.matches(of: /(?m)^ +timeout-minutes: (\d+) +# docs\/findings\.md, Deadlines: `([^`]+)`$/)
+            #expect(deadlines.count >= names.count, "\(workflow): a job has no deadline naming its row")
+            for deadline in deadlines { check(String(deadline.output.2), Int(deadline.output.1) ?? 0, in: workflow) }
+            for name in names { #expect(deadlines.contains { $0.output.2 == "\(workflow.split(separator: "/").last ?? "") \(name)" }, "\(workflow): \(name) has no deadline") }
+        }
+        for file in ["scripts/release.sh", "scripts/readme-images.sh", ".github/workflows/canary.yml"] {
+            let text = try text(file)
+            for wait in text.matches(of: /(?:deadline=\$\(\(\$\(date \+%s\) \+ |\bwait=)(\d+)\)?\)? +# docs\/findings\.md, Deadlines: `([^`]+)`/) {
+                check(String(wait.output.2), Int(wait.output.1) ?? 0, in: file)
+            }
+            for fetch in text.matches(of: /--max-time (\d+) .*# docs\/findings\.md, Deadlines: `([^`]+)`|# docs\/findings\.md, Deadlines: `([^`]+ curl)`\n[^\n]*--max-time (\d+)/) {
+                let key = String(fetch.output.2 ?? fetch.output.3 ?? ""), value = Int(fetch.output.1 ?? fetch.output.4 ?? "") ?? 0
+                check(key, value, in: file)
+            }
+        }
+        let script = try text("scripts/release.sh")
+        #expect(script.matches(of: #/(?:deadline=\$\(\(\$\(date \+%s\) \+ |\bwait=)\d+\)?\)? +# docs\/findings\.md, Deadlines: /#).count >= 2, "release.sh's waits name no deadline")
+        #expect(!script.contains("gh run watch"), "gh run watch waits with no deadline")
+        #expect(try text("scripts/readme-images.sh").contains("Deadlines: `readme-images.sh curl`"))
+        #expect(try text(".github/workflows/canary.yml").contains("Deadlines: `canary.yml sosumi curl`"))
+    }
+
     /// Every job that builds Swift says which toolchain it used, so a failure on CI names the compiler that said no.
     @Test func everySwiftJobLogsItsToolchain() throws {
         for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml"] {

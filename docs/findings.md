@@ -708,6 +708,29 @@ On October 29, 2026, Swift 6.4.2 (Xcode 27.2 beta 3) on a contributor's Mac acce
 
 The first run builds the CLI. The shim used to say "about 10 s" with no measurement behind it. Two cold first builds, `bin/xcrew --version` with an empty Xcrew cache, both on October 29, 2026, under Swift 6.4.2 (Xcode 27.2 beta 3): a fresh Mac took 15.4 s wall clock (`swift build` reported 11.5 s); a contributor's M1 Max (macOS 27.0.1, APFS, Swift's own caches warm) took 13.5 to 14.4 s over three runs (12.0 to 12.4 s). The shim states a range both support, and the README repeats it.
 
+## Deadlines
+
+Each CI job and step that can hang, the release script's waits and the canary's fetches stop at a deadline of their own rather than at GitHub's six hours or never. Each file names its row here, which holds its number; a ManifestTest holds each to its row and each row to the rule. The rule: three times the slowest measured, rounded up to whole minutes and at least 5 for a job or step (`timeout-minutes` takes minutes; the floor keeps a job measured at seconds clear of one slow runner start), at least 300 seconds for a script's wait, and up to the next 10 seconds for a fetch. Jobs, steps and runs were measured on November 2, 2026 from the GitHub API, over the last successful runs of each workflow, from each one's start to its end, and a run from its creation to its last update. The fetches were timed from a Mac on macOS 27.2 on a home connection, not from a runner.
+
+| What | Slowest | Sample | Deadline |
+|---|---|---|---|
+| `ci.yml changes` | 21 s | 30 | 5 min |
+| `ci.yml swift` | 199 s | 30 | 10 min |
+| `ci.yml swift-floor` | 192 s | 30 | 10 min |
+| `ci.yml plugin` | 107 s | 30 | 6 min |
+| `ci.yml distribution` | 207 s | 23 | 11 min |
+| `ci.yml shell` | 48 s | 30 | 5 min |
+| `ci.yml ci` | 19 s | 30 | 5 min |
+| `canary.yml canary` | 328 s | 10 | 17 min |
+| `canary.yml config step` | 19 s | 10 | 5 min |
+| `release.yml release` | 14 s | 30 | 5 min |
+| `release.sh settle` | 247 s | 30 | 741 s |
+| `release.sh release run` | 24 s | 30 | 300 s |
+| `canary.yml sosumi curl` | 0.46 s | 3 | 10 s |
+| `readme-images.sh curl` | 0.75 s | 30 | 10 s |
+
+`release.sh settle` is a release pull request's CI run, and its deadline starts over whenever the script brings the branch up to date, which runs CI again. `release.sh release run` covers the run appearing after the tag's push and finishing: GitHub records no time for the push, so the run's own duration, under the floor, stands for both. A wait that ends says how to resume, and the merge wait turns off the release pull request's auto-merge and leaves the other pull requests paused, naming the command that turns each back on, so none merges ahead of the release while it waits for the person.
+
 ## Tried and rejected
 
 | Option | Why not |

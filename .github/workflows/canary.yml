@@ -14,6 +14,7 @@ permissions:
 jobs:
   canary:
     runs-on: macos-26
+    timeout-minutes: 17  # docs/findings.md, Deadlines: `canary.yml canary`
     steps:
       - uses: actions/checkout@v7
       - name: Installs follow the latest release
@@ -81,6 +82,7 @@ jobs:
       - name: The CLI builds and checks the installed MobileBuildMCP
         run: bin/xcrew doctor --check mobilebuildmcp/version
       - name: MobileBuildMCP still accepts the config xcrew writes
+        timeout-minutes: 5  # docs/findings.md, Deadlines: `canary.yml config step`
         run: |
           project=$(mktemp -d)
           mkdir "$project/App.xcworkspace"
@@ -107,7 +109,8 @@ jobs:
         run: scripts/readme-images.sh 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       - name: Sosumi answers
         run: |
-          curl --fail --silent --show-error --max-time 20 -o /dev/null https://sosumi.ai/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"0"}}}'
+          # docs/findings.md, Deadlines: `canary.yml sosumi curl`
+          curl --fail --silent --show-error --max-time 10 -o /dev/null https://sosumi.ai/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"0"}}}'
       # Only for main, scheduled or dispatched there: a dispatch on a branch tests the canary itself.
       - name: Open an issue when something broke
         if: failure() && github.ref == 'refs/heads/main'
