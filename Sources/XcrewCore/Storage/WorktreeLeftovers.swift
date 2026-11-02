@@ -22,7 +22,13 @@ enum WorktreeLeftovers {
         guard !ours.isEmpty else { return .pass("none of those made for this repository's worktrees is left") }
         guard !left.isEmpty else { return .pass("\(ours.count) made for this repository's worktrees, each still there") }
         let named = left.map { "`\($0.device.name)` (\($0.why))" }.joined(separator: ", ")
-        let delete = "`xcrun simctl delete \(left.compactMap(\.device.udid).joined(separator: " "))`"
-        return .warn("\(named); \(delete) removes \(left.count == 1 ? "it" : "them")")
+        return .warn(Self.leftovers(named: named, udids: left.compactMap(\.device.udid)))
+    }
+
+    /// What's said of the simulators `named`: deleting them loses the apps on them and their data, the person's call, said
+    /// before the command, which ends the text.
+    static func leftovers(named: String, udids: [String]) -> String {
+        let them = udids.count == 1 ? "it" : "them"
+        return "\(named). Deleting \(them) \(SimulatorDelete.loses(them)): `xcrun simctl delete \(udids.joined(separator: " "))`"
     }
 }

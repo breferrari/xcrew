@@ -332,7 +332,7 @@ import XcrewTestSupport
         var runner = shutDown
         runner.responses["xcrun simctl list devices available --json"] = CommandResult(status: 0, stdout: Self.listed([("iPhone 18 Pro", "MAIN-UDID"), (name, "EARLIER-UDID")], state: "Shutdown"))
         let run = await Run("setup", "--worktree", "--fresh-simulator", context: .fake(runner, project: worktree))
-        #expect(run.output.contains("xcrew: this worktree uses simulator `\(name)` (iPhone 18 Pro, iOS 27.2), made for it earlier; `xcrun simctl delete EARLIER-UDID` and setup again make a fresh one"), "\(run.output)")
+        #expect(run.output.contains("xcrew: this worktree uses simulator `\(name)` (iPhone 18 Pro, iOS 27.2), made for it earlier. Once it's deleted, running this setup again makes a fresh one; the delete loses the apps installed on it and their data, so it's the person's to agree to: `xcrun simctl delete EARLIER-UDID`"), "\(run.output)")
     }
 
     /// Sharing the main checkout's simulator and making a fresh one can't both be.
