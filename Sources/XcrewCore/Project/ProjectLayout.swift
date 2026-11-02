@@ -55,7 +55,7 @@ public struct ProjectLayout: Sendable {
 
         /// The path as one shell word.
         var argument: String {
-            path.allSatisfy { $0.isLetter || $0.isNumber || "/._-".contains($0) } ? path : "'" + path.replacing("'", with: #"'\''"#) + "'"
+            ShellWord.word(path)
         }
     }
 

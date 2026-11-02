@@ -7,7 +7,7 @@ struct ProjectConfigCheck: Check {
     /// What the doctor says of the config folder XcodeBuildMCP kept before the rename, at `folder`: it's in the person's
     /// project, maybe tracked in git, so removing it is theirs to agree to, said before the command that ends the text.
     static func legacyFolder(_ folder: String) -> String {
-        ".xcodebuildmcp/ predates MobileBuildMCP 2.7.1 and is no longer read. It's in the person's project, so it's the person's to agree to: rm -r \(CorruptModuleCache.quoted(folder))"
+        ".xcodebuildmcp/ predates MobileBuildMCP 2.7.1 and is no longer read. It may be tracked in git, so it's the person's to agree to: rm -r \(ShellWord.quoted(folder))"
     }
 
     func run(_ context: CheckContext) async -> CheckResult {

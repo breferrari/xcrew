@@ -227,13 +227,14 @@ import Testing
         }
     }
 
-    /// The routing rules guard DerivedData: deleted only when the person asks. A text that hands Claude a command deleting
-    /// or stopping something of the person's, a folder or a process, says it's theirs to agree to, right before the
-    /// command, which ends the text so nothing of the sentence around it is copied into it.
-    @Test func aCommandThatRemovesThePersonsWorkIsTheirsToAgreeTo() throws {
+    /// The routing rules guard DerivedData, deleted only when the person asks, and a harm guard holds anything else of the
+    /// person's alike. A text that hands Claude a command deleting a folder of theirs or stopping a process that may be
+    /// their build says it's theirs to agree to, right before the command, which ends the text so nothing of the
+    /// sentence around it is copied into it.
+    @Test func aCommandThatRemovesOrStopsThePersonsWorkIsTheirsToAgreeTo() throws {
         #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
         let condition = "so it's the person's to agree to: "
-        let removing = try toldWhole().filter { $0.contains(/\b(?:rm -r|kill \d)/) }
+        let removing = try toldWhole().filter { $0.contains(/\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill )/) }
         #expect(removing.count >= 3, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
         for text in removing {
             let command = try #require(text.range(of: condition), "no condition before the command: \(text)").upperBound

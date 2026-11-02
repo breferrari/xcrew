@@ -121,7 +121,7 @@ import XcrewTestSupport
         project.write("", to: ".xcodebuildmcp/config.yaml")
         let legacy = await ProjectConfigCheck().run(.fake(project: project))
         #expect(legacy.status == .warn)
-        #expect(legacy.message == ".xcodebuildmcp/ predates MobileBuildMCP 2.7.1 and is no longer read. It's in the person's project, so it's the person's to agree to: rm -r '\(project.root.path)/.xcodebuildmcp'")
+        #expect(legacy.message == ".xcodebuildmcp/ predates MobileBuildMCP 2.7.1 and is no longer read. It may be tracked in git, so it's the person's to agree to: rm -r '\(project.root.path)/.xcodebuildmcp'")
     }
 
     /// Before setup, a checkout whose generated project isn't there yet, as a fresh worktree's, hears of the generate too:
