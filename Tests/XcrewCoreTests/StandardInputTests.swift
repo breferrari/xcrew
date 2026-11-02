@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import XcrewCore
+import XcrewTestSupport
 
 @Suite struct StandardInputTests {
     /// Writes `chunks` to a pipe from a thread of its own, `gap` apart, then closes it after `closeAfter`, or never.
@@ -20,20 +21,58 @@ import Testing
         return pipe.fileHandleForReading
     }
 
-    /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives. Its writer closes it
-    /// only after 30 seconds, so a read that waited for end of file would be complete (docs/findings.md, *Timing an
-    /// awaited call in a test*).
-    @Test func anInputLeftOpenIsReadUntilItGoesQuiet() async throws {
-        let input = await StandardInput.read(pipe(writing: [#"{"cwd":"/project"}"#], gap: 0, closeAfter: 30), idleFor: .milliseconds(500))
-        #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
-        #expect(!input.isComplete, "waited for the caller to close stdin")
+    /// Waits for `condition`, which another thread makes true, checking it often; a hang guard ends the wait.
+    func until(_ condition: () -> Bool) async throws {
+        for _ in 0..<20_000 where !condition() { try await Task.sleep(for: .milliseconds(1)) }
+        try #require(condition(), "never came true")
     }
 
-    /// A writer still sending is read to its end, however long it takes, as long as it doesn't go quiet.
+    /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives in the idle time,
+    /// on a clock the test moves, so no wait on real time decides it.
+    @Test func anInputLeftOpenIsReadUntilItGoesQuiet() async throws {
+        let pipe = Pipe()
+        let clock = ManualClock()
+        let drain = Drain(pipe.fileHandleForReading)
+        let ended = Task { await drain.ended(idleFor: .milliseconds(500), clock: clock) }
+        let sent = #"{"cwd":"/project"}"#
+        try pipe.fileHandleForWriting.write(contentsOf: Data(sent.utf8))
+        try await until { drain.data.count == sent.utf8.count }
+        let quiet = Flag()
+        Task { _ = await ended.value; quiet.set() }
+        while !quiet.isSet {
+            try await until { clock.sleepers == 1 || quiet.isSet }
+            clock.advance(by: .milliseconds(500))
+            await Task.yield()
+        }
+        #expect(drain.text == #"{"cwd":"/project"}"#)
+        #expect(await ended.value == false, "waited for the caller to close stdin")
+        try pipe.fileHandleForWriting.close()
+    }
+
+    /// A writer still sending is read to its end, however long it takes, as long as it doesn't go quiet: three chunks a
+    /// second apart against a one-second limit, each written once the idle check is asleep and arrived before it wakes.
     @Test func aWriterStillSendingIsNotCutOff() async throws {
-        let input = await StandardInput.read(pipe(writing: ["one ", "two ", "three"], gap: 0.6, closeAfter: 0.2), idleFor: .seconds(1))
-        #expect(String(decoding: input.data, as: UTF8.self) == "one two three")
-        #expect(input.isComplete)
+        let pipe = Pipe()
+        let clock = ManualClock()
+        let drain = Drain(pipe.fileHandleForReading)
+        let ended = Task { await drain.ended(idleFor: .seconds(1), clock: clock) }
+        let stopped = Flag()
+        Task { _ = await ended.value; stopped.set() }
+        var sent = ""
+        for chunk in ["one ", "two ", "three"] {
+            // The idle check asleep again, or the read ended: a read cut off fails here, on that, not on a wait.
+            try await until { clock.sleepers == 1 || stopped.isSet }
+            try #require(!stopped.isSet, "cut off after \(sent.utf8.count) bytes")
+            try pipe.fileHandleForWriting.write(contentsOf: Data(chunk.utf8))
+            sent += chunk
+            let expected = sent.utf8.count
+            try await until { drain.data.count == expected }
+            clock.advance(by: .seconds(1))
+        }
+        try pipe.fileHandleForWriting.close()
+        #expect(await ended.value)
+        #expect(drain.text == "one two three")
+        #expect(clock.now.offset == .seconds(3))
     }
 
     @Test func aClosedInputIsReadToItsEnd() async throws {
@@ -42,17 +81,14 @@ import Testing
         #expect(input.isComplete)
     }
 
-    /// `xcrew hook session-start < event.json`: a file always ends, so it's read at once, not after an idle wait. Timed,
-    /// since time is all that tells them apart: a read that waited would take at least the minute's idle wait, and 30
-    /// seconds is over twice the longest a busy CI run held an awaited call (13 s; docs/findings.md, *Timing an awaited call in a test*).
-    @Test func aFileIsReadAtOnce() async throws {
+    /// `xcrew hook session-start < event.json`: a file always ends, so it's read to its end, never cut off by the idle
+    /// wait: a read that waited would end as gone quiet, not complete.
+    @Test func aFileIsReadToItsEnd() async throws {
         let file = FileManager.default.temporaryDirectory.appending(path: "xcrew-stdin-\(UUID().uuidString).json")
         try Data(#"{"cwd":"/project"}"#.utf8).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
-        let clock = ContinuousClock()
-        let started = clock.now
         let input = await StandardInput.read(try FileHandle(forReadingFrom: file), idleFor: .seconds(60))
         #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
-        #expect(clock.now - started < .seconds(30), "waited on a file for end of file")
+        #expect(input.isComplete)
     }
 }
