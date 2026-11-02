@@ -122,6 +122,7 @@ struct SetupCommand: Command {
         if answers.appScheme == nil {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
         }
+        if let unsigned = await UnsignedAgents.note(using: context.runner) { invocation.print(unsigned) }
         await Self.keepOutOfGit(in: invocation)
         return 0
     }

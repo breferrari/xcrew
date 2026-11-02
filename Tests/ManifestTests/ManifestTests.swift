@@ -820,7 +820,9 @@ import Testing
         let programs = try Set(sources.flatMap { file in
             try text("Sources/\(file)").matches(of: /\.run\(\[?"([\w.-]+)"/).map { String($0.1) }
         })
-        #expect(programs.isSuperset(of: ["xcrun", "git", "curl"]))
+        #expect(programs.isSuperset(of: ["xcrun", "git"]))
+        // The doctor reaches no network: nothing the CLI starts sends anything.
+        #expect(!programs.contains("curl"))
         let starts = try privacyRow("Starts", of: "The CLI")
         for program in programs {
             #expect(starts.contains("`\(program)"), "Privacy doesn't say why the CLI starts \(program)")
@@ -1135,20 +1137,11 @@ import Testing
 
     // MARK: mcs techpack
 
-    /// Checks the techpack leaves out because mcs does the same itself: `mcs check-updates` says when a
-    /// pack has a newer version, with `mcs update` as the fix.
-    static let coveredByMCS: Set = ["xcrew/up-to-date"]
-
     @Test func techpackHasEveryDoctorCheck() async throws {
         let techpack = try text("techpack.yaml")
         let listed = techpack.matches(of: /command: (mcs\/checks\/[\w.-]+\.sh)/).map { String($0.1) }
-        let checks = Doctor.checks.filter { !Self.coveredByMCS.contains($0.id) }
+        let checks = Doctor.checks
         #expect(listed.count == checks.count)
-        for check in Doctor.checks where Self.coveredByMCS.contains(check.id) {
-            let wrapper = "mcs/checks/\(check.id.replacingOccurrences(of: "/", with: "--")).sh"
-            #expect(!listed.contains(wrapper), "\(check.id): mcs does this itself, so the techpack leaves it out")
-            #expect(!FileManager.default.fileExists(atPath: Self.repository.appending(path: wrapper).path), "\(wrapper)")
-        }
         for check in checks {
             let wrapper = "mcs/checks/\(check.id.replacingOccurrences(of: "/", with: "--")).sh"
             #expect(listed.contains(wrapper), "\(check.id) missing from techpack.yaml")
@@ -1241,7 +1234,6 @@ import Testing
         let plugins = try #require(try json(".claude-plugin/marketplace.json")["plugins"] as? [[String: Any]])
         let source = plugins.first?["source"] as? [String: String]
         #expect(source == ["source": "github", "repo": repository, "ref": "stable"])
-        #expect(XcrewUpdateCheck.latestRelease == "https://api.github.com/repos/\(repository)/releases/latest")
     }
 
     /// The release workflow moves `stable` only after every check on the tag passed, and before it publishes, so

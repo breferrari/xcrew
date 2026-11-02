@@ -589,6 +589,24 @@ struct TestbedFieldTests {
     }
 }
 
+/// The doctor checks only what xcrew can't run without, cheaply: no disk walk, no network, its checks run together. This
+/// holds it to a time budget on the test bed's field fixture, with this Mac's own tools, so a check that costs more shows
+/// red. The second run is timed: the first pays for `xcrun`'s and MobileBuildMCP's own first start, which aren't the
+/// doctor's. Measured November 2, 2026 at 0.20 s warm (macOS 27.2, Xcode 27.2), most of it the Xcode MCP handshake.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct DoctorBudgetTests {
+    static let budget = Duration.seconds(2)
+
+    @Test func theDoctorRunsWithinItsBudget() async throws {
+        let project = Project(root: try TestbedTests.copy("field"))
+        let context = CheckContext(project: project, machine: .live)
+        _ = await Doctor.run(in: context)
+        let warm = CheckContext(project: project, machine: .live)
+        let took = await ContinuousClock().measure { _ = await Doctor.run(in: warm) }
+        #expect(took < Self.budget, "the doctor took \(took), past its budget of \(Self.budget)")
+    }
+}
+
 /// The field fixture, one scheme per module, with a workspace scheme that tests every module: `affected` names the
 /// schemes that test only targets the change can break, so a test builds one module rather than every one.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
