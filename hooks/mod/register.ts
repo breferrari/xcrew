@@ -791,12 +791,12 @@ async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
   return { version: CARD_VERSION, folder, branch: label(head, false), updated, oldest, ...(text ? { text } : {}) }
 }
 
-/** The evidence for this branch, as the CLI words it from the ledger and the run times of the scopes last run in this folder. */
+/** The evidence for this branch, as the CLI words it from the ledger. */
 async function evidenceNow($: EngineInterface): Promise<string> {
-  const { head, entries, scopes } = await branchState($)
+  const { head, entries } = await branchState($)
   if (!head) return EVIDENCE_UNAVAILABLE
   // Its stdout alone: the block is pasted into a pull request as it is, and stderr is the shim's and the tools' own.
-  return xcrew($, ['evidence'], EVIDENCE_TIMEOUT_MS, evidenceInput(entries, scopes)).then(ran => ran.stdout.trimEnd(), error => couldntRun(['evidence'], error))
+  return xcrew($, ['evidence'], EVIDENCE_TIMEOUT_MS, evidenceInput(entries)).then(ran => ran.stdout.trimEnd(), error => couldntRun(['evidence'], error))
 }
 
 /**

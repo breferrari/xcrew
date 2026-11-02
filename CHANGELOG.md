@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Rebuilding the CLI no longer removes xcrew's own folders in its cache, such as the session stamps, the failed tests' images and the cards, when nothing new was added to one for two weeks: its cleanup removes only old builds.
+- The evidence block for a pull request no longer lists usual run times, and the card at a session's start no longer lists them either: it keeps the tests still red and, when a full test run is slow, the selections run before it. The line above the prompt still measures runs against their usual time.
 - The note on a corrupt module cache, which offers the command that removes the two cached folders, says that deletes part of DerivedData, so it's yours to agree to. Before, Claude could read it as a fix to run without asking.
 - The note on a build database another xcodebuild holds, which gives the `kill` that stops it, says the build may be yours, so stopping it is yours to agree to. The doctor's line on an old `.xcodebuildmcp/` folder says the same of removing it, and gives the command.
 - Where xcrew offers `xcrun simctl delete`, for a worktree's simulator, one left from a removed worktree or the unavailable ones, it says deleting loses the apps installed on them and their data, so it's yours to agree to.

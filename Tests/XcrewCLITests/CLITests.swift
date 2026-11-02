@@ -655,7 +655,7 @@ import XcrewTestSupport
     }
 }
 
-/// The mod sends the ledger and run times it holds; the CLI answers with the block, then the images to attach.
+/// The mod sends the ledger it holds; the CLI answers with the block, then the images to attach.
 @Suite struct EvidenceCommandTests {
     @Test func evidencePrintsTheBlockForTheLedgerTheModSends() async {
         let json = #"{"ledger":[{"test":"Suite/testA","red":{"scope":"test_sim · App","at":1793370240000,"message":"failed"},"failing":"test_sim · App","last":1793370240000}],"times":[]}"#

@@ -44,13 +44,13 @@ function session(on: On, answer: string | Error | { stdout: string; stderr: stri
 
 const ask = async (tool: Engine) => String((await callTool(tool, TOOL)).result ?? '')
 
-test('the CLI gets this branch\'s ledger and the run times of this folder, and Claude reads its answer as it is', async ($, on) => {
+test('the CLI gets this branch\'s ledger and no run times, and Claude reads its answer as it is', async ($, on) => {
   const seen = session(on, BLOCK)
   expect(await ask($)).toBe(BLOCK)
   const sent = JSON.parse(seen.calls.find(call => call.args[0] === 'evidence')?.stdin ?? '{}') as { ledger?: unknown[]; times?: string[] }
   expect(sent.ledger).toEqual([ENTRY])
-  // Run times as the card words them, of the scopes last run in this folder only.
-  expect(sent.times).toEqual(['test_sim: usually 1:20, 312 tests'])
+  // A reviewer acts on test results, coverage and warnings; how long runs take isn't one of them.
+  expect(sent.times).toBeUndefined()
 })
 
 test('evidence asked right after a test run holds that run\'s red', async ($, on) => {

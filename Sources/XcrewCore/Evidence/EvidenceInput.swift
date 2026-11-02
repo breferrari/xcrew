@@ -1,7 +1,7 @@
 import Foundation
 
-/// What the mod knows of this folder and branch, for the evidence pack: the ledger's entries, as `hooks/mod/ledger.ts`
-/// stores them, and the card's lines of usual run times.
+/// What the mod knows of this branch, for the evidence pack: the ledger's entries, as `hooks/mod/ledger.ts` stores them.
+/// Run times, which an older mod also sends, aren't read: a reviewer acts on test results, coverage and warnings.
 public struct EvidenceInput: Sendable, Decodable {
     public struct Run: Sendable, Decodable {
         public let scope: String
@@ -32,6 +32,4 @@ public struct EvidenceInput: Sendable, Decodable {
     }
 
     public let ledger: [Entry]
-    /// The card's run-time lines, worded by the mod and shown as they are: `test_sim: usually 1:20, 312 tests`.
-    public let times: [String]
 }
