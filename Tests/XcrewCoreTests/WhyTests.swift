@@ -136,7 +136,7 @@ import XcrewTestSupport
     }
 
     @Test func aFolderWithAQuoteIsQuotedForTheShell() {
-        #expect(CorruptModuleCache.fix(derivedData: "/Users/dev/Bob's DD") == #"Removing the cached modules lets the next build rebuild them: rm -rf '/Users/dev/Bob'\''s DD/ModuleCache.noindex' '/Users/dev/Bob'\''s DD/SDKExplicitPrecompiledModules'"#)
+        #expect(CorruptModuleCache.fix(derivedData: "/Volumes/Work/Team's DD") == #"Removing the cached modules lets the next build rebuild them: rm -rf '/Volumes/Work/Team'\''s DD/ModuleCache.noindex' '/Volumes/Work/Team'\''s DD/SDKExplicitPrecompiledModules'"#)
     }
 
     // MARK: The code's own errors, in the same words
