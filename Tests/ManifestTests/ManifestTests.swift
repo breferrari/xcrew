@@ -274,8 +274,17 @@ import Testing
             LockedBuildDatabase.heldElsewhere(by: ProcessList.Process(id: 43, parent: 1, elapsed: 40, command: "/x/SWBBuildService", program: "SWBBuildService")),
         ]
         let toolErrors: [String] = ToolErrorNotes.known.map(\.note)
+        let (old, new) = (XcodeInstall(path: "/Applications/Xcode-26.4.app", version: "26.4", build: "17E1"), XcodeInstall(path: "/Applications/Xcode-27.2.app", version: "27.2", build: "27B52"))
+        let ci = [CIXcodes.Named(file: ".github/workflows/ci.yml", line: 6, version: "26.3")]
+        let unpinned = XcodeSnapshot(installed: [old, new], selected: new, open: [old], pin: nil, launch: nil, isServing: false, ci: ci)
+        let pinStarted = XcodeSnapshot(installed: [old, new], selected: new, open: [], pin: ("26.4", ".xcode-version"), launch: nil, isServing: true, ci: ci)
+        let pinMissing = XcodeSnapshot(installed: [new], selected: new, open: [], pin: ("25.0", ".xcode-version"), launch: nil, isServing: false, ci: [])
+        let xcodeNotes: [String] = XcodeFailureNotes.notes(unpinned) + XcodeFailureNotes.notes(pinStarted)
+            + [XcodePinCheck.failureNote(pinMissing, hasXcodes: true), XcodePinCheck.failureNote(pinStarted, hasXcodes: true)].compactMap { $0 }
+        try #require(xcodeNotes.count == 5, "each snapshot no longer gives the note it's built for: \(xcodeNotes)")
+        let machineNotes: [String] = [ClosedConnection.note, UnsignedAgents.accepted, Why.prefix]
         let modTools: [String] = try Self.modTools.map { try toolDescription($0.constant, in: $0.file) }
-        let texts: [String] = briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + modTools
+        let texts: [String] = briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + xcodeNotes + machineNotes + modTools
         var sentences: [String] = []
         for text in texts {
             for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }
