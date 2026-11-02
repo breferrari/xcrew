@@ -184,6 +184,50 @@ import XcrewTestSupport
         ])
     }
 
+    /// The calls for one profile `unit` holding `body`, active: what `LiveDefaults` sends for it.
+    static func unitCall(_ body: String, indent: String = "  ") -> [String] {
+        let lines = body.split(separator: "\n", omittingEmptySubsequences: false).map { indent + indent + $0 }.joined(separator: "\n")
+        let yaml = "schemaVersion: 1\nsessionDefaultsProfiles:\n\(indent)unit:\n\(lines)\nactiveSessionDefaultsProfile: unit\n"
+        return LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone"))
+    }
+
+    /// A long value MobileBuildMCP's own `yaml.stringify` wraps at 80 columns goes on, indented, on the next line: YAML
+    /// folds the two with one space.
+    @Test func aWrappedValueIsReadWhole() {
+        #expect(Self.unitCall("scheme: 'App'\nderivedDataPath: /build/Some Tool With A Long Name/That Wraps\n  Onto The Next Line/DerivedData") == [#"session_set_defaults {"createIfNotExists":true,"derivedDataPath":"/build/Some Tool With A Long Name/That Wraps Onto The Next Line/DerivedData","profile":"unit","scheme":"App"}"#])
+    }
+
+    /// A list's items may sit at their key's own indent, as YAML allows and a carried `extraArgs` may be written.
+    @Test func aListAtItsKeysIndentIsRead() {
+        #expect(Self.unitCall("scheme: 'App'\nextraArgs:\n- '-a'\n- '-b'") == [#"session_set_defaults {"createIfNotExists":true,"extraArgs":["-a","-b"],"profile":"unit","scheme":"App"}"#])
+    }
+
+    /// `yaml.stringify` writes an empty list or map inline, and a person may write a short list so.
+    @Test func anInlineListOrMapIsReadAsOne() {
+        #expect(Self.unitCall("scheme: 'App'\nextraArgs: []\nenv: {}") == [#"session_set_defaults {"createIfNotExists":true,"env":{},"extraArgs":[],"profile":"unit","scheme":"App"}"#])
+        #expect(Self.unitCall("scheme: 'App'\nextraArgs: [-a, '-b']\nenv: {LOG: quiet}") == [#"session_set_defaults {"createIfNotExists":true,"env":{"LOG":"quiet"},"extraArgs":["-a","-b"],"profile":"unit","scheme":"App"}"#])
+    }
+
+    /// The active profile's line and a profile's own may carry a comment.
+    @Test func aCommentAfterTheActiveProfileOrAProfilesNameIsLeftOut() {
+        let yaml = "schemaVersion: 1\nsessionDefaultsProfiles:\n  unit: # the unit tests\n    scheme: 'AppTests'\n  app:\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit # the default\n"
+        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone")) == [
+            #"session_set_defaults {"createIfNotExists":true,"profile":"app","scheme":"App"}"#,
+            #"session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"AppTests"}"#,
+        ])
+    }
+
+    /// A config indented by four spaces reads as one indented by two.
+    @Test func anyIndentIsRead() {
+        #expect(Self.unitCall("scheme: 'App'\nextraArgs:\n    - '-a'", indent: "    ") == [#"session_set_defaults {"createIfNotExists":true,"extraArgs":["-a"],"profile":"unit","scheme":"App"}"#])
+    }
+
+    /// YAML's null, `~` and an empty value name none, so no key is sent for them; a quoted `true` is a string, and `True`
+    /// a boolean, as YAML 1.2 reads them.
+    @Test func nullsAreLeftOutAndBooleansAreReadAsYAMLReadsThem() {
+        #expect(Self.unitCall("scheme: 'true'\nconfiguration: null\nbundleId: ~\nplatform:\nuseLatestOS: True") == [#"session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"true","useLatestOS":true}"#])
+    }
+
     @Test func globalDefaultsAreOneCallWithoutAProfile() {
         let yaml = "schemaVersion: 1\nsessionDefaults:\n  projectPath: '/abs/App.xcodeproj'\n  simulatorName: 'iPhone 17'\n"
         #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone")) == [#"session_set_defaults {"projectPath":"/abs/App.xcodeproj","simulatorName":"iPhone 17"}"#])
