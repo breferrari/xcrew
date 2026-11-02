@@ -52,6 +52,32 @@ import XcrewTestSupport
         #expect(schemes.map(\.container) == ["App.xcodeproj", "App.xcodeproj"])
     }
 
+    /// Each scheme says how many unit-test and UI-test targets it runs, so one testing a single target stands out from one
+    /// testing every module.
+    @Test func eachSchemeSaysHowManyTestTargetsItRuns() {
+        let project = project()
+        project.writeScheme("All", testing: ["AppTests", "CoreTests", "AppUITests"])
+        let schemes = choices(project).schemes
+        #expect(schemes.map(\.name) == ["All", "App", "Core"])
+        #expect(schemes.map(\.unitTestTargets) == [2, 1, 1])
+        #expect(schemes.map(\.uiTestTargets) == [1, 1, nil])
+    }
+
+    /// The unit profile's starting pick is the scheme that tests the most, not the app's.
+    @Test func theUnitPickIsTheWidestScheme() {
+        let project = project()
+        project.writeScheme("All", testing: ["AppTests", "CoreTests"])
+        #expect(choices(project).picks.testScheme == "All")
+    }
+
+    /// A gallery scheme builds several apps for running; its app is the one it launches.
+    @Test func theAppIsTheOneTheSchemeLaunches() {
+        let spec = Self.spec.replacing(#"{ "name": "Core","#, with: #"{ "name": "Gallery", "id": "G", "product-type": "application", "product": "Products/Gallery.app" }, { "name": "Core","#)
+        let project = project(spec: spec)
+        project.writeScheme("Everything", building: ["Gallery", "App"], launching: "App")
+        #expect(choices(project).schemes.first { $0.name == "Everything" }?.app == "App")
+    }
+
     @Test func thePicksAreWhatSetupWouldWrite() {
         #expect(choices(project()).picks == SetupChoices.Picks(appScheme: "App", uiScheme: "App", testScheme: "App", bundleID: "dev.example.App", testSimulator: "iPhone 18"))
     }

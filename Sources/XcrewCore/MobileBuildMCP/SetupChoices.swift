@@ -17,12 +17,16 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         /// Its container, from the root.
         public let container: String
         public let roles: [Role]
-        /// The app it builds for running; absent when it builds none.
+        /// The app it launches, else the first it builds for running; absent when it builds none.
         public var app: String?
         /// The project that holds `app`, as the scheme names it, by its standardized path.
         var appProject: String?
+        /// How many unit-test targets its test action runs; absent when none.
+        public var unitTestTargets: Int?
+        /// How many UI-test targets its test action runs; absent when none.
+        public var uiTestTargets: Int?
 
-        enum CodingKeys: String, CodingKey { case name, container, roles, app }
+        enum CodingKeys: String, CodingKey { case name, container, roles, app, unitTestTargets, uiTestTargets }
     }
 
     /// An installed simulator, once per name, on the newest runtime that has it.
@@ -128,24 +132,27 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         return choices
     }
 
-    /// The shared schemes of a container and the projects its workspace lists, each with its roles.
+    /// The shared schemes of a container and the projects its workspace lists, each with its roles and test-target counts.
     static func schemes(of container: URL, from root: String) -> [Scheme] {
         let containers = TestSchemes.containers(from: [container])
         let type = TestSchemes.productTypeLookup(for: containers)
         return containers.flatMap { holder -> [Scheme] in
             let base = holder.deletingLastPathComponent()
             return TestSchemes.sharedSchemes(of: holder).map { name, document in
+                let launched = (try? document.nodes(forXPath: "//LaunchAction/BuildableProductRunnable/BuildableReference")) ?? []
                 let references = (try? document.nodes(forXPath: "//BuildAction/BuildActionEntries/BuildActionEntry[@buildForRunning='YES']/BuildableReference")) ?? []
-                let built = references.compactMap { $0 as? XMLElement }.compactMap { reference -> (target: String, project: String?)? in
+                let built = (launched + references).compactMap { $0 as? XMLElement }.compactMap { reference -> (target: String, project: String?)? in
                     guard let target = reference.attribute(forName: "BlueprintName")?.stringValue else { return nil }
                     let project = reference.attribute(forName: "ReferencedContainer")?.stringValue.map { TestSchemes.key(TestSchemes.resolve($0, from: base)) }
                     return type(target, project) == TestSchemes.application ? (target, project) : nil
                 }
                 let kinds = TestSchemes.tested(by: document, in: holder).testables.map { type($0.name, $0.project) }
                 var roles: [Role] = built.isEmpty ? [] : [.app]
-                if kinds.contains(TestSchemes.unitTest) { roles.append(.unitTests) }
-                if kinds.contains(TestSchemes.uiTest) { roles.append(.uiTests) }
-                return Scheme(name: name, container: ProjectLayout.path(ProjectLayout.canonical(holder), from: root), roles: roles, app: built.first?.target, appProject: built.first?.project ?? nil)
+                let (unitTests, uiTests) = (kinds.count { $0 == TestSchemes.unitTest }, kinds.count { $0 == TestSchemes.uiTest })
+                if unitTests > 0 { roles.append(.unitTests) }
+                if uiTests > 0 { roles.append(.uiTests) }
+                return Scheme(name: name, container: ProjectLayout.path(ProjectLayout.canonical(holder), from: root), roles: roles, app: built.first?.target, appProject: built.first?.project ?? nil,
+                              unitTestTargets: unitTests > 0 ? unitTests : nil, uiTestTargets: uiTests > 0 ? uiTests : nil)
             }
         }
     }

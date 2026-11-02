@@ -8,7 +8,7 @@ public enum TestSchemes {
     public enum Choice: Sendable, Equatable {
         case scheme(String)
         case none
-        /// More than one scheme runs unit tests.
+        /// More than one scheme runs the most unit-test targets.
         case several([String])
         /// A scheme tests a target whose product type couldn't be read, so it might run unit tests.
         case unknown([String])
@@ -54,21 +54,24 @@ public enum TestSchemes {
     /// Repository files are read without fetching anything they point to.
     static let xmlOptions: XMLNode.Options = [.nodeLoadExternalEntitiesNever]
 
+    /// The scheme that runs the most unit-test targets, as a modular app's own scheme may test one module of hundreds;
+    /// among those tied, `appScheme`.
     public static func choose(in container: URL, preferring appScheme: String?) -> Choice {
         let containers = containers(from: [container])
         let lookUp = productTypeLookup(for: containers)
         func type(of testable: Testable) -> String? { lookUp(testable.name, testable.project) }
-        var runs: Set<String> = [], unsure: Set<String> = []
+        var runs: [String: Int] = [:], unsure: Set<String> = []
         for project in containers {
             for (name, testables) in schemes(of: project) {
                 let kinds = testables.map(type(of:))
-                if kinds.contains(unitTest) { runs.insert(name) } else if kinds.contains(nil) { unsure.insert(name) }
+                let unitTests = kinds.count { $0 == unitTest }
+                if unitTests > 0 { runs[name] = max(runs[name] ?? 0, unitTests) } else if kinds.contains(nil) { unsure.insert(name) }
             }
         }
-        if let appScheme, runs.contains(appScheme) { return .scheme(appScheme) }
-        let found = runs.sorted()
-        if found.isEmpty { return unsure.isEmpty ? .none : .unknown(unsure.sorted()) }
-        return found.count == 1 ? .scheme(found[0]) : .several(found)
+        guard let most = runs.values.max() else { return unsure.isEmpty ? .none : .unknown(unsure.sorted()) }
+        let widest = runs.filter { $0.value == most }.keys.sorted()
+        if let appScheme, widest.contains(appScheme) { return .scheme(appScheme) }
+        return widest.count == 1 ? .scheme(widest[0]) : .several(widest)
     }
 
     /// A target's product type, by its name and the project a scheme says holds it; with no project, or one that doesn't

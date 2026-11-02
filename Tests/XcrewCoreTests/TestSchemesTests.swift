@@ -37,6 +37,31 @@ import XcrewTestSupport
         #expect(choose(preferring: "App") == .scheme("App"))
     }
 
+    /// A modular app's own scheme may test one target of hundreds, a workspace scheme every one: the widest wins.
+    @Test func theSchemeThatTestsTheMostUnitTestTargetsWins() {
+        project.writePBXProj(["App": "application", "AppTests": "bundle.unit-test", "CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test"])
+        project.writeScheme("App", testing: ["AppTests"])
+        project.writeScheme("All", testing: ["AppTests", "CoreTests", "KitTests"])
+        #expect(choose(preferring: "App") == .scheme("All"))
+    }
+
+    /// Only those that test the most are offered; the narrower ones aren't the choice.
+    @Test func aTieForTheMostOffersTheTiedOnes() {
+        project.writePBXProj(["AppTests": "bundle.unit-test", "CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test"])
+        project.writeScheme("App", testing: ["AppTests"])
+        project.writeScheme("Core", testing: ["CoreTests", "AppTests"])
+        project.writeScheme("Kit", testing: ["KitTests", "AppTests"])
+        #expect(choose() == .several(["Core", "Kit"]))
+    }
+
+    /// UI-test targets don't count toward the unit profile's scheme.
+    @Test func onlyUnitTestTargetsCount() {
+        project.writePBXProj(["App": "application", "AppTests": "bundle.unit-test", "AppUITests": "bundle.ui-testing", "FlowUITests": "bundle.ui-testing"])
+        project.writeScheme("App", testing: ["AppTests"])
+        project.writeScheme("Flows", testing: ["AppTests", "AppUITests", "FlowUITests"])
+        #expect(choose(preferring: "App") == .scheme("App"))
+    }
+
     @Test func aSkippedTestableDoesntRun() {
         project.writePBXProj(["AppTests": "bundle.unit-test"])
         project.writeScheme("App", testing: ["AppTests"], skipped: true)
