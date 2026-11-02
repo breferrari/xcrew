@@ -169,7 +169,7 @@ struct SetupCommand: Command {
             if let backup { invocation.print("xcrew: kept the old config as \(backup.lastPathComponent)") }
             written.forEach(invocation.print)
             let project = invocation.context.project
-            let calls = (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)).map { LiveDefaults.calls(in: $0, root: project.root) } ?? []
+            let calls = (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)).map { LiveDefaults.calls(in: $0, root: project.root, home: invocation.context.machine.home) } ?? []
             if !calls.isEmpty {
                 invocation.print("xcrew: a running MobileBuildMCP takes these session defaults without a restart, one call each:")
                 calls.forEach { invocation.print("  " + $0) }

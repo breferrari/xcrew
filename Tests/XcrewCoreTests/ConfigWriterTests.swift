@@ -150,7 +150,7 @@ import XcrewTestSupport
         activeSessionDefaultsProfile: unit
 
         """
-        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App")) == [
+        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone")) == [
             #"session_set_defaults {"bundleId":"com.example.app","createIfNotExists":true,"profile":"app","scheme":"App","simulatorName":"iPhone 17","workspacePath":"/work/App/App.xcworkspace"}"#,
             #"session_set_defaults {"createIfNotExists":true,"env":{"LOG":"quiet"},"extraArgs":["-skipMacroValidation"],"profile":"unit","scheme":"AppTests","simulatorId":"AAAA","simulatorName":"iPhone 17","useLatestOS":true,"workspacePath":"/work/App/App.xcworkspace"}"#,
         ])
@@ -159,12 +159,33 @@ import XcrewTestSupport
     /// A path the config writes from the root as `./App.xcworkspace` is printed standardized, with no `/./`.
     @Test func aDotRelativePathIsStandardized() {
         let yaml = "schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n    workspacePath: './App.generated.xcworkspace'\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit\n"
-        let calls = LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"))
+        let calls = LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone"))
         #expect(calls == [#"session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"App","workspacePath":"/work/App/App.generated.xcworkspace"}"#])
+    }
+
+    /// A config's profiles as a person may write them: a name quoted, a comment line between profiles, a comment after a
+    /// value, and a path from the home folder. Each reaches the running server as setup means it.
+    @Test func aHandEditedConfigsProfilesAreReadAsSetupMeansThem() {
+        let yaml = """
+        schemaVersion: 1
+        sessionDefaultsProfiles:
+          'my app':
+            workspacePath: '~/Work/App.xcworkspace'
+            scheme: App # the app's own
+        # the unit tests, kept apart
+          unit:
+            scheme: 'AppTests'
+        activeSessionDefaultsProfile: 'my app'
+
+        """
+        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone")) == [
+            #"session_set_defaults {"createIfNotExists":true,"profile":"unit","scheme":"AppTests"}"#,
+            #"session_set_defaults {"createIfNotExists":true,"profile":"my app","scheme":"App","workspacePath":"/home/someone/Work/App.xcworkspace"}"#,
+        ])
     }
 
     @Test func globalDefaultsAreOneCallWithoutAProfile() {
         let yaml = "schemaVersion: 1\nsessionDefaults:\n  projectPath: '/abs/App.xcodeproj'\n  simulatorName: 'iPhone 17'\n"
-        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App")) == [#"session_set_defaults {"projectPath":"/abs/App.xcodeproj","simulatorName":"iPhone 17"}"#])
+        #expect(LiveDefaults.calls(in: yaml, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone")) == [#"session_set_defaults {"projectPath":"/abs/App.xcodeproj","simulatorName":"iPhone 17"}"#])
     }
 }
