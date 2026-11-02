@@ -262,7 +262,7 @@ import XcrewTestSupport
     }
 
     @Test func anXcodebuildBuildingIntoItIsNamedWithHowToStopIt() async {
-        #expect(await Self.note([Running()]) == Self.because + "an xcodebuild holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A call stopped partway leaves its xcodebuild running; stopping it frees the database: kill 4242")
+        #expect(await Self.note([Running()]) == Self.because + "an xcodebuild holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A call stopped partway leaves its xcodebuild running; stopping it frees the database. It may be a build of the person's own, so it's the person's to agree to: kill 4242")
     }
 
     /// Of the processes holding it, an xcodebuild is the one named; Xcode's build service is never the one to stop.
