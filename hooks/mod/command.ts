@@ -11,10 +11,11 @@ export const USAGE = [
   '/xcrew evidence this branch\'s evidence for a pull request, then the images to attach',
   '/xcrew failures every failing test and compile error from the last failing run, in a pane',
   '/xcrew close    close that pane',
+  '/xcrew timings  the build, test and run calls that waited a second or more before they started, step by step',
 ].join('\n')
 
 /** What `/xcrew` takes, in its usage's order. */
-const SUBCOMMANDS = ['setup', 'doctor', 'xcode', 'history', 'ledger', 'flaky', 'evidence', 'failures', 'close']
+const SUBCOMMANDS = ['setup', 'doctor', 'xcode', 'history', 'ledger', 'flaky', 'evidence', 'failures', 'close', 'timings']
 
 /** `/xcrew`, answered by the mod itself: nothing reaches Claude, and nothing costs a turn. */
 export const COMMAND = {

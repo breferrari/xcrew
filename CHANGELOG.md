@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `/xcrew timings` lists the build, test and run calls that waited a second or more before they reached their server, with how long each step before the call took, so a slow start can be traced to its step.
 - xcrew's cache stays smaller: an installed plugin's build no longer leaves its 200 MB scratch folder behind, each old plugin version's source stamp goes after two weeks, failed tests' images are capped at 200 MB, oldest run first, and a running log's kept reading goes a day after its run.
 - The line above the prompt reads a running build's or test's log on from where its last look stopped, rather than the whole log every second: on a 31 MB log each look takes about 10 ms instead of 50.
 - A test run asks `xcrew project --branch` once for its ledger and card where it asked up to four times: an answer under five seconds old is shared, and a Bash call, which may switch branches, drops it.
