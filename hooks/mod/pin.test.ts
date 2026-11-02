@@ -10,6 +10,7 @@ function session(on: On, reports: Partial<Report>[]) {
   mock.clock(on)
   mock.store(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   on('session.surfaces', () => ({ value: ['terminal'] }))
   on('ui.invalidate', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
@@ -34,6 +35,22 @@ test('another pin, or a new session, is named again', async ($, on) => {
   await build($)
   expect(await build($)).toContain(other)
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  expect(await build($)).toContain(PIN)
+})
+
+test('a cleared conversation names the pin again', async ($, on) => {
+  session(on, [FAILED])
+  expect(await build($)).toContain(PIN)
+  await $.session.end({ reason: 'clear', sessionId: 'before', resume: { id: 'before' } })
+  expect(await build($)).toContain(PIN)
+})
+
+test('a resumed conversation names the pin again, and one the person left doesn\'t', async ($, on) => {
+  session(on, [FAILED])
+  expect(await build($)).toContain(PIN)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'before', resume: { id: 'before' } })
+  expect(await build($)).not.toContain(PIN)
+  await $.session.end({ reason: 'resume', sessionId: 'before', resume: { id: 'before' } })
   expect(await build($)).toContain(PIN)
 })
 

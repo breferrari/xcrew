@@ -20,6 +20,7 @@ function sessionWith(on: On, problems: Problem[], doctorFails = () => false) {
   const clock = mock.clock(on)
   mock.store(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.surfaces', () => ({ value: ['terminal'] }))
   on('ui.invalidate', () => ({ value: undefined }))
@@ -171,6 +172,38 @@ test('a new session shows its warnings again', async ($, on) => {
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: '⚠' })).toBeDefined()
   await ui.unmount()
+})
+
+test('a cleared conversation reads the doctor once, on its first prompt, and shows its warnings again', async ($, on) => {
+  const { calls, clock } = sessionWith(on, [PIN])
+  const doctorRuns = () => calls.filter(call => call.args[0] === 'doctor' && call.args.includes('--problems')).length
+  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await clock.advance(3 * 60_000)
+
+  await $.session.end({ reason: 'clear', sessionId: 'before', resume: { id: 'before' } })
+  await clock.settle()
+  expect(doctorRuns()).toBe(1)
+  await submitPrompt($, 'first after the clear')
+  await clock.settle()
+  expect(doctorRuns()).toBe(2)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: '⚠' })).toBeDefined()
+  await ui.unmount()
+
+  await submitPrompt($, 'second')
+  await clock.settle()
+  expect(doctorRuns()).toBe(2)
+})
+
+test('a session that ends another way reads nothing again', async ($, on) => {
+  const { calls, clock } = sessionWith(on, [PIN])
+  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await $.session.end({ reason: 'other', sessionId: 'before', resume: { id: 'before' } })
+  await submitPrompt($, 'after')
+  await clock.settle()
+  expect(calls.filter(call => call.args[0] === 'doctor').length).toBe(1)
 })
 
 // MARK: The restart a changed config needs
