@@ -18,7 +18,7 @@ public enum EvidencePack {
     /// Tests listed in each part; the rest are counted.
     static let mostTests = 10
 
-    /// The pack for the ledger and times the mod holds, with each red-to-green test's images read again from its failing
+    /// The pack for the ledger the mod holds, with each red-to-green test's images read again from its failing
     /// run's result bundle, which `open` opens. Nil when there's nothing to say.
     public static func make(_ input: EvidenceInput, project: Project, machine: Machine, open: @escaping @Sendable (String) -> ResultBundle) async -> Text? {
         async let changed = changedLines(project: project, machine: machine)
@@ -53,7 +53,6 @@ public enum EvidencePack {
 
         let changedLines = await changed
         if !changedLines.isEmpty { parts.append(["Changed lines:"] + changedLines) }
-        if !input.times.isEmpty { parts.append(["Usual run times:"] + input.times.map { "- \($0)" }) }
 
         guard !parts.isEmpty else { return nil }
         let block = scrubbed(([heading] + parts.map { $0.joined(separator: "\n") }).joined(separator: "\n\n"), roots: [project.root.path, project.canonicalRoot])

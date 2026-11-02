@@ -140,7 +140,7 @@ You need only `/xcrew:setup`, once. Everything else runs on its own, or is here 
 | `/xcrew timings` | Lists the build, test and run calls that waited a second or more before they reached their server, with how long each step before the call took |
 | `/xcrew ledger` | The tests seen failing and then passing on the branch checked out, each with the run where it failed and the run that passed it, and those still failing. Claude reads the same through a tool of the mod's, for a pull request's test plan |
 | `/xcrew flaky` | The tests the ledger marks flaky on the branch checked out, each with how many of its runs failed and the repeated run that found it flaky, and how many of the passes in a row it needs it has: enough that, failing at the rate it was seen failing, it would pass them all under 5% of the time |
-| `/xcrew evidence` | The branch's evidence for a pull request: the tests it took from red to green, with their failing run's images, those still red, the coverage and warnings of the lines it changed, and the usual run times, as a block to paste into the pull request. The images come after it, for you to attach or leave out; their paths never go in the block. Claude can offer you the same when it writes a pull request's body |
+| `/xcrew evidence` | The branch's evidence for a pull request: the tests it took from red to green, with their failing run's images, those still red, and the coverage and warnings of the lines it changed, as a block to paste into the pull request. The images come after it, for you to attach or leave out; their paths never go in the block. Claude can offer you the same when it writes a pull request's body |
 | `/xcrew history` | Each tool's usual duration, per scheme and test selection; lines no run has updated for weeks are dropped |
 
 **When something's off**
@@ -177,7 +177,7 @@ Every session in an Apple-platform project starts with this routing, plus anythi
 
 - **When MobileBuildMCP isn't usable**, because it's missing or older than Xcrew needs, the session sends builds to the Xcode MCP's `BuildProject` and tests to `RunAllTests`. They work through the open Xcode, its active scheme and its own DerivedData, and Claude tells you once what's lost meanwhile: coverage, simulator control, UI automation and LLDB.
 - **Simulators already booted** are named at the start, so Claude reuses one rather than booting another.
-- **A card at session start:** each conversation starts with a short card in Claude's context: how long builds and test runs usually take in this folder, the tests still failing on the branch, flaky ones marked, and, when a full test run is slow, the selections run before. It's built from what Xcrew already recorded, sent once per conversation, and kept to a few lines.
+- **A card at session start:** each conversation starts with a short card in Claude's context: the tests still failing on the branch, flaky ones marked, and, when a full test run is slow, the selections run before. It's built from what Xcrew already recorded, sent once per conversation, and kept to a few lines.
 
 [docs/findings.md](docs/findings.md) has the evidence behind each choice, and what was tried and rejected.
 

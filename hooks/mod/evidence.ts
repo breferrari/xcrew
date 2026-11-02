@@ -1,4 +1,3 @@
-import { durationLines, type ScopeHistory } from './card'
 import type { LedgerEntry } from './ledger'
 
 /**
@@ -22,7 +21,7 @@ export const EVIDENCE_TIMEOUT_MS = 300_000
 /** Without the branch, its ledger can't be read: said so, rather than evidence that would say no test failed. */
 export const EVIDENCE_UNAVAILABLE = "The evidence couldn't be read: xcrew's CLI didn't say which branch is checked out, so the tests it took from red to green aren't known. Run `/xcrew doctor`."
 
-/** What `xcrew evidence` reads on stdin: the branch's ledger, and the run times of the scopes last run in this folder. */
-export function evidenceInput(entries: readonly LedgerEntry[], scopes: readonly ScopeHistory[]): string {
-  return JSON.stringify({ ledger: entries, times: durationLines(scopes) })
+/** What `xcrew evidence` reads on stdin: the branch's ledger. */
+export function evidenceInput(entries: readonly LedgerEntry[]): string {
+  return JSON.stringify({ ledger: entries })
 }

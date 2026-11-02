@@ -25,6 +25,7 @@ import XcrewTestSupport
         await EvidencePack.make(input, project: project, machine: CheckContext.fake(project: project).machine, open: open)
     }
 
+    /// Run times an older mod still sends are left out: a reviewer acts on test results, coverage and warnings.
     @Test func testsTakenFromRedToGreenAndThoseStillRedAreListed() async throws {
         let text = try #require(await Self.pack(try Self.input([
             Self.entry("CardTests/testCard", message: "Snapshot does not match reference."),
@@ -40,9 +41,6 @@ import XcrewTestSupport
             Still red:
             - `Suite/testOther`: "XCTAssertEqual failed"
             - `Suite/testFlaky`: "failed", flaky, failing 2 of 5 runs
-
-            Usual run times:
-            - test_sim · App: usually 1m 20s, 312 tests
             """)
         #expect(text.attach == nil)
     }
