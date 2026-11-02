@@ -630,13 +630,20 @@ let asking: Promise<string | null> | undefined
 /** The background build in flight: the one build of this version, which callers wait on rather than start. */
 let building: Promise<string | null> | undefined
 
+/** Whether the background build couldn't be started at all, which leaves a call to build through the shim as before. */
+let cannotSpawn = false
+
+/** What `build` answers when the caller's time ran out waiting for the build, which goes on. */
+const STILL_BUILDING = Symbol('still building')
+
 /**
- * The build to run, asked for at most every 30 s. The shim is only asked whether a build is there (`--if-built`): no
- * caller starts a build, and none stops one. With none there, the caller waits for the background build within its
- * own time, and gives up without stopping it; a build that named nothing is remembered for 30 s, so calls don't each
- * start another (docs/findings.md, *Building after a reload*).
+ * The build to run, asked for at most every 30 s. The shim is only asked whether a build is there (`--if-built`), so no
+ * caller builds under its own time, and none stops a build. With none there, the caller starts the one background
+ * build when none is in flight, and waits for it within its own time, giving up without stopping it. A build that
+ * named nothing is remembered for 30 s, so calls don't each start another (docs/findings.md, *Building after a
+ * reload*).
  */
-async function build($: EngineInterface, timeoutMs: number): Promise<string | undefined> {
+async function build($: EngineInterface, timeoutMs: number): Promise<string | undefined | typeof STILL_BUILDING> {
   const now = await $.clock.now()
   const known = knownBuild(await read($, buildState), now)
   if (known !== 'ask') return known
@@ -650,11 +657,26 @@ async function build($: EngineInterface, timeoutMs: number): Promise<string | un
     await update($, buildState, () => ({ path: there, at: now }))
     return there
   }
-  const left = timeoutMs - ((await $.clock.now()) - now)
-  const late = Symbol('late')
-  const built = await Promise.race([buildInBackground($), new Promise<typeof late>(resolve => void quietly(() => $.clock.after(Math.max(0, left), () => resolve(late))))])
-  if (built === late) return undefined
-  if (built === null) await update($, buildState, () => ({ path: null, at: now }))
+  // Another caller may have recorded a build, or one that named nothing, while this one asked.
+  const recorded = knownBuild(await read($, buildState), await $.clock.now())
+  if (recorded !== 'ask') return recorded
+  const left = Math.max(0, timeoutMs - ((await $.clock.now()) - now))
+  const built = await Promise.race([
+    buildInBackground($),
+    new Promise<typeof STILL_BUILDING>(resolve => {
+      // A clock that won't time the wait ends it at once, rather than leave the caller waiting on the build unbounded.
+      try {
+        $.clock.after(left, () => resolve(STILL_BUILDING))
+      } catch {
+        resolve(STILL_BUILDING)
+      }
+    }),
+  ])
+  if (built === STILL_BUILDING || cannotSpawn) return built === STILL_BUILDING ? built : undefined
+  if (built === null) {
+    const failed = await $.clock.now()
+    await update($, buildState, () => ({ path: null, at: failed }))
+  }
   return built ?? undefined
 }
 
@@ -674,7 +696,10 @@ function buildInBackground($: EngineInterface): Promise<string | null> {
     await update($, buildState, () => ({ path: named, at }))
     return named
   })()
-    .catch(() => null)
+    .catch(() => {
+      cannotSpawn = true
+      return null
+    })
     .finally(() => {
       building = undefined
     })
@@ -689,6 +714,7 @@ function buildInBackground($: EngineInterface): Promise<string | null> {
  */
 async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string): Promise<Ran> {
   const binary = await build($, timeoutMs).catch(() => undefined)
+  if (binary === STILL_BUILDING) throw new Error('the CLI is still building for this version; ask again in a moment')
   if (binary) {
     const startedAt = await $.clock.now()
     try {
@@ -698,7 +724,7 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
       await update($, buildState, () => null)
     }
   }
-  return start($, shimPath($.plugin.root), ['--if-built', ...args], timeoutMs, stdin)
+  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], timeoutMs, stdin)
 }
 
 /**
@@ -1076,6 +1102,7 @@ let retriedRead = false
 /** Forgets what the conversation was told: a new one's warnings show again, and the pin is named again. */
 function startOver(): void {
   retriedRead = false
+  cannotSpawn = false
   sessionRootRead = undefined
   headRead = undefined
   sessionProfileSchemes = new Map()

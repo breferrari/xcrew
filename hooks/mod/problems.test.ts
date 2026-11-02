@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Problem } from './cli'
 import { RESTART_CHECK } from './problems'
-import { runCommand, stubCli, submitPrompt } from './testing'
+import { runCommand, stubCli, submitPrompt, withoutIfBuilt } from './testing'
 
 const BAND = {
   plugin: 'xcrew',
@@ -291,7 +291,7 @@ test('after setup, a doctor read already in flight is followed by a fresh one', 
   let release = () => {}
   const released = new Promise<void>(resolve => (release = resolve))
   on('process.run', async (_, e) => {
-    const args = e.argv.slice(1).filter(argument => argument !== '--if-built')
+    const args = withoutIfBuilt(e.argv.slice(1))
     if (args[0] === 'doctor') {
       doctorRuns += 1
       const seen = doctorRuns === 1 ? [] : [...problems]
