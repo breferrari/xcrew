@@ -2,21 +2,23 @@
 
 ## Unreleased
 
-- The ledger shows a red test's newest failure message, so a test that has since failed every repeated run reads as a real failure, while its first red's date stays. Before, it kept the message of its first failure.
-- The doctor says when a session's rules are an older xcrew's than the one running, as after a plugin update in an open session, `/reload-plugins` included, and when xcrew's mod hasn't reported in the session, which leaves its notes, tools and the line above the prompt off. Both checks run only from inside a Claude Code session.
-- A test run whose filter matched tests that then didn't execute ends on the line above the prompt as `✗ test_sim · 7:49 · 1 selected, none ran`, rather than `no tests ran`, which read as a filter that matched nothing.
-- The briefing names one command for setting up a worktree's session, `xcrew setup --worktree`, as the doctor and the line above the prompt do, and the setup skill starts there in a worktree.
-- Before setup, the doctor names the generate command along with setup in a checkout whose Tuist or XcodeGen project isn't generated yet, as a new worktree's: setup alone left nothing to build.
+## 0.13.0 — 2026-11-02
+
 - After `xcrew setup`, a running session builds and tests with the new profiles at once: setup prints the `session_set_defaults` calls that give them to MobileBuildMCP, and the doctor asks for a restart only when the config's tool groups or server settings changed. A new worktree session needs no restart to build and test after `xcrew setup --worktree`.
-- `/xcrew timings` lists the build, test and run calls that waited a second or more before they reached their server, with how long each step before the call took, so a slow start can be traced to its step.
-- xcrew's cache stays smaller: an installed plugin's build no longer leaves its 200 MB scratch folder behind, each old plugin version's source stamp goes after two weeks, failed tests' images are capped at 200 MB, oldest run first, and a running log's kept reading goes a day after its run.
-- The line above the prompt reads a running build's or test's log on from where its last look stopped, rather than the whole log every second: on a 31 MB log each look takes about 10 ms instead of 50.
-- A test run asks `xcrew project --branch` once for its ledger and card where it asked up to four times: an answer under five seconds old is shared, and a Bash call, which may switch branches, drops it.
-- Editing a YAML file, such as a CI workflow, in a project XcodeGen doesn't generate no longer starts two `xcrew` calls on the edit's path; `project` says whether the project reads YAML (`readsYaml`).
-- A test run's report reaches Claude about 0.6 s sooner: a result bundle without coverage is no longer handed to `xccov`, and one with coverage asks it one question fewer.
+- The doctor says when a session's rules are an older xcrew's than the one running, as after a plugin update in an open session, `/reload-plugins` included, and when xcrew's mod hasn't reported in the session, which leaves its notes, tools and the line above the prompt off. Both checks run only from inside a Claude Code session.
+- Before setup, the doctor names the generate command along with setup in a checkout whose Tuist or XcodeGen project isn't generated yet, as a new worktree's: setup alone left nothing to build.
+- The briefing names one command for setting up a worktree's session, `xcrew setup --worktree`, as the doctor and the line above the prompt do, and the setup skill starts there in a worktree.
+- A test run whose filter matched tests that then didn't execute ends on the line above the prompt as `✗ test_sim · 7:49 · 1 selected, none ran`, rather than `no tests ran`, which read as a filter that matched nothing.
+- The ledger shows a red test's newest failure message, so a test that has since failed every repeated run reads as a real failure, while its first red's date stays. Before, it kept the message of its first failure.
 - After `/clear` or `/resume`, the new conversation starts with a clean slate: a pin to suggest is named again on the next failing build it may explain, and the doctor's warnings show again from its first prompt. Before, they counted as already said.
+- A test run's report reaches Claude about 0.6 s sooner: a result bundle without coverage is no longer handed to `xccov`, and one with coverage asks it one question fewer.
+- The line above the prompt reads a running build's or test's log on from where its last look stopped, rather than the whole log every second: on a 31 MB log each look takes about 10 ms instead of 50.
 - A build or test run moved to the background stops being followed once its log never appears, or once more calls wait for their notifications than xcrew keeps. Before, its once-a-second read of the run's phase went on for the rest of the session.
 - Which Xcode CI selects is read through the local composite actions a workflow uses (`uses: ./…`), however deep, so a bare `xcodes select` in one counts as CI selecting the project's `.xcode-version`. Before, a workflow that chose its Xcode in a local action was taken to name none.
+- `/xcrew timings` lists the build, test and run calls that waited a second or more before they reached their server, with how long each step before the call took, so a slow start can be traced to its step.
+- xcrew's cache stays smaller: an installed plugin's build no longer leaves its 200 MB scratch folder behind, each old plugin version's source stamp goes after two weeks, failed tests' images are capped at 200 MB, oldest run first, and a running log's kept reading goes a day after its run.
+- A test run asks `xcrew project --branch` once for its ledger and card where it asked up to four times: an answer under five seconds old is shared, and a Bash call, which may switch branches, drops it.
+- Editing a YAML file, such as a CI workflow, in a project XcodeGen doesn't generate no longer starts two `xcrew` calls on the edit's path; `project` says whether the project reads YAML (`readsYaml`).
 
 ## 0.12.0 — 2026-11-02
 
