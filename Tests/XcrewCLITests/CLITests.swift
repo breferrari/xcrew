@@ -603,7 +603,7 @@ import XcrewTestSupport
         project.write("SwiftCompile normal arm64 /w/A.swift (in target 'Payments' from project 'App')\n", to: "test_sim_1.log")
         let log = project.root.appending(path: "test_sim_1.log").path
         let written = try #require(try URL(fileURLWithPath: log).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-        let context = CheckContext.fake(project: project, now: written.addingTimeInterval(OtherRuns.quietFor + 5))
+        let context = CheckContext.fake(project: project, now: written.addingTimeInterval(95))
         let answer = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "test_sim", "--since", "0", "--log", log, context: context).text.utf8)) as? [String: Any])
         #expect(answer["quiet"] as? Bool == true, "\(answer)")
         #expect(answer["outcome"] == nil, "\(answer)")
@@ -621,7 +621,8 @@ import XcrewTestSupport
     }
 
     @Test func beforeTheLogAppearsThereIsNeitherLogNorPhase() async {
-        #expect(await Run("phase", "--tool", "test_sim", "--since", String(Int(Date().timeIntervalSince1970 * 1000))).text == "{}")
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
+        #expect(await Run("phase", "--tool", "test_sim", "--since", String(Int(now.timeIntervalSince1970 * 1000)), context: .fake(now: now)).text == "{}")
     }
 
     /// Two sessions in one checkout share MobileBuildMCP's workspace; each follows the log its own server writes.
@@ -648,12 +649,13 @@ import XcrewTestSupport
     /// The mod sends the card it built as JSON; the folder is kept as the file system spells it, as the hook reads it.
     @Test func saveKeepsTheCardTheModSends() async {
         let project = Project.temporary()
-        let context = CheckContext.fake(project: project)
-        let updated = Date().timeIntervalSince1970 * 1000 - 3 * 3_600_000
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
+        let context = CheckContext.fake(project: project, now: now)
+        let updated = now.timeIntervalSince1970 * 1000 - 3 * 3_600_000
         let json = #"{"version":1,"folder":"\#(project.root.path)","branch":"main","updated":\#(updated),"text":"Notes:\n- a"}"#
         let run = await Run("card", "--save", context: context, stdin: json)
         #expect(run.status == 0)
-        #expect(ProjectCard.text(folder: project.canonicalRoot, branch: "main", now: Date(), on: context.machine) == "Notes, as of the run 3 h ago:\n- a")
+        #expect(ProjectCard.text(folder: project.canonicalRoot, branch: "main", on: context.machine) == "Notes, as of the run 3 h ago:\n- a")
     }
 }
 

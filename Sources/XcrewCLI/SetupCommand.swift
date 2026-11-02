@@ -117,9 +117,9 @@ struct SetupCommand: Command {
         if !carriedKeys.isEmpty, ConfigWriter.keeping(context.project) != nil {
             notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into " + (answers.profileNames.isEmpty ? "the session defaults" : "each profile"))
         }
-        let began = context.machine.now()
-        let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"), now: began)
-        Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container)"], since: began)
+        let marked = Self.serverMarked(context.project)
+        let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"), now: context.machine.now())
+        Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container)"], marked: marked)
         if answers.appScheme == nil {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
         }
@@ -158,8 +158,9 @@ struct SetupCommand: Command {
 
     /// What setup did with the config: kept as it was, with what `--force` would do, or written, with `written`'s lines.
     /// Written, it names the `session_set_defaults` calls that give a running MobileBuildMCP its session defaults, and
-    /// asks for a restart only when the part those can't set changed `since`.
-    static func report(_ outcome: ConfigWriter.Outcome, in invocation: Invocation, written: [String], since began: Date) {
+    /// asks for a restart only when the part those can't set changed: its marker's date moved from `marked`, the file
+    /// system's own times on both sides.
+    static func report(_ outcome: ConfigWriter.Outcome, in invocation: Invocation, written: [String], marked: Date?) {
         switch outcome {
         case .keptEdited:
             invocation.print("xcrew: .mobilebuildmcp/config.yaml was edited after xcrew wrote it; left as is (--force replaces it, keeping a backup)")
@@ -174,9 +175,14 @@ struct SetupCommand: Command {
                 invocation.print("xcrew: a running MobileBuildMCP takes these session defaults without a restart, one call each:")
                 calls.forEach { invocation.print("  " + $0) }
             }
-            let serverChanged = (try? FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date).map { $0 >= began } ?? false
+            let serverChanged = Self.serverMarked(project).map { $0 != marked } ?? false
             if serverChanged { invocation.print(Self.restartLine) }
         }
+    }
+
+    /// When the config's server part last changed, by its marker's date; nil before setup first wrote it.
+    static func serverMarked(_ project: Project) -> Date? {
+        try? FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date
     }
 
     /// The line setup prints when the config changed what MobileBuildMCP reads only when it launches; the setup form tells
@@ -221,11 +227,11 @@ struct SetupCommand: Command {
                 for: worktreeTop, main: checkout.main, config: config, fresh: invocation.arguments.has("fresh-simulator"), record: record, using: context.runner
             )
         }
-        let began = context.machine.now()
-        let outcome = try ConfigWriter.write(config, to: context.project, force: force, now: began)
+        let marked = Self.serverMarked(context.project)
+        let outcome = try ConfigWriter.write(config, to: context.project, force: force, now: context.machine.now())
         Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path))"]
             + leftOut.map { "xcrew: left out \($0.key) \($0.path), which the main checkout uses: this worktree's builds go in a DerivedData of its own" }
-            + simulators, since: began)
+            + simulators, marked: marked)
         await Self.keepOutOfGit(in: invocation)
         return 0
     }

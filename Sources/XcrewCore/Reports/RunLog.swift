@@ -9,23 +9,23 @@ public enum RunLog {
         phase(in: Data(log.utf8), expectedTests: expectedTests)
     }
 
-    /// The phase of the log at `url`. With `kept`, read on from the reading kept in its folder for it, and that reading
-    /// kept again, the readings unread for a day before its time removed: a clean build's log runs to tens of megabytes,
+    /// The phase of the log at `url`. With `readings`, read on from the reading kept in its folder for it, and that reading
+    /// kept again, the readings unread for a day before its `now` removed: a clean build's log runs to tens of megabytes,
     /// and the band asks once a second.
-    public static func phase(ofLogAt url: URL, expectedTests: Int?, keptIn kept: (folder: URL, now: Date)? = nil) -> String? {
-        follow(logAt: url, expectedTests: expectedTests, kind: .build, keptIn: kept)?.phase
+    public static func phase(ofLogAt url: URL, expectedTests: Int?, keptIn readings: (folder: URL, now: Date)? = nil) -> String? {
+        follow(logAt: url, expectedTests: expectedTests, kind: .build, keptIn: readings)?.phase
     }
 
     /// What a tick of the band reads of a running log, from its kept reading alone: the phase, the scheme its invocation
     /// names and its latest verdict as `kind`'s outcome, with nothing read again from the log's start or end.
     public static func follow(logAt url: URL, expectedTests: Int?, kind: Report.Kind, keptIn readings: (folder: URL, now: Date)? = nil) -> (phase: String?, scheme: String?, outcome: Bool?)? {
-        let kept = readings.map { $0.folder.appending(path: SHA256.hash(data: Data(url.path.utf8)).hex + ".json") }
-        let before = kept.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(LogReading.self, from: $0) }
+        let file = readings.map { $0.folder.appending(path: SHA256.hash(data: Data(url.path.utf8)).hex + ".json") }
+        let before = file.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(LogReading.self, from: $0) }
         guard let reading = LogReading.reading(url, after: before) else { return nil }
-        if let kept, reading != before, let encoded = try? JSONEncoder().encode(reading) {
+        if let file, reading != before, let encoded = try? JSONEncoder().encode(reading) {
             if before == nil, let readings { pruneReadings(in: readings.folder, now: readings.now) }
-            try? FileManager.default.createDirectory(at: kept.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? encoded.write(to: kept, options: .atomic)
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? encoded.write(to: file, options: .atomic)
         }
         return (reading.phase(expectedTests: expectedTests), reading.scheme, reading.verdict.flatMap { outcome(ofVerdict: $0, kind: kind) })
     }
@@ -39,8 +39,9 @@ public enum RunLog {
         }
     }
 
-    /// Where a log's reading is kept between the band's asks, one file a log, and the machine's time to prune them by.
-    public static func readings(on machine: Machine) -> (folder: URL, now: Date) {
+    /// Where a log's reading is kept between the band's asks, one file a log, with the machine's time now, before which
+    /// readings unread for a day are removed.
+    public static func readingsKept(on machine: Machine) -> (folder: URL, now: Date) {
         (machine.cacheFolder.appending(path: "phases"), machine.now())
     }
 

@@ -28,10 +28,13 @@ import XcrewTestSupport
         try FileManager.default.createDirectory(atPath: feature, withIntermediateDirectories: true)
         let logs = main.root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: feature))/logs")
         try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-        try "Build started\n".write(to: logs.appending(path: "build_sim_2026-11-01T23-59-00-000Z_pid100_a.log"), atomically: true, encoding: .utf8)
+        let log = logs.appending(path: "build_sim_2026-11-01T23-59-00-000Z_pid100_a.log")
+        try "Build started\n".write(to: log, atomically: true, encoding: .utf8)
+        let now = Date(timeIntervalSince1970: 1_793_577_600)
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-30)], ofItemAtPath: log.path)
         let runner = FakeRunner(responses: FakeRunner.worktreeResponses(project: main, main: main.root.path, linked: [feature]))
-        let since = String(Int(Date().addingTimeInterval(-60).timeIntervalSince1970 * 1000))
-        let text = await Run("report", "--server", "xcode", "--kind", "build", "--since", since, context: .fake(runner, project: main), stdin: "done").text
+        let since = String(Int(now.addingTimeInterval(-60).timeIntervalSince1970 * 1000))
+        let text = await Run("report", "--server", "xcode", "--kind", "build", "--since", since, context: .fake(runner, project: main, now: now), stdin: "done").text
         let report = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
         #expect(report?["overlapped"] as? [String] == ["feature"], "\(text)")
     }

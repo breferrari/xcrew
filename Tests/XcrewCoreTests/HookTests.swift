@@ -183,7 +183,7 @@ import XcrewTestSupport
     @Test func briefingEndsWithTheProjectCardForThisBranch() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let machine = Self.machine(project, version: "2.7.1", branch: "feat/card")
-        ProjectCard.save(.init(folder: project.canonicalRoot, branch: "feat/card", updated: machine.now().timeIntervalSince1970 * 1000 - 5 * 60_000, text: "Notes:\n- a"), on: machine, now: machine.now())
+        ProjectCard.save(.init(folder: project.canonicalRoot, branch: "feat/card", updated: machine.now().timeIntervalSince1970 * 1000 - 5 * 60_000, text: "Notes:\n- a"), on: machine)
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n")
         #expect(text?.hasSuffix("\n\nNotes, as of the run 5 min ago:\n- a") == true)
     }

@@ -4,6 +4,9 @@ import Testing
 import XcrewTestSupport
 
 @Suite struct DoctorTests {
+    /// The tests' own time, which the servers' starts and the configs' writes are dated against.
+    static let now = Date(timeIntervalSince1970: 1_767_225_600)
+
     /// What scans the disk, this project's storage and the simulators setup left for worktrees, is said by `xcrew space`
     /// when asked, never by the doctor.
     @Test func theDoctorScansNoDisk() {
@@ -341,7 +344,7 @@ import XcrewTestSupport
     func sessions(project: Project, mine: String, theirs: String, configAgo seconds: TimeInterval) throws -> FakeRunner {
         project.write("schemaVersion: 1\n", to: ".mobilebuildmcp/config.yaml")
         project.write("", to: ".mobilebuildmcp/.xcrew-managed")
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -seconds)], ofItemAtPath: project.managedMarker.path)
+        try FileManager.default.setAttributes([.modificationDate: Self.now.addingTimeInterval(-seconds)], ofItemAtPath: project.managedMarker.path)
         let ps = """
           100     1 01:00:00 /Users/me/.local/bin/claude --resume
           200   100 \(mine) \(Self.server)
@@ -357,13 +360,13 @@ import XcrewTestSupport
     @Test func thisSessionsServerHasTheConfigItStartedAfter() async throws {
         let project = Project.temporary()
         let runner = try sessions(project: project, mine: "00:30", theirs: "10:00", configAgo: 60)
-        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)).status == .pass)
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300, now: Self.now)).status == .pass)
     }
 
     @Test func aConfigNewerThanThisSessionsServerAsksForARestart() async throws {
         let project = Project.temporary()
         let runner = try sessions(project: project, mine: "05:00", theirs: "00:30", configAgo: 60)
-        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)) == .warn("the config changed after this session's MobileBuildMCP started: restart Claude Code to load it"))
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300, now: Self.now)) == .warn("the config changed after this session's MobileBuildMCP started: restart Claude Code to load it"))
     }
 
     /// The server's start is the machine's time less how long it has run: a config written a minute before the machine's
@@ -381,7 +384,7 @@ import XcrewTestSupport
     @Test func fromATerminalTheOldestServerCounts() async throws {
         let project = Project.temporary()
         let runner = try sessions(project: project, mine: "00:30", theirs: "1-02:10:00", configAgo: 60)
-        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 600)) == .warn("a MobileBuildMCP serving this project started before the config changed: restart its Claude Code session to load it"))
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 600, now: Self.now)) == .warn("a MobileBuildMCP serving this project started before the config changed: restart its Claude Code session to load it"))
     }
 
     /// Setup changed only profiles since the server started: `session_set_defaults` applies them, no restart.
@@ -389,8 +392,8 @@ import XcrewTestSupport
         let project = Project.temporary()
         let runner = try sessions(project: project, mine: "05:00", theirs: "00:30", configAgo: 60)
         project.write("", to: ".mobilebuildmcp/.xcrew-server")
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -86_400)], ofItemAtPath: project.serverMarker.path)
-        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)) == .pass("loaded at its start; the profiles written since come through session_set_defaults, as setup printed"))
+        try FileManager.default.setAttributes([.modificationDate: Self.now.addingTimeInterval(-86_400)], ofItemAtPath: project.serverMarker.path)
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300, now: Self.now)) == .pass("loaded at its start; the profiles written since come through session_set_defaults, as setup printed"))
     }
 
     /// The tool groups or another server setting changed since: only a restart loads those, though builds go on.
@@ -398,8 +401,8 @@ import XcrewTestSupport
         let project = Project.temporary()
         let runner = try sessions(project: project, mine: "05:00", theirs: "00:30", configAgo: 60)
         project.write("", to: ".mobilebuildmcp/.xcrew-server")
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)], ofItemAtPath: project.serverMarker.path)
-        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)) == .warn("the config's tool groups or server settings changed after this session's MobileBuildMCP started: builds and tests go on, and restarting Claude Code loads the rest"))
+        try FileManager.default.setAttributes([.modificationDate: Self.now.addingTimeInterval(-60)], ofItemAtPath: project.serverMarker.path)
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300, now: Self.now)) == .warn("the config's tool groups or server settings changed after this session's MobileBuildMCP started: builds and tests go on, and restarting Claude Code loads the rest"))
     }
 
     /// MobileBuildMCP saves session defaults with `persist: true` into its own config, which it already holds.
@@ -407,7 +410,7 @@ import XcrewTestSupport
         let project = Project.temporary()
         let runner = try sessions(project: project, mine: "00:30", theirs: "10:00", configAgo: 60)
         project.write("schemaVersion: 1\nactiveSessionDefaultsProfile: app\n", to: ".mobilebuildmcp/config.yaml")
-        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300)).status == .pass)
+        #expect(await ConfigLoadedCheck().run(.fake(runner, project: project, processID: 300, now: Self.now)).status == .pass)
     }
 
     static let server = FakeSession.server

@@ -54,10 +54,10 @@ public struct SystemCommandRunner: CommandRunning {
         }
         guard let status else {
             process.terminate()
-            _ = await Self.collect(stdout, stderr, until: .now + Self.grace)
+            _ = await Self.collect(stdout, stderr, until: ContinuousClock.now + Self.grace)
             return .timedOut
         }
-        let (out, err) = await Self.collect(stdout, stderr, until: .now + Self.grace)
+        let (out, err) = await Self.collect(stdout, stderr, until: ContinuousClock.now + Self.grace)
         return CommandResult(status: status, stdout: out, stderr: err)
     }
 

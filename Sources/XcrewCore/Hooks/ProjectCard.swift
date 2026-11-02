@@ -43,8 +43,9 @@ public enum ProjectCard {
     }
 
     /// Saves one card in place of that folder's and branch's last, written whole through a file renamed over it, and
-    /// drops the stale cards. A card a newer xcrew wrote is left as it is.
-    public static func save(_ entry: Entry, on machine: Machine, now: Date) {
+    /// drops the cards stale at the machine's time. A card a newer xcrew wrote is left as it is.
+    public static func save(_ entry: Entry, on machine: Machine) {
+        let now = machine.now()
         let folder = ProjectLayout.canonicalPath(entry.folder)
         let file = file(folder: folder, branch: entry.branch, on: machine)
         if let existing = read(file), (existing.version ?? version) > version { return }
@@ -67,8 +68,9 @@ public enum ProjectCard {
     }
 
     /// The card for this folder and branch, its first line saying how old it is, or nothing when there's none or it's
-    /// stale. `folder` is as the file system spells it.
-    public static func text(folder: String, branch: String, now: Date, on machine: Machine) -> String? {
+    /// stale, both by the machine's time. `folder` is as the file system spells it.
+    public static func text(folder: String, branch: String, on machine: Machine) -> String? {
+        let now = machine.now()
         guard let entry = read(file(folder: folder, branch: branch, on: machine)), (entry.version ?? version) <= version,
               entry.folder == folder, entry.branch == branch, !isStale(entry, now: now), let text = entry.text
         else { return nil }
