@@ -509,7 +509,9 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
  * how the run ended, from the call to the notification. Nothing, when neither says.
  */
 async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
+  // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start.
+  const log = call.log === undefined ? ['--tool', call.tool, '--since', String(call.startedAt)] : ['--log', call.log]
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...log]
   const reported = await answer($, args, 120_000, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
@@ -521,7 +523,7 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   const usesBand = call.usesBand && !(await anotherRunGoing($, call.startedAt))
   // The runs that ended meanwhile count among the earlier ones; the server's time leaves out the wait for the notification.
   const { passed: earlier, failed: earlierFailed } = await earlierRuns($, call.key, ended)
-  const loop = await recordEnding($, { ...call, usesBand, earlier }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
+  const loop = await recordEnding($, { ...call, usesBand, earlier, earlierFailed }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
   // Given only once it reaches Claude: a note dropped above isn't counted as read.
   const notes = withConcurrencyOnce(outcome, call.scope).notes
   return { ...(outcome.result === undefined ? {} : { result: outcome.result }), notes: [...notes, ...(loop ? [loop] : [])] }

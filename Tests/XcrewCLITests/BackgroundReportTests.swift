@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import XcrewCore
+@testable import XcrewCore
 import XcrewTestSupport
 
 /// `xcrew report` for a call Claude Code moved to the background: the task's notification read for its result, and,
@@ -111,6 +111,21 @@ import XcrewTestSupport
     }
 
     /// A log with no verdict yet, or none at all, says no outcome.
+    /// A notification read with the tool and the call's start, and no log, finds the run's own log in its workspace: the
+    /// log may appear only after Claude Code moved the call, when nothing followed it any more.
+    @Test func aNotificationWithoutALogFindsTheRunsLog() async throws {
+        let context = CheckContext.fake()
+        let logs = context.machine.home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: context.project.root.path))/logs")
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        let invocation = "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme Feature -destination id=0000\n\n"
+        try (invocation + "** TEST EXECUTE SUCCEEDED **\n").write(to: logs.appending(path: "test_sim_2026-11-02T10-00-00-000Z_pid1_abcd1234.log"), atomically: true, encoding: .utf8)
+        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--tool", "test_sim", "--since", "0", context: context, stdin: Self.notification("", status: "killed"))
+        let report = try Self.json(run)
+        #expect(report["scheme"] as? String == "Feature")
+        #expect(report["ok"] as? Bool == true)
+        #expect(report["isUnread"] == nil)
+    }
+
     @Test func aLogWithoutAVerdictIsUnread() async throws {
         let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "build", "--log", "/nonexistent/build_sim.log")
         #expect(try Self.json(run)["isUnread"] as? Bool == true)

@@ -166,6 +166,28 @@ test('a run whose log the call never saw is kept under the scheme its report nam
   expect(durations.map(([key]) => key.endsWith('test_sim · Feature'))).toEqual([true])
 })
 
+/** A log the call never saw, as one that appears only after Claude Code moved it, the CLI finds from the tool and its start. */
+test("a run whose log the call never saw has its notification's report find it", async ($, on) => {
+  const { clock, cli } = session(on, { logSeen: false, reports: [{ ok: true, failures: [], notes: [] }] })
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  await notify($, clock)
+  const notified = reportCalls(cli).filter(call => call.args.includes('--notification'))
+  expect(notified.map(call => call.args.slice(call.args.indexOf('--tool'), call.args.indexOf('--tool') + 2))).toEqual([['--tool', 'test_sim']])
+  expect(notified[0]?.args).toContain('--since')
+  expect(notified[0]?.args).not.toContain('--log')
+})
+
+/** Kept under the scheme its report names, a run counts that scheme's failed runs, not those of the scheme first guessed. */
+test("a run kept under its report's scheme adds to that scheme's failed runs", async ($, on) => {
+  const { clock, store } = session(on, { logSeen: false, reports: [{ ok: false, failures: [], notes: [], scheme: 'Feature' }] })
+  store.set('failed./work/App\u001ftest_sim · App', [111_111])
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  await notify($, clock)
+  const feature = [...store.entries()].filter(([key]) => key.startsWith('failed.') && key.endsWith('test_sim · Feature')).map(([, runs]) => runs)
+  expect(feature).toHaveLength(1)
+  expect(feature[0]).not.toContain(111_111)
+})
+
 /** Drawn before the notification is read, the row leaves the call to it, and says nothing yet. */
 test('a row drawn before its notification is read leaves the call to be read', async ($, on) => {
   const { toasts, clock } = session(on, { reports: [{ ok: false, failures: [], notes: [] }] })
