@@ -49,7 +49,8 @@ struct SelectedNoneRanTests {
     @Test func aSavedResultWhoseFilterMatchedSaysNoneExecuted() async throws {
         let (project, home) = try Self.setting()
         let report = await Report.make(kind: .test, output: ToolOutput(text: try Self.json(), server: .mobileBuildMCP), home: home, runner: FakeRunner(), project: project)
-        #expect(report.detail == "no tests ran")
+        #expect(report.detail == "1 selected, none ran")
+        #expect(report.ok == false)
         #expect(report.notes == [Self.planned])
     }
 
@@ -60,7 +61,8 @@ struct SelectedNoneRanTests {
         let bundle = try #require(ResultBundle.path(in: output, home: home))
         let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results summary --path \(bundle) --compact": .init(status: 0, stdout: #"{"totalTestCount":0,"passedTests":0,"failedTests":0,"skippedTests":0}"#)])
         let report = await Report.make(kind: .test, output: output, home: home, runner: runner, project: project)
-        #expect(report.detail == "no tests ran")
+        #expect(report.detail == "1 selected, none ran")
+        #expect(report.ok == false)
         #expect(report.notes == [Self.planned])
     }
 
