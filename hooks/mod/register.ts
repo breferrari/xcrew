@@ -439,12 +439,12 @@ export const register: Register = on => {
     await $.command.register(COMMAND)
     for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
     startOver()
+    void quietly(() => buildInBackground($))
     void loadProblems($).catch(() => undefined)
     void quietly(() => readXcodeStart($))
     // The card is saved from the history as it's left: fresh, and this version's.
     void quietly(() => pruneHistory($)).then(() => saveCard($))
     void quietly(() => pruneGone($))
-    void quietly(() => buildInBackground($))
     return started
   })
   // A `/clear` or a `/resume` fires no session start, the process going on under another conversation: that one starts

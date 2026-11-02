@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- After an update and `/reload-plugins`, xcrew starts building its CLI in the background at once, rather than when the first command needs it, so that first command, often `/xcrew doctor`, finds it built or waits only for what's left.
 - A build or test run that overlapped another worktree's build or test is kept out of its usual time, which the line above the prompt measures runs against, and isn't measured against it either: it ran slower for sharing the Mac. Before, two checkouts testing at once raised each other's usual time. The check runs after the result is returned, so no result waits on it; the run's ending on the line above the prompt waits for it, a few tens of milliseconds.
 - The evidence block's changed-line coverage counts a line as run when any test run that compiled its file as it is now ran it, and names those runs. A run that started before the file last changed, as one from another branch or before a later commit, doesn't count for it, nor does a run of no tests. Before, it read only the newest run, which could have tested another module or nothing.
 - Rebuilding the CLI no longer removes xcrew's own folders in its cache, such as the session stamps, the failed tests' images and the cards, when nothing new was added to one for two weeks: its cleanup removes only old builds.
