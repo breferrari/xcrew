@@ -85,8 +85,4 @@ supplementaryDoctorChecks:
     name: Claude Code approved in Xcode
     section: xcrew
     command: mcs/checks/xcode-mcp--claude-approved.sh
-  - type: shellScript
-    name: Xcode refuses unsigned agents
-    section: xcrew
-    command: mcs/checks/xcode-mcp--unsigned-agents-off.sh
     fixCommand: "defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO"

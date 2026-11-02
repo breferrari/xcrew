@@ -11,8 +11,6 @@ public enum Doctor {
         XcodeMCPHandshakeCheck(),
         XcodePinCheck(),
         ClaudeApprovedCheck(),
-        UnsignedAgentsCheck(),
-        XcrewUpdateCheck(),
     ]
 
     public static func check(id: String) -> (any Check)? {

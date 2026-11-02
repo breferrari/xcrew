@@ -12,6 +12,23 @@ import XcrewTestSupport
         #expect(!ids.contains("simulators/worktree-leftovers"))
     }
 
+    /// The doctor checks what xcrew can't run without, the installation and the toolchain, and nothing else: anything
+    /// more is a note on the failure it explains, a part of `xcrew space`, or a line of setup's.
+    @Test func theDoctorHoldsWhatXcrewNeedsToRunAndNothingElse() {
+        #expect(Doctor.checks.map(\.id) == [
+            "mobilebuildmcp/version", "mobilebuildmcp/no-legacy-binary", "mobilebuildmcp/project-config", "mobilebuildmcp/config-loaded", "mobilebuildmcp/simulators",
+            "xcode-mcp/headless-enabled", "xcode-mcp/handshake", "xcode/pin", "xcode-mcp/claude-approved",
+        ])
+    }
+
+    /// The doctor reaches no network, the full one included: the plugin system handles updates.
+    @Test func theDoctorReachesNoNetwork() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let runner = RecordingRunner(FakeRunner(responses: [:]))
+        _ = await Doctor.run(in: CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner)))
+        #expect(!runner.asked.contains { $0.hasPrefix("curl ") }, "\(runner.asked)")
+    }
+
     @Test func checkIDsAreUniqueAndNamespaced() async {
         let ids = Doctor.checks.map(\.id)
         #expect(Set(ids).count == ids.count)
@@ -42,76 +59,6 @@ import XcrewTestSupport
 
 
     static let latestRelease = "curl -fsSL --max-time 5 https://api.github.com/repos/breferrari/xcrew/releases/latest"
-
-    @Test func anOlderXcrewIsToldHowToUpdate() async {
-        let runner = FakeRunner(responses: [Self.latestRelease: .init(status: 0, stdout: #"{"tag_name":"v99.0.0","name":"Xcrew 99.0.0"}"#)])
-        let result = await XcrewUpdateCheck().run(.fake(runner))
-        #expect(result.status == .warn)
-        #expect(result.message == "\(XcrewVersion.current) installed, 99.0.0 released: claude plugin update xcrew@breferrari, or turn on auto-update in /plugin → Marketplaces → breferrari")
-    }
-
-    @Test func theLatestXcrewPasses() async {
-        let runner = FakeRunner(responses: [Self.latestRelease: .init(status: 0, stdout: #"{"tag_name":"v\#(XcrewVersion.current)"}"#)])
-        #expect(await XcrewUpdateCheck().run(.fake(runner)) == .pass("\(XcrewVersion.current), the latest release"))
-    }
-
-    /// A checkout at `/Users/me/Dev/Xcrew`, a spelling git doesn't print, as the mod passes the plugin root unresolved.
-    private func checkout(at root: String = "/Users/me/Dev/Xcrew", project: Project = .temporary(), prefix: String = "", status: CommandResult = .init(status: 0, stdout: ""), online: Bool = true, latest: String = XcrewVersion.current) -> CheckContext {
-        var responses: [String: CommandResult] = [
-            "git -C \(root) rev-parse --show-prefix --short HEAD": .init(status: 0, stdout: "\(prefix)\n5b646cc\n"),
-            "git --no-optional-locks -C \(root) status --porcelain": status,
-        ]
-        if online { responses[Self.latestRelease] = .init(status: 0, stdout: #"{"tag_name":"v\#(latest)"}"#) }
-        return .fake(FakeRunner(responses: responses), project: project, environment: ["XCREW_ROOT": root])
-    }
-
-    @Test func aGitCheckoutShowsItsCommit() async {
-        #expect(await XcrewUpdateCheck().run(checkout()) == .pass("\(XcrewVersion.current) (5b646cc), the latest release"))
-        #expect(await XcrewUpdateCheck().run(checkout(status: .init(status: 0, stdout: " M bin/xcrew\n"))) == .pass("\(XcrewVersion.current) (5b646cc + local changes), the latest release"))
-    }
-
-    /// A cached install inside a git-managed folder, such as a versioned `~/.claude`, isn't a checkout of Xcrew.
-    @Test func aRepositoryAroundACachedInstallIsNotItsCommit() async {
-        let result = await XcrewUpdateCheck().run(checkout(prefix: "plugins/cache/breferrari/xcrew/0.8.1/"))
-        #expect(result == .pass("\(XcrewVersion.current), the latest release"))
-    }
-
-    /// A `git status` that fails prints nothing, which would read as a clean tree.
-    @Test func aCommitWhoseTreeCantBeReadIsNotShown() async {
-        #expect(await XcrewUpdateCheck().run(checkout(status: .init(status: 128, stdout: ""))) == .pass("\(XcrewVersion.current), the latest release"))
-    }
-
-    /// `claude plugin update` touches only the marketplace copy, never the checkout that runs.
-    @Test func anOldCheckoutIsToldToPull() async {
-        #expect(await XcrewUpdateCheck().run(checkout(latest: "99.0.0")) == .warn("\(XcrewVersion.current) (5b646cc) installed, 99.0.0 released: git pull in /Users/me/Dev/Xcrew"))
-    }
-
-    /// mcs loads the plugin from its own checkout of the pack, by its link or its real path: a `git pull` there would run
-    /// commits nobody trusted.
-    @Test(arguments: [".mcs/packs/xcrew", ".mcs/marketplaces/xcrew/plugins/xcrew"])
-    func anOldMCSCheckoutIsToldToUpdateThroughMCS(_ path: String) async {
-        let project = Project.temporary()
-        let root = CheckContext.fake(project: project).machine.home.appending(path: path).path
-        #expect(await XcrewUpdateCheck().run(checkout(at: root, project: project, latest: "99.0.0")) == .warn("\(XcrewVersion.current) (5b646cc) installed, 99.0.0 released: mcs update"))
-    }
-
-    /// `bin/xcrew` hands over the checkout's real path, which a symlinked `~/.mcs` doesn't spell.
-    @Test func anMCSCheckoutBehindASymlinkedMCSFolderIsToldToUpdateThroughMCS() async throws {
-        let project = Project.temporary(containing: ["home", "elsewhere/mcs/packs/xcrew"])
-        try FileManager.default.createSymbolicLink(at: project.root.appending(path: "home/.mcs"), withDestinationURL: project.root.appending(path: "elsewhere/mcs"))
-        let root = project.root.appending(path: "elsewhere/mcs/packs/xcrew").path
-        #expect(await XcrewUpdateCheck().run(checkout(at: root, project: project, latest: "99.0.0")) == .warn("\(XcrewVersion.current) (5b646cc) installed, 99.0.0 released: mcs update"))
-    }
-
-    @Test func offlineTheCommitIsStillShown() async {
-        #expect(await XcrewUpdateCheck().run(checkout(online: false)) == .skip("\(XcrewVersion.current) (5b646cc): couldn't reach GitHub to compare"))
-    }
-
-    @Test func noNetworkIsASkipNotAFailure() async {
-        #expect(await XcrewUpdateCheck().run(.fake()).status == .skip)
-        let garbled = FakeRunner(responses: [Self.latestRelease: .init(status: 0, stdout: "<html>rate limited</html>")])
-        #expect(await XcrewUpdateCheck().run(.fake(garbled)).status == .skip)
-    }
 
     @Test func versionCheck() async {
         let missing = await MobileBuildMCPVersionCheck().run(.fake())
@@ -497,12 +444,6 @@ import XcrewTestSupport
         let context = CheckContext.fake(project: project, applications: apps)
         #expect(await HeadlessXcodeMCPCheck().run(context) == .fail("xcrun mcp-server unavailable (needs Xcode 27 or later)"))
         #expect(await ClaudeApprovedCheck().run(context) == .skip("xcrun mcp-server unavailable"))
-    }
-
-    @Test func unsignedAgentsCheck() async {
-        let on = FakeRunner(responses: ["defaults read com.apple.dt.Xcode IDEAllowUnauthenticatedAgents": .init(status: 0, stdout: "1\n")])
-        #expect(await UnsignedAgentsCheck().run(.fake(on)).status == .warn)
-        #expect(await UnsignedAgentsCheck().run(.fake()).status == .pass)
     }
 }
 

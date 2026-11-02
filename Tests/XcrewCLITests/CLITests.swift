@@ -69,6 +69,17 @@ import XcrewTestSupport
         (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)) ?? ""
     }
 
+    /// Xcode accepting unsigned agents is said once, by the setup run that's there to look at the Mac: the doctor checks
+    /// only what xcrew needs to run.
+    @Test(arguments: [("1\n", true), ("0\n", false)])
+    func setupSaysWhenXcodeAcceptsUnsignedAgents(value: String, says: Bool) async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        var runner = simulators
+        runner.responses["defaults read com.apple.dt.Xcode IDEAllowUnauthenticatedAgents"] = .init(status: 0, stdout: value)
+        let run = await Run("setup", "--app-scheme", "App", context: .fake(runner, project: project))
+        #expect(run.output.contains("xcrew: Xcode accepts unsigned agents, so any unsigned process on this Mac may drive Xcode's tools: defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO") == says, "\(run.output)")
+    }
+
     @Test func detectsTheWorkspaceAndTheNewestIPhone() async {
         let project = Project.temporary(containing: ["App.xcworkspace"])
         let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
@@ -370,16 +381,6 @@ import XcrewTestSupport
         #expect(inside.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/project-config") })
     }
 
-    @Test func problemsLeavesOutChecksThatReachTheNetwork() async {
-        // It runs at every session start; a session shouldn't call GitHub it didn't ask to.
-        let project = Project.temporary(containing: ["App.xcworkspace"])
-        let latest = "curl -fsSL --max-time 5 https://api.github.com/repos/breferrari/xcrew/releases/latest"
-        let runner = FakeRunner(responses: [latest: .init(status: 0, stdout: #"{"tag_name":"v99.0.0"}"#)])
-        let run = await Run("doctor", "--problems", context: .fake(runner, project: project))
-        #expect(!run.output.contains { $0.contains("xcrew/up-to-date") })
-        let full = await Run("doctor", context: .fake(runner, project: project))
-        #expect(full.output.contains { $0.hasPrefix("warn  xcrew/up-to-date") })
-    }
 
     /// A pinned Xcode that isn't the one building is the Mac's own choice, never the prompt line's: the full doctor lists
     /// it, and a failure says it may be the cause.

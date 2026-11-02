@@ -119,12 +119,13 @@ Reading a few named fields of a JSON answer is fine: **context** learns the sche
 - Bookkeeping is best-effort and never fails a tool call.
 - No token cost goes unstated: anything that adds text to Claude's context says how much.
 - Parsing a server's output is tested against captured real outputs, and falls back to the server's own display when it doesn't match.
+- Nothing heavy runs on a prompt, and a display's timers run only while it displays.
 
 ## Extending
 
 | To add | Write | Then |
 | --- | --- | --- |
-| A health check | A `Check` in `Sources/XcrewCore/Doctor/Checks/`, listed in `Doctor.checks` | A wrapper in `mcs/checks/` and an entry in `techpack.yaml`; `ManifestTests` fails until both exist |
+| A health check | Only for what xcrew can't run without, the installation and the toolchain, as other tools' doctors check, cheap enough for the doctor's time budget: no disk walk, no network. A `Check` in `Sources/XcrewCore/Doctor/Checks/`, listed in `Doctor.checks`. Anything else is a note on the failure it explains (`XcodeFailureNotes`, `Why`), a part of `xcrew space`, or a line of setup's | A wrapper in `mcs/checks/` and an entry in `techpack.yaml`; `ManifestTests` fails until both exist |
 | A CLI command | A `Command` in `Sources/XcrewCLI/`, listed in `CLI.commands` | Tests in `XcrewCLITests` |
 | A setup question | An option in `SetupCommand.mcsKeys` | A prompt in `techpack.yaml`; `ManifestTests` fails until it exists |
 | A mod behaviour | Its `on(...)` registration and `$` calls in `register.ts`, and its logic as plain functions in a file of their own in `hooks/mod/` (see *Why `register.ts` holds every `$` call*); anything it needs read or worked out, in a Swift command whose arguments and answer `cli.ts` handles (see *The mod's boundary*) | Tests in `hooks/mod/`, calling tools through `testing.ts` and answering for the CLI with `stubCli`; at most one unmatched hook per event; `scripts/typecheck.sh` clean |

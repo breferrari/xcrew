@@ -589,6 +589,67 @@ struct TestbedFieldTests {
     }
 }
 
+/// The doctor checks only what xcrew can't run without, cheaply: no disk walk, no network, its checks run together. This
+/// holds it to a time budget on the test bed's field fixture, with the Mac's own tools: the whole run, and each check on
+/// that run's context, its shared reads already done, so a check's own slow work fails by name and a shared read that
+/// slows down shows in the total. The first run isn't timed: it pays for `xcrun`'s and MobileBuildMCP's own first start,
+/// which aren't the doctor's. Each figure is printed, so CI's log shows them. CI's runners take 1 to 2 s for
+/// `xcrun mcp-server status` against 0.06 s on a Mac (November 2, 2026): set the total from CI's figures, never a laptop's.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct DoctorBudgetTests {
+    /// The whole warm run's ceiling: about 3× CI's slowest, 1.97 s.
+    static let total = Duration.seconds(6)
+    /// Each check's own work's ceiling; the Xcode MCP handshake starts a bridge each time, and has its own, about 3× CI's
+    /// 0.076 s.
+    static let perCheck = Duration.milliseconds(100)
+    static let ceilings: [String: Duration] = ["xcode-mcp/handshake": .milliseconds(250)]
+    /// Warm runs timed, for the spread.
+    static let runs = 3
+
+    static func ceiling(_ id: String) -> Duration { ceilings[id] ?? perCheck }
+
+    /// The slowest of `runs` warm runs, of the whole doctor and of each check on its context, and what went past its ceiling.
+    static func measure(_ checks: [any Check], context: () -> CheckContext) async -> (total: Duration, each: [(id: String, took: Duration)], over: [String]) {
+        let clock = ContinuousClock()
+        _ = await Doctor.run(checks, in: context())
+        var total = Duration.zero
+        var each: [String: Duration] = [:]
+        for _ in 0..<runs {
+            let warm = context()
+            total = max(total, await clock.measure { _ = await Doctor.run(checks, in: warm) })
+            for check in checks {
+                let took = await clock.measure { _ = await check.run(warm) }
+                each[check.id] = max(each[check.id] ?? .zero, took)
+            }
+        }
+        let listed = checks.map { (id: $0.id, took: each[$0.id] ?? .zero) }
+        let over = listed.filter { $0.took >= ceiling($0.id) }.map { "\($0.id) took \($0.took), past \(ceiling($0.id))" } + (total >= Self.total ? ["the doctor took \(total), past \(Self.total)"] : [])
+        return (total, listed, over)
+    }
+
+    @Test func theDoctorRunsWithinItsBudget() async throws {
+        let project = Project(root: try TestbedTests.copy("field"))
+        let measured = await Self.measure(Doctor.checks) { CheckContext(project: project, machine: .live) }
+        print("doctor budget: slowest of \(Self.runs) warm runs \(measured.total); " + measured.each.map { "\($0.id) \($0.took)" }.joined(separator: ", "))
+        #expect(measured.over.isEmpty, "\(measured.over)")
+    }
+
+    /// A check that takes 150 ms is named past its ceiling, the whole doctor within its own.
+    @Test func aSlowCheckFailsByName() async {
+        struct Sleeping: Check {
+            let id = "test/sleeps"
+            let title = "Sleeps"
+            func run(_ context: CheckContext) async -> CheckResult {
+                try? await Task.sleep(for: .milliseconds(150))
+                return .pass("slept")
+            }
+        }
+        let measured = await Self.measure([Sleeping()]) { .fake() }
+        #expect(measured.over.count == 1)
+        #expect(measured.over.first?.hasPrefix("test/sleeps took ") == true, "\(measured.over)")
+    }
+}
+
 /// The field fixture, one scheme per module, with a workspace scheme that tests every module: `affected` names the
 /// schemes that test only targets the change can break, so a test builds one module rather than every one.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
