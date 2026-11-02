@@ -593,10 +593,14 @@ struct TestbedFieldTests {
 /// schemes that test only targets the change can break, so a test builds one module rather than every one.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
 struct TestbedAffectedSchemeTests {
-    static func answer(changed: [String]) async throws -> [String: Any] {
+    /// The workspace's schemes beside the fixture's own: `UnitTests`, every unit test target, and any `more`, by name and
+    /// the targets each tests. `appTests` replaces what the App module's scheme tests.
+    static func answer(changed: [String], more: [String: [String]] = [:], appTests: [String]? = nil) async throws -> [String: Any] {
         let root = try TestbedTests.copy("field")
         let project = Project(root: root)
         project.writeScheme("UnitTests", testing: ["CoreTests", "DataTests", "FeatureTests", "AppTests"], container: "Field.xcworkspace", folder: "Field.xcworkspace/xcshareddata")
+        for (name, targets) in more { project.writeScheme(name, testing: targets, container: "Field.xcworkspace", folder: "Field.xcworkspace/xcshareddata") }
+        if let appTests { project.writeScheme("App", testing: appTests, container: "Modules/App/App.xcodeproj", folder: "Modules/App/App.xcodeproj/xcshareddata") }
         let runner = FakeRunner(responses: FakeRunner.branch(at: root, changed: changed, diffed: [], diff: ""))
         let text = await Run("affected", context: .fake(runner, project: project)).text
         return try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any], "\(text)")
@@ -608,6 +612,35 @@ struct TestbedAffectedSchemeTests {
         #expect(schemes.map { $0["name"] as? String } == ["Feature", "App"])
         #expect(schemes.map { $0["container"] as? String } == ["Modules/Feature/Feature.xcodeproj", "Modules/App/App.xcodeproj"])
         #expect(schemes.map { $0["targets"] as? [String] } == [["FeatureTests"], ["AppTests", "AppUITests"]])
+    }
+
+    /// A change to Core reaches every test target, most of the suite: the scheme that tests them all is named, the one with
+    /// the fewest targets beyond them, and no other.
+    @Test func aChangeThatReachesMostOfTheSuiteNamesTheSchemeThatTestsItAll() async throws {
+        let answer = try await Self.answer(changed: ["Modules/Core/Sources/Core.swift"], more: ["Everything": ["AppTests", "AppUITests", "CoreTests", "DataTests", "FeatureTests"]])
+        #expect(answer["selections"] as? [String] == ["AppTests", "AppUITests", "CoreTests", "DataTests", "FeatureTests"])
+        let whole = try #require(answer["whole"] as? [String: Any], "\(answer)")
+        #expect(NSDictionary(dictionary: whole) == ["name": "Everything", "container": "Field.xcworkspace", "tests": ["AppTests", "AppUITests", "CoreTests", "DataTests", "FeatureTests"], "more": 0])
+        #expect(answer["schemes"] == nil, "\(answer)")
+        #expect(answer["nearest"] == nil, "\(answer)")
+    }
+
+    /// Most of the suite, but no one scheme tests all of it (`UnitTests` leaves the UI tests out): the schemes that test
+    /// only selected targets are listed, as for a narrower change.
+    @Test func mostOfTheSuiteWithNoSchemeTestingAllOfItListsTheSchemesAsUsual() async throws {
+        let answer = try await Self.answer(changed: ["Modules/Core/Sources/Core.swift"])
+        #expect(answer["whole"] == nil, "\(answer)")
+        let schemes = try #require(answer["schemes"] as? [[String: Any]], "\(answer)")
+        #expect(schemes.map { $0["name"] as? String } == ["Core", "Data", "Feature", "App", "UnitTests"])
+    }
+
+    /// A selected target no listed scheme tests is named with the scheme that tests it with the fewest targets beyond the
+    /// selection: `Mixed` tests the UI tests with one more, `Wide` with two.
+    @Test func aTargetNoListedSchemeTestsIsNamedWithTheSchemeThatTestsItWithTheFewestMore() async throws {
+        let answer = try await Self.answer(changed: ["Modules/Feature/Sources/Feature.swift"], more: ["Mixed": ["AppUITests", "CoreTests"], "Wide": ["AppUITests", "CoreTests", "DataTests"]], appTests: ["AppTests"])
+        #expect(answer["whole"] == nil, "\(answer)")
+        let nearest = try #require(answer["nearest"] as? [[String: Any]], "\(answer)")
+        #expect(nearest.map { NSDictionary(dictionary: $0) } == [["name": "Mixed", "container": "Field.xcworkspace", "tests": ["AppUITests"], "more": 1]])
     }
 
     /// A change the reading can't place can break anything: no selection, so no scheme.

@@ -15,8 +15,12 @@ struct AffectedCommand: Command {
         let changed: [String]
         let selections: [String]?
         let runAll: String?
-        /// The shared schemes that test only targets in `selections`; absent when there are none.
+        /// The shared schemes that test only targets in `selections`; absent when there are none or `whole` is named.
         var schemes: [TestSchemes.Scheme]?
+        /// The scheme that tests every selected target, when they're most of the suite.
+        var whole: AffectedTests.Reach?
+        /// The scheme that tests each selected target no scheme in `schemes` tests, with the fewest more.
+        var nearest: [AffectedTests.Reach]?
         /// The selections that are UI test bundles; absent when none is.
         var uiSelections: [String]?
     }
@@ -30,7 +34,7 @@ struct AffectedCommand: Command {
         case let .success(change):
             let affected = AffectedTests.of(changed: change.files, in: project)
             let root = project.canonicalRoot + "/"
-            answer = Answer(base: change.base, changed: change.files.map { $0.hasPrefix(root) ? String($0.dropFirst(root.count)) : $0 }, selections: affected.selections, runAll: affected.runAll, schemes: affected.schemes, uiSelections: affected.uiSelections)
+            answer = Answer(base: change.base, changed: change.files.map { $0.hasPrefix(root) ? String($0.dropFirst(root.count)) : $0 }, selections: affected.selections, runAll: affected.runAll, schemes: affected.schemes, whole: affected.whole, nearest: affected.nearest, uiSelections: affected.uiSelections)
         }
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(answer), as: UTF8.self))
         return 0

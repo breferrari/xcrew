@@ -25,12 +25,18 @@ public enum TestSchemes {
     /// in `targets`, the fewest first. A scheme whose test plan can't be read may test anything, so it isn't one.
     static func testingOnly(_ targets: Set<String>, in containers: [URL], from root: URL) -> [Scheme] {
         guard !targets.isEmpty else { return [] }
+        return testing(in: containers, from: root).filter { Set($0.targets).isSubset(of: targets) }
+    }
+
+    /// Every shared scheme of `containers` and the projects their workspaces list that tests something, with the targets
+    /// it tests, the fewest first. A scheme whose test plan can't be read may test anything, so it isn't one.
+    static func testing(in containers: [URL], from root: URL) -> [Scheme] {
         let base = ProjectLayout.canonical(root) + "/"
         return Self.containers(from: containers).flatMap { container in
             let path = ProjectLayout.canonical(container)
             return tested(by: container).compactMap { name, tested -> Scheme? in
                 let names = Set(tested.testables.map(\.name))
-                guard tested.isWhole, !names.isEmpty, names.isSubset(of: targets) else { return nil }
+                guard tested.isWhole, !names.isEmpty else { return nil }
                 return Scheme(name: name, container: path.hasPrefix(base) ? String(path.dropFirst(base.count)) : path, targets: names.sorted())
             }
         }.sorted { ($0.targets.count, $0.name, $0.container) < ($1.targets.count, $1.name, $1.container) }

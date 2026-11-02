@@ -22,7 +22,10 @@ export const AFFECTED_TOOL = {
 export const AFFECTED_TOOL_NAME = 'mcp__xcrew__affected'
 
 /** What `xcrew affected` answers. */
-export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null; uiSelections?: string[]; schemes?: { name: string; container: string; targets: string[] }[] }
+export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null; uiSelections?: string[]; schemes?: { name: string; container: string; targets: string[] }[]; whole?: Reach; nearest?: Reach[] }
+
+/** A scheme that tests selected targets, as the CLI chose it: those it tests, and how many more. */
+export type Reach = { name: string; container: string; tests: string[]; more: number }
 
 export function affectedArgs(input: Record<string, unknown>): string[] {
   return ['affected', ...(typeof input.base === 'string' && input.base !== '' ? ['--base', input.base] : [])]
@@ -46,17 +49,29 @@ function group(targets: readonly string[]): string {
   return `${targets.join(', ')} (${targets.map(target => `-only-testing:${target}`).join(' ')})`
 }
 
-/** The shared schemes that test only selected targets, each with its own, and the selected targets none of them tests. */
-function schemesText(schemes: Affected['schemes'], selections: readonly string[]): string {
-  if (!Array.isArray(schemes) || schemes.length === 0) return ''
-  const named = schemes.map(scheme => {
-    const twin = schemes.some(other => other !== scheme && other.name === scheme.name)
-    return `\`${scheme.name}\`${twin ? ` in ${scheme.container}` : ''} (${namedOrCounted(scheme.targets, count => `${count} targets`, targets => targets.join(', '))})`
-  })
-  const tested = new Set(schemes.flatMap(scheme => scheme.targets))
+/**
+ * The schemes the CLI chose: past half the suite, the one that tests all of it, alone; else those that test only
+ * selected targets, each with its own, the first named and the rest counted, then for each selected target none of
+ * them tests, the scheme that tests it with the fewest more, and the targets no shared scheme tests.
+ */
+function schemesText(affected: Affected, selections: readonly string[]): string {
+  if (affected.whole) return ` The changes reach most of the suite: ${schemeName(affected.whole, [])} tests every selected target${affected.whole.more > 0 ? ` and ${affected.whole.more} more` : ''}.`
+  const schemes = Array.isArray(affected.schemes) ? affected.schemes : []
+  const nearest = Array.isArray(affected.nearest) ? affected.nearest : []
+  if (schemes.length === 0 && nearest.length === 0) return ''
+  const named = schemes.slice(0, NAMED_UP_TO).map(scheme => `${schemeName(scheme, schemes)} (${namedOrCounted(scheme.targets, count => `${count} targets`, targets => targets.join(', '))})`)
+  const list = schemes.length > NAMED_UP_TO ? `${named.join(', ')} and ${schemes.length - NAMED_UP_TO} more; ${WHOLE_LIST}` : joined(named)
+  const tested = new Set([...schemes.flatMap(scheme => scheme.targets), ...nearest.flatMap(reach => reach.tests)])
   const untested = selections.filter(target => !tested.has(target))
-  const cover = untested.length === 0 ? 'Between them they test every selected target.' : `None of them tests ${namedOrCounted(untested, count => `${count} of the selected targets`)}.`
-  return ` Schemes that test only selected targets: ${joined(named)}. ${cover}`
+  const near = nearest.map(reach => `${schemeName(reach, nearest)} tests ${joined(reach.tests)} with ${reach.more} more.`)
+  const cover = untested.length > 0 ? [`No shared scheme tests ${namedOrCounted(untested, count => `${count} of the selected targets`)}.`] : near.length === 0 ? ['Between them they test every selected target.'] : []
+  return [...(schemes.length > 0 ? [` Schemes that test only selected targets: ${list}.`] : ['']), ...near, ...cover].join(' ')
+}
+
+/** A scheme by its name, with its container when another listed beside it has the same name. */
+function schemeName(scheme: { name: string; container: string }, beside: readonly { name: string; container: string }[]): string {
+  const twin = beside.some(other => other !== scheme && other.name === scheme.name)
+  return `\`${scheme.name}\`${twin ? ` in ${scheme.container}` : ''}`
 }
 
 /** The answer as Claude reads it, the count first; without one from the CLI, the whole suite. */
@@ -80,6 +95,6 @@ export function affectedText(answer: unknown): string {
     : `${count}${uiTargets.length > 0 ? ', all UI' : ''}: ${group(selections)}.`
   return (
     `${listed} They cover the targets that own or depend on the ${changed} changed ${changed === 1 ? 'file' : 'files'}, as the project declares them.${since}` +
-    schemesText(affected.schemes, selections)
+    schemesText(affected, selections)
   )
 }
