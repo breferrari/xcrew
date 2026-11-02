@@ -23,7 +23,8 @@ import XcrewTestSupport
 
     /// One missing from a volume that is mounted is gone, as one missing from the startup volume is.
     @Test func aFolderMissingFromAMountedVolumeIsGone() {
-        #expect(GoneCommand.gone(["/Volumes/Drive/App", "/Volumes/Other/App", "/work/App"], mounted: ["/", "/Volumes/Drive"]) == ["/Volumes/Drive/App", "/work/App"])
+        let startup = Project.temporary().root.appending(path: "App").path
+        #expect(GoneCommand.gone(["/Volumes/Drive/App", "/Volumes/Other/App", startup], mounted: ["/", "/Volumes/Drive"]) == ["/Volumes/Drive/App", startup])
     }
 
     /// A folder the CLI isn't let look at, as macOS's privacy rules can refuse, isn't gone: only one the system says
@@ -45,5 +46,15 @@ import XcrewTestSupport
     /// Foundation lists the startup volume as `/`, and a volume under `/Volumes` by its folder there, which the rule reads.
     @Test func theMountedVolumesListTheStartupVolume() {
         #expect(GoneCommand.mounted.contains("/"))
+    }
+
+    /// A folder whose parent is gone too isn't counted: an unmounted share's or drive's folders go with their mount, where
+    /// a removed worktree leaves the folder that held it.
+    @Test func aFolderWhoseParentIsMissingTooIsntGone() {
+        let project = Project.temporary()
+        let removed = project.root.appending(path: "trees/feature").path
+        let outside = project.root.appending(path: "share-\(UUID().uuidString)/App").path
+        try? FileManager.default.createDirectory(atPath: project.root.appending(path: "trees").path, withIntermediateDirectories: true)
+        #expect(GoneCommand.gone([removed, outside], mounted: ["/"]) == [removed])
     }
 }
