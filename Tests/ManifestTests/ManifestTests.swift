@@ -789,10 +789,15 @@ import Testing
         let ci = try text(".github/workflows/ci.yml")
         let job = try #require(ci.firstMatch(of: /(?s)\n  release-build:\n(.*?)(?=\n  [a-z-]+:\n|\z)/), "no release-build job").output.1
         #expect(job.contains("if: github.event_name == 'push'"))
-        #expect(job.contains("runs-on: macos-26"))
-        #expect(job.contains("swift build -c release --product xcrew"))
+        // The same runner as the Swift job, whose row it carries until it has samples of its own.
+        let swift = try #require(ci.firstMatch(of: /(?s)\n  swift:\n(.*?)(?=\n  [a-z-]+:\n|\z)/)).output.1
+        let runner = { (job: Substring) in job.firstMatch(of: /runs-on: (\S+)/).map { String($0.output.1) } }
+        #expect(runner(job) != nil && runner(job) == runner(swift))
         #expect(job.contains("GITHUB_STEP_SUMMARY"))
-        #expect(try text("bin/xcrew").contains("swift build -c release --product xcrew"))
+        // The shim's build, its folders aside: the package is the checkout, and the scratch folder only moves `.build`.
+        let shim = try #require(try text("bin/xcrew").firstMatch(of: /swift build ([^\n]*?) --package-path/)).output.1
+        let built = try #require(job.firstMatch(of: /swift build ([^\n]*)/)).output.1
+        #expect(shim == built, "the shim builds with \(shim), CI with \(built)")
     }
 
     /// The deadlines and the durations they come from, as docs/findings.md's *Deadlines* table records them, by the key

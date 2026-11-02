@@ -89,8 +89,8 @@ jobs:
           XCREW_ASSETS: ${{ github.workspace }}/xcrew-assets
 
   # The CLI's release build, as the shim makes it on a person's first run, timed on each push to main and only there: its
-  # times on this runner, the slowest Mac measured, are the basis of the guard a build runs under (docs/findings.md,
-  # *Building after a reload*), and a pull request's run gains no release compile.
+  # times on a fresh runner are the basis of the guard a build runs under (docs/findings.md, *Building after a
+  # reload*), and a pull request's run gains no release compile.
   release-build:
     name: Release build, timed
     if: github.event_name == 'push'
@@ -208,7 +208,7 @@ jobs:
         run: shellcheck bin/xcrew libexec/* mcs/*.sh mcs/checks/*.sh scripts/*.sh
 
   # The one check the ruleset and the release require. It needs every job above, so adding or renaming one never
-  # touches either. Only the code jobs may be skipped, for a Markdown-only change, and Distribution, for a change no
+  # touches either. Only the code jobs may be skipped, for a Markdown-only change, the release build, timed on pushes to main alone, and Distribution, for a change no
   # channel ships: a failed or cancelled job fails it, and so does `changes` not succeeding, which would otherwise skip
   # everything.
   ci:
