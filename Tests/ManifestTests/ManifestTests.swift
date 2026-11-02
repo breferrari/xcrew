@@ -178,6 +178,11 @@ import Testing
 
     /// The ledger, the card, `/xcrew flaky` and the evidence's still-red line say where a flaky test's passes come from
     /// in the same words.
+    @Test func theModAndTheEvidenceSayARedTestWasntInTheNewestRunAlike() throws {
+        let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const NOT_IN_NEWEST = '([^']*)'/)?.1)
+        #expect(String(said) == EvidencePack.notInNewestRun)
+    }
+
     @Test func theModAndTheEvidenceSayWherePassesComeFromAlike() throws {
         let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const PASSES_COUNTED = '([^']*)'/)?.1)
         #expect(String(said) == FlakyMark.passesCountedFrom)

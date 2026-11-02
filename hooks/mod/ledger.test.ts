@@ -99,6 +99,16 @@ test('a run that a red was written during asks for its passed tests, and turns t
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
+/** A red test the newest run in its scope didn't run, as one deleted since it failed, says so until it runs again. */
+test('a red test the newest run in its scope left out says so, until a run lists it', async ($, on) => {
+  project(on, [FAILED, PASSED_OTHERS, FAILED])
+  await run($, 'AppTests/GreetingTests')
+  await run($, 'AppTests/GreetingTests')
+  expect(await ledgerText($)).toMatch(new RegExp(`- ${TEST}: red .*: XCTAssertEqual failed: .*; not in the newest run of its scope, \\w{3} \\d+ \\d\\d:\\d\\d$`, 'm'))
+  await run($, 'AppTests/GreetingTests')
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+})
+
 test('a red turns green from another tool of the same scheme whose results list it as passed', async ($, on) => {
   project(on, [FAILED, PASSED])
   await callTool($, 'mcp__xcode__RunAllTests')

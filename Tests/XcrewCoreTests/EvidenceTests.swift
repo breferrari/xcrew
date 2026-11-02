@@ -47,6 +47,18 @@ import XcrewTestSupport
         #expect(text.attach == nil)
     }
 
+    /// A red test the newest run in its scope didn't run, as one deleted since it failed, says so.
+    @Test func aRedTestTheNewestRunDidntRunSaysSo() async throws {
+        let gone = Self.entry("Suite/testGone", green: false).replacingOccurrences(of: #","last""#, with: #","unseen":{"scope":"test_sim · App","at":\#(Self.at + 120_000)},"last""#)
+        let text = try #require(await Self.pack(try Self.input([gone])))
+        #expect(text.block == """
+            ## Evidence
+
+            Still red:
+            - `Suite/testGone`: "failed", not in the newest run of its scope
+            """)
+    }
+
     /// A flaky test says how many of the passes in a row it needs it has, still red, and how many it passed once green,
     /// with what the number needed means said once.
     @Test func aFlakyTestSaysThePassesItNeeds() async throws {

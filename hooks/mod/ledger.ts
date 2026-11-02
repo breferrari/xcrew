@@ -19,7 +19,7 @@ export type LedgerRun = { scope: string; at: number }
  * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, when a run last
  * wrote it, and its target, from the result bundle, when the report named one.
  */
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun & { listed?: true }; last: number; flaky?: Flakiness; target?: string }
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun & { listed?: true }; last: number; flaky?: Flakiness; target?: string; unseen?: LedgerRun }
 
 /**
  * A flaky mark: the failures and runs of the repeated runs up to its last failure, and the repeated run that found the
@@ -132,7 +132,11 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
     const updated = flaky === entry.flaky ? entry : { ...entry, ...(flaky ? { flaky } : {}), last: run.at }
     const cleared = !flaky || (repeated.get(entry.test)?.verdict === 'passed' && flaky.settled === true)
     const isGreen = !entry.green && cleared && run.passed !== undefined && passes(run.scope, run.passed, entry)
-    return isGreen ? { ...updated, green: { scope: run.scope, at: run.at, listed: true }, last: run.at } : updated
+    if (isGreen) return { ...updated, green: { scope: run.scope, at: run.at, listed: true }, last: run.at }
+    // A run of the red's own scope that read its results and didn't list it, as for a test deleted since: said, and the
+    // entry's age left as it was, so it goes once no run has failed it for as long as the history is kept.
+    const isUnseen = !entry.green && run.passed !== undefined && run.scope === entry.failing && !repeated.has(entry.test) && !passes(run.scope, run.passed, entry)
+    return isUnseen ? { ...updated, unseen: { scope: run.scope, at: run.at } } : updated
   })
   for (const test of failing) {
     if (entries.some(entry => entry.test === test)) continue
@@ -167,7 +171,7 @@ export function ledgerText(ledger: Ledger | undefined, head: Head): string {
   if (entries.length === 0) return `No test has failed on ${name} yet.`
   const green = entries.filter((entry): entry is GreenEntry => entry.green !== undefined)
   const red = entries.filter(entry => !entry.green)
-  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}`
+  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}${entry.unseen ? `; ${NOT_IN_NEWEST}, ${dayAndTime(entry.unseen.at)}` : ''}`
   const named = (entry: LedgerEntry) => `${entry.test}${flakyLabel(entry)}`
   return [
     ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${named(entry)}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
@@ -226,6 +230,9 @@ export function flakyLabel(entry: LedgerEntry): string {
 }
 
 /** Where a mark's passes come from: only a repeated run's count. The evidence block says it in the same words. */
+/** What a red test the newest run in its scope didn't run is said to be; the evidence block says it in the same words. */
+export const NOT_IN_NEWEST = 'not in the newest run of its scope'
+
 export const PASSES_COUNTED = 'in repeated runs since'
 
 /** What the passes needed are, said once where they're listed. */
