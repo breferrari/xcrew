@@ -715,11 +715,11 @@ A text xcrew tells Claude that gives a command removing or overwriting something
 - `rm` with a recursive flag, in any order of flags (`rm -r`, `rm -rf`, `rm -fr`, `rm -R`);
 - `kill`, `killall`, `pkill`;
 - `simctl delete`, `simctl erase`;
-- `uninstall` (`xcodes uninstall`, `brew uninstall`, `npm uninstall`);
+- `xcodes uninstall`, `brew uninstall`, `npm uninstall`;
 - `defaults write`, `defaults delete`;
-- `--delete` (MobileBuildMCP's purge) and `--force` where it replaces with no copy kept.
+- `--delete` (MobileBuildMCP's purge), and `xcode-skills --force`, which replaces with no copy kept; `setup --force` keeps a backup and isn't one.
 
-The sweep of November 2, 2026 found and gave the condition to the module cache's `rm -rf`, a held build database's `kill`, the leftover `.xcodebuildmcp/` folder's `rm -r`, the three `simctl delete` offers, `xcrew space`'s purge note and `xcodes uninstall` (and its DerivedData line, a dry run, the cost beside it), the doctor's `brew uninstall` and `npm uninstall` of the old XcodeBuildMCP, the unsigned-agents `defaults write`, and `xcode-skills --force`, which deletes the project's own skills. It left as they are: `setup --force`, which keeps a backup of what it replaces; the purge's and the runtimes' `--dry-run` commands, which delete nothing; `echo <version> > .xcode-version`, offered only where no pin file is; the README, which the person reads, not Claude. A command added with a pattern not here has no test holding it: add its pattern here and to the test.
+The sweep of November 2, 2026 found and gave the condition to the module cache's `rm -rf`, a held build database's `kill`, the leftover `.xcodebuildmcp/` folder's `rm -r`, the three `simctl delete` offers, `xcrew space`'s purge note and `xcodes uninstall`, the doctor's `brew uninstall` and `npm uninstall` of the old XcodeBuildMCP, the unsigned-agents `defaults write`, and `xcode-skills --force`, which deletes the project's own skills. It left as they are: `setup --force`, which keeps a backup of what it replaces; the purge's and the runtimes' `--dry-run` commands, which delete nothing (the purge note, which says how to delete, carries the condition, and the DerivedData line says deleting it costs a cold build and is the person's call); `context/routing.md`'s routing of `erase_sims` to MobileBuildMCP, which routes rather than offers; the reference skill's `clean`, which the routing rules allow; `echo <version> > .xcode-version`, offered only where no pin file is; the README, which the person reads, not Claude. A command added with a pattern not here has no test holding it: add its pattern here and to the test.
 
 ## Deadlines
 

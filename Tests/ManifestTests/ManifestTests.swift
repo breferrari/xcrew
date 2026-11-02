@@ -235,10 +235,12 @@ import Testing
     @Test func aCommandThatRemovesOrStopsThePersonsWorkIsTheirsToAgreeTo() throws {
         #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
         let condition = /so it's the person's to agree to:\s+/
-        let removing = try toldWhole().filter { $0.contains(/\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill |simctl (?:delete|erase) |uninstall |defaults (?:write|delete) )|--delete\b|--force\b/) }
+        let destructive = /\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill |simctl (?:delete|erase) |(?:brew|npm|xcodes) uninstall |defaults (?:write|delete) |xcode-skills --force)|--delete(?![\w-])/
+        let removing = try toldWhole().filter { $0.contains(destructive) }
         #expect(removing.count >= 12, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
         for text in removing {
             let command = try #require(text.firstMatch(of: condition), "no condition before the command: \(text)").range.upperBound
+            #expect(text[command...].contains(destructive), "the command comes before its condition: \(text)")
             #expect(!text[command...].contains(". ") && !text.hasSuffix("."), "the command doesn't end the text: \(text)")
         }
         #expect(CorruptModuleCache.fix(derivedData: nil).hasSuffix("That deletes part of DerivedData, so it's the person's to agree to."))

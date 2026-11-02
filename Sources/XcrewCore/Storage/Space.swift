@@ -73,7 +73,7 @@ public enum Space {
         let classes = reclaimable(workspace)
         let line = SpaceReport.Line(text: "\(name), \(root): \(SpaceReport.size(workspace.bytes))\(products)\(derived.map { ", DerivedData \(SpaceReport.size($0))" } ?? "")\(newest.map { ", newest \($0)" } ?? "")\(building)", bytes: workspace.bytes, command: purge(workspace, classes: classes.filter { $0 != "derivedData" }))
         guard let derived, classes.contains("derivedData") else { return [line] }
-        return [line, .init(text: "\(name)'s DerivedData, \(SpaceReport.size(derived)), costs a cold build to make again, so it's the person's to agree to:", bytes: derived, command: purge(workspace, classes: ["derivedData"]))]
+        return [line, .init(text: "\(name)'s DerivedData, \(SpaceReport.size(derived)), costs a cold build to make again, so deleting it is the person's to agree to", bytes: derived, command: purge(workspace, classes: ["derivedData"]))]
     }
 
     /// How long MobileBuildMCP's purge keeps a log after it's written (`WORKSPACE_FILESYSTEM_LIFECYCLE_MIN_VISIBLE_MS`).

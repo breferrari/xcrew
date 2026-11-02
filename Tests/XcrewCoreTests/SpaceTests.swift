@@ -95,7 +95,7 @@ import XcrewTestSupport
 
     @Test func thisProjectsWorkspaceIsNamedWithTheCommandThatWouldReclaimIt() async throws {
         let text = try await report().text
-        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes testProducts,logs,resultBundles,stateTransients\n  App's DerivedData, 77.9 MB, costs a cold build to make again, so it's the person's to agree to:\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData\n"), "\(text)")
+        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes testProducts,logs,resultBundles,stateTransients\n  App's DerivedData, 77.9 MB, costs a cold build to make again, so deleting it is the person's to agree to\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData\n"), "\(text)")
         #expect(text.hasPrefix(SpaceReport.unitsNote + "\n\n"), "\(text)")
         #expect(text.contains("MobileBuildMCP\n  this project's MobileBuildMCP workspaces take 81.5 MB (77.7 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)\n"), "\(text)")
         #expect(text.contains("  Each `--dry-run` lists what it would delete. Deleting loses those builds, logs and results, so it's the person's to agree to: `--delete` in place of `--dry-run`, with `--confirm delete-mobilebuildmcp-storage`\n"), "\(text)")
@@ -109,7 +109,7 @@ import XcrewTestSupport
         let lines = Space.workspaceLines(workspace, name: "App", root: "/work/App", newest: "today", bundles: 105, isBuilding: true)
         #expect(lines.map(\.text) == [
             "App, /work/App: 126.2 GB, test products 95.0 GB in 105 bundles of about 904.8 MB each, DerivedData 24.2 GB, newest today; a build is writing to its DerivedData now",
-            "App's DerivedData, 24.2 GB, costs a cold build to make again, so it's the person's to agree to:",
+            "App's DerivedData, 24.2 GB, costs a cold build to make again, so deleting it is the person's to agree to",
         ])
         #expect(lines.map(\.command) == ["mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes testProducts,logs", "mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes derivedData"])
     }

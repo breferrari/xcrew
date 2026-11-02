@@ -32,6 +32,6 @@ struct XcodeSkillsCommand: Command {
     /// What's said of the project's own skills it kept: `--force` deletes them for Xcode's with no copy kept, the
     /// person's call, said before the command, which ends the line.
     static func kept(_ names: [String]) -> String {
-        "xcrew: kept the project's own \(names.joined(separator: ", ")). Replacing them loses the project's own versions, so it's the person's to agree to: xcrew xcode-skills --force \(names.joined(separator: " "))"
+        "xcrew: kept the project's own \(names.joined(separator: ", ")). Replacing them loses the project's own versions, so it's the person's to agree to: xcrew xcode-skills --force \(names.map(ShellWord.word).joined(separator: " "))"
     }
 }
