@@ -11,9 +11,10 @@ public final class DeadlineRunner: CommandRunning {
     private let now: @Sendable () -> Date
     private let cutCommands = Mutex<[String]>([])
 
-    /// What the CLI keeps of its time to answer once its last command has: a command the deadline stopped has its output
-    /// waited for `SystemCommandRunner.grace`, 1 s, and the CLI's whole run, start and answer, took 17 to 25 ms (*Runs
-    /// that overlap another checkout's*), twenty times which is 0.5 s more.
+    /// What the CLI keeps of its time to answer once its last command has: `SystemCommandRunner.grace`, 1 s, for which a
+    /// command the deadline stopped still has its output waited, then 0.5 s for the CLI's own answer, whose whole run,
+    /// start and answer, took 17 to 25 ms (*Runs that overlap another checkout's*). The grace is the runner's own, not a
+    /// mod hook's `.catch` grace, and neither its 1 s nor the 0.5 s, twenty times the slowest run, has a measured basis.
     public static let answering = Duration.milliseconds(1_500)
     /// The time a call has when its caller names none, as when a person runs the CLI: Claude Code's own point where a
     /// command stops holding the conversation, `BASH_DEFAULT_TIMEOUT_MS`'s 120 s.

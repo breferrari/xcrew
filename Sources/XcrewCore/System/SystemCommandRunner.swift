@@ -18,7 +18,8 @@ public struct SystemCommandRunner: CommandRunning {
 
     /// How long the pipes may stay open once the program has ended or been stopped: a background child that outlives it
     /// can hold them for as long as it lives (after a stop, only one that ignores SIGTERM or leaves its process group;
-    /// docs/findings.md, *Stopping a program*), and the program's last output can arrive just after its exit.
+    /// docs/findings.md, *Stopping a program*), and the program's last output can arrive just after its exit. Its 1 s has
+    /// no measured basis.
     static let grace = Duration.seconds(1)
 
     public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
