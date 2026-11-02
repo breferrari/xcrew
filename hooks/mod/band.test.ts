@@ -305,6 +305,75 @@ test('/xcrew close takes a failed run off the band', async ($, on) => {
   await ui.unmount()
 })
 
+/** A run's ending waits for the overlap check; a run started meanwhile stays on the band, going, and the earlier one's
+ * ending goes to a toast instead. */
+test("a late ending doesn't end a run that started meanwhile", async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  const toasts: string[] = []
+  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('ui.invalidate', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  let answerFirst: (worktrees: string[]) => void = () => {}
+  const first = new Promise<string[]>(resolve => { answerFirst = resolve })
+  let asked = 0
+  stubCli(on, { overlapped: () => (asked++ === 0 ? first : []) })
+  let finishSecond: () => void = () => {}
+  const second = new Promise<void>(resolve => { finishSecond = resolve })
+  let calls = 0
+  on('tool.call', async () => {
+    calls += 1
+    if (calls === 1) {
+      await clock.advance(10_000)
+      return { result: {}, text: 'the build' }
+    }
+    await second
+    return { result: {}, text: 'the tests' }
+  })
+
+  await callTool($, 'mcp__xcode__BuildProject')
+  const going = callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await clock.settle()
+  answerFirst([])
+  await clock.settle()
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^test_sim$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '✓' })).toBeUndefined()
+  await ui.unmount()
+  expect(toasts.some(toast => toast.startsWith('✓ BuildProject'))).toBe(true)
+  finishSecond()
+  await going
+})
+
+/** A failure the person closed while its ending waited for the overlap check stays off the band. */
+test("/xcrew close before a failed run's ending is shown keeps it off the band", async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  inTerminal(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return Text({ children: ['engine'] })
+  })
+  let answer: (worktrees: string[]) => void = () => {}
+  const held = new Promise<string[]>(resolve => { answer = resolve })
+  stubCli(on, { reports: [{ ok: false, detail: 'App.swift:3 Cannot find Foo in scope' }], overlapped: () => held })
+  on('tool.call', () => ({ result: {}, isError: true, text: 'the server\'s result' }))
+
+  await callTool($, 'mcp__xcode__BuildProject')
+  await runCommand($, 'xcrew', 'close')
+  answer([])
+  await clock.settle()
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /App\.swift:3/ })).toBeUndefined()
+  await ui.unmount()
+})
+
 // MARK: Where the pointer to the failures goes
 
 /** A 90-second test run with one failure, on `surface`; returns what was toasted and what was notified. */

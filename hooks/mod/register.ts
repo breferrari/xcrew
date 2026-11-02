@@ -495,17 +495,17 @@ type Backgrounded = Ending & { repeated: boolean; launches: boolean; log?: strin
 
 /**
  * Records how a run ended: its failures, the ledger when the CLI read the run (`isRead`) and
- * read more than a log's verdict, and the card; then, once the result is returned, its row, the band and its time in the
- * history (`endAfterResult`); the loop note, when a full run crossed the budget.
+ * read more than a log's verdict, and the card; then, once the result is returned, its row, the band or a toast, the
+ * notification for a long run, and its time in the history (`endAfterResult`); the loop note, when a full run crossed
+ * the budget.
  */
 async function recordEnding($: EngineInterface, run: Ending, outcome: Report, isRead: boolean, ended: number, elapsed: number): Promise<string | undefined> {
   const { tool, scope, key, kind, earlier } = run
-  // Its ending: compared with the usual time unless it overlapped another checkout's run, and so shown once that's known.
   const show = async (overlapped: boolean) => {
     const ending = endingOf(outcome, ended, elapsed, overlapped ? [] : earlier)
     const requestId = run.toolUseId
     if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
-    await showEnding($, tool, ending, run.usesBand, run.by)
+    await showEnding($, tool, ending, run.usesBand, run.by, run.startedAt)
     // Long enough that the person has likely looked away; their notification settings decide how it arrives.
     if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
   }
@@ -669,9 +669,23 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
  * Shows how a run ended: on the band where one draws, the run going there ending with it, for as long as an ending
  * stays; elsewhere a toast carries the same line.
  */
-async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean, by?: string): Promise<void> {
+/**
+ * Shows a run's ending on the band, or where no band draws in a toast. With `startedAt`, as when the ending waited for
+ * the overlap check, it ends only that run's entry: a run that started meanwhile stays going, and this ending goes to a
+ * toast. A failure the person closed after its result came back (`failureClosedAt`) isn't put back.
+ */
+async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean, by?: string, startedAt?: number): Promise<void> {
   if (!usesBand) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
-  await quietly(() => update($, runState, run => (run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending, ...(by === undefined ? {} : { by }) })))
+  if (!ending.ok && failureClosedAt !== undefined && failureClosedAt >= ending.at) return
+  let another = false
+  await quietly(() => update($, runState, run => {
+    if (run && !run.ended && startedAt !== undefined && run.startedAt !== startedAt) {
+      another = true
+      return run
+    }
+    return run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending, ...(by === undefined ? {} : { by }) }
+  }))
+  if (another) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
   // The outcome leaves the band on its own; a later run has replaced it by then, or it's this one.
   await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
 }
@@ -1087,8 +1101,12 @@ async function showVisibleProblems($: EngineInterface): Promise<void> {
 
 /** Looking at the failures, or closing them, takes the failed run off the band. */
 async function dismissFailedRun($: EngineInterface): Promise<void> {
+  failureClosedAt = await quietly(() => $.clock.now())
   await quietly(() => update($, runState, run => (run?.ended && !run.ended.ok ? null : run)))
 }
+
+/** When the person last closed a failed run: one whose ending was still waiting for the overlap check stays closed. */
+let failureClosedAt: number | undefined
 
 async function recordRun($: EngineInterface, run: string, ok: boolean, items: Failure[], cause?: string): Promise<void> {
   const list = await read($, failuresState)
