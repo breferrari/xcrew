@@ -136,13 +136,14 @@ public struct Report: Sendable, Equatable, Codable {
         return Report(ok: ok, failures: [], notes: [], bundle: path, isVerdictOnly: true)
     }
 
-    /// A call moved to the background, from its task's notification: the result of a task that completed, read as the
-    /// call's own, its shorter result put back in the notification Claude reads; else the run's log at `log`, when there
-    /// is one; else no outcome.
+    /// A call moved to the background, from its task's notification: the server's text, of a task that completed or
+    /// failed, read as the call's own, its shorter result put back in the notification Claude reads; else the run's log at
+    /// `log`, when there is one; else no outcome.
     public static func make(kind: Kind, notification text: String, log: String?, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
         let notification = TaskNotification(text)
-        if let notification, let result = notification.completedResult {
-            var read = await make(kind: kind, output: ToolOutput(text: result, server: server, isError: false), home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine)
+        // A failed task's text is the run's only when it's in MobileBuildMCP's own forms: "the server went away" is no run.
+        if let notification, let output = notification.serverOutput, !(output.isError && ToolOutput(text: output.text, server: server, isError: true).isNotTheServers) {
+            var read = await make(kind: kind, output: ToolOutput(text: output.text, server: server, isError: output.isError), home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine)
             if read.isUnread != true {
                 if let shorter = read.result { read.result = notification.replacingResult(with: shorter) }
                 return read
