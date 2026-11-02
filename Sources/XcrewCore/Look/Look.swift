@@ -163,9 +163,9 @@ public enum Look {
             return ["on screen, as XCTest wrote it:"] + raw.prefix(mostElements).map { "  \($0)" } + more(raw.count - mostElements)
         case let .read(hierarchy):
             let shown = hierarchy.lines(query: query, most: mostElements)
-            let head = if let query, !shown.found { "on screen, nothing the query's \"\(query.text)\" \(query.type) matches:" } else { "on screen:" }
-            let note = query != nil && !shown.found && screenshot ? [Self.appsOnly] : []
-            return note + [head] + shown.lines.map { "  \($0)" } + more(shown.more)
+            guard let query, !shown.found else { return ["on screen:"] + shown.lines.map { "  \($0)" } + more(shown.more) }
+            let head = "on screen, nothing the query's \"\(query.text)\" \(query.type) matches:"
+            return (screenshot ? [Self.appsOnly, head] : [head]) + shown.lines.map { "  \($0)" } + more(shown.more)
         }
     }
 

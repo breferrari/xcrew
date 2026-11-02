@@ -319,7 +319,7 @@ import XcrewTestSupport
     @Test func severalTestSchemesAreListedForThePersonToChoose() async {
         let project = appProject(schemes: ["Core": ["CoreTests"], "Kit": ["KitTests"]], targets: ["CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test"])
         let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
-        #expect(run.text.contains("xcrew: several schemes run unit tests (Core, Kit): pass --test-scheme <name> to add the unit profile"))
+        #expect(run.text.contains("xcrew: several schemes tie for the most unit-test targets (Core, Kit): pass --test-scheme <name> to add the unit profile"))
         #expect(!config(project).contains("  unit:"))
     }
 

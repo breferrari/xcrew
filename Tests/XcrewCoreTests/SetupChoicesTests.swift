@@ -78,6 +78,13 @@ import XcrewTestSupport
         #expect(choices(project).schemes.first { $0.name == "Everything" }?.app == "App")
     }
 
+    /// A module's scheme may launch the host app it doesn't build for running, as Tuist writes one: it's no app scheme.
+    @Test func aSchemeThatOnlyLaunchesAnAppBuildsNone() {
+        let project = project()
+        project.writeScheme("Core", testing: ["CoreTests"], launching: "App")
+        #expect(choices(project).schemes.first { $0.name == "Core" }?.roles == [.unitTests])
+    }
+
     @Test func thePicksAreWhatSetupWouldWrite() {
         #expect(choices(project()).picks == SetupChoices.Picks(appScheme: "App", uiScheme: "App", testScheme: "App", bundleID: "dev.example.App", testSimulator: "iPhone 18"))
     }

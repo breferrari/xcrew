@@ -54,24 +54,31 @@ public enum TestSchemes {
     /// Repository files are read without fetching anything they point to.
     static let xmlOptions: XMLNode.Options = [.nodeLoadExternalEntitiesNever]
 
-    /// The scheme that runs the most unit-test targets, as a modular app's own scheme may test one module of hundreds;
-    /// among those tied, `appScheme`.
+    /// The scheme that runs the most unit-test targets; among those tied, `appScheme`.
     public static func choose(in container: URL, preferring appScheme: String?) -> Choice {
         let containers = containers(from: [container])
         let lookUp = productTypeLookup(for: containers)
         func type(of testable: Testable) -> String? { lookUp(testable.name, testable.project) }
         var runs: [String: Int] = [:], unsure: Set<String> = []
         for project in containers {
-            for (name, testables) in schemes(of: project) {
-                let kinds = testables.map(type(of:))
+            for (name, document) in sharedSchemes(of: project) {
+                let kinds = runByDefault(by: document, in: project).map(type(of:))
                 let unitTests = kinds.count { $0 == unitTest }
                 if unitTests > 0 { runs[name] = max(runs[name] ?? 0, unitTests) } else if kinds.contains(nil) { unsure.insert(name) }
             }
         }
-        guard let most = runs.values.max() else { return unsure.isEmpty ? .none : .unknown(unsure.sorted()) }
-        let widest = runs.filter { $0.value == most }.keys.sorted()
-        if let appScheme, widest.contains(appScheme) { return .scheme(appScheme) }
-        return widest.count == 1 ? .scheme(widest[0]) : .several(widest)
+        let found = widest(runs, preferring: appScheme)
+        if found.isEmpty { return unsure.isEmpty ? .none : .unknown(unsure.sorted()) }
+        return found.count == 1 ? .scheme(found[0]) : .several(found)
+    }
+
+    /// Of schemes by how many unit-test targets each runs, those that run the most, sorted; `appScheme` alone when it's
+    /// among them.
+    static func widest(_ unitTests: [String: Int], preferring appScheme: String?) -> [String] {
+        guard let most = unitTests.values.max(), most > 0 else { return [] }
+        let widest = unitTests.filter { $0.value == most }.keys.sorted()
+        if let appScheme, widest.contains(appScheme) { return [appScheme] }
+        return widest
     }
 
     /// A target's product type, by its name and the project a scheme says holds it; with no project, or one that doesn't
@@ -146,12 +153,8 @@ public enum TestSchemes {
         return location.hasPrefix("absolute:") ? URL(fileURLWithPath: path) : folder.appending(path: path)
     }
 
-    /// Each shared scheme's testables that run: its `TestableReference`s not skipped, and every target of its test plans.
-    static func schemes(of container: URL) -> [String: [Testable]] {
-        tested(by: container).mapValues(\.testables)
-    }
-
-    /// `schemes(of:)`, with whether every test plan each scheme names could be read.
+    /// Each shared scheme's testables that might run: its `TestableReference`s not skipped, and every target of its test
+    /// plans, with whether every test plan each scheme names could be read.
     static func tested(by container: URL) -> [String: (testables: [Testable], isWhole: Bool)] {
         sharedSchemes(of: container).reduce(into: [:]) { schemes, scheme in
             schemes[scheme.name] = tested(by: scheme.document, in: container)
@@ -162,16 +165,34 @@ public enum TestSchemes {
     static func tested(by document: XMLDocument, in container: URL) -> (testables: [Testable], isWhole: Bool) {
         let base = container.deletingLastPathComponent()
         do {
-            let references = (try? document.nodes(forXPath: "//TestAction/Testables/TestableReference[not(@skipped='YES')]/BuildableReference")) ?? []
-            let testables = references.compactMap { $0 as? XMLElement }.compactMap { reference -> Testable? in
-                guard let name = reference.attribute(forName: "BlueprintName")?.stringValue else { return nil }
-                return Testable(name: name, project: reference.attribute(forName: "ReferencedContainer")?.stringValue.map { key(resolve($0, from: base)) })
-            }
+            let listed = testables(of: document, from: base)
             let plans = (try? document.nodes(forXPath: "//TestAction/TestPlans/TestPlanReference/@reference")) ?? []
             let planFiles = plans.compactMap(\.stringValue).map { resolve($0, from: base) }
             let planTargets = planFiles.flatMap { targets(ofPlan: $0, from: base) }
-            return (testables + planTargets, planFiles.allSatisfy { plan(at: $0) != nil })
+            return (listed + planTargets, planFiles.allSatisfy { plan(at: $0) != nil })
         }
+    }
+
+    /// The targets a scheme's test action lists itself, those it skips left out.
+    static func testables(of document: XMLDocument, from base: URL) -> [Testable] {
+        let references = (try? document.nodes(forXPath: "//TestAction/Testables/TestableReference[not(@skipped='YES')]/BuildableReference")) ?? []
+        return references.compactMap { $0 as? XMLElement }.compactMap { reference -> Testable? in
+            guard let name = reference.attribute(forName: "BlueprintName")?.stringValue else { return nil }
+            return Testable(name: name, project: reference.attribute(forName: "ReferencedContainer")?.stringValue.map { key(resolve($0, from: base)) })
+        }
+    }
+
+    /// What one parsed scheme of `container` runs when no test plan is named, each target once: its testables and its
+    /// default plan's targets, as Xcode runs the plan a scheme marks default when none is named (Apple's "Organizing
+    /// tests to improve feedback"), or its first plan when none is marked.
+    static func runByDefault(by document: XMLDocument, in container: URL) -> [Testable] {
+        let base = container.deletingLastPathComponent()
+        let listed = testables(of: document, from: base)
+        let plans = ((try? document.nodes(forXPath: "//TestAction/TestPlans/TestPlanReference")) ?? []).compactMap { $0 as? XMLElement }
+        let plan = plans.first { $0.attribute(forName: "default")?.stringValue == "YES" } ?? plans.first
+        let planTargets = plan?.attribute(forName: "reference")?.stringValue.map { targets(ofPlan: resolve($0, from: base), from: base) } ?? []
+        var seen: Set<Testable> = []
+        return (listed + planTargets).filter { seen.insert($0).inserted }
     }
 
     static func targets(ofPlan file: URL, from base: URL) -> [Testable] {

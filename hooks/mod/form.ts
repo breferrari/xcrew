@@ -76,12 +76,8 @@ function schemesByName(schemes: SetupChoices['schemes']): SetupChoices['schemes'
   const byName = new Map<string, SetupChoices['schemes'][number]>()
   for (const scheme of schemes) {
     const seen = byName.get(scheme.name)
-    byName.set(scheme.name, seen ? {
-      ...seen,
-      roles: [...new Set([...seen.roles, ...scheme.roles])],
-      unitTestTargets: Math.max(seen.unitTestTargets ?? 0, scheme.unitTestTargets ?? 0) || undefined,
-      uiTestTargets: Math.max(seen.uiTestTargets ?? 0, scheme.uiTestTargets ?? 0) || undefined,
-    } : scheme)
+    const most = (key: 'unitTestTargets' | 'uiTestTargets') => Math.max(seen?.[key] ?? 0, scheme[key] ?? 0) || undefined
+    byName.set(scheme.name, seen ? { ...seen, roles: [...new Set([...seen.roles, ...scheme.roles])], unitTestTargets: most('unitTestTargets'), uiTestTargets: most('uiTestTargets') } : scheme)
   }
   return [...byName.values()]
 }
@@ -91,10 +87,16 @@ export type FormActions = { pick: (key: string, value: string) => void; write: (
 
 const ROLE_WORDS: Record<string, string> = { app: 'builds the app', 'unit-tests': 'runs unit tests', 'ui-tests': 'runs UI tests' }
 
-/** What a scheme does, with how many test targets of each kind it runs when the CLI counted them. */
+/** Each testing role's count of targets, and the kind of target it counts. */
+const COUNTED: Record<string, ['unitTestTargets' | 'uiTestTargets', string]> = { 'unit-tests': ['unitTestTargets', 'unit-test'], 'ui-tests': ['uiTestTargets', 'UI-test'] }
+
+/** What a scheme does, with how many test targets of each kind it runs by default when the CLI counted them. */
 function schemeLabel(scheme: SetupChoices['schemes'][number]): string {
-  const targets = (count: number | undefined, kind: string) => count === undefined ? undefined : `runs ${count} ${kind} target${count === 1 ? '' : 's'}`
-  const words = scheme.roles.map(role => (role === 'unit-tests' ? targets(scheme.unitTestTargets, 'unit-test') : role === 'ui-tests' ? targets(scheme.uiTestTargets, 'UI-test') : undefined) ?? ROLE_WORDS[role] ?? role)
+  const words = scheme.roles.map(role => {
+    const [key, kind] = COUNTED[role] ?? []
+    const count = key && scheme[key]
+    return count ? `runs ${count} ${kind} target${count === 1 ? '' : 's'}` : ROLE_WORDS[role] ?? role
+  })
   return `${scheme.name} · ${words.join(', ') || 'builds no app and runs no tests'}`
 }
 
