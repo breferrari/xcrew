@@ -362,14 +362,6 @@ public struct Report: Sendable, Equatable, Codable {
                 }
                 let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
                 let listed = { (entry: (test: TestID, message: String, id: TestID)) in (entry.test, entry.message, ResultBundle.place(of: entry.id, in: lookup.cases)) }
-                var placed: Set<TestID> = []
-                for (name, ids) in reported.sorted(by: { $0.key.shown < $1.key.shown }) {
-                    let candidates = entries.filter { ids.contains($0.test) }
-                    guard let swapped = text.replacing(name, with: candidates.map(listed)) else { continue }
-                    (text, changed) = (swapped.text, true)
-                    placed.formUnion(candidates.map(\.test))
-                    if swapped.left == 0 { bundleIDs[name] = nil }
-                }
                 let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
                     if let test = MobileBuildMCPLine.passed(line.text) { return (test, "passed") }
                     if case let .skipped(test?) = line.kind { return (test, "skipped") }
@@ -377,8 +369,14 @@ public struct Report: Sendable, Equatable, Codable {
                 }
                 let outcomes = Dictionary(said.map { (lookup.resolution(of: $0.0).found ?? $0.0, $0.1) }) { first, _ in first }
                 labels = Dictionary(entries.compactMap { entry in outcomes[entry.id].map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
-                for (name, ids) in reported {
-                    for id in ids where placed.contains(id) { labels[id] = Self.reported(name, matching: ids) }
+                var placed: Set<TestID> = []
+                for (name, ids) in reported.sorted(by: { $0.key.shown < $1.key.shown }) {
+                    let candidates = entries.filter { ids.contains($0.test) && !placed.contains($0.test) }
+                    for candidate in candidates { labels[candidate.test] = Self.reported(name, matching: ids) }
+                    guard let swapped = text.replacing(name, with: candidates.map(listed)) else { continue }
+                    (text, changed) = (swapped.text, true)
+                    placed.formUnion(candidates.map(\.test))
+                    if swapped.left == 0 { bundleIDs[name] = nil }
                 }
                 if let added = text.adding(unlisted: entries.filter { !placed.contains($0.test) }.map(listed)) { (text, changed) = (added, true) }
                 for entry in entries { bundleIDs[entry.test] = .found(entry.id) }

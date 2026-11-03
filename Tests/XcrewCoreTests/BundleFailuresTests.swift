@@ -493,6 +493,24 @@ struct BundleFailuresTests {
         #expect(report.failures.map(\.title) == ["A/Inner/fails", "Other/test", "Inner/fails"], "\(report.failures)")
     }
 
+    /// A name the text gives once, whose candidates both failed, becomes both, the second after the first and the count
+    /// raised by one: each failure is listed once.
+    @Test func aNameWithMoreFailedCandidatesThanEntriesListsEach() {
+        let text = MobileText("\n🧪 Test\n\nTest Failures (2):\n\n  ✗ Inner / fails(): one\n    A.swift:3\n\n  ✗ Other / test(): other\n\n❌ 2 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        let candidates = [(TestID(xcresultID: "A/Inner/fails()"), "one", "/work/A.swift:3"), (TestID(xcresultID: "B/Inner/fails()"), "two", "/work/B.swift:3")].map { (test: $0.0, message: $0.1, place: Optional($0.2)) }
+        let replaced = text.replacing(TestID(suite: "Inner", name: "fails"), with: candidates)
+        #expect(replaced?.left == 0)
+        #expect(replaced?.text.text.contains("Test Failures (3):\n\n  ✗ A / Inner/fails(): one\n    /work/A.swift:3\n\n  ✗ B / Inner/fails(): two\n    /work/B.swift:3\n\n  ✗ Other / test(): other\n") == true, "\(replaced?.text.text ?? "")")
+    }
+
+    /// An entry ends at a line it doesn't indent: one the text doesn't read as a failure, right after it with no blank
+    /// line between, stays.
+    @Test func aReplacedEntryEndsAtALineItDoesntIndent() {
+        let text = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ Inner / fails(): one\n    A.swift:3\n  ✗ LLVM Profile Error: Failed to write file \"default.profraw\"\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        let replaced = text.replacing(TestID(suite: "Inner", name: "fails"), with: [(test: TestID(xcresultID: "A/Inner/fails()"), message: "one", place: nil)])
+        #expect(replaced?.text.text.contains("  ✗ A / Inner/fails(): one\n\n  ✗ LLVM Profile Error: Failed to write file \"default.profraw\"\n") == true, "\(replaced?.text.text ?? "")")
+    }
+
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
     /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
     @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {

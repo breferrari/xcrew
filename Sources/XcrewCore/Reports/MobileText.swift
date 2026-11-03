@@ -289,7 +289,7 @@ struct MobileText: Sendable {
     /// summary, each in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place. Nil when the text lists its
     /// failures already, or has neither place to put them.
     /// It shapes only the text Claude reads: the report takes the failures from the bundle itself.
-    func addingFailures(_ failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
+    func addingFailures(_ failures: [FailureLine]) -> MobileText? {
         guard !lines.contains(where: { $0.isHeading(.testFailures) }) else { return nil }
         return adding(unlisted: failures)
     }
@@ -298,14 +298,14 @@ struct MobileText: Sendable {
     /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place; the section's count
     /// raised, or the section added before Test Results or the summary when the text has none. Nil when there's nothing
     /// to add, or nowhere to add it.
-    func adding(unlisted failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
+    func adding(unlisted failures: [FailureLine]) -> MobileText? {
         guard !failures.isEmpty else { return nil }
         let listed = failures.flatMap(Self.entry)
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else {
             guard let at = testResultsStart ?? lines.firstIndex(where: \.isSummary) else { return nil }
             return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
         }
-        let ending = lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
+        let ending = failuresEnd(after: heading)
         return MobileText(lines: Array(lines[..<heading]) + [Self.counting(lines[heading], by: failures.count)] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
     }
 
@@ -317,19 +317,27 @@ struct MobileText: Sendable {
         return Line(counted)
     }
 
+    /// A failed test as its entry under Test Failures names it: its test, its message and its place.
+    typealias FailureLine = (test: TestID, message: String, place: String?)
+
+    /// Where the Test Failures section that starts at `heading` ends: the next heading or the summary, else the text's end.
+    func failuresEnd(after heading: Int) -> Int {
+        lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
+    }
+
     /// The text with `name`'s first entries under Test Failures replaced, in their places, by `failures`, one each, in
     /// MobileBuildMCP's shape; failures beyond its entries follow its last, the section's count raised by them, and its
     /// entries beyond the failures stay. Each entry is its `✗` line and the lines below it up to the blank one that ends
-    /// it. Nil when the section lists no entry of `name`, with how many of its entries stay.
-    func replacing(_ name: TestID, with failures: [(test: TestID, message: String, place: String?)]) -> (text: MobileText, left: Int)? {
+    /// it. With the text, how many of `name`'s entries stay; nil when the section lists none.
+    func replacing(_ name: TestID, with failures: [FailureLine]) -> (text: MobileText, left: Int)? {
         guard !failures.isEmpty, let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
-        let ending = lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
+        let ending = failuresEnd(after: heading)
         var entries: [Range<Int>] = []
         var index = heading + 1
         while index < ending {
             guard lines[index].failing?.test == name else { index += 1; continue }
             var end = index + 1
-            while end < ending, lines[end].failing == nil, !lines[end].isBlank { end += 1 }
+            while end < ending, lines[end].failing == nil, !lines[end].isBlank, lines[end].text.hasPrefix("    ") { end += 1 }
             if end < ending, lines[end].isBlank { end += 1 }
             entries.append(index..<end)
             index = end
@@ -346,7 +354,7 @@ struct MobileText: Sendable {
 
     /// A failure's entry under Test Failures, as MobileBuildMCP writes one: `✗ Suite / test(): message`, its place, and
     /// the blank line that ends it.
-    static func entry(_ failure: (test: TestID, message: String, place: String?)) -> [Line] {
+    static func entry(_ failure: FailureLine) -> [Line] {
         [Line("  ✗ \(failure.test.suite) / \(failure.test.function): \(failure.message)")] + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
     }
 
