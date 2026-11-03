@@ -636,9 +636,10 @@ struct TestbedEvidenceTests {
     @Test func theBranchsRunsAreReadUntilTheCallsDeadline() async throws {
         let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        // Each of Xcode's reads takes 3 s, and the call has 2.5 s, its last 1.5 s kept to answer: git's reads end in time,
-        // and none of the runs' does.
-        let slow = Machine(environment: ["XCREW_WITHIN_MS": "2500"], home: context.machine.home, runner: DelayingRunner(context.machine.runner, xcrun: .seconds(3)), processID: context.machine.processID, applications: context.machine.applications)
+        // The call has 2.5 s on a clock that stands still while git answers, so git's reads end in time however slow the
+        // Mac; none of Xcode's reads answers before the call's wait ends, and each moves the clock past the deadline.
+        let clock = StillClock(Date())
+        let slow = Machine(environment: ["XCREW_WITHIN_MS": "2500"], home: context.machine.home, runner: XcodeOutlastsTheDeadline(context.machine.runner, clock: clock), processID: context.machine.processID, applications: context.machine.applications, now: { clock.read() })
         let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)
         #expect(run.text.contains("- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."), "\(run.text)")
         // What the deadline cut is said in one line, after the block's own.
@@ -1098,19 +1099,33 @@ final class SlowRunner: CommandRunning {
 }
 
 /// A runner that answers as another does, each `xcrun` command after `xcrun`'s wait, or timed out when its limit is shorter.
-final class DelayingRunner: CommandRunning {
-    let base: any CommandRunning
-    let xcrun: Duration
+/// A clock that stands still until a command moves it.
+final class StillClock: Sendable {
+    let time: Mutex<Date>
 
-    init(_ base: any CommandRunning, xcrun: Duration) {
+    init(_ start: Date) { time = Mutex(start) }
+
+    func read() -> Date { time.withLock { $0 } }
+
+    func move(by seconds: TimeInterval) { time.withLock { $0 = $0.addingTimeInterval(seconds) } }
+}
+
+/// A runner on `clock`: every command but `xcrun` answers as `base` does, under a limit of its own, and takes none of the
+/// clock's time; `xcrun` never answers before it's cancelled, and then moves the clock an hour on and answers as timed out.
+final class XcodeOutlastsTheDeadline: CommandRunning {
+    let base: any CommandRunning
+    let clock: StillClock
+
+    init(_ base: any CommandRunning, clock: StillClock) {
         self.base = base
-        self.xcrun = xcrun
+        self.clock = clock
     }
 
     func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-        guard argv.first == "xcrun" else { return await base.run(argv, stdin: stdin, timeout: timeout) }
-        try? await Task.sleep(for: min(xcrun, timeout))
-        return timeout < xcrun ? .timedOut : await base.run(argv, stdin: stdin, timeout: timeout)
+        guard argv.first == "xcrun" else { return await base.run(argv, stdin: stdin, timeout: .seconds(60)) }
+        try? await Task.sleep(for: .seconds(600))
+        clock.move(by: 3600)
+        return .timedOut
     }
 
     func which(_ name: String) -> String? { base.which(name) }
