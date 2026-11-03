@@ -196,6 +196,7 @@ struct RunOrderTests {
         #expect(Report.naming("1 of 4 failed · Inner/test", first: other, insteadOf: "Inner/test")?.count == 100)
         #expect(Report.naming("1 of 4 failed · Suite/`login · retries`", first: nil, insteadOf: "Suite/`login · retries`") == "1 of 4 failed")
         let spaced = "CheckoutTests/`given an expired card · when the user taps pay · then it presents the retry alert`"
+        #expect(ToolOutput.shorten("1 of 312 failed · " + spaced).hasSuffix("…"))
         #expect(Report.naming(ToolOutput.shorten("1 of 312 failed · " + spaced), first: nil, insteadOf: spaced) == "1 of 312 failed")
     }
 
