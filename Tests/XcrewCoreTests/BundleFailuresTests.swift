@@ -115,7 +115,7 @@ struct BundleFailuresTests {
         let report = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: "✗ ProbeTests / testFlaky:", with: "✗ ProbeTests / testGone:"), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
         #expect(report.failures.filter(\.isTest).map(\.title) == ["ProbeTests/testFails"])
         #expect(report.notes.filter { $0.contains("MobileBuildMCP's text lists") } == [
-            "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: ProbeTests/testGone, which it doesn't list. The tests listed as failed here are the bundle's.",
+            "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: ProbeTests/testGone, which it doesn't list under that name. The tests listed as failed here are the bundle's.",
         ])
     }
 

@@ -48,12 +48,19 @@ struct RunOrderTests {
         #expect(Report.inRunOrder(bundled, text: text).dropped.isEmpty)
     }
 
-    /// The note names a dropped nested suite's test with what the bundle records for it under its full name, and leaves
-    /// out a test the bundle records as failed under the name the text gives.
-    @Test func theNoteReadsANestedSuitesTestByItsFullNameAndLeavesOutAFailedOne() {
-        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Outer/Inner/testFlaky()","result":"Passed"},{"nodeType":"Test Case","nodeIdentifier":"Suite/renamed()","result":"Failed"}]}"#)
-        #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "testFlaky"), TestID(suite: "Suite", name: "renamed")], listing: listing)
-            == "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: Inner/testFlaky, which it counts as passed. The tests listed as failed here are the bundle's.")
+    /// The note reads a dropped test by the name the text gives: one the bundle files only in a nested suite, under a
+    /// longer name, it doesn't list under that name.
+    @Test func theNoteReadsADroppedTestByTheTextsName() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Outer/Inner/testFlaky()","result":"Passed"}]}"#)
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "testFlaky")], listing: listing)
+            == "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: Inner/testFlaky, which it doesn't list under that name. The tests listed as failed here are the bundle's.")
+    }
+
+    /// A dropped test the bundle files more than once, as under two configurations, counts as passed when one passed.
+    @Test func theNoteCountsATestFiledTwiceAsPassedWhenOnePassed() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed"}]}"#)
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], listing: listing)
+            == "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: Suite/test, which it counts as passed. The tests listed as failed here are the bundle's.")
     }
 
     /// A name the text lists twice, as a parallel run's clones may, is its own test's both times: never a nested suite's
