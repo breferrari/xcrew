@@ -206,6 +206,34 @@ struct BundleFailuresTests {
         #expect(details.allSatisfy { $0.contains("--test-id Outer/Inner/") }, "\(details)")
     }
 
+    /// A nested suite's failed test has the images xcresulttool exports under the bundle's id for it, kept under that id
+    /// for the pane: the nested capture's PNG, which its `attaches()` recorded.
+    @Test func aNestedSuitesFailureHasItsImages() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let path = try Raw.bundle("nested")
+        let attaches = TestID(xcresultID: "Outer/Inner/attaches()")
+        let bundle = ResultBundle(path: path, runner: Self.NestedExport(), exportFolder: { root.appending(path: "export-\(UUID().uuidString)") })
+        let added = await FailureNotes.adding(to: MobileText(try Raw.text("nested")), from: bundle, keepingImagesIn: (root.appending(path: "images"), Date()),
+                                              bundleIDs: [TestID(suite: "Inner", name: "attaches"): .found(attaches)])
+        #expect(added?.images[attaches]?.paths.count == 1)
+        #expect(added?.text.text.contains("✗ Inner / attaches(): Expectation failed: Kit.name == \"Other\"") == true)
+        #expect(added?.text.text.contains("image: ") == true)
+    }
+
+    /// `xcresulttool export attachments` as the nested capture's bundle answers it: what it wrote for `attaches()` under
+    /// its full id, and nothing under any other (`nested.lookups.json`).
+    final class NestedExport: CommandRunning {
+        func run(_ argv: [String], stdin: Data?) async -> CommandResult {
+            guard argv.contains("export"), let at = argv.firstIndex(of: "--test-id"), argv[at + 1] == "Outer/Inner/attaches()",
+                  let out = argv.firstIndex(of: "--output-path") else { return .init(status: 1) }
+            try? FileManager.default.removeItem(atPath: argv[out + 1])
+            try? FileManager.default.copyItem(at: Testbed.root.appending(path: "captures/raw/nested-attachments"), to: URL(fileURLWithPath: argv[out + 1]))
+            return .init(status: 0)
+        }
+        func which(_ name: String) -> String? { nil }
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
