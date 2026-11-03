@@ -104,6 +104,13 @@ struct BundleFailuresTests {
         #expect(Report.inRunOrder(bundled, text: text).map(\.title) == ["App.swift:3", "Outer/Inner/test"])
     }
 
+    /// A failed test the bundle gives no message keeps the text's, as it keeps its place when the bundle gives none.
+    @Test func aFailedTestTheBundleGivesNoMessageKeepsTheTexts() {
+        let bundled = [ToolOutput.Failure(title: "Suite/test", message: "", isTest: true)]
+        let text = [ToolOutput.Failure(title: "Suite/test", message: "the text's message", where: "Suite.swift:4", isTest: true)]
+        #expect(Report.inRunOrder(bundled, text: text).map { "\($0.message) | \($0.where ?? "-")" } == ["the text's message | Suite.swift:4"])
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
