@@ -180,7 +180,7 @@ public struct Report: Sendable, Equatable, Codable {
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
     /// is no failure, and after it when the text names none. With no failing test, `first` nil, the one the text named
     /// goes. The summary is one line, shortened, which can cut the name it ends with: a cut name is matched by its start,
-    /// and what this gives is shortened again.
+    /// and what this gives is shortened again. Only a failed run's counts, `N of M failed`, are named after.
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail else { return nil }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
@@ -198,6 +198,7 @@ public struct Report: Sendable, Equatable, Codable {
         } else {
             return detail
         }
+        guard base.hasSuffix(ToolOutput.Summary.failedCounts) else { return detail }
         return ToolOutput.shorten(String(base) + (first.map { separator + $0 } ?? ""))
     }
 
