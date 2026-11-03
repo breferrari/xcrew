@@ -162,13 +162,12 @@ public struct Report: Sendable, Equatable, Codable {
     /// its entries has, as passed under one of several configurations, else what it records. Nil when there are none.
     static func notFailedInBundleNote(_ tests: [TestID], results: [TestID: Set<String>]) -> String? {
         guard !tests.isEmpty else { return nil }
-        let wording = ["Passed": "counts as passed", "Expected Failure": "counts as an expected failure", "Skipped": "counts as skipped"]
         let named = tests.map { test in
             guard let found = results[test] else { return "\(test.shown), which it records no result for under that name" }
-            let clearing = ResultBundle.clearing.first(where: found.contains)
-            return "\(test.shown), which it " + (clearing.flatMap { wording[$0] } ?? "records as \(found.sorted().joined(separator: " and "))")
+            let clearing = ResultBundle.clearing.first { found.contains($0.result) }
+            return "\(test.shown), which it " + (clearing.map { "counts as \($0.counts)" } ?? "records as \(found.sorted().joined(separator: " and "))")
         }
-        let these = named.count == 1 ? "a test that isn't among its result bundle's failures" : "tests that aren't among its result bundle's failures"
+        let these = named.count == 1 ? "a test its result bundle doesn't list among its failures under that name" : "tests its result bundle doesn't list among its failures under that name"
         let cleared = ResultBundle.cleared(in: results)
         let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as passed, skipped or an expected failure is left out of the failures here." : ""
         let kept = tests.contains { !cleared.contains($0) } ? " A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it." : ""

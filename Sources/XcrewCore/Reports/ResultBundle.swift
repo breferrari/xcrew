@@ -151,12 +151,12 @@ public struct ResultBundle: Sendable {
     /// whatever another listing says. Any other result, as `unknown` for a test whose process was killed, is no sign it
     /// passed.
     static func cleared(in results: [TestID: Set<String>]) -> Set<TestID> {
-        Set(results.filter { !$0.value.isDisjoint(with: clearing) }.keys)
+        Set(results.filter { found in clearing.contains { found.value.contains($0.result) } }.keys)
     }
 
-    /// The results that make a test no failure, in the order one is named when a test has several: `xcresulttool`'s
-    /// others are `Failed` and `unknown` (schema 0.5.0).
-    static let clearing = ["Passed", "Expected Failure", "Skipped"]
+    /// The results that make a test no failure, each with how a note says it counts, in the order one is named when a
+    /// test has several: `xcresulttool`'s others are `Failed` and `unknown` (schema 0.5.0).
+    static let clearing: [(result: String, counts: String)] = [("Passed", "passed"), ("Expected Failure", "an expected failure"), ("Skipped", "skipped")]
 
     /// Each test the run's test list counts passed, as MobileBuildMCP's count does: a retried test that passed on a later
     /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
