@@ -66,8 +66,9 @@ public struct ResultBundle: Sendable {
 
     /// Each failed test in `xcresulttool get test-results tests` output, once whatever configurations it failed under,
     /// with its first failure's message as MobileBuildMCP's text words it, its first line without XCTest's `failed - `,
-    /// and its place as `File.swift:line`; nil when the output isn't a listing, as when `xcresulttool` couldn't read the
-    /// bundle.
+    /// its place as `File.swift:line` and its test bundle, the target. A crash filed under `System Failures` is the
+    /// failure of the test its message names, and no failure when it names none. Nil when the output isn't a listing,
+    /// as when `xcresulttool` couldn't read the bundle.
     static func failedTests(listing: TestList) -> [ToolOutput.Failure]? {
         guard listing.isListing else { return nil }
         let found = listing.nodes
