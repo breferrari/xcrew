@@ -13,23 +13,18 @@ public enum Look {
     /// before `now` are removed.
     public static func report(bundle: ResultBundle, named: String?, keptIn folder: URL, now: Date) async -> String {
         let listing = TestList(await bundle.tests())
-        let failed = listing.json == nil ? nil : ResultBundle.failedTests(in: listing.nodes)
-        guard let named else {
-            return await report(bundle: bundle, test: nil, cases: ResultBundle.testCases(in: listing.nodes), failed: failed, keptIn: folder, now: now)
-        }
-        let lookup = TestLookup(nodes: listing.nodes)
-        return await report(bundle: bundle, test: test(named, among: lookup), cases: lookup.cases, failed: failed, keptIn: folder, now: now)
+        let lookup = named.map { _ in TestLookup(nodes: listing.nodes) }
+        let found = named.flatMap { name in lookup.map { test(name, among: $0) } }
+        return await report(bundle: bundle, test: found, cases: lookup?.cases ?? ResultBundle.testCases(in: listing.nodes), failed: listing.json == nil ? nil : ResultBundle.failedTests(in: listing.nodes), keptIn: folder, now: now)
     }
 
     /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,
     /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way; else, as
     /// the run's text names a test, the one nested id that ends with it, or the `System Failures` case a crash of it is
     /// filed under. When the bundle lists none, a name ending `()` is taken as the bundle's own and one without as
-    /// `-only-testing:`'s. A name quoted as `ShellWord.quoted` quotes one, as `word(for:)` gives it, is read as the name
-    /// it quotes.
+    /// `-only-testing:`'s. A name quoted for a shell, as the failure notes give one, is read as the name it quotes.
     static func test(_ given: String, among lookup: TestLookup) -> TestID {
-        let isQuoted = given.count > 1 && given.hasPrefix("'") && given.hasSuffix("'")
-        let named = isQuoted ? given.dropFirst().dropLast().replacingOccurrences(of: #"'\''"#, with: "'") : given
+        let named = ShellWord.unquoted(given)
         let exact = TestID(xcresultID: named)
         let parts = named.split(separator: "/", maxSplits: 1)
         let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
@@ -39,12 +34,6 @@ public enum Look {
             if let id = lookup.resolution(of: candidate).found { return id }
         }
         return named.hasSuffix("()") ? exact : withoutTarget ?? exact
-    }
-
-    /// A test as one word of a `look` command: a nested suite's as the bundle names it, `()` and all, so its suite's `/`
-    /// isn't read as a target's, quoted as `ShellWord.word` quotes one.
-    static func word(for test: TestID) -> String {
-        ShellWord.word(test.shown.count(where: { $0 == "/" }) > 1 ? test.xcresultID : test.shown)
     }
 
     /// `failed` is the run's failed tests, nil when its test list couldn't be read. The run's size is recorded once all its
@@ -100,8 +89,12 @@ public enum Look {
             return "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; xcrew look <Suite/test> shows one test's steps"
         }
         unshown += failed.dropFirst(next)
-        let more = unshown.isEmpty ? [] : ["and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { "xcrew look \(word(for: $0))" }, rest: "`xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle.path))` lists them all")]
-        return (shown + more).joined(separator: "\n")
+        return (shown + (unshown.isEmpty ? [] : [moreLine(unshown, bundle: bundle.path)])).joined(separator: "\n")
+    }
+
+    /// The line naming the failed tests not shown, each as a `look` command takes it.
+    static func moreLine(_ unshown: [TestID], bundle: String) -> String {
+        "and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { "xcrew look \(ShellWord.word($0.lookName))" }, rest: "`xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle))` lists them all")
     }
 
     /// One test's failed runs, each with its steps, failure and screen, then where it passed; nil when none failed. A

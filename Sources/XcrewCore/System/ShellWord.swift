@@ -11,4 +11,10 @@ public enum ShellWord {
     public static func word(_ text: String) -> String {
         text.allSatisfy { $0.isLetter || $0.isNumber || "/._-".contains($0) } ? text : quoted(text)
     }
+
+    /// The value a word `quoted` gives stands for; any other word as it is.
+    public static func unquoted(_ word: String) -> String {
+        guard word.count > 1, word.hasPrefix("'"), word.hasSuffix("'") else { return word }
+        return word.dropFirst().dropLast().replacingOccurrences(of: #"'\''"#, with: "'")
+    }
 }

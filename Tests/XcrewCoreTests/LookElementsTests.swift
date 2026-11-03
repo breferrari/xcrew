@@ -89,12 +89,22 @@ import XcrewTestSupport
         #expect(Look.test("'Suite/it'\\''s red()'", among: lookup) == TestID(suite: "Suite", name: "it's red"))
     }
 
-    /// `look` names a test in a command as the bundle names a nested suite's, so its suite's `/` isn't read as a target's,
-    /// and as a shell word: quoted when it holds what a shell reads, as parentheses.
-    @Test func lookNamesATestAsAShellWord() {
-        #expect(Look.word(for: TestID(suite: "Suite", name: "test")) == "Suite/test")
-        #expect(Look.word(for: TestID(xcresultID: "Outer/Inner/fails()")) == "'Outer/Inner/fails()'")
-        #expect(Look.word(for: TestID(xcresultID: "Suite/sizes(value:)")) == "'Suite/sizes(value:)'")
+    /// `look` takes a nested suite's test as the bundle names it, so its suite's `/` isn't read as a target's.
+    @Test func lookTakesANestedSuitesTestAsTheBundleNamesIt() {
+        #expect(TestID(suite: "Suite", name: "test").lookName == "Suite/test")
+        #expect(TestID(xcresultID: "Outer/Inner/fails()").lookName == "Outer/Inner/fails()")
+        #expect(TestID(xcresultID: "Suite/sizes(value:)").lookName == "Suite/sizes(value:)")
+    }
+
+    /// The line naming the failed tests not shown names each as a `look` command takes it, one shell word.
+    @Test func theLineOnTestsNotShownNamesEachAsAShellWord() {
+        #expect(Look.moreLine([TestID(suite: "Suite", name: "test"), TestID(xcresultID: "Outer/Inner/fails()")], bundle: "/runs/Run.xcresult") == "and 2 more failed tests: xcrew look Suite/test and xcrew look 'Outer/Inner/fails()'")
+    }
+
+    /// The line on a test list that couldn't be read names its xcresulttool command with the bundle quoted for a shell.
+    @Test func theLineOnTestsNotReadQuotesItsPath() async {
+        let text = await Look.report(bundle: ResultBundle(path: "/My Runs/Run.xcresult", runner: FakeRunner()), named: nil, keptIn: FileManager.default.temporaryDirectory.appending(path: "xcrew-look-\(UUID().uuidString)"), now: Date())
+        #expect(text == "xcrew: couldn't read the tests in Run.xcresult; xcrun xcresulttool get test-results tests --path '/My Runs/Run.xcresult' says why", "\(text)")
     }
 
     /// The line on a test whose steps couldn't be read names its xcresulttool command with each word quoted for a shell.

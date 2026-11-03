@@ -418,11 +418,11 @@ public struct Report: Sendable, Equatable, Codable {
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
         let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
-        let unresolved = final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil }
+        let unresolved = Set(final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil })
         var resolutions = bundleIDs
         if !unresolved.isEmpty, bundled != nil {
             let lookup = await testLookup()
-            for test in Set(unresolved) { resolutions[test] = lookup.resolution(of: test) }
+            for test in unresolved { resolutions[test] = lookup.resolution(of: test) }
         }
         let results = recorded.merging(resolutions.compactMap { test, resolution in
             resolution.found.flatMap { recorded[$0] }.map { (test, $0) }
