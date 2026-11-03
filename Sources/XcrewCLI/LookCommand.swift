@@ -2,7 +2,9 @@ import Foundation
 import XcrewCore
 
 /// What a test run kept about each failed UI test's failure: the steps before it and the screen at it, per
-/// configuration and device, from the project's newest MobileBuildMCP result bundle or one named.
+/// configuration and device, from the project's newest MobileBuildMCP result bundle or one named. A test or bundle quoted
+/// as a shell word, as the failure notes give them, is read as the value it quotes: the `look` tool passes them on with
+/// no shell to take the quotes off.
 struct LookCommand: Command {
     let name = "look"
     let valuedOptions: Set<String> = ["bundle"]
@@ -16,14 +18,14 @@ struct LookCommand: Command {
     func run(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         guard invocation.arguments.positional.count <= 1 else { throw UsageError(description: "look takes one test at most (xcrew look --help)") }
-        let named = invocation.arguments["bundle"]
+        let named = invocation.arguments["bundle"].map(ShellWord.unquoted)
         let newest = if named == nil { await ResultBundle.newest(project: context.project.root, machine: context.machine) } else { String?.none }
         guard let path = named ?? newest else {
             invocation.print(Self.noBundle)
             return 1
         }
         let bundle = ResultBundle(path: path, runner: context.runner)
-        invocation.print(await Look.report(bundle: bundle, named: invocation.arguments.positional.first, keptIn: context.machine.cacheFolder.appending(path: "images"), now: context.machine.now()))
+        invocation.print(await Look.report(bundle: bundle, named: invocation.arguments.positional.first.map(ShellWord.unquoted), keptIn: context.machine.cacheFolder.appending(path: "images"), now: context.machine.now()))
         return 0
     }
 }

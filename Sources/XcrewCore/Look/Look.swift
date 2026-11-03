@@ -22,9 +22,8 @@ public enum Look {
     /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way; else, as
     /// the run's text names a test, the one nested id that ends with it, or the `System Failures` case a crash of it is
     /// filed under. When the bundle lists none, a name ending `()` is taken as the bundle's own and one without as
-    /// `-only-testing:`'s. A name quoted for a shell, as the failure notes give one, is read as the name it quotes.
-    static func test(_ given: String, among lookup: TestLookup) -> TestID {
-        let named = ShellWord.unquoted(given)
+    /// `-only-testing:`'s.
+    static func test(_ named: String, among lookup: TestLookup) -> TestID {
         let exact = TestID(xcresultID: named)
         let parts = named.split(separator: "/", maxSplits: 1)
         let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
@@ -86,15 +85,15 @@ public enum Look {
         }
         FailureImages.record(run)
         guard !shown.isEmpty else {
-            return "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; xcrew look <Suite/test> shows one test's steps"
+            return "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; xcrew look <Suite/test> --bundle \(ShellWord.word(bundle.path)) shows one test's steps"
         }
         unshown += failed.dropFirst(next)
         return (shown + (unshown.isEmpty ? [] : [moreLine(unshown, bundle: bundle.path)])).joined(separator: "\n")
     }
 
-    /// The line naming the failed tests not shown, each as a `look` command takes it.
+    /// The line naming the failed tests not shown, each as a `look` command on this bundle takes it.
     static func moreLine(_ unshown: [TestID], bundle: String) -> String {
-        "and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { "xcrew look \(ShellWord.word($0.lookName))" }, rest: "`xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle))` lists them all")
+        "and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { "xcrew look \(ShellWord.word($0.lookName)) --bundle \(ShellWord.word(bundle))" }, rest: "`xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle))` lists them all")
     }
 
     /// One test's failed runs, each with its steps, failure and screen, then where it passed; nil when none failed. A

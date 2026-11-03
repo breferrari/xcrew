@@ -55,6 +55,14 @@ import XcrewTestSupport
         #expect(run.text.hasPrefix("xcrew look: Outer/Inner/testX, in Run.xcresult\n"), "\(run.text)")
     }
 
+    /// A test and a bundle as the failure notes' line gives them, each quoted as one shell word, are read as the values
+    /// they quote: the `look` tool passes them on with no shell to take the quotes off.
+    @Test func aTestAndABundleQuotedForAShellAreReadAsTheyQuote() async {
+        let bundle = "/runs/My Runs/Run.xcresult"
+        let run = await Run("look", "'Outer/Inner/it'\\''s red()'", "--bundle", "'\(bundle)'", context: context([Self.steps("Outer/Inner/it's red", bundle): Self.activities(recorded: false)]))
+        #expect(run.text.hasPrefix("xcrew look: Outer/Inner/it's red, in Run.xcresult\n"), "\(run.text)")
+    }
+
     /// `Target/Suite/test()` is a test the bundle names `Suite/test()` when it lists no `Target/Suite/test()`: the target
     /// is dropped, as for the form without `()`.
     @Test func aTargetBeforeABundlesNameIsDropped() async {

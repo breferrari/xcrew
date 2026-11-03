@@ -163,12 +163,13 @@ struct TestbedLookTests {
     @Test func lookingAtARunShowsEachFailedUITest() async throws {
         let (text, _) = try await Self.report(nil)
         let heads = text.components(separatedBy: "\n").filter { !$0.hasPrefix(" ") }
-        #expect(heads == [
+        #expect(heads.dropLast() == [
             "xcrew look: UITests/testFailsAfterTaps, in UITests.xcresult",
             "xcrew look: UITests/testMissingElement, in UITests.xcresult",
             "xcrew look: UITests/testPlanA, in UITests.xcresult",
-            "and 1 more failed test: xcrew look UITests/testRenamedLabel",
         ], "\(text)")
+        // On this run's bundle, in a temporary folder.
+        #expect(heads.last?.hasPrefix("and 1 more failed test: xcrew look UITests/testRenamedLabel --bundle /") == true && heads.last?.hasSuffix("/UITests.xcresult") == true, "\(text)")
         let planA = try #require(text.components(separatedBy: "xcrew look: ").first { $0.hasPrefix("UITests/testPlanA,") })
         #expect(!planA.contains("\n  Plan A ·"), "\(planA)")
         #expect(planA.contains("Plan B ·"), "\(planA)")
