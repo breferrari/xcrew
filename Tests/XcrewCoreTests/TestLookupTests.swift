@@ -34,9 +34,9 @@ import Testing
 
     /// A test in a suite nested deeper is the one id that ends with the name the text gives it from its own suite.
     @Test func aDeeperNestedIDEndingWithItIsIts() {
-        let ids: Set = [TestID(xcresultID: "A/B/Inner/fails()"), TestID(xcresultID: "A/Other/fails()")]
-        #expect(TestLookup(ids: ids).resolution(of: TestID(suite: "Inner", name: "fails")) == .found(TestID(xcresultID: "A/B/Inner/fails()")))
-        #expect(TestLookup(ids: ids).resolution(of: TestID(suite: "B", name: "Inner/fails")) == .found(TestID(xcresultID: "A/B/Inner/fails()")))
+        let lookup = TestLookup(ids: [TestID(xcresultID: "A/B/Inner/fails()"), TestID(xcresultID: "A/Other/fails()")])
+        #expect(lookup.resolution(of: TestID(suite: "Inner", name: "fails")) == .found(TestID(xcresultID: "A/B/Inner/fails()")))
+        #expect(lookup.resolution(of: TestID(suite: "B", name: "Inner/fails")) == .found(TestID(xcresultID: "A/B/Inner/fails()")))
     }
 
     /// A nested test's own case beats a `System Failures` case a crash message names it in.

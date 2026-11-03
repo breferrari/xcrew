@@ -261,7 +261,7 @@ struct MobileText: Sendable {
     /// This keeps the failures, the failing and skipped tests' lines and the summary, and counts the
     /// passing ones. Nil when the list is short or the text is another shape.
     func compacted() -> MobileText? {
-        guard header.map({ MobileBuildMCPLine.isTestHeader($0.text) }) == true, let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
+        guard header.map({ MobileBuildMCPLine.isTestHeader($0.text) }) == true, let start = testResultsStart else { return nil }
         // The list runs to the summary line; a blank line inside it is where Claude Code cut a long one.
         let summary = lines.indices.first { $0 > start && lines[$0].isSummary }
         var end = summary ?? start + 1
@@ -305,7 +305,7 @@ struct MobileText: Sendable {
                 + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
         }
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else {
-            guard let at = lines.firstIndex(where: { $0.isHeading(.testResults) }) ?? lines.firstIndex(where: \.isSummary) else { return nil }
+            guard let at = testResultsStart ?? lines.firstIndex(where: \.isSummary) else { return nil }
             return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
         }
         let ending = lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
@@ -314,11 +314,14 @@ struct MobileText: Sendable {
         return MobileText(lines: Array(lines[..<heading]) + [Line(counted)] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
     }
 
+    /// Where the Test Results section starts, nil when the text has none.
+    var testResultsStart: Int? { lines.firstIndex(where: { $0.isHeading(.testResults) }) }
+
     /// With `showTestTiming`, a repeated run's Test Results list each test once for each of its runs: this lists each test
     /// once, a repeated one with its runs counted, as `✅ Suite/test(): passed 5 of 5 runs`. Nil when nothing repeats.
     /// It shapes only the text Claude reads: the report counts the runs from the bundle itself.
     func listingRunsOnce(_ repetitions: [ResultBundle.Repeated], resolving: (TestID) -> TestID = { $0 }) -> MobileText? {
-        guard let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
+        guard let start = testResultsStart else { return nil }
         let counted = Dictionary(repetitions.map { ($0.test, $0) }, uniquingKeysWith: { first, _ in first })
         var end = start + 1
         while end < lines.count, !lines[end].isBlank, !lines[end].isSummary { end += 1 }

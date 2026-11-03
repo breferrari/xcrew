@@ -495,6 +495,7 @@ import Testing
         #expect(FailureNotes.lookLine(TestID(xcresultID: "Outer/Inner/testX()"), bundle: "/b.xcresult").contains("`xcrew look 'Outer/Inner/testX()' --bundle /b.xcresult`"))
         #expect(FailureNotes.lookLine(TestID(xcresultID: "Outer/Inner/sizes(value:)"), bundle: "/b.xcresult").contains("`xcrew look 'Outer/Inner/sizes(value:)' --bundle /b.xcresult`"))
         #expect(FailureNotes.lookLine(TestID(suite: "Suite", name: "it's red"), bundle: "/b.xcresult").contains("`xcrew look 'Suite/it'\\''s red' --bundle /b.xcresult`"))
+        #expect(FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/My App/Run.xcresult").contains("`xcrew look Suite/test --bundle '/My App/Run.xcresult'`"))
     }
 
     /// The routing rules tell Claude how to repeat a test, with the flag the mod recognises a repeated run by, and none

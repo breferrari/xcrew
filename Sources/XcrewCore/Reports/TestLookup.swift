@@ -5,8 +5,8 @@ struct TestLookup {
     /// The test list's cases under each test's id, as `ResultBundle.testCases(in:)` reads them.
     let cases: [TestID: [[String: Any]]]
     private let crashCases: [TestID: TestID]
-    /// Each nested id under its name and every ending of it after a `/` that still holds one, sorted: the ids a name the
-    /// text gives, always `Suite/test`, can mean.
+    /// Each nested id under its name and every ending of it after a `/` that still holds one, sorted: the ids a name can
+    /// mean, the text's `Inner/fails` or `look`'s `B/Inner/fails` for `A/B/Inner/fails`.
     private let byEnding: [String: [TestID]]
 
     /// How a test the text names is found among the result bundle's ids.

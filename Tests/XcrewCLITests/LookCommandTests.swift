@@ -76,7 +76,7 @@ import XcrewTestSupport
         let all = await Run("look", "--bundle", "/runs/Run.xcresult", context: context())
         #expect(all.text == "xcrew: couldn't read the tests in Run.xcresult; xcrun xcresulttool get test-results tests --path /runs/Run.xcresult says why")
         let one = await Run("look", "AppUITests/testLaunch", "--bundle", "/runs/Run.xcresult", context: context())
-        #expect(one.text == "xcrew: couldn't read AppUITests/testLaunch's steps in Run.xcresult; xcrun xcresulttool get test-results activities --test-id AppUITests/testLaunch() --path /runs/Run.xcresult says why")
+        #expect(one.text == "xcrew: couldn't read AppUITests/testLaunch's steps in Run.xcresult; xcrun xcresulttool get test-results activities --test-id 'AppUITests/testLaunch()' --path /runs/Run.xcresult says why")
     }
 
     /// A failed UI test is found however many failed unit tests come before it in the listing; a test without a

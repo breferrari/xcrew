@@ -82,4 +82,24 @@ import XcrewTestSupport
         // As the failure notes' line quotes it for a shell, copied whole.
         #expect(Look.test("'Outer/Inner/fails()'", among: lookup) == TestID(xcresultID: "Outer/Inner/fails()"))
     }
+
+    /// A name `look` is given as a shell word, quoted with a `'` inside it escaped, is read as the name it quotes.
+    @Test func lookReadsANameQuotedForAShell() {
+        let lookup = TestLookup(cases: [TestID(suite: "Suite", name: "it's red"): []])
+        #expect(Look.test("'Suite/it'\\''s red()'", among: lookup) == TestID(suite: "Suite", name: "it's red"))
+    }
+
+    /// `look` names a test in a command as the bundle names a nested suite's, so its suite's `/` isn't read as a target's,
+    /// and as a shell word: quoted when it holds what a shell reads, as parentheses.
+    @Test func lookNamesATestAsAShellWord() {
+        #expect(Look.word(for: TestID(suite: "Suite", name: "test")) == "Suite/test")
+        #expect(Look.word(for: TestID(xcresultID: "Outer/Inner/fails()")) == "'Outer/Inner/fails()'")
+        #expect(Look.word(for: TestID(xcresultID: "Suite/sizes(value:)")) == "'Suite/sizes(value:)'")
+    }
+
+    /// The line on a test whose steps couldn't be read names its xcresulttool command with each word quoted for a shell.
+    @Test func theLineOnStepsNotReadQuotesItsCommand() async {
+        let text = await Look.report(bundle: ResultBundle(path: "/My Runs/Run.xcresult", runner: FakeRunner()), test: TestID(xcresultID: "Outer/Inner/fails()"), cases: [:], failed: [], keptIn: FileManager.default.temporaryDirectory.appending(path: "xcrew-look-\(UUID().uuidString)"), now: Date())
+        #expect(text.hasSuffix("--test-id 'Outer/Inner/fails()' --path '/My Runs/Run.xcresult' says why"), "\(text)")
+    }
 }
