@@ -144,10 +144,25 @@ public struct Report: Sendable, Equatable, Codable {
         return ordered + pending.map(\.failure)
     }
 
+    /// The tests the text lists as failed that the bundle counts as passed, as one a retry passed; nil when the two
+    /// agree. A repeated run's note says how each test's runs went.
+    static func passedInBundleNote(text: [ToolOutput.Failure], listing: TestList) -> String? {
+        let passed = ResultBundle.passedTests(listing: listing)
+        let named = text.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter(passed.contains).map(\.shown)
+        guard !named.isEmpty else { return nil }
+        let tests = named.count == 1 ? "a test the result bundle counts as passed" : "tests the result bundle counts as passed"
+        return "xcrew: MobileBuildMCP's text lists as failed \(tests): \(named.joined(separator: ", ")). The failures listed here are the bundle's."
+    }
+
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
-    /// is no failure, and after it when the text names none.
+    /// is no failure, and after it when the text names none. With no failing test, the one the text named goes: the
+    /// failures come from the text unless the bundle listed them, so it named a test the bundle doesn't count as failed.
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
-        guard let detail, let first else { return detail }
+        guard let detail else { return nil }
+        guard let first else {
+            guard let named, detail.hasSuffix(ToolOutput.Summary.beforeFirstFailing + named) else { return detail }
+            return String(detail.dropLast((ToolOutput.Summary.beforeFirstFailing + named).count))
+        }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
         guard let named else { return detail.hasSuffix(ToolOutput.Summary.failedCounts) ? detail + ToolOutput.Summary.beforeFirstFailing + first : detail }
         guard first != named, detail.hasSuffix(ToolOutput.Summary.beforeFirstFailing + named) else { return detail }
@@ -333,7 +348,9 @@ public struct Report: Sendable, Equatable, Codable {
         // A failing test run's failed tests are its result bundle's, each failing test's target too; the text's only
         // without a test list to read. Its other failures, the build's and the process's, are the text's.
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
-        let failures = ResultBundle.failedTests(listing: listing).map { Self.inRunOrder($0, text: final.failures) } ?? final.failures
+        let bundled = ResultBundle.failedTests(listing: listing)
+        let failures = bundled.map { Self.inRunOrder($0, text: final.failures) } ?? final.failures
+        if bundled != nil, let note = Self.passedInBundleNote(text: final.failures, listing: listing) { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?

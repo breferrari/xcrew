@@ -96,6 +96,37 @@ struct BundleFailuresTests {
         #expect(report.failures.filter { $0.message == message }.count == 1)
     }
 
+    /// A test the text lists as failed that the bundle counts as passed, as one a retry passed, is no failure, and a
+    /// note says the two disagree; the repeated run's note says how its runs went, once.
+    @Test func aTestTheTextFailsAndTheBundlePassesIsSaidSo() async throws {
+        let notes = try await Self.report("retry", repeated: true).notes
+        #expect(notes.filter { $0.contains("ProbeTests/testFlaky") } == [
+            "xcrew: across repeated runs: ProbeTests/testFails failed every run, a real failure; ProbeTests/testFlaky is flaky, failing 1 of 2.",
+            "xcrew: MobileBuildMCP's text lists as failed a test the result bundle counts as passed: ProbeTests/testFlaky. The failures listed here are the bundle's.",
+        ])
+    }
+
+    /// A run whose bundle lists no failed test has a summary that names none, though the text names one the bundle
+    /// counts as passed. Composed from the retry capture: its text listing only the test a retry passed, and its test
+    /// list with the test that failed every run passing.
+    @Test func theSummaryNamesNoTestTheBundleCountsAsPassed() async throws {
+        let failing = """
+              ✗ ProbeTests / testFails: XCTAssertEqual failed: ("Hello, Ada") is not equal to ("Hi, Ada")
+                /testbed/field/Modules/Feature/Tests/ProbeTests.swift:11
+
+
+            """
+        let text = try Raw.text("retry")
+        #expect(text.contains(failing))
+        let listing = try Raw.file("retry.tests.json")
+        let failed = #""nodeType":"Test Case","result":"Failed""#
+        #expect(listing.components(separatedBy: failed).count == 2)
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("retry")) --compact": .init(status: 0, stdout: listing.replacingOccurrences(of: failed, with: #""nodeType":"Test Case","result":"Passed""#))])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: failing, with: ""), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner, repeated: true)
+        #expect(report.detail == "1 of 4 failed")
+        #expect(report.failures.filter(\.isTest).isEmpty)
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
