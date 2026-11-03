@@ -15,7 +15,7 @@ public enum Look {
     /// before `now` are removed.
     public static func report(bundle: ResultBundle, named: String?, keptIn folder: URL, now: Date) async -> String {
         let listing = TestList(await bundle.tests())
-        let cases = ResultBundle.testCases(in: listing)
+        let cases = ResultBundle.testCases(in: listing.nodes)
         return await report(bundle: bundle, test: named.map { test($0, among: cases) }, cases: cases, failed: listing.json == nil ? nil : ResultBundle.failedTests(in: listing.nodes), keptIn: folder, now: now)
     }
 

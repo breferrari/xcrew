@@ -122,7 +122,8 @@ public enum FailureNotes {
 
     /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `images`, each failed
     /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
-    /// are removed.
+    /// are removed. `testList` gives the run's test list parsed once
+    /// for the report; without it, the bundle's is parsed here.
     static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], testList: (() async -> TestList)? = nil) async -> Added? {
         let imagesFolder = images?.folder
         var order: [TestID] = []
