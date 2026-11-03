@@ -9,9 +9,9 @@ struct XcodeMCPHandshakeCheck: Check {
     let title = "A new Xcode MCP bridge answers"
     let startsAServer = true
 
-    /// The bridge stops at the end of its input, before it answers: the input stays open until an answer comes, which
-    /// the call's deadline bounds.
-    static let command = ["/bin/sh", "-c", #"f=$(mktemp) && (cat; while [ ! -s "$f" ]; do sleep 0.1; done) | xcrun mcpbridge > "$f"; cat "$f"; rm -f "$f""#]
+    /// The bridge stops at the end of its input, before it answers: the input stays open until an answer comes or the
+    /// bridge ends without one, which the call's deadline bounds.
+    static let command = ["/bin/sh", "-c", #"f=$(mktemp) && (cat; while [ ! -s "$f" ] && [ ! -e "$f.ended" ]; do sleep 0.1; done) | { xcrun mcpbridge > "$f"; touch "$f.ended"; }; cat "$f"; rm -f "$f" "$f.ended""#]
     static let initialize = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-doctor","version":"1"}}}"# + "\n"
 
     func run(_ context: CheckContext) async -> CheckResult {
