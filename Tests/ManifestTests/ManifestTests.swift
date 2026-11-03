@@ -63,14 +63,14 @@ import Testing
     }
 
     @Test func sessionStartBriefsThroughTheCLI() async throws {
-        #expect(try hook("SessionStart").command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start"#)
+        #expect(try hook("SessionStart").command == #"XCREW_WITHIN_MS=10000 "${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start"#)
     }
 
     /// The command hooks are the briefing at a session's start and the stamp's removal at its end; no other.
     @Test func theCommandHooksAreSessionStartAndSessionEnd() async throws {
         let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: Any])
         #expect(Set(hooks.keys) == ["SessionStart", "SessionEnd"])
-        #expect(try hook("SessionEnd").command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-end"#)
+        #expect(try hook("SessionEnd").command == #"XCREW_WITHIN_MS=10000 "${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-end"#)
     }
 
     /// The mod-loaded check names the mcs that loads a pack's mod, as the techpack requires it.
@@ -490,6 +490,7 @@ import Testing
         #expect(launcher.contains("\"$plugin/bin/xcrew\" --if-built xcode --developer-dir"))
         #expect(launcher.contains("\n        \(XcodeCommand.noPin)) outcome= ;;"))
         #expect(launcher.contains("\n        \(XcodeCommand.noMatch)) outcome=\"no match\" ;;"))
+        #expect(launcher.contains("\n        \(XcodeCommand.timedOut)) outcome=\"timed out $PIN_SECONDS\" ;;"))
         #expect(shim.contains("[ -x \"$binary\" ] || exit 75") && launcher.contains("\n        75) outcome=\"not built\" ;;"))
         #expect(launcher.contains("\nPIN_SECONDS=2\n"))
     }
@@ -1165,6 +1166,14 @@ import Testing
         #expect(try text("hooks/mod/evidence.ts").contains("export const EVIDENCE_TIMEOUT_MS = ASKED_MS"))
     }
 
+    /// Each call on the CLI has the time of who waits on it: `ON_RESULT_MS` on a tool's call, `ASKED_MS` when asked, and
+    /// none of xcrew's own when nobody waits, as a timer's; never a number written at the call.
+    @Test func everyCallOnTheCLINamesWhoWaits() throws {
+        let register = try text("hooks/mod/register.ts")
+        let numbered = register.matches(of: /(?:answer|xcrew)\(\$, [^\n]*?, (\d[\d_]*)(?:\)|, )/).map { String($0.output.0) }
+        #expect(numbered.isEmpty, "calls with a time written at the call: \(numbered)")
+    }
+
     /// Everything xcrew keeps that nothing uses any more goes after one age: the shim's unused builds and root keys, the
     /// mod's history, a failed test's images, the card, and a session's stamp no session end removed. Each prunes its own;
     /// the age is one choice.
@@ -1344,6 +1353,45 @@ import Testing
                 #expect(line.firstMatch(of: /(?:^|\W)(?:NS)?Date(?:\(\)|\.init\(\)|\.now(?!\w))|(?:^|[^\w])\.now(?!\w)|timeIntervalSinceNow|CFAbsoluteTimeGetCurrent|systemUptime|DispatchWallTime/) == nil, "Sources/\(file):\(number + 1) reads the clock: \(line)")
             }
         }
+    }
+
+    /// Under one deadline a command's own limit adds nothing, and one taken from a fast Mac would cut notes on a slow
+    /// one: no command names a time of its own. The times that stay are the deadline's own, the runner's grace on a
+    /// stopped program's pipes, and how long standard input may sit idle, none of them a command's limit.
+    @Test func noCommandHasATimeLimitOfItsOwn() throws {
+        let sources = Self.repository.appending(path: "Sources")
+        let files = (FileManager.default.enumerator(atPath: sources.path)?.allObjects as? [String] ?? []).filter { $0.hasSuffix(".swift") }
+        let kept: Set = ["answering", "asked", "untimed", "deadlineStep", "grace", "idleLimit"]
+        var named: [String] = []
+        for file in files {
+            let text = try text("Sources/\(file)")
+            named += text.matches(of: /timeout: (?:Duration = )?(?:Duration)?\.(?:seconds|milliseconds)\(/).map { _ in "Sources/\(file): a timeout written at the call" }
+            named += text.matches(of: /static let (\w+)(?:: Duration)? = (?:Duration)?\.(?:seconds|milliseconds)\(/).map { String($0.1) }.filter { !kept.contains($0) }.map { "Sources/\(file): \($0)" }
+        }
+        #expect(named.isEmpty, "\(named)")
+    }
+
+    /// Every way into the CLI carries its deadline: the mod's calls name theirs, the SessionStart hook's work after the
+    /// build has a result's 10 s, as Claude's first answer waits on it, the SessionEnd hook its own timeout, and the
+    /// MobileBuildMCP launcher its pin's wait; run with none, as from a terminal, the CLI takes an asked call's 120 s.
+    @Test func everyWayIntoTheCLICarriesADeadline() throws {
+        let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: [[String: Any]]])
+        let commands = hooks.flatMap { event, groups in groups.flatMap { ($0["hooks"] as? [[String: Any]] ?? []).map { (event, $0) } } }
+        let onResult = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export const ON_RESULT_MS = ([\d_]+)/)?.1).replacingOccurrences(of: "_", with: "")
+        for (event, hook) in commands {
+            let command = try #require(hook["command"] as? String)
+            let within = command.firstMatch(of: /XCREW_WITHIN_MS=(\d+)\s/).map { String($0.1) }
+            switch event {
+            case "SessionStart": #expect(within == onResult, "\(event): \(command)")
+            default: #expect(within.flatMap(Int.init) == (hook["timeout"] as? Int).map { $0 * 1000 }, "\(event): \(command)")
+            }
+        }
+        let launcher = try text("libexec/mobilebuildmcp-server")
+        #expect(launcher.contains(#"XCREW_WITHIN_MS=$((PIN_SECONDS * 1000)) "$plugin/bin/xcrew" --if-built xcode"#))
+        // Every command runs under the call's deadline, an asked call's when none is given.
+        #expect(try text("Sources/XcrewCLI/CLI.swift").contains("context.machine.answering(by: DeadlineRunner.deadline(for: context.machine))"))
+        let unset = Machine(environment: [:], home: URL(fileURLWithPath: "/nonexistent"), runner: SystemCommandRunner(), monotonic: { .zero })
+        #expect(DeadlineRunner.deadline(for: unset) == .milliseconds(118_500))
     }
 
     // MARK: mcs techpack

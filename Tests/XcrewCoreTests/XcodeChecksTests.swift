@@ -276,4 +276,26 @@ import XcrewTestSupport
     @Test func onlyTheFullDoctorRunsIt() {
         #expect(Doctor.checks.filter(\.startsAServer).map(\.id) == ["xcode-mcp/handshake"])
     }
+
+    /// A bridge that ends without answering, as with the Xcode MCP off, ends the check then, not at its call's deadline:
+    /// the command, run for real against an `xcrun` that exits at once, answers within the test's minute.
+    @Test(.timeLimit(.minutes(1))) func aBridgeThatEndsWithoutAnsweringEndsTheWait() async throws {
+        #expect(try await Self.handshake(bridge: "exit 1").isEmpty)
+    }
+
+    /// A bridge that answers is read, the command run for real against an `xcrun` that answers the line it reads.
+    @Test(.timeLimit(.minutes(1))) func aBridgeThatAnswersIsRead() async throws {
+        #expect(try await Self.handshake(bridge: "read line; printf '%s\\n' '\(Self.answer)'") == Self.answer + "\n")
+    }
+
+    /// The handshake's command's output, run for real with `xcrun` a script whose body is `bridge`.
+    static func handshake(bridge: String) async throws -> String {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-handshake-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let xcrun = folder.appending(path: "xcrun")
+        try "#!/bin/sh\n\(bridge)\n".write(to: xcrun, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: xcrun.path)
+        return await SystemCommandRunner().run(["/usr/bin/env", "PATH=\(folder.path):/usr/bin:/bin"] + XcodeMCPHandshakeCheck.command, stdin: Data(XcodeMCPHandshakeCheck.initialize.utf8), timeout: .seconds(600)).stdout
+    }
 }
