@@ -3,9 +3,9 @@ import Testing
 @testable import XcrewCore
 import XcrewTestSupport
 
-/// The doctor's storage budget: this project's MobileBuildMCP workspaces against a budget, from `purge --report` for each
-/// of its checkouts' workspaces, with the dry run that lists what would go and no deletion.
-@Suite struct StorageBudgetTests {
+/// This project's MobileBuildMCP storage: its checkouts' workspaces together, from `purge --report`, sized and nothing
+/// more.
+@Suite struct ProjectStorageTests {
     /// In the temporary folder as the file system spells it, `/private` included, as a listing gives its paths back.
     let home = URL(fileURLWithPath: ProjectLayout.canonicalPath(FileManager.default.temporaryDirectory.path)).appending(path: "xcrew-tests-\(UUID().uuidString)")
     /// This project, in a folder named `App`, its workspace the capture's largest (81.5 MB).
@@ -62,29 +62,24 @@ import XcrewTestSupport
     }
 
     func line(environment: [String: String] = [:], ps: String = "") throws -> String {
-        StorageBudget.line(try live(), machine: Machine(environment: environment, home: home, runner: FakeRunner()), processes: ProcessList(ps: ps))
+        ProjectStorage.line(try live(), machine: Machine(environment: environment, home: home, runner: FakeRunner()), processes: ProcessList(ps: ps))
     }
 
-    /// The main checkout's and the worktree's together.
-    @Test func withinTheBudgetItPassesWithTheTotalAndTheBudget() async throws {
-        #expect(try line() == "this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)")
-    }
-
-    /// One line: the total, in both units, and the class that takes the most.
-    @Test func pastTheBudgetItNamesTheLargestClass() async throws {
-        #expect(try line(environment: ["XCREW_STORAGE_BUDGET_GB": "0.05"]) == "this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), past its budget of 0.05 GB (XCREW_STORAGE_BUDGET_GB sets another); DerivedData takes the most, 77.9 MB")
+    /// The main checkout's and the worktree's together, in both units, and the class that takes the most: what takes the
+    /// space, with nothing to measure it against.
+    @Test func itSaysTheTotalAndTheClassThatTakesTheMost() async throws {
+        #expect(try line() == "this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts); DerivedData takes the most, 77.9 MB")
     }
 
     /// Read while a build writes to one of its workspaces, the figure is that build's too, and says so.
     @Test func aFigureTakenWhileABuildWritesSaysSo() async throws {
         let derived = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root))/DerivedData").path
         let ps = "  10 1 05:00 /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme App -derivedDataPath \(derived) -destination id=1\n"
-        #expect(try line(ps: ps) == "this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another); a build is writing to them now, so they take more than they will after it")
+        #expect(try line(ps: ps) == "this project's MobileBuildMCP workspaces take 84.8 MB (80.8 MiB as `du -h` counts); DerivedData takes the most, 77.9 MB; a build is writing to them now, so they take more than they will after it")
     }
 
-    /// A budget it can't use, not a finite positive number of GB it can say, is the default.
-    @Test(arguments: ["lots", "0", "-5", "inf", "nan", "1e20"])
-    func aBudgetItCantUseIsTheDefault(_ value: String) async throws {
-        #expect(try line(environment: ["XCREW_STORAGE_BUDGET_GB": value]).hasSuffix("within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)"))
+    /// No variable sets a budget: the line is the same whatever the environment holds.
+    @Test func noVariableChangesTheLine() async throws {
+        #expect(try line(environment: ["XCREW_STORAGE_BUDGET_GB": "0.05"]) == line())
     }
 }

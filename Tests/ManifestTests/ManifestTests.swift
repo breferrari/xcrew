@@ -1355,6 +1355,22 @@ import Testing
         #expect(!writeLedger.contains("answer") && !writeLedger.contains("xcrew(") && !writeLedger.contains("currentHead"))
     }
 
+    /// No storage budget comes back: `xcrew space` sizes this project's MobileBuildMCP storage and measures it against no
+    /// number, so no code, doc or skill names a budget for it or a variable that sets one (docs/findings.md, *No budgets*).
+    @Test func noStorageBudgetComesBack() throws {
+        let root = Self.repository.path
+        let enumerator = try #require(FileManager.default.enumerator(atPath: root))
+        var named: [String] = []
+        while let path = enumerator.nextObject() as? String {
+            let name = (path as NSString).lastPathComponent
+            if [".build", ".git", "node_modules", ".claude", "Tests"].contains(name) { enumerator.skipDescendants(); continue }
+            guard [".swift", ".ts", ".md", ".yaml", ".sh"].contains(where: path.hasSuffix), path != "CHANGELOG.md" else { continue }
+            let text = try text(path)
+            named += text.matches(of: /XCREW_STORAGE_BUDGET_GB|StorageBudget|its budget of|past its budget/).map { "\(path): \($0.output)" }
+        }
+        #expect(named.isEmpty, "\(named)")
+    }
+
     /// No command is cut on time: no Swift call names a timeout, nothing passes a deadline in, and the only times kept
     /// are the runner's grace on a finished program's pipes and how long standard input may sit idle, which cut no work.
     @Test func noCommandIsCutOnTime() throws {
