@@ -93,15 +93,32 @@ struct BundleFailuresTests {
         #expect(report.failures.filter { $0.message == message }.count == 1)
     }
 
-    /// With the bundle's list, the text's failed tests only order the bundle's: a test only the text names, as one it
-    /// names otherwise than the bundle, is never listed beside it. The text's other failures stay where they were.
+    /// With the bundle's list, the text's failed tests only order the bundle's: a test only the text names, as a retry
+    /// the bundle counts passed, is never listed. The text's other failures stay where they were.
     @Test func theTextOnlyOrdersTheBundlesFailedTests() {
-        let bundled = [ToolOutput.Failure(title: "Outer/Inner/test", message: "from the bundle", isTest: true)]
+        let bundled = [ToolOutput.Failure(title: "Suite/test", message: "from the bundle", isTest: true)]
         let text = [
-            ToolOutput.Failure(title: "Inner/test", message: "from the text", isTest: true),
+            ToolOutput.Failure(title: "Suite/retried", message: "from the text", isTest: true),
             ToolOutput.Failure(title: "App.swift:3", message: "a warning as an error", isTest: false),
         ]
-        #expect(Report.inRunOrder(bundled, text: text).map(\.title) == ["App.swift:3", "Outer/Inner/test"])
+        #expect(Report.inRunOrder(bundled, text: text).map(\.title) == ["App.swift:3", "Suite/test"])
+    }
+
+    /// A test in a nested suite, which the bundle names from its outermost suite and the text from its own, takes its
+    /// place in the run's order under the text's name, its images' and the ledger's.
+    @Test func aNestedSuitesTestTakesItsPlaceUnderTheTextsName() {
+        let bundled = [
+            ToolOutput.Failure(title: "Later/test", message: "second", isTest: true),
+            ToolOutput.Failure(title: "Outer/Inner/test", message: "first", where: "Inner.swift:7", isTest: true, target: "FeatureTests"),
+        ]
+        let text = [
+            ToolOutput.Failure(title: "Inner/test", message: "the text's first", isTest: true),
+            ToolOutput.Failure(title: "Later/test", message: "the text's second", isTest: true),
+        ]
+        #expect(Report.inRunOrder(bundled, text: text).map { "\($0.title) | \($0.message) | \($0.where ?? "-") | \($0.target ?? "-")" } == [
+            "Inner/test | first | Inner.swift:7 | FeatureTests",
+            "Later/test | second | - | -",
+        ])
     }
 
     /// A failed test the bundle gives no message keeps the text's, as it keeps its place when the bundle gives none.

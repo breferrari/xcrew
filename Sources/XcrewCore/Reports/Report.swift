@@ -116,24 +116,25 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// The bundle's failed tests in the order the run reported them, the text's: the bundle lists its own by plan,
-    /// target and suite. Each test the text lists takes its place there with the bundle's content, the text's message
+    /// target and suite. Each test the text lists takes its place there under its name, which a nested suite's test has
+    /// from its own suite where the bundle names it from the outermost, with the bundle's content, the text's message
     /// and place where the bundle gives none; a test only the bundle lists comes after; the text's other failures stay
-    /// where they were. A test only the text lists is none of the run's failures: one the bundle counts passed, as a
-    /// retry that passed, or one the text names otherwise.
+    /// where they were. A test only the text lists, as a retry the bundle counts passed, is none of the run's failures.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
-        let keyed = bundled.map { (TestID(xcresultID: $0.title), $0) }
-        var pending = Dictionary(keyed) { first, _ in first }
+        var pending = bundled
         var ordered: [ToolOutput.Failure] = []
         for failure in text {
             guard failure.isTest else {
                 ordered.append(failure)
                 continue
             }
-            if let found = pending.removeValue(forKey: TestID(xcresultID: failure.title)) {
-                ordered.append(ToolOutput.Failure(title: found.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
+            let test = TestID(xcresultID: failure.title).shown
+            if let index = pending.firstIndex(where: { TestID(xcresultID: $0.title).shown == test }) ?? pending.firstIndex(where: { $0.title.hasSuffix("/\(test)") }) {
+                let found = pending.remove(at: index)
+                ordered.append(ToolOutput.Failure(title: failure.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
             }
         }
-        return ordered + keyed.filter { pending[$0.0] != nil }.map(\.1)
+        return ordered + pending
     }
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
