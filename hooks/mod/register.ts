@@ -4,15 +4,15 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, couldntRun, flakyMarksOf, generatedOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, UNWAITED_MS, OutOfTime, reportCutNote, StillBuilding, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { CARD_VERSION, cardText, type SavedCard } from './card'
-import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, lost, namesScheme, observe, observeSession, xcodeStarted } from './context'
+import { currentProfile, describe, listingsSeen, profileKey, historyOf, isFullSuiteRun, isRepeatedRun, runsAllOfScope, lost, namesScheme, observe, observeSession, xcodeStarted } from './context'
 import { EVIDENCE_TIMEOUT_MS, EVIDENCE_TOOL, EVIDENCE_TOOL_NAME, EVIDENCE_UNAVAILABLE, evidenceInput } from './evidence'
 import { LOOK_TOOL, LOOK_TOOL_NAME, lookArgs } from './look'
-import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerText, staleLedgers, type TestRun } from './ledger'
+import { afterTestRun, flakyText, label, type Ledger, LEDGER_PREFIX, LEDGER_TOOL, LEDGER_TOOL_NAME, LEDGER_UNAVAILABLE, ledgerKey, ledgerOf, ledgerRoot, ledgerText, staleLedgers, type TestRun } from './ledger'
 import { afterRun, paneTree, summary } from './failures'
 import { drawsForm, type FormElements, formTree, NO_FORM, PICK_KEYS, setupArgs, setupFact, startingPicks, WROTE } from './form'
 import { afterFullRun, type Crossing, loopNote } from './loop'
@@ -23,7 +23,7 @@ import { afterGenerate, editedNote, isUndone, isUndoneAfterRefusal, letThroughNo
 import { DURATIONS_PREFIX, drawsBand, endingOf, FAILED_PREFIX, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { keptTimings, SLOW_PRECALL_MS, type Step, TIMINGS_KEY, timingsText } from './timings'
-import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, isYaml, kindOf, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
+import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, isYaml, kindOf, launchesAfterBuild, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -75,23 +75,30 @@ export const register: Register = on => {
   on('tool.call', { tool: MCP_TOOL }, async ($, e, next) => {
     const parsed = parseTool(e.tool)
     const target = parsed && (forwardedTool(parsed, e as unknown as Record<string, unknown>) ?? parsed)
-    const checkedFrom = await quietly(() => $.clock.now())
-    const stored = target && buildsProject(target) ? await quietly(() => read($, staleState)) : undefined
+    const builds = target !== undefined && buildsProject(target)
+    // Timed only when the call's own tool has a kind, as the hook that times its wait keys on: a forwarded build isn't.
+    const timed = builds && parsed !== undefined && kindOf(parsed) !== undefined
+    const checkedFrom = timed ? await quietly(() => $.clock.now()) : undefined
+    const stored = builds ? await quietly(() => read($, staleState)) : undefined
     // Edits undone since leave the manifests as the last generate read them: those marks go.
     const dropped = stored ? await dropUndone($, stored) : undefined
-    const checkedTo = await quietly(() => $.clock.now())
-    if (e.tool_use_id && checkedFrom !== undefined && checkedTo !== undefined) staleChecks.set(e.tool_use_id, checkedTo - checkedFrom)
+    const checkedTo = timed ? await quietly(() => $.clock.now()) : undefined
+    // The check's time is kept for the call's wait to read, only once the call goes on: a refused call has no wait.
+    const goOn = () => {
+      if (e.tool_use_id && checkedFrom !== undefined && checkedTo !== undefined) staleChecks.set(e.tool_use_id, checkedTo - checkedFrom)
+      return next(e)
+    }
     const stale = dropped?.stale
     const generates = marksOf(stale).map(mark => mark.generate)
-    if (!stale || generates.length === 0) return next(e)
+    if (!stale || generates.length === 0) return goOn()
     if (!stale.refused) {
       // Refused only once the mark says so: a refusal it can't record would repeat for good.
       if (await markStale($, refused)) return { deny: dropped?.undoneAfterRefusal ? refusalAfterUndo(generates) : refusal(generates) }
-      return next(e)
+      return goOn()
     }
     // An edit meanwhile left a mark not yet refused for, which stays.
     await markStale($, current => (current?.refused ? null : current))
-    const result = await next(e)
+    const result = await goOn()
     return result.deny === undefined ? withContext(result, letThroughNote(generates)) : result
   }).catch(async ($, e, next) => next(e))
   // The session's first MobileBuildMCP build or test says to offer setup while there's no scheme to build with. The mark
@@ -104,14 +111,14 @@ export const register: Register = on => {
     if (!isFirst) return next(e)
     const result = await next(e)
     if (result.deny !== undefined) return result
-    const offer = setupOfferOf(await answer($, ['project', '--profiles'], 10_000))
+    const offer = setupOfferOf(await answer($, ['project', '--profiles'], ON_RESULT_MS))
     return offer === undefined ? result : withContext(result, offer)
   }).catch(async ($, e, next) => next(e))
   on('tool.call', { tool: FILE_EDITOR }, async ($, e, next) => {
     const path = e.tool === 'Write' || e.tool === 'Edit' ? e.file_path : undefined
     // An edit to a file a generator writes waits for the person: the next generate would overwrite it.
     if (path !== undefined && mayBeGenerated(path)) {
-      const generated = generatedOf(await answer($, ['project', '--generated', path], 10_000))
+      const generated = generatedOf(await answer($, ['project', '--generated', path], ON_RESULT_MS))
       if (generated) {
         const shown = generatedPart(path)
         const question = editQuestion(shown, generated)
@@ -123,10 +130,10 @@ export const register: Register = on => {
     // for a name a manifest may have: a YAML file's only in a project whose generator reads YAML.
     const mayBe = path !== undefined && mayBeManifest(path, isYaml(path) && (await quietly(() => readsYaml($))) === true)
     const isFirstEdit = path !== undefined && mayBe && !marksOf(await quietly(() => read($, staleState))).some(mark => path in (mark.files ?? {}))
-    const before = isFirstEdit ? hashOf(await answer($, ['project', '--hash', path], 10_000)) : undefined
+    const before = isFirstEdit ? hashOf(await answer($, ['project', '--hash', path], ON_RESULT_MS)) : undefined
     const result = await next(e)
     if (path === undefined || result.deny !== undefined || result.isError || !mayBe) return result
-    const edit = manifestEditOf(await answer($, ['project', '--manifest', path], 10_000))
+    const edit = manifestEditOf(await answer($, ['project', '--manifest', path], ON_RESULT_MS))
     if (!edit) return result
     if (!(await markStale($, stale => marked(stale, edit, { path, before: before ?? null })))) return result
     // An edit that puts the manifests back clears the app's mark, and needs no generate.
@@ -139,18 +146,19 @@ export const register: Register = on => {
     if (!parsed) return next(e)
     const name = parsed.tool
     const kind = kindOf(parsed)
+    const launches = launchesAfterBuild(parsed)
     if (!kind) {
       // Not timed, but its answer may say what the next build will use.
       const result = await next(e)
       const forwarded = forwardedTool(parsed, e as unknown as Record<string, unknown>)
       if (forwarded) lost(forwarded)
       // MobileBuildMCP answers its session tools in text, which the CLI reads.
-      else if (observe(parsed, result.text ?? '').needsReading) await quietly(async () => observeSession(sessionOf(await answer($, ['session'], 10_000, result.text ?? ''))))
+      else if (observe(parsed, result.text ?? '').needsReading) await quietly(async () => observeSession(sessionOf(await answer($, ['session'], ON_RESULT_MS, result.text ?? ''))))
       // A call that failed may have a way around it, which the CLI names: an Xcode MCP call whose connection closed, or a
       // MobileBuildMCP error with another route. Not an Xcode MCP tool MobileBuildMCP proxies, through a bridge of its own
       // that reconnecting the plugin's server doesn't restart.
       if (parsed.proxied || result.isError !== true) return result
-      const notes = notesOf(await answer($, ['note', '--server', parsed.server, '--error'], 10_000, result.text ?? ''))
+      const notes = notesOf(await answer($, ['note', '--server', parsed.server, '--error'], ON_RESULT_MS, result.text ?? ''))
       return notes.length > 0 ? withContext(result, ...notes) : result
     }
     const target = describe(parsed, e as unknown as Record<string, unknown>)
@@ -202,7 +210,7 @@ export const register: Register = on => {
     // Moved to the background, the call answers with a handle while its run goes on: its log is followed until it ends.
     let inBackground = false
     const readPhase = async (since: number): Promise<Phase> => {
-      const found = (await quietly(() => runPhase($, name, since, expectedTests, following.logPath))) ?? {}
+      const found = (await quietly(() => runPhase($, name, launches, since, expectedTests, following.logPath))) ?? {}
       const step = phaseStep(following, found, writesLog)
       following = step.following
       // Once the log names the scheme, the run is that scheme's, its progress counted out of that scheme's tests.
@@ -235,20 +243,33 @@ export const register: Register = on => {
       const ok = found.outcome
       if (usesBand) await showEndingOf($, started, { at: now, elapsed: now - started, ok })
     }
+    // A tick still going holds back the next, so reads of a slow CLI don't pile up behind it.
+    let ticking = false
     const ticker = started === undefined ? undefined : await quietly(() =>
       $.clock.every(1000, async () => {
-        const found = followsLog ? await readPhase(started) : undefined
-        if (inBackground && found && (found.outcome !== undefined || found.quiet)) return endInBackground(found)
-        if (usesBand) return quietly(() => $.ui.invalidate('ui.render'))
-        const now = await quietly(() => $.clock.now())
-        if (now !== undefined) await quietly(() => $.ui.status(statusLine(label, started, now, measuredFrom, usual, following.phase)))
+        if (ticking) return
+        ticking = true
+        try {
+          const found = followsLog ? await readPhase(started) : undefined
+          if (inBackground && found && (found.outcome !== undefined || found.quiet)) return await endInBackground(found)
+          if (usesBand) return await quietly(() => $.ui.invalidate('ui.render'))
+          const now = await quietly(() => $.clock.now())
+          if (now !== undefined) await quietly(() => $.ui.status(statusLine(label, started, now, measuredFrom, usual, following.phase)))
+        } finally {
+          ticking = false
+        }
       }),
     )
 
-    // Whether to ask the CLI for the run's passed tests is read while the run goes, off the path to its result, and read
-    // again at its end only when another run wrote the ledger meanwhile.
+    // Whether to ask the CLI for the run's passed tests is read while the run goes, off the path to its result. The
+    // result waits for nothing of the ledger's: when that read hasn't answered by then, or another run wrote the ledger
+    // meanwhile, a test run asks for them, which the report reads within its own time.
     const writesAtStart = ledgerWritesQueued
-    const askingPassed = asksForPassed($, kind)
+    let knownPassed: boolean | undefined
+    void asksForPassed($, kind).then(asks => {
+      knownPassed = asks
+    })
+    const listsPassed = () => kind === 'test' && ((knownPassed ?? true) || ledgerWritesQueued !== writesAtStart)
     // However the call ends, the run stops counting, unless it goes on in the background; one that failed beneath leaves
     // the band too.
     function stopFollowing() {
@@ -273,8 +294,19 @@ export const register: Register = on => {
     // The CLI reads the server's output: the outcome, the failures, the duration it reports, and what Claude reads.
     // It never throws: without the CLI it falls back to whether the server reported an error.
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
-    const reported = await answer($, reportArgs(parsed.server, kind, result.isError === true, repeated, (await askingPassed) || (ledgerWritesQueued !== writesAtStart && (await asksForPassed($, kind)))), 120_000, result.text ?? '')
-    const outcome = withConcurrencyOnce(withPinNamedOnce(reportOf(reported, result.isError === true)), scope)
+    // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
+    const findsScheme = needsScheme && key === undefined
+    const asked = await xcrew($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, listsPassed()), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], ON_RESULT_MS, result.text ?? '').then(
+      ran => ({ reported: answerOf(ran), cut: false }),
+      (error: unknown) => ({ reported: undefined, cut: error instanceof OutOfTime }),
+    )
+    const reported = asked.reported
+    const reportedOutcome = reportOf(reported, result.isError === true)
+    // A report its time cut leaves the server's result as it came, with one line saying xcrew's notes are left out.
+    if (asked.cut) reportedOutcome.notes.push(reportCutNote(ON_RESULT_MS))
+    // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
+    if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
+    const outcome = withConcurrencyOnce(withPinNamedOnce(reportedOutcome), scope)
     // The server's own duration leaves out what ran around the call: a project's pre-build hook, a permission prompt.
     const elapsed = outcome.durationMs ?? ended - started
     // A result that says no outcome, as a call moved to the background answers, shows as neither and records nothing:
@@ -282,12 +314,12 @@ export const register: Register = on => {
     // The runs before this one are its own scheme's, read again when its log named another than the one worked out; a run
     // whose log named none is measured against the usual time it was shown with.
     const { passed: earlier, failed: earlierFailed } = key === undefined || key === estimate ? { passed: estimated, failed: estimatedFailed } : await earlierRuns($, key, started)
-    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
+    const run: Ending = { tool: name, scope, ...(key === undefined ? {} : { key }), startedAt: started, earlierFailed, server: parsed.server, kind, earlier, usesBand, fullSuite: isFullSuiteRun(parsed, input), allOfScope: runsAllOfScope(parsed, input), ...(e.tool_use_id ? { toolUseId: e.tool_use_id } : {}), ...(by === undefined ? {} : { by }) }
     if (outcome.isUnread && buildsProject(parsed)) {
       if (outcome.backgroundTask) {
         // A run whose log is followed stays on the band, going, until its log or its notification ends it.
         inBackground = followsLog && ticker !== undefined
-        backgrounded.set(outcome.backgroundTask, { ...run, startedAt: started, repeated, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
+        backgrounded.set(outcome.backgroundTask, { ...run, repeated, launches, ...(following.logPath === undefined ? {} : { log: following.logPath }), ...(needsScheme && key === undefined ? { keyFor } : {}), stop: stopFollowing })
         // Kept until its notification's row is drawn; the oldest go first, so calls that never get one don't pile up.
         // A call dropped stops following its log: no notification will end it now.
         for (const old of [...backgrounded.keys()].slice(0, Math.max(0, backgrounded.size - UNREAD_KEPT))) {
@@ -371,8 +403,11 @@ export const register: Register = on => {
     return row ? resultTree($.ui.resolve(e), parsed.tool, row) : next(e)
   })
   // Claude's question before a full test run: which tests the branch's changes can break.
-  // The time `/xcrew doctor` gets: the first call after an update builds the CLI.
-  on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => ({ result: affectedText(await answer($, affectedArgs(e as unknown as Record<string, unknown>), 120_000)) }))
+  on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => {
+    const ran = await xcrew($, affectedArgs(e as unknown as Record<string, unknown>), ON_RESULT_MS).catch((error: unknown) => (error instanceof Error ? error : undefined))
+    if (ran instanceof StillBuilding || ran instanceof OutOfTime) return { result: affectedText(undefined, ran.message) }
+    return { result: affectedText(answerOf(ran instanceof Error ? undefined : ran)) }
+  })
   // Claude's read of the ledger, for a pull request's test plan.
   on('tool.call', { tool: LEDGER_TOOL_NAME }, async $ => ({ result: await ledgerNow($) }))
   // Claude's look at a failed UI test: the steps before the failure and the screen at it.
@@ -382,11 +417,20 @@ export const register: Register = on => {
   on('command.run', { command: 'xcrew' }, async ($, e) => {
     const subcommand = (e.args ?? '').trim()
     if (subcommand === 'doctor') {
-      // Asked for, the doctor's problems are read again for the band: a problem fixed since leaves it.
-      void loadProblems($, true).catch(() => undefined)
       // Named, the session is the one the doctor's session checks read, as a process the mod starts isn't told it.
       const session = await quietly(() => $.session.id())
-      return { text: await cliText($, ['doctor', ...(session ? ['--session', session] : [])]) }
+      // One run of the checks gives the report and the band's problems: a problem fixed since leaves the band.
+      const args = ['doctor', '--text-and-problems', ...(session ? ['--session', session] : [])]
+      const both = textAndProblemsOf(await answer($, args, ASKED_MS))
+      // A doctor that couldn't run isn't run again here: the band reads it on the next prompt, as after any failed read.
+      if (!both) {
+        doctorOnNextPrompt = true
+        return { text: couldntRun(args, 'no answer') }
+      }
+      // An older read still going would land after this one: it's waited for first.
+      await reading?.catch(() => undefined)
+      await quietly(() => applyProblems($, both.problems))
+      return { text: both.text }
     }
     if (subcommand === 'xcode') return { text: await cliText($, ['xcode']) }
     if (subcommand === 'history') return { text: await history($) }
@@ -417,10 +461,12 @@ export const register: Register = on => {
     await $.command.register(COMMAND)
     for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
     startOver()
+    void quietly(() => buildInBackground($))
     void loadProblems($).catch(() => undefined)
     void quietly(() => readXcodeStart($))
     // The card is saved from the history as it's left: fresh, and this version's.
     void quietly(() => pruneHistory($)).then(() => saveCard($))
+    void quietly(() => pruneGone($))
     return started
   })
   // A `/clear` or a `/resume` fires no session start, the process going on under another conversation: that one starts
@@ -465,38 +511,35 @@ export const register: Register = on => {
 }
 
 /** A finished build, test or run call, as its ending is recorded. */
-type Ending = { tool: string; scope: string; key?: string; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; toolUseId?: string; by?: string }
+type Ending = { tool: string; scope: string; key?: string; startedAt: number; earlierFailed: readonly number[]; server: string; kind: ToolKind; earlier: readonly number[]; usesBand: boolean; fullSuite: boolean; allOfScope: boolean; toolUseId?: string; by?: string }
 
 /** A call moved to the background, as its notification's reading needs it: once read, whether its result was. */
-type Backgrounded = Ending & { startedAt: number; repeated: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
+type Backgrounded = Ending & { repeated: boolean; launches: boolean; log?: string; read?: Promise<boolean>; keyFor?: (scheme: string) => { scope: string; key: string }; stop?: () => void }
 
 /**
- * Records how a run ended: its time in the history, apart when it failed, its failures, the ledger when the CLI read the run (`isRead`) and
- * read more than a log's verdict, the card, its row and the band; the loop note, when a full run crossed the budget.
+ * Records how a run ended: its failures, the ledger when the CLI read the run (`isRead`) and
+ * read more than a log's verdict, and the card; then, once the result is returned, its row, the band or a toast, the
+ * notification for a long run, and its time in the history (`endAfterResult`); the loop note, when a full run crossed
+ * the budget.
  */
 async function recordEnding($: EngineInterface, run: Ending, outcome: Report, isRead: boolean, ended: number, elapsed: number): Promise<string | undefined> {
-  const { tool, scope, key, kind, earlier, earlierFailed } = run
-  if (key !== undefined) {
-    // A failed run's time is kept apart: one that fails early would pull the usual time down. Both lists are written as
-    // read when the run began, so a scope gone stale starts over whichever way the run ended.
-    const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
-    await quietly(() => $.store.set(historyKey(key), outcome.ok ? add(earlier) : [...earlier]))
-    await quietly(() => $.store.set(failedKey(key), outcome.ok ? [...earlierFailed] : add(earlierFailed)))
-    await quietly(() => $.store.set(updatedKey(key), ended))
+  const { tool, scope, key, kind, earlier } = run
+  const show = async (overlapped: boolean) => {
+    const ending = endingOf(outcome, ended, elapsed, overlapped ? [] : earlier)
+    const requestId = run.toolUseId
+    if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
+    await showEnding($, tool, ending, run.usesBand, run.by, run.startedAt)
+    // Long enough that the person has likely looked away; their notification settings decide how it arrives.
+    if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
   }
+  void quietly(() => endAfterResult($, run, outcome.ok, ended, elapsed, show))
   await quietly(() => recordRun($, scope, outcome.ok, outcome.failures, outcome.cause))
   // Only what the CLI read goes in the ledger: without it, or from a log's verdict alone, the outcome says no test's own.
   const readTests = kind === 'test' && isRead && !outcome.isVerdictOnly
-  if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, repeated: outcome.repeated ?? [], ...(outcome.passed ? { passed: outcome.passed } : {}), bundle: outcome.bundle })
+  if (readTests) recordLedger($, { scope, at: ended, ok: outcome.ok, failures: outcome.failures, repeated: outcome.repeated ?? [], ...(outcome.passed ? { passed: outcome.passed } : {}), bundle: outcome.bundle, ...(run.allOfScope ? {} : { narrowed: true as const }) })
   // A failed run may have stopped early: its count is no total for the next run's.
   if (key !== undefined && outcome.ok && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
   saveCard($)
-  const ending = endingOf(outcome, ended, elapsed, earlier)
-  const requestId = run.toolUseId
-  if (drawsRow(kind) && requestId) await quietly(() => update($, memberOf(rowState, { requestId }), () => rowOf(ending, outcome.failures, run.by)))
-  await showEnding($, tool, ending, run.usesBand, run.by)
-  // Long enough that the person has likely looked away; their notification settings decide how it arrives.
-  if (elapsed >= LONG_RUN_MS) await quietly(() => $.ui.notify(outcomeLine(tool, ending)))
   // A whole suite run again and again: past the budget, the tests the change can break would do.
   // Only a run the CLI read and that ran tests counts: a test build that failed ran none.
   const ranTests = outcome.tests === undefined ? outcome.ok || outcome.failures.some(failure => failure.isTest) : outcome.tests > 0
@@ -505,12 +548,53 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
 }
 
 /**
+ * What follows a run's result, which Claude reads first: whether the CLI says another checkout's run went while it did
+ * (`xcrew runs --overlapped`), then its ending, `show`n compared with the usual time only when none did, then its time
+ * in its scope's history, apart when it failed, unless one did. That run shared the Mac, so its time says nothing of a
+ * run on its own (docs/findings.md, *Runs that overlap another checkout's*). A CLI that can't answer counts as none, as
+ * before the check; a run kept under no scope asks nothing.
+ */
+async function endAfterResult($: EngineInterface, run: Ending, ok: boolean, ended: number, elapsed: number, show: (overlapped: boolean) => Promise<void>): Promise<void> {
+  const key = run.key
+  // The run went from the call's start for `elapsed`: the server's own duration where it gives one, else until the call
+  // answered, or for a call moved to the background, until its notification.
+  const overlapped = key !== undefined && overlappedOf(await answer($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)])).length > 0
+  await quietly(() => show(overlapped))
+  if (key === undefined || overlapped) return
+  // Another run of the scope may have ended while this one's check was out: the history is read again just before it's
+  // written, one write a scope at a time, so neither run's time is lost.
+  const write = (durationWrites.get(key) ?? Promise.resolve()).then(async () => {
+    // A failed run's time is kept apart: one that fails early would pull the usual time down. A scope gone stale since
+    // the run began starts over whichever way the run ended.
+    const { passed, failed } = await earlierRuns($, key, run.startedAt)
+    const add = (runs: readonly number[]) => [...runs, elapsed].slice(-HISTORY)
+    await quietly(() => $.store.set(historyKey(key), ok ? add(passed) : [...passed]))
+    await quietly(() => $.store.set(failedKey(key), ok ? [...failed] : add(failed)))
+    const updated = await quietly(() => $.store.get(updatedKey(key)))
+    await quietly(() => $.store.set(updatedKey(key), typeof updated === 'number' ? Math.max(updated, ended) : ended))
+  })
+  durationWrites.set(key, write)
+  await write
+  if (durationWrites.get(key) === write) durationWrites.delete(key)
+  // The card's dates come from the run scopes, this one's now written.
+  saveCard($)
+}
+
+/** Each scope's duration writes in flight, one after another, so two runs ending together each keep their time. */
+const durationWrites = new Map<string, Promise<void>>()
+
+/**
  * Reads a backgrounded call's notification for its result, or the run's log when that has none to read, and records
  * how the run ended, from the call to the notification. Nothing, when neither says.
  */
 async function readTask($: EngineInterface, call: Backgrounded, text: string): Promise<{ result?: string; notes: string[] } | undefined> {
-  const args = [...reportArgs(call.server, call.kind, false, call.repeated, await asksForPassed($, call.kind)), '--notification', ...(call.log === undefined ? [] : ['--log', call.log])]
-  const reported = await answer($, args, 120_000, text)
+  // A log the call never saw, as one that appeared only after the call moved, the CLI finds from the tool and its start;
+  // the Xcode MCP writes none.
+  const finds = call.log === undefined && call.server === 'MobileBuildMCP'
+  // What the ledger said at the run's start may be old by now, as after a branch switch, and nothing waits on it here:
+  // a test run lists its passed tests, which the report reads within its own time.
+  const args = [...reportArgs(call.server, call.kind, false, call.repeated, call.kind === 'test'), '--notification', ...(call.launches ? ['--launches'] : []), ...(call.log !== undefined ? ['--log', call.log] : finds ? ['--tool', call.tool, '--since', String(call.startedAt)] : [])]
+  const reported = await answer($, args, ON_RESULT_MS, text)
   const outcome = withPinNamedOnce(reportOf(reported, false))
   if (reported === undefined || outcome.isUnread) return undefined
   // A run whose log appeared only after it was moved to the background is kept under the scheme the log names.
@@ -521,7 +605,7 @@ async function readTask($: EngineInterface, call: Backgrounded, text: string): P
   const usesBand = call.usesBand && !(await anotherRunGoing($, call.startedAt))
   // The runs that ended meanwhile count among the earlier ones; the server's time leaves out the wait for the notification.
   const { passed: earlier, failed: earlierFailed } = await earlierRuns($, call.key, ended)
-  const loop = await recordEnding($, { ...call, usesBand, earlier }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
+  const loop = await recordEnding($, { ...call, usesBand, earlier, earlierFailed }, outcome, true, ended, outcome.durationMs ?? ended - call.startedAt)
   // Given only once it reaches Claude: a note dropped above isn't counted as read.
   const notes = withConcurrencyOnce(outcome, call.scope).notes
   return { ...(outcome.result === undefined ? {} : { result: outcome.result }), notes: [...notes, ...(loop ? [loop] : [])] }
@@ -540,7 +624,7 @@ async function anotherRunGoing($: EngineInterface, startedAt?: number): Promise<
 async function dropUndone($: EngineInterface, stale: StaleProject): Promise<{ stale: StaleProject | null; undoneAfterRefusal: boolean }> {
   const files = [...new Set(marksOf(stale).flatMap(mark => Object.keys(mark.files ?? {})))]
   if (files.length === 0) return { stale, undoneAfterRefusal: false }
-  const now = Object.fromEntries(await Promise.all(files.map(async file => [file, hashOf(await answer($, ['project', '--hash', file], 10_000))] as const)))
+  const now = Object.fromEntries(await Promise.all(files.map(async file => [file, hashOf(await answer($, ['project', '--hash', file], ON_RESULT_MS))] as const)))
   const undoneAfterRefusal = marksOf(stale).some(mark => isUndoneAfterRefusal(mark, now))
   const undone = marksOf(stale).filter(mark => isUndone(mark, now))
   if (undone.length === 0) return { stale, undoneAfterRefusal }
@@ -559,60 +643,162 @@ function ask($: EngineInterface, question: Question): Promise<string | undefined
   return quietly(() => $.ui.ask(question.question, { options: [...question.options], header: question.header }))
 }
 
-/** Starts a program of the CLI's: the mod's one process. */
-function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string) {
-  return $.process.run([program, ...args], { timeoutMs, env: { XCREW_ROOT: $.plugin.root }, ...(stdin === undefined ? {} : { stdin }) })
+/**
+ * Runs a program of the CLI's to its end, within `timeoutMs`: every CLI call but the session start's background build.
+ * A call nobody waits on (`unwaited`) names no limit, so `$.process.run`'s own stops it; the CLI is told `timeoutMs`.
+ */
+function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string, unwaited = false) {
+  return $.process.run([program, ...args], { ...(unwaited ? {} : { timeoutMs }), env: { XCREW_ROOT: $.plugin.root, XCREW_WITHIN_MS: String(timeoutMs) }, ...(stdin === undefined ? {} : { stdin }) })
 }
 
 /** The question to the shim in flight, which callers at the same moment share rather than each starting a shim. */
-let asking: Promise<string | undefined> | undefined
+let asking: Promise<string | null> | undefined
+
+/** The background build in flight: the one build of this version, which callers wait on rather than start. */
+let building: Promise<string | null> | undefined
+
+/** Whether the background build couldn't be started at all, which leaves a call to build through the shim as before. */
+let cannotSpawn = false
+
+/** What `build` answers when the caller's time ran out waiting for the build, which goes on. */
+const STILL_BUILDING = Symbol('still building')
 
 /**
- * The build the shim runs, asked for at most every 30 s, within the caller's own time: when the
- * shim must first build, a caller with ten seconds doesn't wait two minutes.
+ * The build to run, asked for at most every 30 s. The shim is only asked whether a build is there (`--if-built`), so no
+ * caller builds under its own time, and none stops a build. With none there, the caller starts the one background
+ * build when none is in flight, and waits for it within its own time, giving up without stopping it. A build that
+ * named nothing is remembered for 30 s, so calls don't each start another (docs/findings.md, *Building after a
+ * reload*).
  */
-async function build($: EngineInterface, timeoutMs: number): Promise<string | undefined> {
+async function build($: EngineInterface, timeoutMs: number, unwaited = false): Promise<string | undefined | typeof STILL_BUILDING> {
   const now = await $.clock.now()
   const known = knownBuild(await read($, buildState), now)
   if (known !== 'ask') return known
-  asking ??= start($, shimPath($.plugin.root), ['--binary-path'], timeoutMs)
-    .then(async ran => {
-      const named = namedBuild(ran.stdout)
-      await update($, buildState, () => ({ path: named, at: now }))
-      return named ?? undefined
-    })
+  asking ??= start($, shimPath($.plugin.root), ['--if-built', '--binary-path'], timeoutMs, undefined, unwaited)
+    .then(ran => namedBuild(ran.stdout))
     .finally(() => {
       asking = undefined
     })
-  return asking
+  const there = await asking
+  if (there !== null) {
+    await update($, buildState, () => ({ path: there, at: now }))
+    return there
+  }
+  // Another caller may have recorded a build, or one that named nothing, while this one asked.
+  const recorded = knownBuild(await read($, buildState), await $.clock.now())
+  if (recorded !== 'ask') return recorded
+  const left = Math.max(0, timeoutMs - ((await $.clock.now()) - now))
+  const built = await Promise.race([
+    buildInBackground($),
+    new Promise<typeof STILL_BUILDING>(resolve => {
+      // A clock that won't time the wait ends it at once, rather than leave the caller waiting on the build unbounded.
+      try {
+        $.clock.after(left, () => resolve(STILL_BUILDING))
+      } catch {
+        resolve(STILL_BUILDING)
+      }
+    }),
+  ])
+  if (built === STILL_BUILDING || cannotSpawn) return built === STILL_BUILDING ? built : undefined
+  if (built === null) {
+    const failed = await $.clock.now()
+    await update($, buildState, () => ({ path: null, at: failed }))
+  }
+  return built ?? undefined
+}
+
+/**
+ * Starts the shim on its cheapest command, `--binary-path`, not waited on and under no time limit, so a build for this
+ * version runs to its end however short the limits of the calls that wait on it (docs/findings.md, *Building after a
+ * reload*). One at a time: a caller that finds no build waits on the one in flight. The build it names is the one
+ * later calls run; one that names none, killed or failed, records nothing.
+ */
+function buildInBackground($: EngineInterface): Promise<string | null> {
+  building ??= (async () => {
+    const child = $.process.spawn({ argv: [shimPath($.plugin.root), '--binary-path'], env: { XCREW_ROOT: $.plugin.root } })
+    // The stream rejects its first pull when the child can't start; that alone leaves calls to build as before.
+    let piece: Awaited<ReturnType<typeof child.next>>
+    try {
+      piece = await child.next()
+    } catch {
+      cannotSpawn = true
+      return null
+    }
+    cannotSpawn = false
+    let printed = ''
+    for (; !piece.done; piece = await child.next()) if (piece.value.stream === 'stdout') printed += piece.value.text
+    const named = namedBuild(printed)
+    if (named === null) return null
+    const at = await $.clock.now()
+    await update($, buildState, () => ({ path: named, at }))
+    return named
+  })()
+    .catch(() => null)
+    .finally(() => {
+      building = undefined
+    })
+  return building
 }
 
 /**
  * Runs the CLI. The shim's own work is several times the build's, and the band asks once a second,
- * so the build it names runs directly. When the build can't be started, the shim runs instead; a
- * command that ran out of time isn't started again, which would double the wait.
+ * so the build it names runs directly. When the build can't be started, the shim runs instead, on a build that's
+ * there only (`--if-built`), so it never builds under a caller's time; a command that ran out of time isn't started
+ * again, which would double the wait.
  */
-async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string): Promise<Ran> {
-  const binary = await build($, timeoutMs).catch(() => undefined)
+async function xcrew($: EngineInterface, args: string[], timeoutMs: number | undefined, stdin?: string): Promise<Ran> {
+  // A call nobody waits on has `$.process.run`'s own limit, none of xcrew's.
+  const unwaited = timeoutMs === undefined
+  const budget = timeoutMs ?? UNWAITED_MS
+  // The question for the build and any wait for it come out of the call's time: its command has what's left.
+  const until = await quietly(async () => (await $.clock.now()) + budget)
+  const left = async () => {
+    const ms = await leftUntil($, until, budget)
+    // `$.process.run` says nothing of a limit of none: a call with no time left isn't started.
+    if (ms <= 0) throw new OutOfTime()
+    return ms
+  }
+  const binary = await build($, await left(), unwaited).catch(() => undefined)
+  if (binary === STILL_BUILDING) throw new StillBuilding()
   if (binary) {
     const startedAt = await $.clock.now()
+    const given = await left()
     try {
-      return await start($, binary, args, timeoutMs, stdin)
+      return await start($, binary, args, given, stdin, unwaited)
     } catch (error) {
-      if (ranOutOfTime(startedAt, await $.clock.now(), timeoutMs)) throw error
+      if (ranOutOfTime(startedAt, await $.clock.now(), given)) throw new OutOfTime()
       await update($, buildState, () => null)
     }
   }
-  return start($, shimPath($.plugin.root), args, timeoutMs, stdin)
+  const given = await left()
+  const startedAt = await quietly(() => $.clock.now())
+  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], given, stdin, unwaited).catch(async (error: unknown) => {
+    const now = await quietly(() => $.clock.now())
+    throw startedAt !== undefined && now !== undefined && ranOutOfTime(startedAt, now, given) ? new OutOfTime() : error
+  })
 }
 
 /**
  * Shows how a run ended: on the band where one draws, the run going there ending with it, for as long as an ending
  * stays; elsewhere a toast carries the same line.
  */
-async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean, by?: string): Promise<void> {
+/**
+ * Shows a run's ending on the band, or where no band draws in a toast. With `startedAt`, as when the ending waited for
+ * the overlap check, it ends only that run's entry: a run that started meanwhile stays going, and this ending goes to a
+ * toast. A failure the person closed after its result came back (`failureClosedAt`) isn't put back.
+ */
+async function showEnding($: EngineInterface, tool: string, ending: NonNullable<BandRun['ended']>, usesBand: boolean, by?: string, startedAt?: number): Promise<void> {
   if (!usesBand) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
-  await quietly(() => update($, runState, run => (run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending, ...(by === undefined ? {} : { by }) })))
+  if (!ending.ok && failureClosedAt !== undefined && failureClosedAt >= ending.at) return
+  let another = false
+  await quietly(() => update($, runState, run => {
+    if (run && !run.ended && startedAt !== undefined && run.startedAt !== startedAt) {
+      another = true
+      return run
+    }
+    return run && !run.ended ? endedRun(run, ending) : { tool, startedAt: ending.at, ended: ending, ...(by === undefined ? {} : { by }) }
+  }))
+  if (another) return void (await quietly(() => $.ui.toast(promptLine(tool, ending))))
   // The outcome leaves the band on its own; a later run has replaced it by then, or it's this one.
   await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
 }
@@ -623,21 +809,29 @@ async function showEndingOf($: EngineInterface, startedAt: number, ending: NonNu
   await quietly(() => $.clock.after(shownFor(ending) + 1, () => void quietly(() => update($, runState, run => (run?.ended?.at === ending.at ? null : run)))))
 }
 
-/** The CLI's JSON answer, or nothing when it couldn't run or said something else. */
-async function answer($: EngineInterface, args: string[], timeoutMs = 60_000, stdin?: string): Promise<unknown> {
+/** What's left of the time until `until`; `otherwise` when the clock can't say. */
+async function leftUntil($: EngineInterface, until: number | undefined, otherwise: number): Promise<number> {
+  const now = until === undefined ? undefined : await quietly(() => $.clock.now())
+  return until === undefined || now === undefined ? otherwise : Math.max(0, until - now)
+}
+
+/**
+ * The CLI's JSON answer, or nothing when it couldn't run or said something else; with no `timeoutMs`, a call nobody
+ * waits on, under `$.process.run`'s own limit.
+ */
+async function answer($: EngineInterface, args: string[], timeoutMs?: number, stdin?: string): Promise<unknown> {
   return answerOf(await xcrew($, args, timeoutMs, stdin).catch(() => undefined))
 }
 
-function runPhase($: EngineInterface, tool: string, since: number, expectedTests: number | undefined, log: string | undefined) {
-  return answer($, phaseArgs(tool, since, expectedTests, log), 10_000).then(phaseOf)
+function runPhase($: EngineInterface, tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined) {
+  return answer($, phaseArgs(tool, launches, since, expectedTests, log)).then(phaseOf)
 }
 
-/** Whether the project's generator reads YAML, asked once a session and again after setup or a generate. */
+/** Whether the project's generator reads YAML, asked once a session, again after setup or a generate, and next time when the CLI couldn't answer. */
 let yamlRead: Promise<boolean> | undefined
 
 function readsYaml($: EngineInterface): Promise<boolean> {
-  yamlRead ??= answer($, ['project'], 10_000).then(answered => {
-    // An answer the CLI couldn't give is asked again next time.
+  yamlRead ??= answer($, ['project'], ON_RESULT_MS).then(answered => {
     if (answered === undefined) yamlRead = undefined
     return readsYamlOf(answered)
   })
@@ -645,12 +839,12 @@ function readsYaml($: EngineInterface): Promise<boolean> {
 }
 
 async function isGeneratedProject($: EngineInterface): Promise<boolean> {
-  return isGeneratedOf(await answer($, ['project'], 10_000))
+  return isGeneratedOf(await answer($, ['project'], ON_RESULT_MS))
 }
 
 /** A CLI command's own text, or why it couldn't run. */
 function cliText($: EngineInterface, args: string[]): Promise<string> {
-  return xcrew($, args, 120_000).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
+  return xcrew($, args, ASKED_MS).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
 }
 
 /** Opens the setup form and reads its choices behind it; where nothing draws pickers, names the skill. */
@@ -666,7 +860,7 @@ async function openForm($: EngineInterface): Promise<string> {
 
 /** Reads what setup offers, for `container` when the person picked one, and starts the picks from it. */
 async function readChoices($: EngineInterface, container?: string, written?: string[]): Promise<void> {
-  const answered = await answer($, ['setup', '--choices', ...(container ? ['--container', container] : [])], 120_000)
+  const answered = await answer($, ['setup', '--choices', ...(container ? ['--container', container] : [])], ASKED_MS)
   const choices = answered !== null && typeof answered === 'object' && Array.isArray((answered as SetupChoices).containers) ? (answered as SetupChoices) : undefined
   await update($, formState, form => (choices
     ? { choices, picks: { ...startingPicks(choices), ...(container ? { container } : {}) }, ...(written ? { written } : {}) }
@@ -680,7 +874,9 @@ async function pickInForm($: EngineInterface, key: string, value: string): Promi
   }
   const pick = PICK_KEYS[key]
   if (!pick) return
-  await update($, formState, form => (form ? { ...form, picks: { ...form.picks, [pick]: value === '' ? undefined : value } as SetupPicks } : form))
+  // The bundle ID is the app scheme's: another app scheme drops it, for the person to give the new one.
+  const dropped = pick === 'appScheme' ? { bundleID: undefined } : {}
+  await update($, formState, form => (form ? { ...form, picks: { ...form.picks, ...dropped, [pick]: value === '' ? undefined : value } as SetupPicks } : form))
 }
 
 /** Runs `xcrew setup` with the picks, shows what it said, and has Claude told once when it wrote the config. */
@@ -730,7 +926,7 @@ function saveCard($: EngineInterface): void {
           const card = await cardNow($)
           const saved = card && JSON.stringify(card)
           if (!saved || saved === lastSavedCard) return
-          await answer($, ['card', '--save'], 10_000, saved)
+          await answer($, ['card', '--save'], undefined, saved)
           lastSavedCard = saved
         })(),
         $.clock.sleep(CARD_SAVE_MS),
@@ -765,12 +961,12 @@ async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
   return { version: CARD_VERSION, folder, branch: label(head, false), updated, oldest, ...(text ? { text } : {}) }
 }
 
-/** The evidence for this branch, as the CLI words it from the ledger and the run times of the scopes last run in this folder. */
+/** The evidence for this branch, as the CLI words it from the ledger. */
 async function evidenceNow($: EngineInterface): Promise<string> {
-  const { head, entries, scopes } = await branchState($)
+  const { head, entries } = await branchState($)
   if (!head) return EVIDENCE_UNAVAILABLE
   // Its stdout alone: the block is pasted into a pull request as it is, and stderr is the shim's and the tools' own.
-  return xcrew($, ['evidence'], EVIDENCE_TIMEOUT_MS, evidenceInput(entries, scopes)).then(ran => ran.stdout.trimEnd(), error => couldntRun(['evidence'], error))
+  return xcrew($, ['evidence'], EVIDENCE_TIMEOUT_MS, evidenceInput(entries)).then(ran => ran.stdout.trimEnd(), error => couldntRun(['evidence'], error))
 }
 
 /**
@@ -817,7 +1013,7 @@ async function profileScheme($: EngineInterface): Promise<string | undefined> {
   const profile = currentProfile()
   const cached = sessionProfileSchemes.get(profileKey())
   if (cached) return cached.scheme
-  const answered = await answer($, ['project', '--profiles', ...(profile === undefined ? [] : ['--profile', profile])], 10_000)
+  const answered = await answer($, ['project', '--profiles', ...(profile === undefined ? [] : ['--profile', profile])], ON_RESULT_MS)
   if (answered === undefined) return undefined
   const scheme = profileSchemeOf(answered)
   sessionProfileSchemes.set(profileKey(), scheme === undefined ? {} : { scheme })
@@ -833,7 +1029,7 @@ let xcodeSelection: Promise<{ state: string; follows: boolean } | null | undefin
 /** Reads the selection at the server's start once: a CLI that couldn't answer, or found no server yet, is asked again. */
 async function readXcodeStart($: EngineInterface): Promise<{ state: string; follows: boolean } | null | undefined> {
   const listings = listingsSeen()
-  xcodeSelection ??= answer($, ['project', '--xcode'], 10_000).then(answered => {
+  xcodeSelection ??= answer($, ['project', '--xcode'], ON_RESULT_MS).then(answered => {
     if (xcodeHostsServerOf(answered) === undefined) return undefined
     const read = xcodeSelectionOf(answered)
     if (read) xcodeStarted(read.scheme, read.activeProfile, listings)
@@ -865,17 +1061,45 @@ async function dropScope($: EngineInterface, key: string): Promise<void> {
  */
 async function pruneHistory($: EngineInterface): Promise<void> {
   const [keys, now] = await Promise.all([$.store.keys(), $.clock.now()])
-  const scopes = new Set<string>()
-  for (const stored of keys) {
-    const prefix = SCOPE_PREFIXES.find(candidate => stored.startsWith(candidate))
-    if (prefix) scopes.add(stored.slice(prefix.length))
-  }
-  await Promise.all([...scopes].map(async key => {
+  await Promise.all([...storedScopes(keys)].map(async key => {
     const [runs, failed, updated] = await Promise.all([historyKey(key), failedKey(key), updatedKey(key)].map(name => $.store.get(name)))
     const isEmpty = (!Array.isArray(runs) || runs.length === 0) && (!Array.isArray(failed) || failed.length === 0)
     if (keyParts(key) && !isEmpty && !isStale(updated, now)) return
     await dropScope($, key)
   }))
+}
+
+/** The scopes the store holds a key of, each once, by the key without its prefix. */
+function storedScopes(keys: readonly string[]): Set<string> {
+  const scopes = new Set<string>()
+  for (const stored of keys) {
+    const prefix = SCOPE_PREFIXES.find(candidate => stored.startsWith(candidate))
+    if (prefix) scopes.add(stored.slice(prefix.length))
+  }
+  return scopes
+}
+
+/**
+ * Drops the scopes and ledgers of checkouts that are gone, as a worktree removed since, as the CLI finds them: each
+ * checkout asked about once, apart from the card, which covers only the session's own; nothing when the CLI can't say.
+ */
+async function pruneGone($: EngineInterface): Promise<void> {
+  const keys = await $.store.keys()
+  const scopes = [...storedScopes(keys)].flatMap(key => {
+    const root = keyParts(key)?.root
+    return root ? [{ key, root }] : []
+  })
+  const ledgers = keys.flatMap(key => {
+    const root = ledgerRoot(key)
+    return root ? [{ key, root }] : []
+  })
+  const roots = [...new Set([...scopes, ...ledgers].map(entry => entry.root))]
+  if (roots.length === 0) return
+  const gone = new Set(goneOf(await answer($, ['gone', ...roots])))
+  await Promise.all([
+    ...scopes.filter(entry => gone.has(entry.root)).map(entry => dropScope($, entry.key)),
+    ...ledgers.filter(entry => gone.has(entry.root)).map(entry => quietly(() => $.store.delete(entry.key))),
+  ])
 }
 
 /** Counts a full-suite run toward the loop budget: the runs that crossed it, when this one did. */
@@ -892,7 +1116,8 @@ async function countFullRun($: EngineInterface, scope: string, run: FullRun) {
 /**
  * The checkout the CLI last named and when: a run's start and end, its ledger and its card ask within moments, so an
  * answer under `HEAD_FRESH_MS` old is shared. A Bash call, which may switch branches, drops it; a switch outside the
- * session shows once it's that old. Only an answer is kept, never a read still waiting.
+ * session shows once it's that old. Only an answer is kept, never a read still waiting. The 5 s bounds that staleness;
+ * nothing measured it (docs/findings.md, *Deadlines inside the CLI*).
  */
 let headRead: { at: number; head: Head } | undefined
 const HEAD_FRESH_MS = 5_000
@@ -900,7 +1125,7 @@ const HEAD_FRESH_MS = 5_000
 async function currentHead($: EngineInterface): Promise<Head | undefined> {
   const now = await quietly(() => $.clock.now())
   if (headRead && now !== undefined && now - headRead.at < HEAD_FRESH_MS) return headRead.head
-  const head = headOf(await answer($, ['project', '--branch'], 10_000))
+  const head = headOf(await answer($, ['project', '--branch'], ON_RESULT_MS))
   if (head && now !== undefined) headRead = { at: now, head }
   return head
 }
@@ -940,6 +1165,7 @@ let retriedRead = false
 /** Forgets what the conversation was told: a new one's warnings show again, and the pin is named again. */
 function startOver(): void {
   retriedRead = false
+  cannotSpawn = false
   sessionRootRead = undefined
   headRead = undefined
   sessionProfileSchemes = new Map()
@@ -979,7 +1205,13 @@ async function readProblems($: EngineInterface): Promise<void> {
     if (!retriedRead) (retriedRead = true), (doctorOnNextPrompt = true)
     return
   }
-  found = problemsOf(answered)
+  await applyProblems($, problemsOf(answered), now)
+}
+
+/** The doctor's problems, as one of its runs found them, on the band. */
+async function applyProblems($: EngineInterface, problems: Problem[], at?: number): Promise<void> {
+  const now = at ?? (await $.clock.now())
+  found = problems
   seenAt = noticed(found, seenAt, now)
   await showVisibleProblems($)
   // New warnings were all found now, so one redraw ends their time together.
@@ -995,8 +1227,12 @@ async function showVisibleProblems($: EngineInterface): Promise<void> {
 
 /** Looking at the failures, or closing them, takes the failed run off the band. */
 async function dismissFailedRun($: EngineInterface): Promise<void> {
+  failureClosedAt = await quietly(() => $.clock.now())
   await quietly(() => update($, runState, run => (run?.ended && !run.ended.ok ? null : run)))
 }
+
+/** When the person last closed a failed run: one whose ending was still waiting for the overlap check stays closed. */
+let failureClosedAt: number | undefined
 
 async function recordRun($: EngineInterface, run: string, ok: boolean, items: Failure[], cause?: string): Promise<void> {
   const list = await read($, failuresState)
@@ -1081,7 +1317,7 @@ async function writeLedger($: EngineInterface, run: TestRun): Promise<void> {
   const ledger = ledgerOf(await $.store.get(key))
   // A repeated run's flaky marks are the CLI's to work out, from the marks kept and the run's repeated tests.
   const kept = (ledger?.entries ?? []).flatMap(entry => (entry.flaky ? [{ test: entry.test, failed: entry.flaky.failed, runs: entry.flaky.runs, passes: entry.flaky.passes ?? 0 }] : []))
-  const marks = run.repeated?.length ? flakyMarksOf(await answer($, ['flaky'], 10_000, JSON.stringify({ marks: kept, repeated: run.repeated }))) : undefined
+  const marks = run.repeated?.length ? flakyMarksOf(await answer($, ['flaky'], ON_RESULT_MS, JSON.stringify({ marks: kept, repeated: run.repeated }))) : undefined
   await $.store.set(key, afterTestRun(ledger, run, marks))
   const others = (await $.store.keys()).filter(stored => stored.startsWith(LEDGER_PREFIX) && stored !== key)
   const stored = Object.fromEntries(await Promise.all(others.map(async other => [other, await $.store.get(other)] as const)))
@@ -1106,7 +1342,7 @@ async function agentDescription($: EngineInterface, agentId: string | undefined)
 
 /** Reads the other worktrees' runs into the line: what the CLI answers, or what it held, until that ages out. */
 async function readElsewhere($: EngineInterface): Promise<void> {
-  const read = elsewhereOf(await answer($, ['runs'], 10_000))
+  const read = elsewhereOf(await answer($, ['runs']))
   const now = await quietly(() => $.clock.now())
   if (now === undefined) return
   await quietly(() => update($, elsewhereState, held => afterRead(held, read, now)))

@@ -22,38 +22,54 @@ public struct SessionStamp: Codable, Equatable, Sendable {
     /// cache entries for. A choice, not a measurement; #395 reviews xcrew's retention ages.
     static let keptDays = 14
 
+    /// A session's stamp: each writer's field from its own file, else from the one file an older xcrew kept for both.
     public static func read(_ session: String, on machine: Machine) -> SessionStamp? {
-        (try? Data(contentsOf: file(session, on: machine))).flatMap { try? JSONDecoder().decode(SessionStamp.self, from: $0) }
+        let folder = self.folder(session, on: machine)
+        let written = { (field: Field) in try? String(contentsOf: folder.appending(path: field.rawValue), encoding: .utf8) }
+        let older = (try? Data(contentsOf: legacyFile(session, on: machine))).flatMap { try? JSONDecoder().decode(SessionStamp.self, from: $0) }
+        let stamp = SessionStamp(briefing: written(.briefing) ?? older?.briefing, mod: written(.mod) ?? older?.mod)
+        return stamp == SessionStamp() ? nil : stamp
     }
 
-    /// Changes a session's stamp, kept in xcrew's cache. A session's first stamp removes the ones left too long.
-    public static func record(_ session: String, on machine: Machine, _ change: (inout SessionStamp) -> Void) {
-        let before = read(session, on: machine)
-        var stamp = before ?? SessionStamp()
-        change(&stamp)
-        guard stamp != before, let encoded = try? JSONEncoder().encode(stamp) else { return }
-        let url = file(session, on: machine)
-        if before == nil { prune(url.deletingLastPathComponent()) }
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? encoded.write(to: url, options: .atomic)
+    /// What each writer reports: the start hook its briefing's version, the mod its own.
+    public enum Field: String, Sendable {
+        case briefing, mod
+    }
+
+    /// Records one writer's `field` for a session, in a file of its own that no other writer touches, so two writing at
+    /// once, as the start hook and the mod's first doctor read do, each keep theirs. A session's first record removes the
+    /// stamps left too long.
+    public static func record(_ session: String, on machine: Machine, _ field: Field, version: String) {
+        let folder = self.folder(session, on: machine)
+        let file = folder.appending(path: field.rawValue)
+        guard (try? String(contentsOf: file, encoding: .utf8)) != version else { return }
+        if !FileManager.default.fileExists(atPath: folder.path) { prune(folder.deletingLastPathComponent(), now: machine.now()) }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? Data(version.utf8).write(to: file, options: .atomic)
     }
 
     /// Removes a session's stamp, once the session has ended.
     public static func remove(_ session: String, on machine: Machine) {
-        try? FileManager.default.removeItem(at: file(session, on: machine))
+        try? FileManager.default.removeItem(at: folder(session, on: machine))
+        try? FileManager.default.removeItem(at: legacyFile(session, on: machine))
     }
 
-    /// A session's file, its id kept to the characters a file name takes as they are.
-    static func file(_ session: String, on machine: Machine) -> URL {
+    /// A session's folder, its id kept to the characters a file name takes as they are.
+    static func folder(_ session: String, on machine: Machine) -> URL {
+        machine.cacheFolder.appending(path: "sessions/\(fileName(session))")
+    }
+
+    /// The one file an older xcrew kept a session's stamp in.
+    static func legacyFile(_ session: String, on machine: Machine) -> URL {
+        machine.cacheFolder.appending(path: "sessions/\(fileName(session)).json")
+    }
+
+    static func fileName(_ session: String) -> String {
         let name = String(session.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_" }.map(Character.init))
-        return machine.cacheFolder.appending(path: "sessions/\(name.isEmpty ? "_" : name).json")
+        return name.isEmpty ? "_" : name
     }
 
-    static func prune(_ folder: URL) {
-        let oldest = Date.now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
-        for entry in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        where ((try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now) < oldest {
-            try? FileManager.default.removeItem(at: entry)
-        }
+    static func prune(_ folder: URL, now: Date) {
+        AgedEntries.removing(olderThan: Double(keptDays) * 24 * 3600, in: folder, now: now)
     }
 }

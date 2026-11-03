@@ -32,7 +32,7 @@ let package = Package(
             resources: [.copy("Fixtures")],
             swiftSettings: swiftSettings
         ),
-        .testTarget(name: "ShimTests", swiftSettings: swiftSettings),
+        .testTarget(name: "ShimTests", dependencies: ["XcrewTestSupport"], swiftSettings: swiftSettings),
         .testTarget(name: "ManifestTests", dependencies: ["XcrewCLI", "XcrewCore"], swiftSettings: swiftSettings),
         .testTarget(name: "XcrewCLITests", dependencies: ["XcrewCLI", "XcrewCore", "XcrewTestSupport"], swiftSettings: swiftSettings),
     ]

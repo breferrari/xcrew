@@ -70,6 +70,12 @@ public struct Report: Sendable, Equatable, Codable {
     /// The same, for a run whose text gave no count and whose result bundle counts 0 tests.
     static let noTestsInBundleNote = "xcrew: this test run ran no tests: its result bundle counts 0 tests, though it reports SUCCEEDED. \(noTestsCause)"
 
+    /// The size at which Claude Code saves a text result to a file and leaves a notice in its place: 50,000 characters
+    /// (code.claude.com/docs/en/mcp, *MCP output limits and warnings*, read October 2026; docs/findings.md), counted as
+    /// JavaScript counts a string's length, in UTF-16 units. A saved result xcrew edits comes back in the notice's place
+    /// only below it, JSON included, which the docs give no point of its own; one compacted is far below it.
+    static let savedFrom = 50_000
+
     /// The longest text read as a notice: far below the size at which Claude Code saves a result (docs/findings.md),
     /// with room for the saved JSON's schema the notice names.
     static let noticeLimit = 10_000
@@ -128,7 +134,7 @@ public struct Report: Sendable, Equatable, Codable {
         guard let ok = RunLog.outcome(of: log, kind: kind) else { return unread }
         let path = kind == .test ? RunLog.resultBundle(in: log) : nil
         if let path {
-            let listing = await ResultBundle(path: path, runner: runner).tests()
+            let listing = TestList(await ResultBundle(path: path, runner: runner).tests())
             if let failed = ResultBundle.failedTests(listing: listing) {
                 return Report(ok: ok, failures: ok ? [] : failed, notes: [], repeated: repeated ? ResultBundle.repetitions(listing: listing) : nil, passed: listsPassed ? ResultBundle.passed(listing: listing) : nil, bundle: path)
             }
@@ -136,20 +142,22 @@ public struct Report: Sendable, Equatable, Codable {
         return Report(ok: ok, failures: [], notes: [], bundle: path, isVerdictOnly: true)
     }
 
-    /// A call moved to the background, from its task's notification: the result of a task that completed, read as the
-    /// call's own, its shorter result put back in the notification Claude reads; else the run's log at `log`, when there
-    /// is one; else no outcome.
-    public static func make(kind: Kind, notification text: String, log: String?, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
+    /// A call moved to the background, from its task's notification: the server's text, of a task that completed or
+    /// failed, read as the call's own, its shorter result put back in the notification Claude reads; else the run's log at
+    /// `log`, when there is one, read with `launches` as a call's that installs and launches after its build, whose
+    /// build's success is no outcome; else no outcome.
+    public static func make(kind: Kind, notification text: String, log: String?, launches: Bool = false, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
         let notification = TaskNotification(text)
-        if let notification, let result = notification.completedResult {
-            var read = await make(kind: kind, output: ToolOutput(text: result, server: server, isError: false), home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine)
+        // A failed task's text is the run's only when it's in MobileBuildMCP's own forms: "the server went away" is no run.
+        if let notification, let output = notification.serverOutput, !(output.isError && ToolOutput(text: output.text, server: server, isError: true).isNotTheServers) {
+            var read = await make(kind: kind, output: ToolOutput(text: output.text, server: server, isError: output.isError), home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine)
             if read.isUnread != true {
                 if let shorter = read.result { read.result = notification.replacingResult(with: shorter) }
                 return read
             }
         }
         guard let log else { return unread }
-        return await make(kind: kind, log: RunLog.end(ofLogAt: log), runner: runner, repeated: repeated, listsPassed: listsPassed)
+        return await make(kind: launches ? .run : kind, log: RunLog.end(ofLogAt: log), runner: runner, repeated: repeated, listsPassed: listsPassed)
     }
 
     /// A result Claude Code saved to a file is read back from it.
@@ -180,7 +188,9 @@ public struct Report: Sendable, Equatable, Codable {
         async let coverage: ChangedLineCoverage? = {
             // A run of no tests ran none of the changed lines, which says nothing of them.
             guard let project, let bundle, (bundleCounts?.ran ?? read.testTotal) != 0 else { return nil }
-            return await ChangedLineCoverage.of(bundle, change: { await change.value() }, project: project, using: runner)
+            // Behind the report's other reads in the pool: within the call's time, what failed is read first.
+            let behind = CommandPool.lane(of: runner, 1)
+            return await ChangedLineCoverage.of(ResultBundle(path: bundle.path, runner: behind, exportFolder: bundle.exportFolder), change: { await change.value() }, project: project, using: behind)
         }()
         async let why: String? = {
             guard let project, !readSummary.ok else { return nil }
@@ -210,19 +220,34 @@ public struct Report: Sendable, Equatable, Codable {
         var final = read
         var edited = false
         var images: [TestID: FailureImages] = [:]
-        // A saved result stays saved unless it's compacted below: Claude Code saved it for its size, which the collapse alone may not cut enough.
-        if let collapsed = read.collapsingWarnings() { (final, edited) = (collapsed, saved == nil) }
+        // Only the warnings in lines this branch changed are listed, Claude's to fix; the rest are counted, with where the
+        // full list is: the saved result, else the run's build log. Without the branch's changes, every one stays.
+        let changedWarnings = await inChanged
+        if let changedWarnings, let kept = read.keepingWarnings(Set(changedWarnings), pointer: saved ?? read.buildLog(home: home) ?? "the run's build log") {
+            (final, edited) = (kept, true)
+        }
+        if let collapsed = final.collapsingWarnings() { (final, edited) = (collapsed, true) }
+        // The run's test list, parsed once, when the first question needs it; none without a bundle.
+        var parsed: TestList?
+        func testList() async -> TestList {
+            if let parsed { return parsed }
+            let list = TestList(await bundle?.tests() ?? "")
+            parsed = list
+            return list
+        }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
-        let repetitions = if repeated, let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
+        let repetitions = if repeated, bundle != nil { ResultBundle.repetitions(listing: await testList()) } else { [ResultBundle.Repeated]() }
         if var text = final.mobileText {
             var changed = false
             if let cleaned = text.withoutExcerpts() { (text, changed) = (cleaned, true) }
             // A repeated run's text lists no failures, and with test timing on, each test once for each run.
-            if let bundle, text.isTestRun, !repetitions.isEmpty {
-                if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await bundle.tests())) { (text, changed) = (added, true) }
+            if bundle != nil, text.isTestRun, !repetitions.isEmpty {
+                if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
                 if let once = text.listingRunsOnce(repetitions) { (text, changed) = (once, true) }
             }
-            if let bundle, text.isTestRun, let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine?.cacheFolder.appending(path: "images"), repetitions: repetitions) {
+            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions),
+               // The test list is read for the skips once the failures are looked up: what failed is read first.
+               let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {
                 (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
             } else if changed {
                 (final, edited) = (ToolOutput(text, isError: output.isError), true)
@@ -231,20 +256,23 @@ public struct Report: Sendable, Equatable, Codable {
         var summary = bundleCounts.map { $0.summary(succeeded: final.summary.ok) } ?? final.summary
 
         var notes = ToolErrorNotes.notes(for: output)
+        let runScheme = { read.buildLog(home: home).flatMap { RunLog.scheme(ofLogAt: URL(fileURLWithPath: $0)) } }
+        // Xcode refused the run's filter: that, not an empty filter or plan, is why none ran.
+        let refused = isTest && read.server == .mobileBuildMCP ? OutsideScheme.targets(in: read.text) : []
+        if let project, !refused.isEmpty { notes.append(OutsideScheme.note(targets: refused, scheme: runScheme(), in: project)) }
         let tests = bundleCounts?.ran ?? final.testTotal
-        if isTest, tests == 0 {
+        if isTest, tests == 0, refused.isEmpty {
             if let discovered = read.discovered, discovered > 0 {
                 // The filter matched: none ran is what happened, not that no test was there to run.
                 summary = ToolOutput.Summary(ok: false, detail: "\(discovered) selected, none ran")
-                let scheme = read.buildLog(home: home).flatMap { RunLog.scheme(ofLogAt: URL(fileURLWithPath: $0)) }
-                notes.append(selectedNoneNote(discovered: discovered, plan: project.flatMap { project in scheme.flatMap { TestPlans.configured(forScheme: $0, in: project) } }))
+                notes.append(selectedNoneNote(discovered: discovered, plan: project.flatMap { project in runScheme().flatMap { TestPlans.configured(forScheme: $0, in: project) } }))
             } else {
                 notes.append(bundleCounts == nil ? noTestsNote : noTestsInBundleNote)
             }
         }
-        if let bundle, let summary = await bundleSummary {
+        if bundle != nil, let summary = await bundleSummary {
             // The test list is only asked for when the summary counts expected failures to name.
-            let listing = ResultBundle.expectedFailureCount(summary: summary) > 0 ? await bundle.tests() : ""
+            let listing = ResultBundle.expectedFailureCount(summary: summary) > 0 ? await testList() : TestList("")
             if let expected = ResultBundle.expectedFailuresNote(summary: summary, names: ResultBundle.expectedFailures(listing: listing), knownIssues: ResultBundle.knownIssues(listing: listing)) { notes.append(expected) }
         }
         // A run repeated with `-test-iterations` says, per test, whether it's flaky or failing for real.
@@ -256,7 +284,7 @@ public struct Report: Sendable, Equatable, Codable {
 
         // The warnings in lines this branch changed, named: those are Claude's to fix. Nothing is said about the rest, or
         // about warnings the change causes in lines it left alone.
-        if let inChanged = await inChanged, let note = warningsNote(inChanged, of: warnings.count) { notes.append(note) }
+        if let changedWarnings, let note = warningsNote(changedWarnings, of: warnings.count) { notes.append(note) }
 
         if let note = await coverage?.note { notes.append(note) }
 
@@ -268,7 +296,7 @@ public struct Report: Sendable, Equatable, Codable {
 
         // A failing test's target, from the run's test list, which skips and expected failures read too. A test the list
         // counts passed, such as a retry that passed, is no failure, though MobileBuildMCP's text lists it.
-        let listing = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { await bundle.tests() } else { "" }
+        let listing = if bundle != nil, !summary.ok, final.failures.contains(where: \.isTest) { await testList() } else { TestList("") }
         let targets = ResultBundle.targets(listing: listing)
         let passed = ResultBundle.passedTests(listing: listing)
         let failures = final.failures.filter { !$0.isTest || !passed.contains(TestID(xcresultID: $0.title)) }
@@ -278,19 +306,23 @@ public struct Report: Sendable, Equatable, Codable {
         if listsPassed, isTest {
             if read.server == .xcode {
                 passedTests = final.passedTests
-            } else if let bundle {
-                passedTests = ResultBundle.passed(listing: await bundle.tests())
+            } else if bundle != nil {
+                passedTests = ResultBundle.passed(listing: await testList())
             }
         }
         let isUnread = kind != .run && !final.isError && final.isNotTheServers
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
+        // What xcrew made of the result comes back in its place, but for a saved result only once it's under the size Claude
+        // Code saves: compacting leaves the errors and failures, which can run long themselves.
+        let shortened = compact ?? (edited ? final.text : nil)
+        let comesBack = shortened.map { saved == nil || $0.utf16.count < Self.savedFrom } ?? false
         return Report(
             ok: summary.ok,
             detail: Self.naming(summary.detail, first: failures.first(where: \.isTest)?.title, insteadOf: final.failures.first(where: \.isTest)?.title),
             durationMs: final.reportedDuration,
             tests: tests,
             failures: summary.ok ? [] : Self.attaching(images, targets: targets, to: failures),
-            result: compact ?? (edited ? final.text : nil),
+            result: comesBack ? shortened : nil,
             notes: notes,
             repeated: repeatedTests,
             passed: passedTests,

@@ -188,13 +188,34 @@ func failingRunText(passing: Int) -> String {
     /// Swift Testing's `.disabled` writes its reason after `Test skipped: `, which goes as XCTest's prefix does.
     @Test func aSwiftTestingSkipsReasonIsItsOwnToo() {
         let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"ShapesTests/skipped()","name":"skipped()","result":"Skipped","durationInSeconds":0,"children":[{"nodeType":"Skip Message","name":"Test skipped: skipped on purpose"}]}]}"#
-        #expect(ResultBundle.skippedTests(listing: listing).map(\.skip.reason) == ["skipped on purpose"])
+        #expect(ResultBundle.skippedTests(listing: TestList(listing)).map(\.skip.reason) == ["skipped on purpose"])
     }
 
     /// A test the list counts passed in one target is still failed when another target's test of that id failed.
     @Test func aTestPassedInOneTargetAndFailedInAnotherIsNotPassed() {
         let listing = #"{"testNodes":[{"nodeType":"Unit test bundle","name":"ModuleATests","children":[{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testValidates()","result":"Failed"}]},{"nodeType":"Unit test bundle","name":"ModuleBTests","children":[{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testValidates()","result":"Passed"},{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testLogsIn()","result":"Passed"}]}]}"#
-        #expect(ResultBundle.passedTests(listing: listing) == [TestID(xcresultID: "LoginTests/testLogsIn()")])
+        #expect(ResultBundle.passedTests(listing: TestList(listing)) == [TestID(xcresultID: "LoginTests/testLogsIn()")])
+    }
+
+    /// A failing run that also skipped a test has its failure looked up before its test list is read for the skip: what
+    /// failed is read first.
+    @Test func aRunsFailuresAreLookedUpBeforeItsSkips() async throws {
+        let text = Captured.text("mobileTestsFailedUnlocated")
+            .replacingOccurrences(of: "  ❌ FormatterTests/test_symbol() (4.774s)\n", with: "  ❌ FormatterTests/test_symbol() (4.774s)\n  ⏭️ FormatterTests/test_later() (0.000s)\n")
+            .replacingOccurrences(of: "1 passed, 0 skipped", with: "1 passed, 1 skipped")
+        let runner = RecordingRunner(FakeRunner())
+        _ = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        let details = try #require(runner.asked.firstIndex { $0.contains("test-results test-details") }, "\(runner.asked)")
+        let list = try #require(runner.asked.firstIndex { $0.contains("test-results tests ") }, "\(runner.asked)")
+        #expect(details < list, "\(runner.asked)")
+    }
+
+    /// A skipped line that names no test, with no skip counted, reads no test list: nothing names a skip to explain.
+    @Test func aSkippedLineNamingNoTestReadsNoTestList() async {
+        let runner = RecordingRunner(FakeRunner())
+        let text = MobileText("🧪 Test\n\nTest Results:\n  ⏭️ something odd\n")
+        #expect(await FailureNotes.adding(to: text, from: ResultBundle(path: "/b.xcresult", runner: runner)) == nil)
+        #expect(runner.asked.isEmpty, "\(runner.asked)")
     }
 
     /// The summary names the first test still failed, not one the test list counts passed.
@@ -207,7 +228,7 @@ func failingRunText(passing: Int) -> String {
     @Test func anAnswerThatIsNoneOfThemGivesNothing() {
         #expect(ResultBundle.sourceLocation(details: "not json") == nil)
         #expect(ResultBundle.crashSummary(log: "not a crash log") == nil)
-        #expect(ResultBundle.skippedTests(listing: "not json").isEmpty)
+        #expect(ResultBundle.skippedTests(listing: TestList("not json")).isEmpty)
         #expect(ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":3,"passedTests":3,"expectedFailures":0}"#) == nil)
         #expect(ResultBundle.expectedFailuresNote(summary: "not json") == nil)
     }
@@ -287,7 +308,7 @@ func failingRunText(passing: Int) -> String {
     @Test func aRepeatedTestsFailureElsewhereStays() async {
         let text = "\n🧪 Test\n\nTest Failures (3):\n\n  ✗ ProbeTests / testTwice: first assertion\n    /work/App/Tests/ProbeTests.swift:10\n\n  ✗ ProbeTests / testTwice: second assertion\n    /work/App/Tests/ProbeTests.swift:14\n\n  ✗ ProbeTests / testTwice: first assertion\n    /work/App/Tests/ProbeTests.swift:10\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)"
         let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"ProbeTests/testTwice()","result":"Failed","children":[{"nodeType":"Repetition","result":"Failed"},{"nodeType":"Repetition","result":"Failed"}]}]}"#
-        let repeated = ResultBundle.repetitions(listing: listing)
+        let repeated = ResultBundle.repetitions(listing: TestList(listing))
         let added = await FailureNotes.adding(to: MobileText(text), from: ResultBundle(path: "/b.xcresult", runner: FakeRunner()), repetitions: repeated)?.text.text ?? text
         #expect(added.contains("second assertion\n    /work/App/Tests/ProbeTests.swift:14"), "\(added)")
         #expect(added.components(separatedBy: "first assertion").count == 2, "\(added)")
@@ -512,9 +533,9 @@ func failingRunText(passing: Int) -> String {
         let bundle = { (name: String, result: String) in #"{"nodeType":"Unit test bundle","name":"\#(name)","children":[{"nodeType":"Test Suite","name":"ViewModelTests","children":[{"nodeType":"Test Case","nodeIdentifier":"ViewModelTests/testLoad()","result":"\#(result)"}]}]}"# }
         let listing = { (bundles: [String]) in #"{"testNodes":[{"nodeType":"Test Plan","children":[\#(bundles.joined(separator: ","))]}]}"# }
         let test = TestID(suite: "ViewModelTests", name: "testLoad")
-        #expect(ResultBundle.targets(listing: listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Passed")]))[test] == "FeatureATests")
-        #expect(ResultBundle.targets(listing: listing([bundle("FeatureATests", "Passed"), bundle("FeatureBTests", "Failed")]))[test] == "FeatureBTests")
-        #expect(ResultBundle.targets(listing: listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Failed")]))[test] == nil)
+        #expect(ResultBundle.targets(listing: TestList(listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Passed")])))[test] == "FeatureATests")
+        #expect(ResultBundle.targets(listing: TestList(listing([bundle("FeatureATests", "Passed"), bundle("FeatureBTests", "Failed")])))[test] == "FeatureBTests")
+        #expect(ResultBundle.targets(listing: TestList(listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Failed")])))[test] == nil)
     }
 
     @Test func theNoTestsNoteSaysWhatIsKnown() {
@@ -558,7 +579,7 @@ func failingRunText(passing: Int) -> String {
 
 @Suite struct LiveCheckFollowUpTests {
     @Test func aListingThatIsNoneGivesNoExpectedFailure() {
-        #expect(ResultBundle.expectedFailures(listing: "not json").isEmpty)
+        #expect(ResultBundle.expectedFailures(listing: TestList("not json")).isEmpty)
     }
 
     @Test func theExpectedFailuresNoteNamesTheTests() {
@@ -582,6 +603,47 @@ func failingRunText(passing: Int) -> String {
         let bundle = ResultBundle(path: "/b.xcresult", runner: FakeRunner(), exportFolder: { FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)") })
         let added = await FailureNotes.addingText(to: text, from: bundle)
         #expect(added.contains("Test crashed with signal trap.\n      Fatal error: Index out of range\n      \(FailureNotes.noCrashLog)"), "\(added)")
+    }
+
+    /// The `timing` capture cut to its crashed test alone, as a run filtered with `-only-testing` to that test gives it:
+    /// its other failures and results left out, and its summary counting the one test.
+    static func crashedAlone() throws -> String {
+        let text = try Raw.text("timing").replacingOccurrences(of: "Crash: xctest at CrashTests.testOutOfRange()", with: "Test crashed with signal trap.")
+        let failures = try #require(text.range(of: "\n  ✗ ProbeTests / testFails:"))
+        let summary = try #require(text.range(of: "❌ 3 tests failed, 1 passed, 1 skipped"))
+        return String(text[..<failures.lowerBound]) + "\n" + "❌ 1 test failed, 0 passed, 0 skipped" + String(text[summary.upperBound...])
+    }
+
+    /// The crash's note, under the crash and its error, from `text` and a bundle whose summary is `summary`.
+    static func crashNote(_ text: String, summary: String) async -> String {
+        let bundle = ResultBundle(path: "/b.xcresult", runner: FakeRunner(responses: ["xcrun xcresulttool get test-results summary --path /b.xcresult --compact": .init(status: 0, stdout: summary)]), exportFolder: { FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)") })
+        return await FailureNotes.addingText(to: text, from: bundle)
+    }
+
+    static let alone = "Test crashed with signal trap.\n      Fatal error: Index out of range\n      no crash log came with this run, though it ran this test alone; under parallel testing each runner is on a clone of the simulator, and `-parallel-testing-enabled NO` in `extraArgs` turns it off"
+
+    /// A crash in a run whose bundle counts that one test: running it alone was done, so the note names what wasn't.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashThatRanAloneWithoutACrashLogNamesParallelTesting() async throws {
+        let added = await Self.crashNote(try Self.crashedAlone(), summary: #"{"totalTestCount":1,"passedTests":0,"failedTests":1,"skippedTests":0,"expectedFailures":0}"#)
+        #expect(added.contains(Self.alone), "\(added)")
+    }
+
+    /// MobileBuildMCP's summary leaves expected failures out, so a crash beside one reads as a run of one test there; the
+    /// bundle counts both.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashBesideAnExpectedFailureDidntRunAlone() async throws {
+        let added = await Self.crashNote(try Self.crashedAlone(), summary: #"{"totalTestCount":2,"passedTests":0,"failedTests":1,"skippedTests":0,"expectedFailures":1}"#)
+        #expect(added.contains("Fatal error: Index out of range\n      \(FailureNotes.noCrashLog)"), "\(added)")
+    }
+
+    /// A run that discovered more tests than the bundle counts didn't run its crashed test alone: the crash kept the rest
+    /// from running.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func aCrashThatKeptOthersFromRunningDidntRunAlone() async throws {
+        let text = try Self.crashedAlone().replacingOccurrences(of: "🧪 Test\n", with: "🧪 Test\n\nDiscovered 3 test(s):\n   CrashTests/testOutOfRange\n   CrashTests/testLater\n   CrashTests/testLast\n")
+        let added = await Self.crashNote(text, summary: #"{"totalTestCount":1,"passedTests":0,"failedTests":1,"skippedTests":0,"expectedFailures":0}"#)
+        #expect(added.contains("Fatal error: Index out of range\n      \(FailureNotes.noCrashLog)"), "\(added)")
     }
 
     @Test func doctorProblemsSaysWhenThereAreNone() {
@@ -671,6 +733,21 @@ func failingRunText(passing: Int) -> String {
         #expect(capture.contains("_pid${process.pid}_"), "MobileBuildMCP's build/utils/xcodebuild-log-capture.js no longer names a log with _pid<server pid>_: RunLog.find's session filter has to follow it")
     }
 
+    /// A log's name gives when it was opened, as MobileBuildMCP's own `formatLogTimestamp` writes it, checked against the
+    /// installed one wherever MobileBuildMCP is installed. The times: the epoch, 10:00:00.259 UTC on November 2, 2026, and
+    /// 23:59:59.999 UTC on December 31, 2099.
+    @Test(.enabled(if: mobileBuildMCP != nil))
+    func aLogsOpeningTimeIsReadAsTheInstalledMobileBuildMCPNamesIt() async throws {
+        let libexec = try #require(Self.mobileBuildMCP)
+        let source = libexec.appending(path: "build/utils/log-naming.js")
+        for milliseconds in [0, 1_793_613_600_259, 4_102_444_799_999] {
+            let script = "import(process.argv[1]).then(m => console.log(m.formatLogTimestamp(new Date(Number(process.argv[2])))))"
+            let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, source.path, String(milliseconds)], stdin: nil, timeout: .seconds(30))
+            let stamp = ran.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(RunLog.openedAt("test_sim_\(stamp)_pid1_abcd1234.log", tool: "test_sim") == milliseconds, "MobileBuildMCP's formatLogTimestamp in build/utils/log-naming.js names \(milliseconds) ms \(stamp): RunLog.openedAt has to follow it (\(ran.stderr))")
+        }
+    }
+
     static func age(_ path: String, in home: Project, to seconds: TimeInterval) throws {
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: seconds)], ofItemAtPath: home.root.appending(path: "\(workspaces)/\(path)").path)
     }
@@ -685,30 +762,41 @@ func failingRunText(passing: Int) -> String {
 }
 
 @Suite struct LookupConcurrencyTests {
-    /// Answers each xcresulttool call after a short wait, and records the most it saw at once.
-    final class SlowRunner: CommandRunning, @unchecked Sendable {
-        private let lock = NSLock()
+    /// Answers each xcresulttool call once another is running beside it, the first time, so lookups that run at once
+    /// always overlap, with no wait on time; records the most it saw at once. Lookups made one at a time never meet: the
+    /// first waits for good, and the test's time limit ends it.
+    actor Rendezvous: CommandRunning {
         private var running = 0
-        private var peak = 0
-        var mostAtOnce: Int { lock.withLock { peak } }
+        private(set) var mostAtOnce = 0
+        private var met = false
+        private var waiting: CheckedContinuation<Void, Never>?
 
         func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-            lock.withLock { running += 1; peak = max(peak, running) }
-            try? await Task.sleep(for: .milliseconds(30))
-            lock.withLock { running -= 1 }
+            running += 1
+            mostAtOnce = max(mostAtOnce, running)
+            if !met {
+                if running >= 2 {
+                    met = true
+                    waiting?.resume()
+                    waiting = nil
+                } else {
+                    await withCheckedContinuation { waiting = $0 }
+                }
+            }
+            running -= 1
             return CommandResult(status: 0, stdout: "{}")
         }
 
-        func which(_ name: String) -> String? { nil }
+        nonisolated func which(_ name: String) -> String? { nil }
     }
 
-    @Test func aRunWithManyFailuresLooksThemUpAFewAtATime() async {
+    @Test(.timeLimit(.minutes(1))) func aRunWithManyFailuresLooksThemUpAFewAtATime() async {
         let failures = (1...10).map { "  ✗ Suite / test_\($0)(): failed\n" }.joined(separator: "\n")
         let text = "🧪 Test\n\nTest Failures (10):\n\n\(failures)\n❌ 10 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
-        let runner = SlowRunner()
+        let runner = Rendezvous()
         _ = await FailureNotes.addingText(to: text, from: ResultBundle(path: "/b.xcresult", runner: runner))
-        #expect(runner.mostAtOnce > 1)
-        #expect(runner.mostAtOnce <= FailureNotes.mostAtOnce)
+        #expect(await runner.mostAtOnce > 1)
+        #expect(await runner.mostAtOnce <= FailureNotes.mostAtOnce)
     }
 }
 
@@ -730,7 +818,7 @@ func failingRunText(passing: Int) -> String {
 extension FailureNotes {
     /// The notes on a text as text, as the assertions above read them.
     static func addingText(to text: String, from bundle: ResultBundle, keepingImagesIn images: URL? = nil) async -> String {
-        await adding(to: MobileText(text), from: bundle, keepingImagesIn: images)?.text.text ?? text
+        await adding(to: MobileText(text), from: bundle, keepingImagesIn: images.map { ($0, Date()) })?.text.text ?? text
     }
 }
 
@@ -886,12 +974,31 @@ extension FailureNotes {
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func aSavedResultTheCollapseAloneWouldEditStaysSaved() async throws {
+    func aSavedResultTheCollapseBringsUnderTheSavingPointComesBack() async throws {
         let saved = SavedResultTests.saved(try Self.json(), as: "mcp-build_sim-1.txt")
         let notice = "Error: result (121,948 characters) exceeds maximum allowed tokens. Output has been saved to \(saved).\nFormat: JSON"
         let report = await Report.make(kind: .build, output: ToolOutput(text: notice, server: .mobileBuildMCP), home: Captured.home, runner: FakeRunner())
         #expect(report.ok)
-        #expect(report.result == nil)
+        let result = try #require(report.result)
+        #expect(result.utf16.count < 50_000)
+    }
+
+    /// Warnings left out of the list are counted under its heading, which then counts the warnings it still lists: one
+    /// of the test bed's seven.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func theWarningsHeadingCountsTheWarningsItLists() throws {
+        let text = try #require(ToolOutput(text: try Raw.text("build_sim"), server: .mobileBuildMCP).mobileText)
+        let kept = try #require(text.keepingWarnings({ $0.message.hasPrefix("var 'sharedCount'") }, leftOut: { "\($0) warnings left out" })).text
+        #expect(kept.contains("Warnings (1):\n\n  6 warnings left out\n\n  ⚠ var 'sharedCount'"))
+    }
+
+    /// With no heading, the count goes after the run's header, not above it.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func withNoHeadingTheCountGoesAfterTheHeader() throws {
+        let raw = try Raw.text("build_sim").replacingOccurrences(of: "Warnings (7):\n\n", with: "")
+        let text = try #require(ToolOutput(text: raw, server: .mobileBuildMCP).mobileText)
+        let kept = try #require(text.keepingWarnings({ $0.message.hasPrefix("var 'sharedCount'") }, leftOut: { "\($0) warnings left out" })).text
+        #expect(kept.hasPrefix("\n🔨 Build\n\n  6 warnings left out\n\n"))
     }
 
     @Test func aColumnStaysWithItsLine() {
@@ -978,17 +1085,17 @@ extension FailureNotes {
         """
 
     @Test func eachRepeatedTestCountsItsFailedRuns() {
-        let found = ResultBundle.repetitions(listing: Self.listing)
+        let found = ResultBundle.repetitions(listing: TestList(Self.listing))
         #expect(found.map { "\($0.test) \($0.failed)/\($0.runs) \($0.verdict)" } == ["RepetitionTests/testMixed 1/3 flaky", "RepetitionTests/testAlways 3/3 real", "RepetitionTests/testNever 0/3 passed"])
     }
 
     @Test func theNoteGivesEachTestItsVerdict() {
-        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: Self.listing))
+        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: TestList(Self.listing)))
         #expect(note == "xcrew: across 3 runs each: RepetitionTests/testMixed is flaky, failing 1 of 3; RepetitionTests/testAlways failed every run, a real failure. 1 more passed every run.")
     }
 
     @Test func aRunWithoutRepetitionsHasNoNote() {
-        #expect(ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: #"{"testNodes":[]}"#)) == nil)
+        #expect(ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: TestList(#"{"testNodes":[]}"#))) == nil)
     }
 }
 
@@ -1035,21 +1142,21 @@ struct RepeatedRunReportTests {
 
     /// A skipped run is no pass: a test skipped every run has no verdict, not "passed every run".
     @Test func aSkippedRunIsNoPass() {
-        let found = ResultBundle.repetitions(listing: listing([testCase("testSkipped", repetitions(["Skipped", "Skipped", "Skipped"]))]))
+        let found = ResultBundle.repetitions(listing: TestList(listing([testCase("testSkipped", repetitions(["Skipped", "Skipped", "Skipped"]))])))
         #expect(found.map(\.verdict) == [.none])
     }
 
     /// A parameterized Swift Testing test holds its runs under each argument.
     @Test func runsUnderEachArgumentCount() {
         let arguments = #"{"nodeType":"Arguments","name":"1","children":[\#(repetitions(["Passed", "Failed"]))]},{"nodeType":"Arguments","name":"2","children":[\#(repetitions(["Passed", "Passed"]))]}"#
-        let found = ResultBundle.repetitions(listing: listing([testCase("testParameterized", arguments)]))
+        let found = ResultBundle.repetitions(listing: TestList(listing([testCase("testParameterized", arguments)])))
         #expect(found.map { "\($0.failed)/\($0.runs) \($0.verdict)" } == ["1/4 flaky"])
     }
 
     /// The note names the tests that need a decision, and only a few of them: a whole target repeated mustn't flood it.
     @Test func theNoteNamesAFewAndCountsTheRest() {
         let cases = (1...8).map { testCase("testFlaky\($0)", repetitions(["Passed", "Failed"])) } + (1...30).map { testCase("testFine\($0)", repetitions(["Passed", "Passed"])) }
-        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: listing(cases))) ?? ""
+        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: TestList(listing(cases)))) ?? ""
         #expect(note.contains("S/testFlaky5 is flaky") && !note.contains("S/testFlaky6"))
         #expect(note.contains("and 3 more flaky or failing"))
         #expect(note.contains("30 more passed every run"))

@@ -15,6 +15,7 @@ public enum CLI {
         EvidenceCommand(),
         PhaseCommand(),
         RunsCommand(),
+        GoneCommand(),
         FlakyCommand(),
         ProjectCommand(),
         XcodeSkillsCommand(),
@@ -51,7 +52,9 @@ public enum CLI {
                 (["usage:"] + command.usage.map { "  \($0)" }).forEach(print)
                 return 0
             }
-            return try await command.run(Invocation(arguments: arguments, context: context, standardInput: standardInput, print: print))
+            // One deadline for the whole call, which each command it starts takes what's left of.
+            let timed = CheckContext(project: context.project, machine: context.machine.answering(by: DeadlineRunner.deadline(for: context.machine)))
+            return try await command.run(Invocation(arguments: arguments, context: timed, standardInput: standardInput, print: print))
         } catch let error as UsageError {
             printError(error.description)
             return 64

@@ -4,6 +4,21 @@ import Testing
 import XcrewTestSupport
 
 @Suite struct ConfigRendererTests {
+    /// A config's path names one place however it's spelled: `..`, `.`, a doubled slash and a trailing slash spell
+    /// nothing else, and a link in it, as `/private/var`'s, is kept as written.
+    @Test(arguments: [
+        ("/private/var/a/../App.xcworkspace", "/private/var/App.xcworkspace"),
+        ("/p//App.xcworkspace/", "/p/App.xcworkspace"),
+        ("/p/./App.xcworkspace", "/p/App.xcworkspace"),
+        ("~/a//b/../App.xcworkspace", "/home/someone/a/App.xcworkspace"),
+        ("x/../App.xcworkspace", "/private/var/root/App.xcworkspace"),
+        ("./App.xcworkspace", "/private/var/root/App.xcworkspace"),
+    ])
+    func aPathIsResolvedToOneSpelling(_ path: String, _ expected: String) {
+        let resolved = ConfigRenderer.resolved(path, root: URL(fileURLWithPath: "/private/var/root"), home: URL(fileURLWithPath: "/home/someone"))
+        #expect(resolved == expected)
+    }
+
     let root = URL(fileURLWithPath: "/work/App")
 
     /// MobileBuildMCP's `xcode-ide` calls any Xcode MCP tool through its own bridge, past the mod's guards, and the

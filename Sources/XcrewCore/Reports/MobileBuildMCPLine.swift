@@ -140,13 +140,13 @@ enum MobileBuildMCPLine {
         line.firstMatch(of: #/└── (~?\/\S+\/)\s*$/#).map { String($0.1) }
     }
 
-    /// `result-bundles/….xcresult — Result Bundle`, the run's bundle, under the workspace folder.
     /// How many tests a filter selected, from the heading of the list MobileBuildMCP writes whatever the run's outcome:
     /// `Discovered 6 test(s):`.
     static func discovered(_ line: String) -> Int? {
         line.wholeMatch(of: #/Discovered (\d+) test\(s\):/#).flatMap { Int($0.1) }
     }
 
+    /// `result-bundles/….xcresult — Result Bundle`, the run's bundle, under the workspace folder.
     static func resultBundle(_ line: String) -> String? {
         line.firstMatch(of: #/(result-bundles\/\S+\.xcresult) — Result Bundle/#).map { String($0.1) }
     }

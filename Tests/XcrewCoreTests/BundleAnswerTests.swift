@@ -34,18 +34,18 @@ struct BundleAnswerTests {
     }
 
     @Test func theTestListGivesEachSkippedTestAndWhy() throws {
-        let skips = ResultBundle.skippedTests(listing: try Raw.file("serial.tests.json"))
+        let skips = ResultBundle.skippedTests(listing: TestList(try Raw.file("serial.tests.json")))
         #expect(skips.map(\.test) == [TestID(suite: "ProbeTests", name: "testSkipped")])
         #expect(skips.first?.skip.reason == "waits for the farewell screen")
     }
 
     /// Swift Testing's `.disabled` writes its reason after `Test skipped: `, XCTest's `XCTSkip` after `Test skipped - `.
     @Test func aSwiftTestingSkipsReasonComesWithoutItsPrefix() throws {
-        #expect(ResultBundle.skippedTests(listing: try Raw.file("shapes.tests.json")).map(\.skip.reason) == ["skipped on purpose"])
+        #expect(ResultBundle.skippedTests(listing: TestList(try Raw.file("shapes.tests.json"))).map(\.skip.reason) == ["skipped on purpose"])
     }
 
     @Test func theTestListNamesEachExpectedFailure() throws {
-        #expect(ResultBundle.expectedFailures(listing: try Raw.file("serial.tests.json")) == ["ProbeTests/testExpectedFailure()"])
+        #expect(ResultBundle.expectedFailures(listing: TestList(try Raw.file("serial.tests.json"))) == ["ProbeTests/testExpectedFailure()"])
     }
 
     /// Without the test list, which API the tests used is unknown, so the note names both.

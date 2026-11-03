@@ -41,7 +41,22 @@ struct TestbedLookTests {
     /// the folder it kept screens in, gone by the time this returns.
     static func report(_ test: TestID?) async throws -> (text: String, images: URL) {
         try await inFolder { root in
-            (await Look.report(bundle: try bundle("xcodebuild", root: root), named: test?.shown, keptIn: root.appending(path: "images")), root.appending(path: "images"))
+            (await Look.report(bundle: try bundle("xcodebuild", root: root), named: test?.shown, keptIn: root.appending(path: "images"), now: Date()), root.appending(path: "images"))
+        }
+    }
+
+    /// `look` records the size of the run it kept screens and hierarchies in, as pruning reads it.
+    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+    func lookRecordsItsRunsSize() async throws {
+        try await Self.inFolder { root in
+            _ = await Look.report(bundle: try Self.bundle("xcodebuild", root: root), named: nil, keptIn: root.appending(path: "images"), now: Date())
+            let runs = try FileManager.default.contentsOfDirectory(at: root.appending(path: "images"), includingPropertiesForKeys: nil)
+            #expect(!runs.isEmpty)
+            for run in runs {
+                let files = (FileManager.default.enumerator(at: run, includingPropertiesForKeys: [.fileSizeKey])?.allObjects as? [URL] ?? []).filter { $0.lastPathComponent != FailureImages.sizeRecord }
+                let bytes = try files.reduce(0) { $0 + (try $1.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) }
+                #expect(try String(contentsOf: run.appending(path: FailureImages.sizeRecord), encoding: .utf8) == String(bytes))
+            }
         }
     }
 
@@ -165,7 +180,8 @@ struct TestbedLookTests {
         let (text, _) = try await Self.report(TestID(suite: "UITests", name: "testMissingElement"))
         let lines = text.components(separatedBy: "\n")
         let screen = try #require(lines.firstIndex { $0.hasPrefix("    screen: ") }, "\(text)")
-        #expect(Array(lines[(screen + 1)...].prefix(5)) == [
+        #expect(Array(lines[(screen + 1)...].prefix(6)) == [
+            "    the elements below are the app's only; a system alert, as a permission request, shows only in the screenshot",
             #"    on screen, nothing the query's "checkout" Button matches:"#,
             #"      Application "App""#,
             #"        StaticText "Welcome", identifier "title""#,
@@ -208,6 +224,7 @@ struct TestbedLookTests {
             #expect(hierarchy.elements.contains { $0.label == "Plan B" })
             #expect(try String(contentsOfFile: kept.path, encoding: .utf8).hasPrefix("Application, 0x"))
             #expect(kept.path.hasPrefix(root.appending(path: "images/UITests/testPlanA").path))
+
         }
     }
 
@@ -254,7 +271,7 @@ struct TestbedLookTests {
                 return folder
             }
             let bundle = ResultBundle(path: "/runs/UITests.xcresult", runner: FakeRunner(), exportFolder: export)
-            let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: root.appending(path: "images"))).text.text
+            let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: (root.appending(path: "images"), Date()))).text.text
             let pointers = added.components(separatedBy: "\n").filter { $0.hasPrefix("      \(FailureNotes.lookLabel) ") }
             #expect(pointers == ["testFailsAfterTaps", "testMissingElement", "testPlanA", "testRenamedLabel"].map {
                 "      look: the steps leading to the failure and the screen at it, with the `look` tool or `xcrew look UITests/\($0) --bundle /runs/UITests.xcresult`"
@@ -267,7 +284,7 @@ struct TestbedLookTests {
         let (bundle, root) = TestbedSnapshotTests.bundle("mobilebuildmcp")
         defer { try? FileManager.default.removeItem(at: root) }
         let text = try String(contentsOf: TestbedSnapshotTests.captures.appending(path: "test_sim.txt"), encoding: .utf8)
-        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: root.appending(path: "images"))).text.text
+        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: (root.appending(path: "images"), Date()))).text.text
         #expect(!added.contains("\(FailureNotes.lookLabel) "), "\(added)")
     }
 }

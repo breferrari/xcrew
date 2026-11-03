@@ -116,7 +116,7 @@ test('a finished run hands the server\'s text to the CLI, saying which server an
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.cli.filter(call => call.args[0] !== '--binary-path' && call.args[0] !== 'project').map(({ args, stdin, program }) => ({ args, stdin, program }))).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED, program: BUILT_BINARY }])
+  expect(seen.cli.filter(call => call.args[0] !== '--binary-path' && call.args[0] !== 'project' && call.args[0] !== 'runs').map(({ args, stdin, program }) => ({ args, stdin, program }))).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED, program: BUILT_BINARY }])
 })
 
 test('a build failing on a killed macro plugin reaches Claude as the server reported it, with nothing retried', async ($, on) => {
@@ -217,6 +217,7 @@ test('later runs compare with the average of earlier ones', async ($, on) => {
 
   for (let run = 0; run < 3; run += 1) {
     await callTool($, 'mcp__xcode__BuildProject')
+    await clock.settle()
   }
 
   expect(seen.toasts).toEqual(['✓ BuildProject · 1:00', '✓ BuildProject · 1:20 (avg 1:00)', '✓ BuildProject · 1:30 (avg 1:10)'])
@@ -231,6 +232,7 @@ test('a run far slower than usual says how much slower', async ($, on) => {
   })
 
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ build_sim · 0:22 (2× its usual 0:11)'])
 })
@@ -244,6 +246,7 @@ test('slowness is only called out once there are five earlier runs to judge by',
   })
 
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ BuildProject · 0:30 (avg 0:10)'])
 })
@@ -257,7 +260,9 @@ test('a run is timed by what the server reports, so a pre-build hook or a permis
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await clock.settle()
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ test_sim · 0:15 · 3 passed', '✓ test_sim · 0:15 (avg 0:15) · 3 passed'])
 })
@@ -350,8 +355,9 @@ test('Xcode MCP runs ask for no phase: that server writes no log to follow', asy
   })
 
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
 
-  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path' && command !== 'project')).toEqual(['report'])
+  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path' && command !== 'project')).toEqual(['report', 'runs'])
 })
 
 test('where no band draws, the status line carries the gauge against the usual time', async ($, on) => {
@@ -453,6 +459,7 @@ test('a run of a minute or more sends a notification with its outcome', async ($
   stubCli(on, { reports: [{ ok: true, detail: '5 passed' }] })
 
   await callTool($, 'mcp__xcode__RunAllTests')
+  await clock.settle()
 
   expect(notifications).toEqual(['✓ RunAllTests · 1:01 · 5 passed'])
 })
@@ -685,8 +692,10 @@ test('a call the person denies leaves no trace: no time in the history, no outco
   })
 
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
   // The next run is still measured against the usual 1:30, not an average the denied 0:02 pulled down.
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ build_sim · 1:30 (avg 1:30)'])
   expect(notifications).toEqual(['✓ build_sim · 1:30 (avg 1:30)'])
@@ -793,7 +802,9 @@ test('callers at once share one question to the shim, and a build it can\'t name
   await Promise.all([1, 2, 3].map(() => callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })))
   await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'b', content: '' })
 
-  expect(seen.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
+  // One question, and one build started for the callers to wait on, which named nothing: both are remembered.
+  expect(seen.filter(call => !call.spawned && call.args[0] === '--binary-path')).toHaveLength(1)
+  expect(seen.filter(call => call.spawned)).toHaveLength(1)
   expect(seen.filter(call => call.args[0] === 'project')).toHaveLength(4)
 })
 

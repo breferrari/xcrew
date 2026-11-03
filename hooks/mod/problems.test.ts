@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Problem } from './cli'
 import { RESTART_CHECK } from './problems'
-import { runCommand, stubCli, submitPrompt } from './testing'
+import { runCommand, stubCli, submitPrompt, withoutIfBuilt } from './testing'
 
 const BAND = {
   plugin: 'xcrew',
@@ -98,7 +98,7 @@ test('a warning leaves the band two minutes after it first shows, with nothing e
 
 test('a failure stays until the doctor, run again, finds it fixed', async ($, on) => {
   const problems = [NOT_APPROVED]
-  const { clock } = sessionWith(on, problems)
+  const { clock, calls } = sessionWith(on, problems)
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -109,9 +109,13 @@ test('a failure stays until the doctor, run again, finds it fixed', async ($, on
   await submitPrompt($, 'build it')
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: /isn't approved/ })).toBeDefined()
+  const doctorRuns = () => calls.filter(call => call.args[0] === 'doctor').length
+  const before = doctorRuns()
   await runCommand($, 'xcrew', 'doctor')
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: /isn't approved/ })).toBeUndefined()
+  // One run of the checks gives both the report and the band's problems.
+  expect(doctorRuns() - before).toBe(1)
   await ui.unmount()
 })
 
@@ -287,7 +291,7 @@ test('after setup, a doctor read already in flight is followed by a fresh one', 
   let release = () => {}
   const released = new Promise<void>(resolve => (release = resolve))
   on('process.run', async (_, e) => {
-    const args = e.argv.slice(1)
+    const args = withoutIfBuilt(e.argv.slice(1))
     if (args[0] === 'doctor') {
       doctorRuns += 1
       const seen = doctorRuns === 1 ? [] : [...problems]
@@ -309,4 +313,20 @@ test('after setup, a doctor read already in flight is followed by a fresh one', 
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /restart Claude Code to load it/ })).toBeDefined()
   await ui.unmount()
+})
+
+/** A doctor that can't run, as while the CLI builds, isn't run again: the report says so, and the band reads it next prompt. */
+test('/xcrew doctor that gets no answer says so without running the checks again', async ($, on) => {
+  let fails = false
+  const { calls, clock } = sessionWith(on, [PIN], () => fails)
+  await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  fails = true
+  const before = calls.length
+  const ran = await runCommand($, 'xcrew', 'doctor')
+  expect(String(ran.text)).toContain("couldn't run")
+  // The CLI's own wrapper may ask its shim once more; nothing runs the doctor in another form.
+  const after = calls.slice(before).filter(call => call.args[0] === 'doctor')
+  expect(after.length).toBeGreaterThan(0)
+  expect(after.every(call => call.args.includes('--text-and-problems'))).toBe(true)
 })

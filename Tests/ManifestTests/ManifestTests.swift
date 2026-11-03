@@ -63,19 +63,25 @@ import Testing
     }
 
     @Test func sessionStartBriefsThroughTheCLI() async throws {
-        #expect(try hook("SessionStart").command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start"#)
+        #expect(try hook("SessionStart").command == #"XCREW_WITHIN_MS=10000 "${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start"#)
     }
 
     /// The command hooks are the briefing at a session's start and the stamp's removal at its end; no other.
     @Test func theCommandHooksAreSessionStartAndSessionEnd() async throws {
         let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: Any])
         #expect(Set(hooks.keys) == ["SessionStart", "SessionEnd"])
-        #expect(try hook("SessionEnd").command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-end"#)
+        #expect(try hook("SessionEnd").command == #"XCREW_WITHIN_MS=10000 "${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-end"#)
     }
 
     /// The mod-loaded check names the mcs that loads a pack's mod, as the techpack requires it.
     @Test func techpackMinimumMCSIsTheOneTheModLoadedCheckNames() throws {
         #expect(try text("techpack.yaml").contains("minMCSVersion: \"\(ModLoadedCheck.minMCSVersion)\""))
+    }
+
+    /// The README names the mcs the mod-loaded check names: the one a pack's mod needs.
+    @Test func readmeMinimumMCSIsTheOneTheModLoadedCheckNames() throws {
+        let named = try #require(try text("README.md").firstMatch(of: /\[mcs CLI\]\([^)]*\) (\d{4}\.\d{1,2}\.\d{1,2}) or later/)?.1, "the README no longer says \"[mcs CLI](…) <version> or later\"; this test reads the version there")
+        #expect(String(named) == ModLoadedCheck.minMCSVersion)
     }
 
     @Test func hooksLoadTheMod() async throws {
@@ -148,7 +154,8 @@ import Testing
     /// Every field of a report the CLI writes is one the mod's type for it names: a field it doesn't name is one the mod
     /// never reads.
     @Test func theModsReportTypeNamesEachFieldTheCLIWrites() throws {
-        let report = Report(ok: false, detail: "d", durationMs: 1, tests: 1, failures: [], result: "r", notes: ["n"], repeated: [], passed: [], isUnread: true, bundle: "/b.xcresult", pinNote: "p", pin: "26.5 (.xcode-version)", cause: "c")
+        var report = Report(ok: false, detail: "d", durationMs: 1, tests: 1, failures: [], result: "r", notes: ["n"], repeated: [], passed: [], isUnread: true, bundle: "/b.xcresult", pinNote: "p", pin: "26.5 (.xcode-version)", cause: "c")
+        report.scheme = "App"
         let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any]).keys
         let type = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export type Report = \{([\s\S]*?)\n\}/)?.1)
         for key in keys { #expect(type.contains("  \(key)?:") || type.contains("  \(key):"), "cli.ts's Report doesn't name `\(key)`") }
@@ -170,10 +177,31 @@ import Testing
         for key in keys { #expect(type.contains(" \(key)?:") || type.contains(" \(key):"), "cli.ts's FlakyMark doesn't name `\(key)`") }
     }
 
+    /// The mod reads `xcrew gone`'s answer by the key it encodes: renamed on one side, nothing would ever be dropped.
+    @Test func theModReadsGonesAnswerByItsKey() throws {
+        let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(GoneCommand.Answer(gone: ["/a"]))) as? [String: Any]).keys
+        let reader = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export function goneOf[\s\S]*?\n}/)?.0)
+        #expect(Array(keys) == ["gone"])
+        for key in keys { #expect(reader.contains("{ \(key)?: unknown }") && reader.contains(".\(key)"), "cli.ts's goneOf doesn't read `\(key)`") }
+    }
+
     /// The ledger, `/xcrew flaky` and the evidence say what the passes needed are in the same words.
     @Test func theModAndTheEvidenceSayWhatThePassesNeededAreAlike() throws {
         let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const PASSES_NEEDED = '([^']*)'/)?.1)
         #expect(String(said) == FlakyMark.neededMeaning)
+    }
+
+    /// The ledger, the card, `/xcrew flaky` and the evidence's still-red line say where a flaky test's passes come from
+    /// in the same words.
+    @Test func theModAndTheEvidenceSayWherePassesComeFromAlike() throws {
+        let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const PASSES_COUNTED = '([^']*)'/)?.1)
+        #expect(String(said) == FlakyMark.passesCountedFrom)
+    }
+
+    /// The ledger and the evidence's still-red line say a red test wasn't in the newest run of its scope in the same words.
+    @Test func theModAndTheEvidenceSayARedTestWasntInTheNewestRunAlike() throws {
+        let said = try #require(try text("hooks/mod/ledger.ts").firstMatch(of: /export const NOT_IN_NEWEST = '([^']*)'/)?.1)
+        #expect(String(said) == EvidencePack.notInNewestRun)
     }
 
     /// Every option the mod sends `xcrew report` is one the command takes: one it doesn't is a usage error, which the mod
@@ -206,6 +234,25 @@ import Testing
         }
     }
 
+    /// The routing rules guard DerivedData, deleted only when the person asks, and a harm guard holds anything else of the
+    /// person's alike. A text that hands Claude a command deleting a folder of theirs or stopping a process that may be
+    /// their build says it's theirs to agree to, right before the command, which ends the text so nothing of the
+    /// sentence around it is copied into it. The commands matched are docs/findings.md's *Commands that remove the
+    /// person's data*.
+    @Test func aCommandThatRemovesOrStopsThePersonsWorkIsTheirsToAgreeTo() throws {
+        #expect(try text("context/routing.md").contains("never delete it unless the person asks"))
+        let condition = /so it's the person's to agree to:\s+/
+        let destructive = /\b(?:rm -[a-zA-Z]*[rR]|kill(?:all)? |pkill |simctl (?:delete|erase) |(?:brew|npm|xcodes) uninstall |defaults (?:write|delete) |xcode-skills --force)|--delete(?![\w-])/
+        let removing = try toldWhole().filter { $0.contains(destructive) }
+        #expect(removing.count >= 12, "fewer texts to Claude give a command that removes something than this test was written for: \(removing)")
+        for text in removing {
+            let command = try #require(text.firstMatch(of: condition), "no condition before the command: \(text)").range.upperBound
+            #expect(text[command...].contains(destructive), "the command comes before its condition: \(text)")
+            #expect(!text[command...].contains(". ") && !text.hasSuffix("."), "the command doesn't end the text: \(text)")
+        }
+        #expect(CorruptModuleCache.fix(derivedData: nil).hasSuffix("That deletes part of DerivedData, so it's the person's to agree to."))
+    }
+
     /// xcrew routes work across its servers; it doesn't prescribe how Claude reports or works. So the words of a rule
     /// ("always", "must", "never", "before", "after") appear in what it tells Claude only in the sentences named here,
     /// each routing work across the servers or guarding the person's work against harm.
@@ -219,6 +266,15 @@ import Testing
 
     /// Every sentence xcrew tells Claude in the routing rules, the session briefing's notes, and the notes a run adds.
     func toldToClaude() throws -> [String] {
+        var sentences: [String] = []
+        for text in try toldWhole() {
+            for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }
+        }
+        return sentences
+    }
+
+    /// Every text xcrew tells Claude, each whole, as `toldToClaude` splits them into sentences.
+    func toldWhole() throws -> [String] {
         let loop = try #require(try text("hooks/mod/loop.ts").firstMatch(of: /export function loopNote[\s\S]*?\n}/)).output
         let setupFact = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const SETUP_FACT = '([^']*)'/)?.1)
         let concurrencyNote = try #require(ConcurrencyReport(count: 12, modules: [.init(name: "Kit", count: 8), .init(name: "Feature", count: 4)]).summary?.note)
@@ -238,7 +294,11 @@ import Testing
             Report.selectedNoneNote(discovered: 2, plan: nil),
             FlakyMark.neededMeaning,
             FailureNotes.noCrashLog,
+            FailureNotes.noCrashLogAlone,
             FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/b.xcresult"),
+            Look.appsOnly,
+            OutsideScheme.note(targets: ["CoreTests"], scheme: "Feature", other: "Core"),
+            OutsideScheme.note(targets: ["CoreTests", "KitTests"], scheme: nil, other: nil),
             ResultBundle.noRepetitionsNote,
             ResultBundle.repetitionsNote([.init(test: "S/t", failed: 2, passed: 3, runs: 5, verdict: .flaky), .init(test: "S/u", failed: 5, passed: 0, runs: 5, verdict: .real)]) ?? "",
             Report.warningsNote([ToolOutput.Warning(message: "unused", path: "/a/A.swift", line: 3)], of: 2) ?? "",
@@ -257,13 +317,30 @@ import Testing
             LockedBuildDatabase.heldElsewhere(by: ProcessList.Process(id: 43, parent: 1, elapsed: 40, command: "/x/SWBBuildService", program: "SWBBuildService")),
         ]
         let toolErrors: [String] = ToolErrorNotes.known.map(\.note)
+        let (old, new) = (XcodeInstall(path: "/Applications/Xcode-26.4.app", version: "26.4", build: "17E1"), XcodeInstall(path: "/Applications/Xcode-27.2.app", version: "27.2", build: "27B52"))
+        let ci = [CIXcodes.Named(file: ".github/workflows/ci.yml", line: 6, version: "26.3")]
+        let unpinned = XcodeSnapshot(installed: [old, new], selected: new, open: [old], pin: nil, launch: nil, isServing: false, ci: ci)
+        let pinStarted = XcodeSnapshot(installed: [old, new], selected: new, open: [], pin: ("26.4", ".xcode-version"), launch: nil, isServing: true, ci: ci)
+        let pinMissing = XcodeSnapshot(installed: [new], selected: new, open: [], pin: ("25.0", ".xcode-version"), launch: nil, isServing: false, ci: [])
+        let xcodeNotes: [String] = XcodeFailureNotes.notes(unpinned) + XcodeFailureNotes.notes(pinStarted)
+            + [XcodePinCheck.failureNote(pinMissing, hasXcodes: true), XcodePinCheck.failureNote(pinStarted, hasXcodes: true)].compactMap { $0 }
+        let expected = ["xcrew: several Xcodes are installed", "xcrew: the Xcode MCP works through the open", "xcrew: CI uses Xcode", "xcrew: builds use", "xcrew: MobileBuildMCP started without the project's pin"]
+        try #require(xcodeNotes.count == expected.count && expected.allSatisfy { start in xcodeNotes.contains { $0.hasPrefix(start) } }, "each snapshot no longer gives the note it's built for: \(xcodeNotes)")
+        let simulatorNotes: [String] = [
+            WorktreeLeftovers.leftovers(named: "`xcrew · App · old` (its worktree is gone)", udids: ["U1"]),
+            WorktreeLeftovers.leftovers(named: "`a` (its worktree is gone), `b` (its runtime is gone)", udids: ["U1", "U2"]),
+            WorktreeSimulator.reused(name: "xcrew · App · old", label: "iPhone 18, iOS 27.2", udid: "U1", fresh: true),
+            SpaceReport(parts: [.init(title: "Simulator devices", lines: [Space.devicesLine(devices: 5, bytes: 2_400_000_000, unavailable: 1)])]).text,
+        ]
+        let spaceNotes: [String] = [
+            Space.purgeNote,
+            SpaceReport(parts: [.init(title: "Xcodes", lines: [Space.xcodeLine("Xcode 26.0: 3.1 GB", bytes: 3_100_000_000, offering: "26.0")])]).text,
+            LegacyBinaryCheck.message("/opt/homebrew/bin/xcodebuildmcp"),
+            XcodeSkillsCommand.kept(["swiftui", "testing"]),
+        ]
+        let machineNotes: [String] = simulatorNotes + spaceNotes + [ProjectConfigCheck.legacyFolder("/work/App/.xcodebuildmcp"), ClosedConnection.note, UnsignedAgents.accepted, Why.prefix, CorruptModuleCache.fix(derivedData: nil), CorruptModuleCache.fix(derivedData: "/d"), MissingSimulator.explanation(missing: "iPhone 18")]
         let modTools: [String] = try Self.modTools.map { try toolDescription($0.constant, in: $0.file) }
-        let texts: [String] = briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + modTools
-        var sentences: [String] = []
-        for text in texts {
-            for line in text.components(separatedBy: "\n") { sentences += line.components(separatedBy: ". ") }
-        }
-        return sentences
+        return briefing + runNotes + expectedFailureNotes.compactMap { $0 } + buildDatabase + toolErrors + xcodeNotes + machineNotes + modTools
     }
 
     /// The tools the mod registers for Claude at session start, as `register.ts` lists them: each one's constant, and the
@@ -413,6 +490,7 @@ import Testing
         #expect(launcher.contains("\"$plugin/bin/xcrew\" --if-built xcode --developer-dir"))
         #expect(launcher.contains("\n        \(XcodeCommand.noPin)) outcome= ;;"))
         #expect(launcher.contains("\n        \(XcodeCommand.noMatch)) outcome=\"no match\" ;;"))
+        #expect(launcher.contains("\n        \(XcodeCommand.timedOut)) outcome=\"timed out $PIN_SECONDS\" ;;"))
         #expect(shim.contains("[ -x \"$binary\" ] || exit 75") && launcher.contains("\n        75) outcome=\"not built\" ;;"))
         #expect(launcher.contains("\nPIN_SECONDS=2\n"))
     }
@@ -705,6 +783,80 @@ import Testing
         #expect(changes.contains(/if \[ "\$EVENT" = push \]; then\n\s+code=true\n\s+distribution=true\n/))
     }
 
+    /// The CLI's release build is timed on CI's macOS runner on each push to main, and only there: those times are the
+    /// basis the build's guard waits on (docs/findings.md, *Building after a reload*), and a pull request's run gains
+    /// no release compile. It builds as the shim builds.
+    @Test func theReleaseBuildIsTimedOnPushesToMainAsTheShimBuilds() throws {
+        let ci = try text(".github/workflows/ci.yml")
+        let job = try #require(ci.firstMatch(of: /(?s)\n  release-build:\n(.*?)(?=\n  [a-z-]+:\n|\z)/), "no release-build job").output.1
+        #expect(job.contains("if: github.event_name == 'push'"))
+        // The same runner as the Swift job, whose row it carries until it has samples of its own.
+        let swift = try #require(ci.firstMatch(of: /(?s)\n  swift:\n(.*?)(?=\n  [a-z-]+:\n|\z)/)).output.1
+        let runner = { (job: Substring) in job.firstMatch(of: /runs-on: (\S+)/).map { String($0.output.1) } }
+        #expect(runner(job) != nil && runner(job) == runner(swift))
+        #expect(job.contains("GITHUB_STEP_SUMMARY"))
+        // The shim's build, its folders aside: the package is the checkout, and the scratch folder only moves `.build`.
+        let shim = try #require(try text("bin/xcrew").firstMatch(of: /swift build ([^\n]*?) --package-path/)).output.1
+        let built = try #require(job.firstMatch(of: /swift build ([^\n]*)/)).output.1
+        #expect(shim == built, "the shim builds with \(shim), CI with \(built)")
+    }
+
+    /// The deadlines and the durations they come from, as docs/findings.md's *Deadlines* table records them, by the key
+    /// each deadline's comment names: the slowest measured, in seconds, and the deadline in the table's unit.
+    func deadlineRows() throws -> [String: (slowest: Double, deadline: Int, unit: String)] {
+        let findings = try text("docs/findings.md")
+        let section = try #require(findings.firstMatch(of: #/(?s)\n## Deadlines\n(.*?)\n## /#)).output.1
+        var rows: [String: (slowest: Double, deadline: Int, unit: String)] = [:]
+        for row in section.matches(of: /(?m)^\| `([^`]+)` \| ([\d.]+) s \| \d+ \| (\d+) (min|s) \|$/) {
+            rows[String(row.output.1)] = (Double(row.output.2) ?? 0, Int(row.output.3) ?? 0, String(row.output.4))
+        }
+        return rows
+    }
+
+    /// A hung job or step stops at a deadline of its own, not at GitHub's six hours, and the release script's waits and
+    /// the canary's fetches end too: each names its row in findings' *Deadlines*, whose number it holds, and each row's
+    /// deadline is the rule's: 3 × the slowest, in whole minutes and at least 5 for a job or step, at least 300 s for a
+    /// script's wait; for a fetch, 3 × the slowest up to the next 10 seconds.
+    @Test func everyDeadlineIsItsRowsAndTheRowIsTheRules() throws {
+        let rows = try deadlineRows()
+        #expect(rows.count >= 14, "the Deadlines table reads as fewer rows than it holds: \(rows.keys.sorted())")
+        func check(_ key: String, _ value: Int, in file: String) {
+            guard let row = rows[key] else { Issue.record("\(file): no Deadlines row \(key)"); return }
+            #expect(value == row.deadline, "\(file): \(key) is \(value), its row says \(row.deadline)")
+            let rule = switch row.unit {
+            case "min": max(Int((3 * row.slowest / 60).rounded(.up)), 5)
+            case _ where key.hasSuffix(" curl"): Int((3 * row.slowest / 10).rounded(.up)) * 10
+            default: max(Int((3 * row.slowest).rounded(.up)), 300)
+            }
+            #expect(row.deadline == rule, "\(key)'s row says \(row.deadline), the rule gives \(rule)")
+        }
+        for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml", ".github/workflows/release.yml"] {
+            let text = try text(workflow)
+            let jobs = try #require(text.firstMatch(of: /(?s)\njobs:\n(.*)/)).output.1
+            let names = jobs.matches(of: /(?m)^  ([a-z0-9_][a-z0-9_-]*):$/).map { String($0.output.1) }
+            #expect(!names.isEmpty, "\(workflow)")
+            let deadlines = text.matches(of: /(?m)^ +timeout-minutes: (\d+) +# docs\/findings\.md, Deadlines: `([^`]+)`$/)
+            #expect(deadlines.count >= names.count, "\(workflow): a job has no deadline naming its row")
+            for deadline in deadlines { check(String(deadline.output.2), Int(deadline.output.1) ?? 0, in: workflow) }
+            for name in names { #expect(deadlines.contains { $0.output.2 == "\(workflow.split(separator: "/").last ?? "") \(name)" }, "\(workflow): \(name) has no deadline") }
+        }
+        for file in ["scripts/release.sh", "scripts/readme-images.sh", ".github/workflows/canary.yml"] {
+            let text = try text(file)
+            for wait in text.matches(of: /(?:deadline=\$\(\(\$\(date \+%s\) \+ |\bwait=)(\d+)\)?\)? +# docs\/findings\.md, Deadlines: `([^`]+)`/) {
+                check(String(wait.output.2), Int(wait.output.1) ?? 0, in: file)
+            }
+            for fetch in text.matches(of: /--max-time (\d+) .*# docs\/findings\.md, Deadlines: `([^`]+)`|# docs\/findings\.md, Deadlines: `([^`]+ curl)`\n[^\n]*--max-time (\d+)/) {
+                let key = String(fetch.output.2 ?? fetch.output.3 ?? ""), value = Int(fetch.output.1 ?? fetch.output.4 ?? "") ?? 0
+                check(key, value, in: file)
+            }
+        }
+        let script = try text("scripts/release.sh")
+        #expect(script.matches(of: #/(?:deadline=\$\(\(\$\(date \+%s\) \+ |\bwait=)\d+\)?\)? +# docs\/findings\.md, Deadlines: /#).count >= 2, "release.sh's waits name no deadline")
+        #expect(!script.contains("gh run watch"), "gh run watch waits with no deadline")
+        #expect(try text("scripts/readme-images.sh").contains("Deadlines: `readme-images.sh curl`"))
+        #expect(try text(".github/workflows/canary.yml").contains("Deadlines: `canary.yml sosumi curl`"))
+    }
+
     /// Every job that builds Swift says which toolchain it used, so a failure on CI names the compiler that said no.
     @Test func everySwiftJobLogsItsToolchain() throws {
         for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml"] {
@@ -993,11 +1145,44 @@ import Testing
         }
     }
 
-    /// The mod drops history no run has updated for as long as the shim keeps a build no checkout has run.
-    @Test func historyIsKeptAsLongAsAnUnusedBuild() throws {
-        let kept = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1)
-        let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
-        #expect(kept == shim)
+    /// The shim's cleanup tells a build by its folder's name, the key it hashes to: the pattern names as many hex
+    /// characters as the key keeps, or a build would never match and none would go.
+    @Test func theShimsCleanupMatchesTheKeysLength() throws {
+        let shim = try text("bin/xcrew")
+        let kept = try #require(shim.firstMatch(of: /\| shasum \| cut -c1-(\d+)\)/)?.1, "bin/xcrew no longer cuts its key from shasum")
+        let pattern = try #require(shim.firstMatch(of: /(?m)^ *keyform="([^"]*)"$/)?.1, "bin/xcrew names no build pattern")
+        #expect(pattern.matches(of: /\$hex/).count == Int(kept), "the build pattern names \(pattern.matches(of: /\$hex/).count) characters, the key keeps \(kept)")
+    }
+
+    /// The mod gives each CLI call its time under the name the CLI reads it by, so the call's deadline passes down to
+    /// every command it starts; and what a person or Claude asks for has the CLI's own time when none is given, 120 s.
+    @Test func theModGivesEachCallItsTimeAndAskedCallsTheCLIs() throws {
+        let register = try text("hooks/mod/register.ts")
+        let start = try #require(register.firstMatch(of: /(?s)\nfunction start\([^\n]*\n(.*?)\n\}/)?.1, "register.ts has no start")
+        #expect(start.contains("\(DeadlineRunner.variable): String(timeoutMs)"), "start doesn't give the CLI its time under \(DeadlineRunner.variable)")
+        let cli = try text("hooks/mod/cli.ts")
+        let asked = try #require(cli.firstMatch(of: /export const ASKED_MS = ([\d_]+)/)?.1, "cli.ts names no ASKED_MS")
+        #expect(Int(asked.replacingOccurrences(of: "_", with: "")) == Int(DeadlineRunner.asked.components.seconds) * 1000)
+        #expect(try text("hooks/mod/evidence.ts").contains("export const EVIDENCE_TIMEOUT_MS = ASKED_MS"))
+    }
+
+    /// Each call on the CLI has the time of who waits on it: `ON_RESULT_MS` on a tool's call, `ASKED_MS` when asked, and
+    /// none of xcrew's own when nobody waits, as a timer's; never a number written at the call.
+    @Test func everyCallOnTheCLINamesWhoWaits() throws {
+        let register = try text("hooks/mod/register.ts")
+        let numbered = register.matches(of: /(?:answer|xcrew)\(\$, [^\n]*?, (\d[\d_]*)(?:\)|, )/).map { String($0.output.0) }
+        #expect(numbered.isEmpty, "calls with a time written at the call: \(numbered)")
+    }
+
+    /// Everything xcrew keeps that nothing uses any more goes after one age: the shim's unused builds and root keys, the
+    /// mod's history, a failed test's images, the card, and a session's stamp no session end removed. Each prunes its own;
+    /// the age is one choice.
+    @Test func everythingUnusedIsKeptForOneAge() throws {
+        let shim = try text("bin/xcrew").matches(of: /-mtime \+(\d+)/).map { Int($0.output.1) }
+        #expect(!shim.isEmpty, "bin/xcrew prunes nothing by -mtime any more, so this test holds no age of its")
+        let history = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1, "timing.ts no longer says HISTORY_KEPT_MS in days")
+        let ages = shim + [Int(history), FailureImages.keptDays, ProjectCard.keptDays, SessionStamp.keptDays]
+        #expect(Set(ages).count == 1, "the shim's -mtime, HISTORY_KEPT_MS and the keptDays of FailureImages, ProjectCard and SessionStamp differ: \(ages)")
     }
 
     /// The mod keeps the other worktrees' line as long as a quiet log still counts as a run going: one window, both sides.
@@ -1020,24 +1205,12 @@ import Testing
         }
     }
 
-    /// A failed test's images are kept as long as the shim keeps a build no checkout has run.
-    @Test func failureImagesAreKeptAsLongAsAnUnusedBuild() throws {
-        let shim = try #require(try text("bin/xcrew").firstMatch(of: /-mtime \+(\d+)/)?.1)
-        #expect(Int(shim) == FailureImages.keptDays)
-    }
-
     /// The routing rules guard a failed snapshot test's reference, on the line naming the word its notes list images
     /// with: it's re-recorded only with the person's agreement.
     @Test func theRoutingRulesGuardASnapshotsReference() throws {
         let routing = try text("context/routing.md")
         let rule = try #require(routing.components(separatedBy: "\n").first { $0.contains("`\(FailureNotes.imageLabel)`") })
         #expect(rule.contains("Re-record a reference only when the person agrees"))
-    }
-
-    /// The card the session-start hook prints is dropped by the same age as the mod's history: one number of days.
-    @Test func theCardIsKeptAsLongAsTheHistory() throws {
-        let kept = try #require(try text("hooks/mod/timing.ts").firstMatch(of: /HISTORY_KEPT_MS = (\d+) \* 24 \* 60 \* 60_000/)?.1)
-        #expect(Int(kept) == ProjectCard.keptDays)
     }
 
     /// The mod writes the card in the format the CLI reads: its version and its fields.
@@ -1109,7 +1282,7 @@ import Testing
         let block = try #require(types.firstMatch(of: /export type SetupChoices = \{[\s\S]*?\n\}/)?.0)
         var choices = SetupChoices()
         choices.container = "A"; choices.containerProblem = "p"; choices.worktree = true
-        choices.schemes = [.init(name: "S", container: "A", roles: [.app, .unitTests, .uiTests], app: "App")]
+        choices.schemes = [.init(name: "S", container: "A", roles: [.app, .unitTests, .uiTests], app: "App", unitTestTargets: 2, uiTestTargets: 1)]
         choices.simulators = [.init(name: "iPhone", runtime: "27.2", twoDisplays: true)]
         choices.picks = .init(appScheme: "S", uiScheme: "S", testScheme: "S", bundleID: "b", testSimulator: "iPhone", appSimulator: "iPhone")
         choices.config = .init(owner: .edited, scheme: "S", debuggerBackend: "dap")
@@ -1117,6 +1290,18 @@ import Testing
         let keys = Set(json.matches(of: /"(\w+)":/).map { String($0.1) })
         for key in keys { #expect(block.contains("\(key)"), "types/index.d.ts' SetupChoices doesn't name \(key)") }
         for value in ["app", "unit-tests", "ui-tests", "xcrew", "edited", "other"] { #expect(block.contains("'\(value)'"), "\(value)") }
+    }
+
+    /// The setup form tells Claude what setup printed by the lines' starts: the `session_set_defaults` calls and the
+    /// restart line. Each start the mod reads is what setup prints.
+    @Test func theFormReadsSetupsCallsAndRestartLineByTheirStarts() throws {
+        let form = try text("hooks/mod/form.ts")
+        let call = try #require(form.firstMatch(of: /export const CALL_START = '([^']*)'/)?.1, "form.ts names no CALL_START")
+        let restart = try #require(form.firstMatch(of: /export const RESTART_START = '([^']*)'/)?.1, "form.ts names no RESTART_START")
+        #expect(try #require(LiveDefaults.call(["scheme": "App"])).hasPrefix(String(call)))
+        #expect(SetupCommand.restartLine.hasPrefix(String(restart)))
+        let reader = try #require(form.firstMatch(of: /export function setupFact[\s\S]*?\n}/)?.0, "form.ts has no setupFact")
+        #expect(reader.contains("CALL_START") && reader.contains("RESTART_START"), "setupFact no longer reads the lines by these starts")
     }
 
     /// The form tells a write by the line setup prints when it wrote the config.
@@ -1140,7 +1325,9 @@ import Testing
         var calls = 0
         for source in sources {
             for line in try text("hooks/mod/\(source)").components(separatedBy: "\n") {
-                guard let name = line.firstMatch(of: /\[\s*'([\w-]+)'/)?.1, let command = CLI.commands.first(where: { $0.name == name }) else { continue }
+                let named = [line.firstMatch(of: /\[\s*'([\w-]+)'/)?.1, line.firstMatch(of: /\.\.\.([a-z]+)Args\(/)?.1].compactMap { $0.map(String.init) }
+                guard let command = CLI.commands.first(where: { named.contains($0.name) }) else { continue }
+                let name = command.name
                 calls += 1
                 for option in line.matches(of: /'--([\w-]+)'/).map({ String($0.1) }) {
                     #expect(command.valuedOptions.contains(option) || command.flags.contains(option), "\(source): xcrew \(name) --\(option)")
@@ -1148,6 +1335,63 @@ import Testing
             }
         }
         #expect(calls >= 4, "found no CLI calls in the mod; the pattern no longer matches how it builds them")
+    }
+
+    // MARK: The machine
+
+    /// The time is read through `Machine` alone, as everything else that touches the machine is, so a test gives the CLI
+    /// a time of its own: no other source reads the wall clock (`Date()`, `Date.init()`, `NSDate()`, `Date.now`, a bare
+    /// `.now`, `timeIntervalSinceNow`, `CFAbsoluteTimeGetCurrent`, `systemUptime`, `DispatchWallTime`). A deadline
+    /// measures a wait, not the time, and stays when it names its clock, `ContinuousClock.now`. The pattern checks the
+    /// characters around a name itself, as Swift's `\b` takes `Date.now.adding…` for one word.
+    @Test func onlyTheMachineReadsTheTime() throws {
+        let sources = Self.repository.appending(path: "Sources")
+        let files = (FileManager.default.enumerator(atPath: sources.path)?.allObjects as? [String] ?? []).filter { $0.hasSuffix(".swift") && !$0.hasSuffix("/Machine.swift") }
+        #expect(!files.isEmpty)
+        for file in files {
+            for (number, line) in try text("Sources/\(file)").split(separator: "\n", omittingEmptySubsequences: false).enumerated() where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                #expect(line.firstMatch(of: /(?:^|\W)(?:NS)?Date(?:\(\)|\.init\(\)|\.now(?!\w))|(?:^|[^\w])\.now(?!\w)|timeIntervalSinceNow|CFAbsoluteTimeGetCurrent|systemUptime|DispatchWallTime/) == nil, "Sources/\(file):\(number + 1) reads the clock: \(line)")
+            }
+        }
+    }
+
+    /// Under one deadline a command's own limit adds nothing, and one taken from a fast Mac would cut notes on a slow
+    /// one: no command names a time of its own. The times that stay are the deadline's own, the runner's grace on a
+    /// stopped program's pipes, and how long standard input may sit idle, none of them a command's limit.
+    @Test func noCommandHasATimeLimitOfItsOwn() throws {
+        let sources = Self.repository.appending(path: "Sources")
+        let files = (FileManager.default.enumerator(atPath: sources.path)?.allObjects as? [String] ?? []).filter { $0.hasSuffix(".swift") }
+        let kept: Set = ["answering", "asked", "untimed", "deadlineStep", "grace", "idleLimit"]
+        var named: [String] = []
+        for file in files {
+            let text = try text("Sources/\(file)")
+            named += text.matches(of: /timeout: (?:Duration = )?(?:Duration)?\.(?:seconds|milliseconds)\(/).map { _ in "Sources/\(file): a timeout written at the call" }
+            named += text.matches(of: /static let (\w+)(?:: Duration)? = (?:Duration)?\.(?:seconds|milliseconds)\(/).map { String($0.1) }.filter { !kept.contains($0) }.map { "Sources/\(file): \($0)" }
+        }
+        #expect(named.isEmpty, "\(named)")
+    }
+
+    /// Every way into the CLI carries its deadline: the mod's calls name theirs, the SessionStart hook's work after the
+    /// build has a result's 10 s, as Claude's first answer waits on it, the SessionEnd hook its own timeout, and the
+    /// MobileBuildMCP launcher its pin's wait; run with none, as from a terminal, the CLI takes an asked call's 120 s.
+    @Test func everyWayIntoTheCLICarriesADeadline() throws {
+        let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: [[String: Any]]])
+        let commands = hooks.flatMap { event, groups in groups.flatMap { ($0["hooks"] as? [[String: Any]] ?? []).map { (event, $0) } } }
+        let onResult = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export const ON_RESULT_MS = ([\d_]+)/)?.1).replacingOccurrences(of: "_", with: "")
+        for (event, hook) in commands {
+            let command = try #require(hook["command"] as? String)
+            let within = command.firstMatch(of: /XCREW_WITHIN_MS=(\d+)\s/).map { String($0.1) }
+            switch event {
+            case "SessionStart": #expect(within == onResult, "\(event): \(command)")
+            default: #expect(within.flatMap(Int.init) == (hook["timeout"] as? Int).map { $0 * 1000 }, "\(event): \(command)")
+            }
+        }
+        let launcher = try text("libexec/mobilebuildmcp-server")
+        #expect(launcher.contains(#"XCREW_WITHIN_MS=$((PIN_SECONDS * 1000)) "$plugin/bin/xcrew" --if-built xcode"#))
+        // Every command runs under the call's deadline, an asked call's when none is given.
+        #expect(try text("Sources/XcrewCLI/CLI.swift").contains("context.machine.answering(by: DeadlineRunner.deadline(for: context.machine))"))
+        let unset = Machine(environment: [:], home: URL(fileURLWithPath: "/nonexistent"), runner: SystemCommandRunner(), monotonic: { .zero })
+        #expect(DeadlineRunner.deadline(for: unset) == .milliseconds(118_500))
     }
 
     // MARK: mcs techpack

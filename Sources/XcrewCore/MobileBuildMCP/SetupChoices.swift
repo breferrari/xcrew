@@ -17,12 +17,16 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         /// Its container, from the root.
         public let container: String
         public let roles: [Role]
-        /// The app it builds for running; absent when it builds none.
+        /// The app it builds for running and launches, else the first it builds for running; absent when it builds none.
         public var app: String?
         /// The project that holds `app`, as the scheme names it, by its standardized path.
         var appProject: String?
+        /// How many unit-test targets its test action runs by default; absent when none.
+        public var unitTestTargets: Int?
+        /// How many UI-test targets its test action runs by default; absent when none.
+        public var uiTestTargets: Int?
 
-        enum CodingKeys: String, CodingKey { case name, container, roles, app }
+        enum CodingKeys: String, CodingKey { case name, container, roles, app, unitTestTargets, uiTestTargets }
     }
 
     /// An installed simulator, once per name, on the newest runtime that has it.
@@ -34,8 +38,9 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         public var twoDisplays: Bool?
     }
 
-    /// The form's starting picks, each passed to `xcrew setup` as an option: mcs's answers where there are some, else
-    /// setup's own rules applied to these schemes and simulators.
+    /// The form's starting picks, each passed to `xcrew setup` as an option: the choices the config's profiles hold for
+    /// this container, else mcs's answers where there are some, else setup's own rules applied to these schemes and
+    /// simulators.
     public struct Picks: Sendable, Equatable, Codable {
         public var appScheme: String?
         public var uiScheme: String?
@@ -75,8 +80,14 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         /// setup's containers are, or a full path when it's outside the root or named from the home folder.
         public static func container(in yaml: String, root: URL, home: URL) -> String? {
             let profile = ConfigRenderer.profiles(in: yaml).names.first ?? ConfigRenderer.globalProfile
-            guard let path = ["workspacePath", "projectPath"].lazy.compactMap({ ConfigRenderer.setting($0, profile: profile, in: yaml) }).first else { return nil }
-            let relative = ConfigRenderer.relative(ConfigRenderer.resolved(path, root: root, home: home), to: root)
+            return ["workspacePath", "projectPath"].lazy.compactMap({ ConfigRenderer.setting($0, profile: profile, in: yaml) }).first
+                .map { spelled($0, root: root, home: home) }
+        }
+
+        /// A container as setup's containers are spelled, so two spellings of one compare equal: from the root without
+        /// `./`, or a full path when it's outside the root; one named from the home folder is resolved.
+        public static func spelled(_ container: String, root: URL, home: URL) -> String {
+            let relative = ConfigRenderer.relative(ConfigRenderer.resolved(container, root: root, home: home), to: root)
             return relative.hasPrefix("./") ? String(relative.dropFirst(2)) : relative
         }
     }
@@ -107,11 +118,14 @@ public struct SetupChoices: Sendable, Equatable, Codable {
     /// A linked git worktree, whose config is set up from the main checkout's; absent otherwise.
     public var worktree: Bool?
 
-    /// The choices for `container`, a path from the root, or for none when `containerProblem` says why.
-    public static func read(container: String?, containers: [String], containerProblem: String?, in project: Project, catalog: SimulatorCatalog) -> SetupChoices {
-        var choices = readWithoutConfig(container: container, containers: containers, containerProblem: containerProblem, in: project, catalog: catalog)
-        // The profiles xcrew wrote hold what the person chose before; setup's own rules are only for what they don't.
-        guard choices.config != nil, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8), let chosen = Picks.chosen(in: yaml) else { return choices }
+    /// The choices for `container`, a path from the root or a full one, or for none when `containerProblem` says why.
+    /// The config's choices are its container's: another container starts from setup's own picks.
+    public static func read(container: String?, containers: [String], containerProblem: String?, in project: Project, home: URL, catalog: SimulatorCatalog) -> SetupChoices {
+        var choices = readWithoutConfig(container: container, containers: containers, containerProblem: containerProblem, in: project, home: home, catalog: catalog)
+        guard choices.config != nil, let container, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8),
+              Picks.container(in: yaml, root: project.root, home: home) == Picks.spelled(container, root: project.root, home: home),
+              let chosen = Picks.chosen(in: yaml)
+        else { return choices }
         let fallback = choices.picks.testSimulator
         // Session defaults alone hold a simulator and no scheme: setup's own scheme picks stand.
         if !ConfigRenderer.profiles(in: yaml).names.isEmpty { choices.picks = chosen }
@@ -119,7 +133,7 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         return choices
     }
 
-    static func readWithoutConfig(container: String?, containers: [String], containerProblem: String?, in project: Project, catalog: SimulatorCatalog) -> SetupChoices {
+    static func readWithoutConfig(container: String?, containers: [String], containerProblem: String?, in project: Project, home: URL, catalog: SimulatorCatalog) -> SetupChoices {
         var choices = SetupChoices(container: container, containers: containers, containerProblem: containerProblem)
         choices.simulators = simulators(in: catalog)
         choices.picks.testSimulator = catalog.defaultIPhone
@@ -133,7 +147,7 @@ public struct SetupChoices: Sendable, Equatable, Codable {
             choices.config = Config(owner: owner, scheme: project.schemeToBuild, debuggerBackend: backend)
         }
         guard let container else { return choices }
-        let url = project.root.appending(path: container)
+        let url = URL(fileURLWithPath: ConfigRenderer.resolved(container, root: project.root, home: home))
         choices.schemes = schemes(of: url, from: ProjectLayout.canonical(project.root))
         // A workspace's scheme and its project's of one name are one choice, as `xcodebuild -scheme` takes them.
         var named = Set<String>()
@@ -143,7 +157,8 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         choices.picks.appScheme = app?.name
         let ui = choices.schemes.filter { $0.roles.contains(.uiTests) }
         choices.picks.uiScheme = (app.flatMap { $0.roles.contains(.uiTests) ? $0 : nil } ?? ui.onlyOne)?.name
-        if case let .scheme(scheme) = TestSchemes.choose(in: url, preferring: app?.name) { choices.picks.testScheme = scheme }
+        let unitTests = Dictionary(choices.schemes.compactMap { scheme in scheme.unitTestTargets.map { (scheme.name, $0) } }, uniquingKeysWith: max)
+        choices.picks.testScheme = TestSchemes.widest(unitTests, preferring: app?.name).onlyOne
         if let target = app?.app {
             // The project the scheme builds the app from first, then any that has a target of that name.
             let all = TestSchemes.containers(from: [url]).filter { Project.isXcodeProject($0.lastPathComponent) }
@@ -154,13 +169,14 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         return choices
     }
 
-    /// The shared schemes of a container and the projects its workspace lists, each with its roles.
+    /// The shared schemes of a container and the projects its workspace lists, each with its roles and test-target counts.
     static func schemes(of container: URL, from root: String) -> [Scheme] {
         let containers = TestSchemes.containers(from: [container])
         let type = TestSchemes.productTypeLookup(for: containers)
         return containers.flatMap { holder -> [Scheme] in
             let base = holder.deletingLastPathComponent()
             return TestSchemes.sharedSchemes(of: holder).map { name, document in
+                let launched = (try? document.nodes(forXPath: "//LaunchAction/BuildableProductRunnable/BuildableReference/@BlueprintName"))?.first?.stringValue
                 let references = (try? document.nodes(forXPath: "//BuildAction/BuildActionEntries/BuildActionEntry[@buildForRunning='YES']/BuildableReference")) ?? []
                 let built = references.compactMap { $0 as? XMLElement }.compactMap { reference -> (target: String, project: String?)? in
                     guard let target = reference.attribute(forName: "BlueprintName")?.stringValue else { return nil }
@@ -168,10 +184,14 @@ public struct SetupChoices: Sendable, Equatable, Codable {
                     return type(target, project) == TestSchemes.application ? (target, project) : nil
                 }
                 let kinds = TestSchemes.tested(by: document, in: holder).testables.map { type($0.name, $0.project) }
+                let app = built.first { $0.target == launched } ?? built.first
                 var roles: [Role] = built.isEmpty ? [] : [.app]
                 if kinds.contains(TestSchemes.unitTest) { roles.append(.unitTests) }
                 if kinds.contains(TestSchemes.uiTest) { roles.append(.uiTests) }
-                return Scheme(name: name, container: ProjectLayout.path(ProjectLayout.canonical(holder), from: root), roles: roles, app: built.first?.target, appProject: built.first?.project ?? nil)
+                let byDefault = TestSchemes.runByDefault(by: document, in: holder).map { type($0.name, $0.project) }
+                let (unitTests, uiTests) = (byDefault.count { $0 == TestSchemes.unitTest }, byDefault.count { $0 == TestSchemes.uiTest })
+                return Scheme(name: name, container: ProjectLayout.path(ProjectLayout.canonical(holder), from: root), roles: roles, app: app?.target, appProject: app?.project ?? nil,
+                              unitTestTargets: unitTests > 0 ? unitTests : nil, uiTestTargets: uiTests > 0 ? uiTests : nil)
             }
         }
     }

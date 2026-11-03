@@ -60,8 +60,10 @@ export type Report = {
   scheme?: string
 }
 
-/** What `xcrew phase` says of a running MobileBuildMCP call. */
-/** The running call's log and phase; `outcome`, the log's verdict once printed, and `quiet`, a log that stopped without one. */
+/**
+ * What `xcrew phase` says of a running MobileBuildMCP call: its log and phase; `outcome`, the log's verdict once printed,
+ * and `quiet`, a log that stopped without one.
+ */
 export type Phase = { log?: string; phase?: string; scheme?: string; outcome?: boolean; quiet?: boolean }
 
 /** One line of `xcrew doctor --problems --json`. */
@@ -70,7 +72,51 @@ export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 /** A finished program's output, as the hooks module hands it back. */
 export type Ran = { stdout: string; stderr: string }
 
-/** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
+/**
+ * The time xcrew's work around a tool call has: each read before the call starts, and its work on the result, counted
+ * from when that came back: 10 s, the limit for keeping a person's attention on a wait (Nielsen,
+ * *Usability Engineering*, 1993, ch. 5), past which the server's own result serves better than one that waits on
+ * xcrew's notes (docs/findings.md, *Deadlines inside the CLI*).
+ */
+export const ON_RESULT_MS = 10_000
+
+/**
+ * The time what a person or Claude asks of xcrew has, a `/xcrew` command or the evidence: Claude Code's own point where
+ * a command stops holding the conversation, `BASH_DEFAULT_TIMEOUT_MS`'s 120 s. The CLI takes the same when given none.
+ */
+export const ASKED_MS = 120_000
+
+/** What a call fails with when its time ran out before the CLI answered, or before it could start. */
+export class OutOfTime extends Error {
+  constructor() {
+    super("the call's time ran out before the CLI answered")
+  }
+}
+
+/** The one line a result gets when its report's time, `ms`, ran out first: what's left out, as a fact. */
+export function reportCutNote(ms: number): string {
+  return `xcrew: its report on this result didn't answer within its ${ms / 1000} s, so its notes are left out.`
+}
+
+/** What a call fails with when its time ran out waiting for the CLI's build, which goes on. */
+export class StillBuilding extends Error {
+  constructor() {
+    super('the CLI is still being built for this version')
+  }
+}
+
+/**
+ * The time a call nobody waits on has, as a timer's or a task's no result waits for: the mods API's own default for
+ * running a process, 30 s when a call names no `timeoutMs` (its types' doc). The mod passes no limit of its own for
+ * such a call, and tells the CLI this one, to pass down to its commands.
+ */
+export const UNWAITED_MS = 30_000
+
+/**
+ * How long the shim's answer is trusted before asking again, and a build that named nothing remembered: a development
+ * checkout rebuilds when its sources change, and shows it within this. Nothing measured it (docs/findings.md,
+ * *Deadlines inside the CLI*).
+ */
 const RECHECK_MS = 30_000
 
 
@@ -99,8 +145,8 @@ export function reportArgs(server: string, kind: string, isError: boolean, repea
   return ['report', '--server', server, '--kind', kind, ...(isError ? ['--error'] : []), ...(repeated ? ['--repeated'] : []), ...(passed ? ['--passed'] : [])]
 }
 
-export function phaseArgs(tool: string, since: number, expectedTests: number | undefined, log: string | undefined): string[] {
-  return ['phase', '--tool', tool, '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
+export function phaseArgs(tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined): string[] {
+  return ['phase', '--tool', tool, ...(launches ? ['--launches'] : []), '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
 }
 
 /** The CLI's JSON answer, or nothing when it didn't run or said something else. */
@@ -127,6 +173,12 @@ export function phaseOf(answer: unknown): Phase {
 /** What `xcrew doctor` finds wrong, worst first; nothing outside an Apple-platform project. */
 export function problemsOf(answer: unknown): Problem[] {
   return (answer as Problem[] | undefined) ?? []
+}
+
+/** `xcrew doctor --text-and-problems`'s answer: the report and the band's problems from one run; nothing when it gave neither. */
+export function textAndProblemsOf(answer: unknown): { text: string; problems: Problem[] } | undefined {
+  const both = answer as { text?: unknown; problems?: unknown } | undefined
+  return typeof both?.text === 'string' && Array.isArray(both.problems) ? { text: both.text, problems: both.problems as Problem[] } : undefined
 }
 
 /** Whether Tuist or XcodeGen generates this project; false when the CLI can't say, which leaves XcodeWrite allowed. */
@@ -173,7 +225,13 @@ export function elsewhereOf(answer: unknown): ElsewhereRun[] | undefined {
   })
 }
 
-/** The scheme selected in Xcode, as `xcrew project --xcuserstate <file>` answers. */
+/** The folders `xcrew gone` found aren't there any more; none when its answer can't be read. */
+export function goneOf(answer: unknown): string[] {
+  const gone = (answer ?? {}) as { gone?: unknown }
+  return Array.isArray(gone.gone) ? gone.gone.filter((folder): folder is string => typeof folder === 'string') : []
+}
+
+/** The scheme selected in Xcode, as `xcrew project --xcode` answers. */
 export function xcodeSchemeOf(answer: unknown): string | undefined {
   const scheme = (answer as { xcodeScheme?: unknown } | undefined)?.xcodeScheme
   return typeof scheme === 'string' && scheme !== '' ? scheme : undefined
@@ -228,10 +286,15 @@ export function headOf(answer: unknown): Head | undefined {
   return { root, ...(typeof branch === 'string' ? { branch } : {}), ...(typeof commit === 'string' ? { commit } : {}) }
 }
 
-/** The manifest to edit instead of a generated file and the command that regenerates it, when `xcrew project --generated` named one. */
 /** A file a generator writes: the manifest to edit instead, and the command that regenerates it. */
 export type Generated = { manifest: string; generate: string }
 
+/** The other worktrees whose run went meanwhile, as `xcrew runs --overlapped` answers; none when it couldn't say. */
+export function overlappedOf(answer: unknown): string[] {
+  return Array.isArray(answer) ? answer.filter((name): name is string => typeof name === 'string') : []
+}
+
+/** The manifest to edit instead of a generated file and the command that regenerates it, when `xcrew project --generated` named one. */
 export function generatedOf(answer: unknown): Generated | undefined {
   const { manifest, generate } = (answer ?? {}) as { manifest?: unknown; generate?: unknown }
   return typeof manifest === 'string' && typeof generate === 'string' ? { manifest, generate } : undefined
