@@ -22,13 +22,13 @@ import Testing
         #expect(ResultBundle.repetitionsNote(repeated)?.contains("and 2 more flaky or failing (the run's result bundle lists them all)") == true)
     }
 
-    @Test func warningsPastTheFirstFewPointToTheResultOrSayNoListIsKept() {
+    @Test func warningsPastTheFirstFewPointToTheResult() {
         let warnings = Self.seven.map { ToolOutput.Warning(message: "unused \($0)", path: "/p/A.swift", line: 1) }
         #expect(Report.warningsSentence(warnings, of: 9, rest: Report.inTheResult)?.contains("and 2 more (the result lists them all above)") == true)
     }
 
     /// Kept nowhere else, every item is named, however many: 60 here, each reaching the output.
-    static let sixty = (1...60).map { "T\($0)" }
+    static let sixty = (1...60).map { "T" + String(repeating: "0", count: 3 - String($0).count) + String($0) }
 
     @Test func warningsKeptNowhereElseAreEachNamed() {
         let warnings = Self.sixty.map { ToolOutput.Warning(message: "unused \($0)", path: "/p/A.swift", line: 1) }
@@ -40,9 +40,18 @@ import Testing
         #expect(EvidencePack.more(12) == ["- +2 more; `/xcrew ledger` lists them all"])
     }
 
+    /// Every changed line not run, every target not reached, and every file outside the coverage or changed after it.
     @Test func coverageListsNameEveryItem() {
-        let outside = ChangedLineCoverage(outside: Self.sixty.map { "/p/\($0).swift" }).sentence ?? ""
-        #expect(Self.sixty.allSatisfy { outside.contains("\($0).swift") } && !outside.contains("more"), "\(outside)")
+        let coverage = ChangedLineCoverage(
+            lines: Dictionary(uniqueKeysWithValues: Self.sixty.map { ("/p/Lines\($0).swift", [3: false]) }),
+            outside: Self.sixty.map { "/p/Outside\($0).swift" },
+            unreached: Self.sixty.map { .init(target: "Target\($0)", files: 1) },
+            stale: Self.sixty.map { "/p/Stale\($0).swift" }
+        ).sentence ?? ""
+        for name in Self.sixty {
+            #expect(coverage.contains("Lines\(name).swift:3") && coverage.contains("Target\(name)") && coverage.contains("Outside\(name).swift") && coverage.contains("Stale\(name).swift"), "\(name): \(coverage)")
+        }
+        #expect(!coverage.contains("more"), "\(coverage)")
     }
 
     @Test func theSchemesSharingAPlanAreEachNamed() {
