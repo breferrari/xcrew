@@ -221,6 +221,21 @@ struct BundleFailuresTests {
         #expect(added?.text.text.contains("image: ") == true)
     }
 
+    /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
+    /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
+    @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {
+        let runner = RecordingRunner(FakeRunner())
+        let ambiguous = TestID.Resolution.ambiguous([TestID(xcresultID: "A/Inner/fails()"), TestID(xcresultID: "B/Inner/fails()")])
+        let added = await FailureNotes.adding(to: MobileText(try Raw.text("nested")), from: ResultBundle(path: try Raw.bundle("nested"), runner: runner),
+                                              bundleIDs: [TestID(suite: "Inner", name: "fails"): ambiguous])
+        #expect(added?.text.text.contains("""
+              ✗ Inner / fails(): Expectation failed: Kit.name == "Other"
+                  the result bundle has more than one test by that name: A/Inner/fails, B/Inner/fails
+                Kit.name → "Kit": the name is Kit
+            """) == true, "\(added?.text.text ?? "")")
+        #expect(!runner.asked.contains { $0.contains("A/Inner/fails()") || $0.contains("B/Inner/fails()") })
+    }
+
     /// `xcresulttool export attachments` as the nested capture's bundle answers it: what it wrote for `attaches()` under
     /// its full id, and nothing under any other (`nested.lookups.json`).
     final class NestedExport: CommandRunning {
