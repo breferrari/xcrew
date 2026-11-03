@@ -123,8 +123,7 @@ public struct Report: Sendable, Equatable, Codable {
     /// they were. A test only the text lists disagrees with the bundle, and is returned once as disagreeing. One among
     /// `cleared`, which the bundle counts as passed, skipped or an expected failure under that name, as a retry it
     /// passed, is none of the run's failures. Any other stays a failure in its place as the text gives it, since no
-    /// result, or another one, is no sign it passed; a later listing of it, as a parallel run's clone's, fills in the
-    /// message or place the first lacked.
+    /// result, or another one, is no sign it passed.
     /// Never one the bundle lists as failed under its name or a nested name ending with it.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
@@ -149,8 +148,6 @@ public struct Report: Sendable, Equatable, Codable {
                 if !disagreeing.contains(test) {
                     disagreeing.append(test)
                     if !cleared.contains(test) { ordered.append(failure) }
-                } else if !cleared.contains(test), let kept = ordered.firstIndex(where: { $0.isTest && TestID(xcresultID: $0.title) == test }) {
-                    ordered[kept] = ordered[kept].filling(from: failure)
                 }
             }
         }
@@ -158,14 +155,15 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// The tests the text lists as failed that aren't among the bundle's failures, each with what the bundle records
-    /// under the name the text gives, `results` each recorded test's results: the first of `ResultBundle.clearing` any of
-    /// its entries has, as passed under one of several configurations, else what it records. Nil when there are none.
+    /// under the name the text gives, `results` each recorded test's results: for a cleared one, the first of
+    /// `ResultBundle.clearing` its entries have, as passed under one of several configurations; for any other, every
+    /// result it records. Nil when there are none.
     static func notFailedInBundleNote(_ tests: [TestID], results: [TestID: Set<String>]) -> String? {
         guard !tests.isEmpty else { return nil }
         let named = tests.map { test in
             guard let found = results[test] else { return "\(test.shown), which it records no result for under that name" }
-            let clearing = ResultBundle.clearing.first { found.contains($0.result) }
-            return "\(test.shown), which it " + (clearing.map { "counts as \($0.counts)" } ?? "records as \(found.sorted().joined(separator: " and "))")
+            let clearing = ResultBundle.cleared(in: [test: found]).isEmpty ? nil : ResultBundle.clearing.first { found.contains($0.result) }
+            return "\(test.shown), which it " + (clearing.map { "counts as \($0.counts)" } ?? "records as \(found.map { $0.lowercased() }.sorted().joined(separator: " and "))")
         }
         let these = named.count == 1 ? "a test its result bundle doesn't list among its failures under that name" : "tests its result bundle doesn't list among its failures under that name"
         let cleared = ResultBundle.cleared(in: results)

@@ -82,12 +82,23 @@ struct RunOrderTests {
     @Test func theNoteKeepsATestTheBundleRecordsNeitherPassedSkippedNorExpected() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/killed()","result":"unknown"},{"nodeType":"Test Case","nodeIdentifier":"Suite/crashed()","result":"Failed"}]}"#)
         #expect(Report.notFailedInBundleNote(["killed", "crashed"].map { TestID(suite: "Suite", name: $0) }, results: ResultBundle.results(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't list among its failures under that name: Suite/killed, which it records as unknown; Suite/crashed, which it records as Failed. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
+            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't list among its failures under that name: Suite/killed, which it records as unknown; Suite/crashed, which it records as failed. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
         #expect(ResultBundle.cleared(in: ResultBundle.results(in: listing.nodes)).isEmpty)
     }
 
-    /// A disagreeing test the bundle files more than once, as under two configurations, counts as passed when one passed.
-    @Test func theNoteCountsATestFiledTwiceAsPassedWhenOnePassed() {
+    /// A test the bundle records both passed and `unknown`, as one name in two test bundles where one's run was killed,
+    /// isn't cleared: a pass in one is no sign the other passed.
+    @Test func aTestRecordedPassedAndUnknownIsNotCleared() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"ModelTests/testDecode()","result":"Passed"},{"nodeType":"Test Case","nodeIdentifier":"ModelTests/testDecode()","result":"unknown"}]}"#)
+        let results = ResultBundle.results(in: listing.nodes)
+        #expect(ResultBundle.cleared(in: results).isEmpty)
+        #expect(Report.notFailedInBundleNote([TestID(suite: "ModelTests", name: "testDecode")], results: results)
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ModelTests/testDecode, which it records as passed and unknown. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
+    }
+
+    /// A disagreeing test the bundle files more than once, as under two configurations, skipped in one and passed in the
+    /// other, counts as passed.
+    @Test func theNoteCountsATestSkippedInOneEntryAndPassedInAnotherAsPassed() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed"}]}"#)
         #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], results: ResultBundle.results(in: listing.nodes))
             == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Suite/test, which it counts as passed. A test the bundle counts as passed, skipped or an expected failure is left out of the failures here.")
@@ -99,15 +110,6 @@ struct RunOrderTests {
         let bundled = ["Later/test", "Inner/test", "A/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
         let text = ["Inner/test", "Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
         #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map(\.title) == ["Inner/test", "Later/test", "A/Inner/test"])
-    }
-
-    /// A test the bundle has no entry for, listed again with the place its first listing lacked, keeps that place.
-    @Test func anUnlistedTestListedAgainKeepsThePlaceItsFirstListingLacked() {
-        let text = [
-            ToolOutput.Failure(title: "Suite/gone", message: "", isTest: true),
-            ToolOutput.Failure(title: "Suite/gone", message: "from a clone", where: "Gone.swift:2", isTest: true),
-        ]
-        #expect(Report.inRunOrder([], text: text, cleared: []).failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-")" } == ["Suite/gone | from a clone | Gone.swift:2"])
     }
 
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure

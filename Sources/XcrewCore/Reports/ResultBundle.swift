@@ -147,11 +147,11 @@ public struct ResultBundle: Sendable {
         testCases(in: nodes).mapValues { Set($0.compactMap { $0["result"] as? String }) }.filter { !$0.value.isEmpty }
     }
 
-    /// The tests among `results` the bundle counts as passed, skipped or an expected failure in any entry: no failure
-    /// whatever another listing says. Any other result, as `unknown` for a test whose process was killed, is no sign it
-    /// passed.
+    /// The tests among `results` the bundle counts as passed, skipped or an expected failure in every entry: no failure
+    /// whatever another listing says. A test of one name with another result in any entry, as `unknown` for one whose
+    /// process was killed in another test bundle, isn't: a pass in one entry is no sign of the other.
     static func cleared(in results: [TestID: Set<String>]) -> Set<TestID> {
-        Set(results.filter { found in clearing.contains { found.value.contains($0.result) } }.keys)
+        Set(results.filter { $0.value.allSatisfy { result in clearing.contains { $0.result == result } } }.keys)
     }
 
     /// The results that make a test no failure, each with how a note says it counts, in the order one is named when a
