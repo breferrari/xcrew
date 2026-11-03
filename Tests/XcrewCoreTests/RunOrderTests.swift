@@ -156,6 +156,8 @@ struct RunOrderTests {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed","children":[{"nodeType":"Device","name":"iPhone","result":"Passed"},{"nodeType":"Device","name":"iPad","result":"unknown"}]}]}"#)
         #expect(ResultBundle.cleared(in: ResultBundle.results(in: listing.nodes)).isEmpty)
         #expect(ResultBundle.passedTests(listing: listing).isEmpty)
+        let underConfiguration = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed","children":[{"nodeType":"Test Plan Configuration","name":"First","result":"Passed","children":[{"nodeType":"Device","name":"iPad","result":"unknown"}]}]}]}"#)
+        #expect(ResultBundle.cleared(in: ResultBundle.results(in: underConfiguration.nodes)).isEmpty)
     }
 
     /// A name the text lists twice, as a parallel run's clones may, is its own test's both times: never a nested suite's

@@ -164,12 +164,12 @@ public struct Report: Sendable, Equatable, Codable {
         let named = tests.map { test in
             guard let found = results[test] else { return "\(test.shown), which the bundle has no entry for under that name" }
             let worded = ResultBundle.clearing.filter { found.contains($0.result) }.map(\.counts) + found.subtracting(ResultBundle.clearingResults).subtracting([ResultBundle.noResult]).map { $0.lowercased() }.sorted()
-            if cleared.contains(test) { return "\(test.shown), which the bundle counts as \(ResultBundle.joined(worded, rest: ""))" }
-            let recorded = (worded.isEmpty ? [] : ["as " + ResultBundle.joined(worded, rest: "")]) + (found.contains(ResultBundle.noResult) ? ["with no result"] : [])
+            if cleared.contains(test) { return "\(test.shown), which the bundle counts as \(ResultBundle.joined(worded, rest: "the rest of them"))" }
+            let recorded = (worded.isEmpty ? [] : ["as " + ResultBundle.joined(worded, rest: "the rest of them")]) + (found.contains(ResultBundle.noResult) ? ["with no result"] : [])
             return "\(test.shown), which the bundle records \(recorded.joined(separator: worded.count > 1 ? ", and " : " and "))"
         }
         let these = named.count == 1 ? "a test its result bundle doesn't list among its failures under that name" : "tests its result bundle doesn't list among its failures under that name"
-        let clearing = ResultBundle.joined(ResultBundle.clearing.map(\.counts), or: true, rest: "")
+        let clearing = ResultBundle.joined(ResultBundle.clearing.map(\.counts), or: true, rest: "the rest of them")
         let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as \(clearing) is left out of the failures here." : ""
         let kept = tests.contains { !cleared.contains($0) } ? " A test the bundle doesn't count as \(clearing) stays in the failures here, as MobileBuildMCP gives it." : ""
         return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.joined(separator: "; ")).\(leftOut)\(kept)"
