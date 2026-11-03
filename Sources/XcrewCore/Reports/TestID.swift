@@ -29,4 +29,21 @@ public struct TestID: Sendable, Hashable {
     func isNested(in outer: TestID) -> Bool {
         outer.shown.hasSuffix("/\(shown)")
     }
+
+    /// How a test the text names is found among the result bundle's ids.
+    enum Resolution: Sendable, Equatable {
+        /// The bundle's id for it: its own, or the one nested id that ends with it.
+        case found(TestID)
+        /// Two or more nested ids end with it, so none is taken.
+        case ambiguous([TestID])
+        case missing
+    }
+
+    /// This test among `ids`, the bundle's: its own id first; else a nested suite's test whose id ends with it, when
+    /// exactly one does.
+    func resolved(among ids: Set<TestID>) -> Resolution {
+        if ids.contains(self) { return .found(self) }
+        let nested = ids.filter(isNested).sorted { $0.shown < $1.shown }
+        return nested.count == 1 ? .found(nested[0]) : nested.isEmpty ? .missing : .ambiguous(nested)
+    }
 }

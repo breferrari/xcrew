@@ -329,8 +329,17 @@ public struct Report: Sendable, Equatable, Codable {
                 if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
                 if let once = text.listingRunsOnce(repetitions) { (text, changed) = (once, true) }
             }
-            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions),
-               // The test list is read for the skips once the failures are looked up: what failed is read first.
+            // Each failed test the text names, under the bundle's id for it: a nested suite's test is named from its outermost
+            // suite there, and xcresulttool answers to that id alone (docs/findings.md, *A failing run's failed tests are its
+            // bundle's*).
+            let bundleIDs: [TestID: TestID.Resolution] = if bundle != nil, text.isTestRun, !final.summary.ok {
+                await { () async -> [TestID: TestID.Resolution] in
+                    let ids = Set(ResultBundle.testCases(in: await testList().nodes).keys)
+                    return Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, $0.resolved(among: ids)) }) { first, _ in first }
+                }()
+            } else { [:] }
+            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, bundleIDs: bundleIDs),
+               // The skips come from the test list read above for the failed tests' ids, read once.
                let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {
                 (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
             } else if changed {

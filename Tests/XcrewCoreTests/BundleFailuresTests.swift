@@ -189,6 +189,23 @@ struct BundleFailuresTests {
         #expect(found.isSuperset(of: ["Passed", "Failed", "Skipped", "Expected Failure"]), "\(found.sorted())")
     }
 
+    /// A nested suite's failed test is looked up under the bundle's id for it, `Outer/Inner/fails()`, which is the only
+    /// one xcresulttool answers to, never under the text's `Inner/fails()` (the nested capture's `nested.lookups.json`).
+    @Test func aNestedSuitesFailureIsLookedUpUnderTheBundlesID() async throws {
+        let bundle = try Raw.bundle("nested")
+        let lookups = try #require(try JSONSerialization.jsonObject(with: Data(Raw.file("nested.lookups.json").utf8)) as? [String: [String: Any]])
+        #expect(lookups["Outer/Inner/fails()"]?["test-details"] as? Bool == true && lookups["Inner/fails()"]?["test-details"] as? Bool == false)
+        var responses: [String: CommandResult] = ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("nested.tests.json"))]
+        for test in ["fails", "flaky", "attaches", "addsNumbers"] {
+            responses["xcrun xcresulttool get test-results test-details --test-id Outer/Inner/\(test)() --path \(bundle) --compact"] = .init(status: 0, stdout: try Raw.file("nested.details.Outer.Inner.\(test).json"))
+        }
+        let runner = RecordingRunner(FakeRunner(responses: responses))
+        _ = await Report.make(kind: .test, output: try Raw.output("nested"), home: Captured.home, runner: runner)
+        let details = runner.asked.filter { $0.contains("test-details") }
+        #expect(!details.isEmpty)
+        #expect(details.allSatisfy { $0.contains("--test-id Outer/Inner/") }, "\(details)")
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
