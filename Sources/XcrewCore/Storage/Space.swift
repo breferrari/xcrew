@@ -101,8 +101,7 @@ public enum Space {
         guard let report = await StorageReport.read(.all, using: machine.runner) else { return SpaceReport.notRead(title, by: "mobilebuildmcp purge --report") }
         let grouped = ProjectWorkspaces.grouped(report, origins: await ProjectWorkspaces.origins(of: report, live: await live.value, home: machine.home))
         let processes = grouped.live.isEmpty ? ProcessList(ps: "") : await ProcessList.load(using: machine.runner)
-        // This project's workspaces against their budget, first.
-        var lines: [SpaceReport.Line] = grouped.live.isEmpty ? [] : [.init(text: StorageBudget.line(grouped.live, machine: machine, processes: processes))]
+        var lines: [SpaceReport.Line] = grouped.live.isEmpty ? [] : [.init(text: ProjectStorage.line(grouped.live, machine: machine, processes: processes))]
         lines += grouped.live.flatMap { workspace, checkout in
             workspaceLines(workspace, name: URL(fileURLWithPath: checkout.root).lastPathComponent, root: checkout.root, newest: workspace.classes.values.compactMap(\.newest).max().map { SpaceReport.age(of: $0, now: now) },
                            bundles: bundles(in: workspace, home: machine.home), isBuilding: isBuilding(into: workspace, processes: processes, home: machine.home))
