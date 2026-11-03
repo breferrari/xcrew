@@ -129,7 +129,7 @@ public enum FailureNotes {
     }
 
     /// What `adding` finds before the run's skips: each failed test's lookups and its repeated runs, the failures read
-    /// first. Nil when there's nothing to add, nor skips to read.
+    /// first.
     struct Pending: Sendable {
         let text: MobileText
         let notes: Notes
@@ -159,7 +159,8 @@ public enum FailureNotes {
         }
     }
 
-    /// The first step of `adding`: each failed test's lookups and its repeated runs.
+    /// The first step of `adding`: each failed test's lookups and its repeated runs. Nil when there's nothing to add and
+    /// no skip to read.
     static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = []) async -> Pending? {
         let imagesFolder = images?.folder
         var order: [TestID] = []
@@ -180,7 +181,7 @@ public enum FailureNotes {
             return nil
         }
         let readsSkips = text.skippedCount > 0 || !listedSkips.isEmpty
-        // A repeated run's tests, from its test list, which skips read too: how many runs each failed.
+        // A repeated run's tests, from its test list: how many runs each failed.
         let repetitions = repeatedTests.filter { $0.failed > 0 }
         guard !lookups.isEmpty || readsSkips || !repetitions.isEmpty else { return nil }
         // A Swift runtime error stops the process before XCTest records a message, so the run lists it under Errors, once
