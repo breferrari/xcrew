@@ -74,10 +74,10 @@ public struct ResultBundle: Sendable {
         let found = listing.nodes
         let cases = testCases(in: found)
         let targets = Self.targets(listing: listing)
-        var listed: Set<String> = []
+        var listed: Set<TestID> = []
         return failedTests(in: found).compactMap { test in
             let first = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
-            let parsed = first.map { Self.failure($0) }
+            let parsed = first.map(Self.failure)
             let line = parsed?.line ?? "", location = parsed?.location
             let place = location.map { "\(ToolOutput.basename($0.file)):\($0.line)" }
             // A crash filed under `System Failures` is its test's, the one its message names, as the text's line is, with
@@ -89,7 +89,7 @@ public struct ResultBundle: Sendable {
                 guard let crashed = MobileBuildMCPLine.crashedTest(message: line) else { return nil }
                 named = crashed
             }
-            guard listed.insert(named.shown).inserted else { return nil }
+            guard listed.insert(named).inserted else { return nil }
             return ToolOutput.Failure(title: named.shown, message: line, where: place, isTest: true, target: targets[test])
         }
     }

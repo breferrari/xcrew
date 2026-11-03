@@ -15,6 +15,15 @@ struct BundleFailuresTests {
         return await Report.make(kind: .test, output: try Raw.output(name), home: Captured.home, runner: FakeRunner(responses: responses), repeated: repeated)
     }
 
+    /// The 27.2 capture's test list with its crash filed as the field run filed it: under `System Failures`, as
+    /// `xctest (<pid>) encountered an error`.
+    static func filedUnderSystemFailures(_ listing: String) -> String {
+        listing
+            .replacingOccurrences(of: #""name":"AssertCrashTests""#, with: #""name":"System Failures""#)
+            .replacingOccurrences(of: #""name":"test_crash()""#, with: #""name":"xctest (80341) encountered an error""#)
+            .replacingOccurrences(of: #""nodeIdentifier":"AssertCrashTests/test_crash()""#, with: #""nodeIdentifier":"xctest (80341) encountered an error""#)
+    }
+
     static func lines(_ report: Report) -> [String] {
         [report.detail ?? "-"] + report.failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-")" }
     }
@@ -56,10 +65,7 @@ struct BundleFailuresTests {
         let fieldText = text.replacingOccurrences(of: filed, with: "  ✗ System Failures / xctest (80341) encountered an error: Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()")
         let listing = try Raw.file("system-failure-crash.tests.json")
         #expect(listing.contains(#""name":"AssertCrashTests""#) && listing.contains(#""nodeIdentifier":"AssertCrashTests/test_crash()""#))
-        let fieldListing = listing
-            .replacingOccurrences(of: #""name":"AssertCrashTests""#, with: #""name":"System Failures""#)
-            .replacingOccurrences(of: #""name":"test_crash()""#, with: #""name":"xctest (80341) encountered an error""#)
-            .replacingOccurrences(of: #""nodeIdentifier":"AssertCrashTests/test_crash()""#, with: #""nodeIdentifier":"xctest (80341) encountered an error""#)
+        let fieldListing = Self.filedUnderSystemFailures(listing)
         let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: fieldListing)])
         let report = await Report.make(kind: .test, output: ToolOutput(text: fieldText, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
         #expect(Self.lines(report) == [
@@ -81,10 +87,7 @@ struct BundleFailuresTests {
         let bundle = try Raw.bundle("system-failure-crash")
         let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"
         let fieldText = try Raw.text("system-failure-crash").replacingOccurrences(of: filed, with: "  ✗ System Failures / xctest (80341) encountered an error: \(message)")
-        let fieldListing = try Raw.file("system-failure-crash.tests.json")
-            .replacingOccurrences(of: #""name":"AssertCrashTests""#, with: #""name":"System Failures""#)
-            .replacingOccurrences(of: #""name":"test_crash()""#, with: #""name":"xctest (80341) encountered an error""#)
-            .replacingOccurrences(of: #""nodeIdentifier":"AssertCrashTests/test_crash()""#, with: #""nodeIdentifier":"xctest (80341) encountered an error""#)
+        let fieldListing = try Self.filedUnderSystemFailures(Raw.file("system-failure-crash.tests.json"))
             .replacingOccurrences(of: "Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()", with: message)
         let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: fieldListing)])
         let report = await Report.make(kind: .test, output: ToolOutput(text: fieldText, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)

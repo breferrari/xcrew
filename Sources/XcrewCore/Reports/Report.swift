@@ -149,7 +149,7 @@ public struct Report: Sendable, Equatable, Codable {
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail, let first else { return detail }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
-        guard let named else { return detail.hasSuffix(" failed") ? detail + ToolOutput.Summary.beforeFirstFailing + first : detail }
+        guard let named else { return detail.hasSuffix(ToolOutput.Summary.failedCounts) ? detail + ToolOutput.Summary.beforeFirstFailing + first : detail }
         guard first != named, detail.hasSuffix(ToolOutput.Summary.beforeFirstFailing + named) else { return detail }
         return String(detail.dropLast(named.count)) + first
     }
