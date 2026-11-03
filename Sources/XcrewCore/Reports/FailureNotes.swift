@@ -123,7 +123,7 @@ public enum FailureNotes {
     /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `images`, each failed
     /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
     /// are removed.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = []) async -> Added? {
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], testList: (() async -> TestList)? = nil) async -> Added? {
         let imagesFolder = images?.folder
         var order: [TestID] = []
         var located: Set<TestID> = []
@@ -209,7 +209,8 @@ public enum FailureNotes {
             let listed = Set(listedSkips)
             let reason = { (skip: ResultBundle.Skip) in skip.reason.map { [MobileBuildMCPLine.skipReason($0)] } ?? [] }
             var unlisted = 0
-            for (test, skip) in await bundle.skips() {
+            let listing = if let testList { await testList() } else { TestList(await bundle.tests()) }
+            for (test, skip) in ResultBundle.skippedTests(listing: listing) {
                 if listed.contains(test) {
                     notes.skipped[test] = reason(skip)
                 } else if unlisted < mostLookups {

@@ -188,13 +188,13 @@ func failingRunText(passing: Int) -> String {
     /// Swift Testing's `.disabled` writes its reason after `Test skipped: `, which goes as XCTest's prefix does.
     @Test func aSwiftTestingSkipsReasonIsItsOwnToo() {
         let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"ShapesTests/skipped()","name":"skipped()","result":"Skipped","durationInSeconds":0,"children":[{"nodeType":"Skip Message","name":"Test skipped: skipped on purpose"}]}]}"#
-        #expect(ResultBundle.skippedTests(listing: listing).map(\.skip.reason) == ["skipped on purpose"])
+        #expect(ResultBundle.skippedTests(listing: TestList(listing)).map(\.skip.reason) == ["skipped on purpose"])
     }
 
     /// A test the list counts passed in one target is still failed when another target's test of that id failed.
     @Test func aTestPassedInOneTargetAndFailedInAnotherIsNotPassed() {
         let listing = #"{"testNodes":[{"nodeType":"Unit test bundle","name":"ModuleATests","children":[{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testValidates()","result":"Failed"}]},{"nodeType":"Unit test bundle","name":"ModuleBTests","children":[{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testValidates()","result":"Passed"},{"nodeType":"Test Case","nodeIdentifier":"LoginTests/testLogsIn()","result":"Passed"}]}]}"#
-        #expect(ResultBundle.passedTests(listing: listing) == [TestID(xcresultID: "LoginTests/testLogsIn()")])
+        #expect(ResultBundle.passedTests(listing: TestList(listing)) == [TestID(xcresultID: "LoginTests/testLogsIn()")])
     }
 
     /// The summary names the first test still failed, not one the test list counts passed.
@@ -207,7 +207,7 @@ func failingRunText(passing: Int) -> String {
     @Test func anAnswerThatIsNoneOfThemGivesNothing() {
         #expect(ResultBundle.sourceLocation(details: "not json") == nil)
         #expect(ResultBundle.crashSummary(log: "not a crash log") == nil)
-        #expect(ResultBundle.skippedTests(listing: "not json").isEmpty)
+        #expect(ResultBundle.skippedTests(listing: TestList("not json")).isEmpty)
         #expect(ResultBundle.expectedFailuresNote(summary: #"{"totalTestCount":3,"passedTests":3,"expectedFailures":0}"#) == nil)
         #expect(ResultBundle.expectedFailuresNote(summary: "not json") == nil)
     }
@@ -287,7 +287,7 @@ func failingRunText(passing: Int) -> String {
     @Test func aRepeatedTestsFailureElsewhereStays() async {
         let text = "\n🧪 Test\n\nTest Failures (3):\n\n  ✗ ProbeTests / testTwice: first assertion\n    /work/App/Tests/ProbeTests.swift:10\n\n  ✗ ProbeTests / testTwice: second assertion\n    /work/App/Tests/ProbeTests.swift:14\n\n  ✗ ProbeTests / testTwice: first assertion\n    /work/App/Tests/ProbeTests.swift:10\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)"
         let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"ProbeTests/testTwice()","result":"Failed","children":[{"nodeType":"Repetition","result":"Failed"},{"nodeType":"Repetition","result":"Failed"}]}]}"#
-        let repeated = ResultBundle.repetitions(listing: listing)
+        let repeated = ResultBundle.repetitions(listing: TestList(listing))
         let added = await FailureNotes.adding(to: MobileText(text), from: ResultBundle(path: "/b.xcresult", runner: FakeRunner()), repetitions: repeated)?.text.text ?? text
         #expect(added.contains("second assertion\n    /work/App/Tests/ProbeTests.swift:14"), "\(added)")
         #expect(added.components(separatedBy: "first assertion").count == 2, "\(added)")
@@ -512,9 +512,9 @@ func failingRunText(passing: Int) -> String {
         let bundle = { (name: String, result: String) in #"{"nodeType":"Unit test bundle","name":"\#(name)","children":[{"nodeType":"Test Suite","name":"ViewModelTests","children":[{"nodeType":"Test Case","nodeIdentifier":"ViewModelTests/testLoad()","result":"\#(result)"}]}]}"# }
         let listing = { (bundles: [String]) in #"{"testNodes":[{"nodeType":"Test Plan","children":[\#(bundles.joined(separator: ","))]}]}"# }
         let test = TestID(suite: "ViewModelTests", name: "testLoad")
-        #expect(ResultBundle.targets(listing: listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Passed")]))[test] == "FeatureATests")
-        #expect(ResultBundle.targets(listing: listing([bundle("FeatureATests", "Passed"), bundle("FeatureBTests", "Failed")]))[test] == "FeatureBTests")
-        #expect(ResultBundle.targets(listing: listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Failed")]))[test] == nil)
+        #expect(ResultBundle.targets(listing: TestList(listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Passed")])))[test] == "FeatureATests")
+        #expect(ResultBundle.targets(listing: TestList(listing([bundle("FeatureATests", "Passed"), bundle("FeatureBTests", "Failed")])))[test] == "FeatureBTests")
+        #expect(ResultBundle.targets(listing: TestList(listing([bundle("FeatureATests", "Failed"), bundle("FeatureBTests", "Failed")])))[test] == nil)
     }
 
     @Test func theNoTestsNoteSaysWhatIsKnown() {
@@ -558,7 +558,7 @@ func failingRunText(passing: Int) -> String {
 
 @Suite struct LiveCheckFollowUpTests {
     @Test func aListingThatIsNoneGivesNoExpectedFailure() {
-        #expect(ResultBundle.expectedFailures(listing: "not json").isEmpty)
+        #expect(ResultBundle.expectedFailures(listing: TestList("not json")).isEmpty)
     }
 
     @Test func theExpectedFailuresNoteNamesTheTests() {
@@ -1064,17 +1064,17 @@ extension FailureNotes {
         """
 
     @Test func eachRepeatedTestCountsItsFailedRuns() {
-        let found = ResultBundle.repetitions(listing: Self.listing)
+        let found = ResultBundle.repetitions(listing: TestList(Self.listing))
         #expect(found.map { "\($0.test) \($0.failed)/\($0.runs) \($0.verdict)" } == ["RepetitionTests/testMixed 1/3 flaky", "RepetitionTests/testAlways 3/3 real", "RepetitionTests/testNever 0/3 passed"])
     }
 
     @Test func theNoteGivesEachTestItsVerdict() {
-        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: Self.listing))
+        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: TestList(Self.listing)))
         #expect(note == "xcrew: across 3 runs each: RepetitionTests/testMixed is flaky, failing 1 of 3; RepetitionTests/testAlways failed every run, a real failure. 1 more passed every run.")
     }
 
     @Test func aRunWithoutRepetitionsHasNoNote() {
-        #expect(ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: #"{"testNodes":[]}"#)) == nil)
+        #expect(ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: TestList(#"{"testNodes":[]}"#))) == nil)
     }
 }
 
@@ -1121,21 +1121,21 @@ struct RepeatedRunReportTests {
 
     /// A skipped run is no pass: a test skipped every run has no verdict, not "passed every run".
     @Test func aSkippedRunIsNoPass() {
-        let found = ResultBundle.repetitions(listing: listing([testCase("testSkipped", repetitions(["Skipped", "Skipped", "Skipped"]))]))
+        let found = ResultBundle.repetitions(listing: TestList(listing([testCase("testSkipped", repetitions(["Skipped", "Skipped", "Skipped"]))])))
         #expect(found.map(\.verdict) == [.none])
     }
 
     /// A parameterized Swift Testing test holds its runs under each argument.
     @Test func runsUnderEachArgumentCount() {
         let arguments = #"{"nodeType":"Arguments","name":"1","children":[\#(repetitions(["Passed", "Failed"]))]},{"nodeType":"Arguments","name":"2","children":[\#(repetitions(["Passed", "Passed"]))]}"#
-        let found = ResultBundle.repetitions(listing: listing([testCase("testParameterized", arguments)]))
+        let found = ResultBundle.repetitions(listing: TestList(listing([testCase("testParameterized", arguments)])))
         #expect(found.map { "\($0.failed)/\($0.runs) \($0.verdict)" } == ["1/4 flaky"])
     }
 
     /// The note names the tests that need a decision, and only a few of them: a whole target repeated mustn't flood it.
     @Test func theNoteNamesAFewAndCountsTheRest() {
         let cases = (1...8).map { testCase("testFlaky\($0)", repetitions(["Passed", "Failed"])) } + (1...30).map { testCase("testFine\($0)", repetitions(["Passed", "Passed"])) }
-        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: listing(cases))) ?? ""
+        let note = ResultBundle.repetitionsNote(ResultBundle.repetitions(listing: TestList(listing(cases)))) ?? ""
         #expect(note.contains("S/testFlaky5 is flaky") && !note.contains("S/testFlaky6"))
         #expect(note.contains("and 3 more flaky or failing"))
         #expect(note.contains("30 more passed every run"))

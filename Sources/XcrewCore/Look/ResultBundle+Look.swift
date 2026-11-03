@@ -7,8 +7,8 @@ extension ResultBundle {
     }
 
     /// The test list's `Test Case` nodes by test, read once for every lookup a report makes.
-    static func testCases(in listing: String) -> [TestID: [[String: Any]]] {
-        testCases(in: nodes(parse(listing)))
+    static func testCases(in listing: TestList) -> [TestID: [[String: Any]]] {
+        testCases(in: listing.nodes)
     }
 
     static func testCases(in nodes: [[String: Any]]) -> [TestID: [[String: Any]]] {
