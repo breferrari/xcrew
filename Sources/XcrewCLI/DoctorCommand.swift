@@ -37,7 +37,7 @@ struct DoctorCommand: Command {
         var context = invocation.context
         if let session = invocation.arguments["session"] {
             SessionStamp.record(session, on: context.machine, .mod, version: XcrewVersion.current)
-            context = CheckContext(project: context.project, machine: context.machine.setting("CLAUDE_CODE_SESSION_ID", to: session))
+            context = CheckContext(project: context.project, machine: context.machine.setting("CLAUDE_CODE_SESSION_ID", to: session), progress: context.progress)
         }
         if invocation.arguments.has("list") {
             Doctor.checks.forEach { invocation.print("\($0.id)\t\($0.title)") }

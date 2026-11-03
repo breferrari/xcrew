@@ -212,7 +212,7 @@ import XcrewTestSupport
     /// Records each command it's asked to run, and answers none.
     final class RecordingRunner: CommandRunning {
         let calls = Mutex<[String]>([])
-        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        func run(_ argv: [String], stdin: Data?) async -> CommandResult {
             calls.withLock { $0.append(argv.joined(separator: " ")) }
             return .notFound
         }
@@ -231,13 +231,32 @@ import XcrewTestSupport
         #expect(exports.contains { $0.hasSuffix("--only-failures") }, "\(exports)")
     }
 
-    /// Past the tests looked up for images, a test the text doesn't place is still looked up for its location.
+    /// A late test the text doesn't place is looked up for its location among many it does.
     @Test func aLateFailureTheTextDoesntPlaceStillGetsItsLocation() async {
-        let located = (1...FailureNotes.mostLookups + 1).map { "  ✗ Suite / test_\($0)(): failed\n    /Users/dev/App/Tests/Suite.swift:\($0)\n" }.joined(separator: "\n")
+        let located = (1...11).map { "  ✗ Suite / test_\($0)(): failed\n    /Users/dev/App/Tests/Suite.swift:\($0)\n" }.joined(separator: "\n")
         let text = "🧪 Test\n\nTest Failures (12):\n\n\(located)\n  ✗ Suite / test_late(): failed\n\n❌ 12 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
         let runner = RecordingRunner()
         _ = await FailureNotes.addingText(to: text, from: ResultBundle(path: Self.bundle, runner: runner), keepingImagesIn: URL(fileURLWithPath: "/nonexistent/images"))
         #expect(runner.calls.withLock { $0 }.contains("xcrun xcresulttool get test-results test-details --test-id Suite/test_late() --path \(Self.bundle) --compact"))
+    }
+
+    /// Every failed test the text doesn't place is looked up, however many failed.
+    @Test func everyFailureTheTextDoesntPlaceIsLookedUp() async {
+        let failures = (1...12).map { "  ✗ Suite / test_\($0)(): failed" }.joined(separator: "\n")
+        let text = "🧪 Test\n\nTest Failures (12):\n\n\(failures)\n\n❌ 12 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
+        let runner = RecordingRunner()
+        _ = await FailureNotes.addingText(to: text, from: ResultBundle(path: Self.bundle, runner: runner), keepingImagesIn: URL(fileURLWithPath: "/nonexistent/images"))
+        let looked = runner.calls.withLock { $0 }.filter { $0.contains("test-details") }
+        #expect(Set(looked).count == 12, "\(looked)")
+    }
+
+    /// Every skipped test the text leaves out is added from the bundle, however many.
+    @Test func everySkippedTestTheTextLeavesOutIsAdded() async {
+        let nodes = (1...12).map { #"{"nodeType":"Test Case","nodeIdentifier":"Suite/test_\#($0)()","name":"test_\#($0)()","result":"Skipped"}"# }.joined(separator: ",")
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(Self.bundle) --compact": .init(status: 0, stdout: #"{"testNodes":[\#(nodes)]}"#)])
+        let text = "🧪 Test\n\nTest Results:\n  ✅ Other / test_ok() (0.001s)\n\n✅ 1 test passed, 0 failed, 12 skipped (⏱️ 1.0s)"
+        let added = await FailureNotes.addingText(to: text, from: ResultBundle(path: Self.bundle, runner: runner))
+        #expect((1...12).allSatisfy { added.contains("⏭️ Suite/test_\($0)()") }, "\(added)")
     }
 
     /// The failures pane shows the same paths under the test.

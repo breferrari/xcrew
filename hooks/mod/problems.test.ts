@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Problem } from './cli'
 import { RESTART_CHECK } from './problems'
-import { runCommand, stubCli, submitPrompt, withoutIfBuilt } from './testing'
+import { runCommand, stubCli, submitPrompt } from './testing'
 
 const BAND = {
   plugin: 'xcrew',
@@ -290,8 +290,8 @@ test('after setup, a doctor read already in flight is followed by a fresh one', 
   const firstBegan = new Promise<void>(resolve => (began = resolve))
   let release = () => {}
   const released = new Promise<void>(resolve => (release = resolve))
-  on('process.run', async (_, e) => {
-    const args = withoutIfBuilt(e.argv.slice(1))
+  on('process.spawn', async function* (_, e) {
+    const args = e.argv.slice(1)
     if (args[0] === 'doctor') {
       doctorRuns += 1
       const seen = doctorRuns === 1 ? [] : [...problems]
@@ -299,10 +299,11 @@ test('after setup, a doctor read already in flight is followed by a fresh one', 
         began()
         await released
       }
-      return { value: { exitCode: 0, stdout: JSON.stringify(seen), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+      yield { stream: 'stdout' as const, text: JSON.stringify(seen) }
+      return { value: { code: 0, signal: null } }
     }
-    const stdout = args[0] === '--binary-path' ? '/built/xcrew\n' : '{}'
-    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    yield { stream: 'stdout' as const, text: args[0] === '--binary-path' ? '/built/xcrew\n' : '{}' }
+    return { value: { code: 0, signal: null } }
   })
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   await firstBegan

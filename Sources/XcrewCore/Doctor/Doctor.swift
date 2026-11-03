@@ -50,7 +50,7 @@ public enum Doctor {
     public static func problemsText(lines: [String], kept: [String] = []) -> [String] {
         let shown = lines.isEmpty ? ["No problems."] : lines
         guard !kept.isEmpty else { return shown }
-        return shown + ["Kept off the prompt\(ResultBundle.listed(kept)). `xcrew doctor` shows \(kept.count == 1 ? "it" : "them")."]
+        return shown + ["Kept off the prompt\(ResultBundle.listed(kept, rest: "`xcrew doctor` shows them all")). `xcrew doctor` shows \(kept.count == 1 ? "it" : "them")."]
     }
 
     public static func worst(_ entries: [Entry]) -> CheckStatus {

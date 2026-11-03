@@ -141,7 +141,7 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
       const flaky = flakyAfter(entry.test, entry.flaky)
       const target = failed.get(entry.test)?.target ?? entry.target
       // Its first red's date and bundle stay, for the evidence block; its message is the newest failure's.
-      const message = firstLine(failed.get(entry.test)?.message ?? verdictMessage(repeated.get(entry.test)))
+      const message = failed.get(entry.test)?.message ?? verdictMessage(repeated.get(entry.test))
       return { test: entry.test, red: { ...entry.red, message }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) }
     }
     const flaky = flakyAfter(entry.test, entry.flaky)
@@ -172,7 +172,7 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
     const flaky = flakyAfter(test)
     const message = failed.get(test)?.message ?? verdictMessage(repeated.get(test))
     const target = failed.get(test)?.target
-    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(message), bundle: run.bundle }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) })
+    entries.push({ test, red: { scope: run.scope, at: run.at, message, bundle: run.bundle }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) })
   }
   return { entries, updated: run.at }
 }
@@ -200,7 +200,7 @@ export function ledgerText(ledger: Ledger | undefined, head: Head): string {
   if (entries.length === 0) return `No test has failed on ${name} yet.`
   const green = entries.filter((entry): entry is GreenEntry => entry.green !== undefined)
   const red = entries.filter(entry => !entry.green)
-  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}${entry.unseen ? `; ${NOT_IN_NEWEST}, ${dayAndTime(entry.unseen.at)}` : ''}`
+  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${shownMessage(entry.red.message)}${entry.unseen ? `; ${NOT_IN_NEWEST}, ${dayAndTime(entry.unseen.at)}` : ''}`
   const named = (entry: LedgerEntry) => `${entry.test}${flakyLabel(entry)}`
   return [
     ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${named(entry)}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
@@ -230,8 +230,11 @@ function count(tests: number): string {
   return `${tests} ${tests === 1 ? 'test' : 'tests'}`
 }
 
-/** A failure message's first line, cut short: the ledger points at the failure, the pane shows it whole. */
-function firstLine(message: string): string {
+/**
+ * A failure message as the ledger and the evidence show it: its first line, cut short, pointing at the failure, which
+ * the store keeps whole and the pane shows whole.
+ */
+export function shownMessage(message: string): string {
   const line = message.split('\n')[0] ?? ''
   return line.length > 100 ? `${line.slice(0, 99)}…` : line
 }

@@ -30,17 +30,17 @@ public final class CommandPool: CommandRunning {
         self.size = Once { await Self.size(using: base) }
     }
 
-    public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-        await run(argv, stdin: stdin, timeout: timeout, lane: 0)
+    public func run(_ argv: [String], stdin: Data?) async -> CommandResult {
+        await run(argv, stdin: stdin, lane: 0)
     }
 
     /// The command's answer once a slot is free, its turn by `lane`; one cancelled while it waits isn't started, and
-    /// answers as timed out.
-    public func run(_ argv: [String], stdin: Data?, timeout: Duration, lane: Int) async -> CommandResult {
-        guard await acquire(await size.value(), lane: lane) else { return .timedOut }
+    /// answers as cancelled.
+    public func run(_ argv: [String], stdin: Data?, lane: Int) async -> CommandResult {
+        guard await acquire(await size.value(), lane: lane) else { return .cancelled }
         defer { release() }
-        guard !Task.isCancelled else { return .timedOut }
-        return await base.run(argv, stdin: stdin, timeout: timeout)
+        guard !Task.isCancelled else { return .cancelled }
+        return await base.run(argv, stdin: stdin)
     }
 
     public func which(_ name: String) -> String? { base.which(name) }
@@ -109,8 +109,8 @@ public final class CommandPool: CommandRunning {
         let pool: CommandPool
         let lane: Int
 
-        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-            await pool.run(argv, stdin: stdin, timeout: timeout, lane: lane)
+        func run(_ argv: [String], stdin: Data?) async -> CommandResult {
+            await pool.run(argv, stdin: stdin, lane: lane)
         }
 
         func which(_ name: String) -> String? { pool.which(name) }

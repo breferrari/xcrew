@@ -34,13 +34,12 @@ struct ReportCommand: Command {
             let text = String(decoding: await invocation.standardInput(), as: UTF8.self)
             report = await Report.make(kind: kind, notification: text, log: log, launches: invocation.arguments.has("launches"), server: server, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         } else if let given {
-            report = await Report.make(kind: kind, log: RunLog.end(ofLogAt: given), runner: machine.runner, repeated: repeated, listsPassed: listsPassed)
+            report = await Report.make(kind: kind, log: RunLog.text(ofLogAt: given), runner: machine.runner, repeated: repeated, listsPassed: listsPassed)
         } else {
             let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
             report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         }
         if let log { report.scheme = RunLog.scheme(ofLogAt: URL(fileURLWithPath: log)) }
-        if let cut = invocation.context.machine.leftOut(leadIn: "xcrew: ") { report.notes.append(cut) }
         let encoded = try JSONEncoder.sorted.encode(report)
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0

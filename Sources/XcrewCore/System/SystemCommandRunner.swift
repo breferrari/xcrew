@@ -1,7 +1,7 @@
 import Foundation
 
-/// Runs real processes and awaits them without blocking a thread. A program that isn't found
-/// reads as status 127 and one that outlives its timeout as 124, as a shell reports them.
+/// Runs real processes to their end and awaits them without blocking a thread. A program that isn't found reads as
+/// status 127, as a shell reports it.
 public struct SystemCommandRunner: CommandRunning {
     let searchPath: [String]
 
@@ -16,14 +16,12 @@ public struct SystemCommandRunner: CommandRunning {
         searchPath.lazy.map { "\($0)/\(name)" }.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    /// How long the pipes may stay open once the program has ended or been stopped: a background child that outlives it
-    /// can hold them for as long as it lives (after a stop, only one that ignores SIGTERM or leaves its process group;
-    /// docs/findings.md, *Stopping a program*), and the program's last output can arrive just after its exit. A cap on
-    /// that child, not a measured time: the program's own output is in the pipe when it exits.
+    /// How long the pipes may stay open once the program has ended: a background child that outlives it can hold them for
+    /// as long as it lives (docs/findings.md, *Stopping a program*), and the program's last output can arrive just after
+    /// its exit. A cap on that child, not a measured time: the program's own output is in the pipe when it exits.
     static let grace = Duration.seconds(1)
 
-    public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-        let deadline = ContinuousClock.now + timeout
+    public func run(_ argv: [String], stdin: Data?) async -> CommandResult {
         guard let name = argv.first, let executable = name.hasPrefix("/") ? name : which(name) else { return .notFound }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
@@ -43,22 +41,17 @@ public struct SystemCommandRunner: CommandRunning {
         if let stdin { try? input.fileHandleForWriting.write(contentsOf: stdin) }
         try? input.fileHandleForWriting.close()
 
-        let status = await withTaskGroup(of: Int32?.self) { group in
-            group.addTask { await exit.first { _ in true } }
-            group.addTask {
-                try? await Task.sleep(until: deadline, clock: .continuous)
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
-        guard let status else {
-            process.terminate()
-            _ = await Self.collect(stdout, stderr, until: ContinuousClock.now + Self.grace)
-            return .timedOut
+        // A task cancelled meanwhile stops the program and the children it started, as its answer is no longer wanted:
+        // the program leads a process group of its own, and the group is signalled (docs/findings.md, *Stopping a
+        // program*).
+        let group = -process.processIdentifier
+        let status = await withTaskCancellationHandler {
+            await exit.first { _ in true }
+        } onCancel: {
+            kill(group, SIGTERM)
         }
         let (out, err) = await Self.collect(stdout, stderr, until: ContinuousClock.now + Self.grace)
+        guard let status else { return .cancelled }
         return CommandResult(status: status, stdout: out, stderr: err)
     }
 

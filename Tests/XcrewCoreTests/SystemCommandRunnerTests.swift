@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import XcrewCore
+import XcrewTestSupport
 
 @Suite struct SystemCommandRunnerTests {
     let runner = SystemCommandRunner(path: "/usr/bin:/bin")
@@ -16,34 +17,38 @@ import Testing
         #expect(runner.which("sh") == "/bin/sh")
     }
 
-    /// What stopping guarantees, not how fast (docs/findings.md, *Timing an awaited call in a test*): a run with no timeout
-    /// would end with the child's own status, and one that didn't stop it would leave it running.
-    @Test func aProgramThatOutlivesItsTimeoutIsStopped() async {
-        let duration = "30.\(Int.random(in: 100_000...999_999))"
-        let result = await runner.run(["/bin/sleep", duration], stdin: nil, timeout: .milliseconds(200))
-        #expect(result.status == 124)
-        #expect(await runner.run("/usr/bin/pgrep", "-f", "sleep \(duration)").status == 1, "the child is still running")
+    /// A run whose task is cancelled stops its program, as its answer is no longer wanted: what stopping guarantees, not
+    /// how fast (docs/findings.md, *Timing an awaited call in a test*).
+    @Test func aCancelledRunStopsItsProgram() async throws {
+        let held = try await HeldReader.make()
+        defer { held.remove() }
+        let run = Task { await runner.run(["/bin/sh", "-c", held.command], stdin: nil) }
+        try await until { held.hasStarted }
+        run.cancel()
+        #expect(await run.value == .cancelled)
+        try await until { await runner.run("/usr/bin/pgrep", "-f", held.path).status == 1 }
     }
 
-    /// The shell's background sleep inherits stdout and ignores SIGTERM. `terminate` signals the shell's whole process
-    /// group, so only a child that ignores it outlives the stop (docs/findings.md, *Stopping a program*). A run that waited
-    /// for the pipe would return only after the sleep ended, so the sleep still running shows it didn't wait.
-    @Test func aGrandchildHoldingAPipeDoesntOutlastTheTimeout() async {
-        let duration = "30.\(Int.random(in: 100_000...999_999))"
-        let result = await runner.run(["/bin/sh", "-c", "(trap '' TERM; exec sleep \(duration)) & wait"], stdin: nil, timeout: .seconds(2))
-        let stillRunning = await runner.run("/usr/bin/pgrep", "-f", "sleep \(duration)").status == 0
-        _ = await runner.run("/usr/bin/pkill", "-9", "-f", "sleep \(duration)")
-        #expect(result.status == 124)
-        #expect(stillRunning, "waited for the grandchild's pipe")
+    /// A cancelled run stops the program's own children with it, as the doctor's handshake's shell starts the bridge and
+    /// a loop: none is left running once the run ends.
+    @Test func aCancelledRunStopsTheProgramsChildrenToo() async throws {
+        let held = try await HeldReader.make()
+        defer { held.remove() }
+        let run = Task { await runner.run(["/bin/sh", "-c", "(\(held.command)) & wait"], stdin: nil) }
+        try await until { held.hasStarted }
+        run.cancel()
+        _ = await run.value
+        try await until { await runner.run("/usr/bin/pgrep", "-f", held.path).status == 1 }
     }
 
-    /// The shell exits at once, and its background sleep keeps stdout open. A long time limit: the wait after exit is a
-    /// moment's grace, not what's left of the limit, so the sleep is still running when the run returns.
-    @Test func aGrandchildLeftRunningDoesntHoldUpAFinishedProgram() async {
-        let duration = "30.\(Int.random(in: 100_000...999_999))"
-        let result = await runner.run(["/bin/sh", "-c", "echo ready; sleep \(duration) &"], stdin: nil, timeout: .seconds(60))
-        let stillRunning = await runner.run("/usr/bin/pgrep", "-f", "sleep \(duration)").status == 0
-        _ = await runner.run("/usr/bin/pkill", "-f", "sleep \(duration)")
+    /// The shell exits at once, and its background child keeps stdout open: the wait after exit is a moment's grace, so
+    /// the child, which runs until a signal ends it, is still running when the run returns.
+    @Test func aGrandchildLeftRunningDoesntHoldUpAFinishedProgram() async throws {
+        let held = try await HeldReader.make()
+        defer { held.remove() }
+        let result = await runner.run(["/bin/sh", "-c", "echo ready; (\(held.command)) &"], stdin: nil)
+        let stillRunning = await runner.run("/usr/bin/pgrep", "-f", held.path).status == 0
+        _ = await runner.run("/usr/bin/pkill", "-f", held.path)
         #expect(result.status == 0)
         #expect(result.stdout == "ready\n")
         #expect(stillRunning, "waited for the grandchild's pipe")

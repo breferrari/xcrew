@@ -18,10 +18,9 @@ fi
 grep -rhoE '`session_[a-z_]+`' context skills hooks/mod --include='*.md' --include='*.ts' --exclude='*.test.ts' | tr -d '`' >> "$work/wanted"
 sort -u -o "$work/wanted" "$work/wanted"
 # Asked once the server has answered `initialize` and logged its registered tools, and its input closed once it has
-# answered `tools/list`: each step waits on what the server wrote, never on a time, and ends if the server exits. The
-# alarm is the hang guard if it never answers.
+# answered `tools/list`: each step waits on what the server wrote, never on a time, and ends if the server exits.
 mkfifo "$work/in"
-perl -e 'alarm 120; exec @ARGV' libexec/mobilebuildmcp-server "$project" < "$work/in" > "$work/replies" 2> "$work/log" &
+libexec/mobilebuildmcp-server "$project" < "$work/in" > "$work/replies" 2> "$work/log" &
 server=$!
 exec 3> "$work/in"
 until_written() {

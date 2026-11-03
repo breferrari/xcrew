@@ -66,10 +66,14 @@ public struct CheckContext: Sendable {
     public let xcodes: Once<XcodeSnapshot>
     /// The processes running, which several checks read: listed once per doctor run, when first asked for.
     let processes: Once<ProcessList>
+    /// Says what a check is waiting on while it waits, for the person: the CLI writes it to standard error as
+    /// `Progress.prefix` and a line.
+    public let progress: @Sendable (String) -> Void
 
-    public init(project: Project, machine: Machine) {
+    public init(project: Project, machine: Machine, progress: @escaping @Sendable (String) -> Void = { _ in }) {
         self.project = project
         self.machine = machine
+        self.progress = progress
         xcodeMCPStatus = Once { await machine.runner.run("xcrun", "mcp-server", "status") }
         let processes = Once { await ProcessList.load(using: machine.runner) }
         self.processes = processes

@@ -9,12 +9,12 @@ public enum StandardInput {
     /// What xcrew says on stderr when it stops reading an input its caller never closed.
     public static let cutNote = "xcrew: stopped reading standard input once nothing more arrived; close it when you're done writing\n"
 
-    /// All of the input once the caller closes it, or what arrived before it went quiet for `limit`; `isComplete` says
-    /// which. A file is read to its end at once, since only a pipe or a terminal can be left open.
-    public static func read(_ handle: FileHandle, idleFor limit: Duration) async -> (data: Data, isComplete: Bool) {
+    /// All of the input once the caller closes it, or what arrived before it went quiet for `limit` on `clock`;
+    /// `isComplete` says which. A file is read to its end at once, since only a pipe or a terminal can be left open.
+    public static func read<C: Clock>(_ handle: FileHandle, idleFor limit: Duration, clock: C = ContinuousClock()) async -> (data: Data, isComplete: Bool) where C.Duration == Duration {
         if isRegularFile(handle) { return ((try? handle.readToEnd()) ?? Data(), true) }
         let drain = Drain(handle)
-        let isComplete = await drain.ended(idleFor: limit)
+        let isComplete = await drain.ended(idleFor: limit, clock: clock)
         return (drain.data, isComplete)
     }
 

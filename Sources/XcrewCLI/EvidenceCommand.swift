@@ -16,13 +16,11 @@ struct EvidenceCommand: Command {
         }
         let context = CheckContext(project: invocation.context.project, machine: invocation.context.machine.pooled())
         let pack = await EvidencePack.make(input, project: context.project, machine: context.machine, open: { ResultBundle(path: $0, runner: context.runner) })
-        let cut = invocation.context.machine.leftOut(of: pack == nil ? "this answer" : "this block")
         guard let pack else {
-            // Nothing to say may be all the deadline let it find: then that's what it says.
-            invocation.print(cut ?? Self.nothing)
+            invocation.print(Self.nothing)
             return 0
         }
-        invocation.print(pack.block + (cut.map { "\n- " + $0 } ?? ""))
+        invocation.print(pack.block)
         if let attach = pack.attach { invocation.print("\n" + attach) }
         return 0
     }

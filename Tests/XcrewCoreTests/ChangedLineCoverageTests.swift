@@ -94,18 +94,16 @@ import XcrewTestSupport
         #expect(BranchCoverage.candidates([run], lastChanges: []) == nil)
     }
 
-    /// When the runs read say nothing but some were left out, the cut-off is said; with nothing left out, nothing is.
-    @Test func runsThatSaidNothingWithSomeLeftOutSayTheCutOff() {
-        let line = "- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."
-        #expect(BranchCoverage.together([], leftOut: 2)?.line(lastCommit: nil) == line)
-        #expect(BranchCoverage.together([(ChangedLineCoverage(), Date(timeIntervalSince1970: 100))], leftOut: 2)?.line(lastCommit: nil) == line)
-        #expect(BranchCoverage.together([], leftOut: 0) == nil)
+    /// Runs that say nothing of the changed lines say nothing together.
+    @Test func runsThatSayNothingSayNothingTogether() {
+        #expect(BranchCoverage.together([]) == nil)
+        #expect(BranchCoverage.together([(ChangedLineCoverage(), Date(timeIntervalSince1970: 100))]) == nil)
     }
 
     /// Runs that each hold none of the changed lines yet agree a file is outside their coverage are all named.
     @Test func runsAgreeingOnlyOnWhatTheyDontHoldAreAllNamed() throws {
         let outside = ChangedLineCoverage(outside: ["/p/A.swift"])
-        let together = try #require(BranchCoverage.together([(outside, Date(timeIntervalSince1970: 200)), (outside, Date(timeIntervalSince1970: 100))], leftOut: 0))
+        let together = try #require(BranchCoverage.together([(outside, Date(timeIntervalSince1970: 200)), (outside, Date(timeIntervalSince1970: 100))]))
         #expect(together.finished == [Date(timeIntervalSince1970: 200), Date(timeIntervalSince1970: 100)])
         #expect(together.sentence == "1 changed file isn't in these runs' coverage: A.swift.")
     }
@@ -182,7 +180,7 @@ import XcrewTestSupport
         let project = project()
         let held = HeldRunner(run(project))
         let pool = CommandPool(held, size: 1)
-        let holding = Task { await pool.run(["hold"], stdin: nil, timeout: .seconds(5)) }
+        let holding = Task { await pool.run(["hold"], stdin: nil) }
         await held.started("hold")
         let output = try Raw.output("swift-testing")
         let report = Task { await Report.make(kind: .test, output: output, home: Captured.home, runner: pool, project: project) }
@@ -454,11 +452,11 @@ final class HeldRunner: CommandRunning {
 
     init(_ base: any CommandRunning) { self.base = base }
 
-    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+    func run(_ argv: [String], stdin: Data?) async -> CommandResult {
         let line = argv.joined(separator: " ")
         guard line == "hold" else {
             state.withLock { $0.ran.append(line) }
-            return await base.run(argv, stdin: stdin, timeout: timeout)
+            return await base.run(argv, stdin: stdin)
         }
         await withCheckedContinuation { (held: CheckedContinuation<Void, Never>) in
             state.withLock { $0.ran.append(line); $0.held = held }

@@ -78,6 +78,24 @@ import XcrewTestSupport
         #expect(ProjectWorkspaces.root(ofWorkspace: folder) == "/work/App")
     }
 
+    /// The root is read from every log the workspace has, wherever a log names its container, and however many folders
+    /// above the container it is.
+    @Test func aRootIsReadFromAnyLogAtAnyDepth() throws {
+        let folder = try workspace("App-fc001cdb6ae6", log: nil)
+        for (index, text) in ["nothing here\n", "nothing here\n", "nothing here\n", String(repeating: "note: preparing\n", count: 6_000) + "xcodebuild build -workspace /work/App/a/b/c/d/App.xcworkspace -scheme App\n"].enumerated() {
+            let log = folder.appending(path: "logs/build_sim_2026-10-30T10-00-0\(index)-000Z_pid1_ab.log")
+            try text.write(to: log, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -Double(index) * 60)], ofItemAtPath: log.path)
+        }
+        #expect(ProjectWorkspaces.root(ofWorkspace: folder) == "/work/App")
+    }
+
+    /// A container named through `..` is read as the folder it reaches, so the walk up ends at `/`.
+    @Test func aContainerNamedThroughDotDotIsReadAsTheFolderItReaches() throws {
+        let folder = try workspace("App-fc001cdb6ae6", log: "xcodebuild build -workspace /work/Other/../App/App.xcworkspace -scheme App\n")
+        #expect(ProjectWorkspaces.root(ofWorkspace: folder) == "/work/App")
+    }
+
     /// A container whose folders don't hash to the key isn't the workspace's root, nor is a log naming none.
     @Test func aRootTheKeyDoesntConfirmIsNone() throws {
         #expect(ProjectWorkspaces.root(ofWorkspace: try workspace("App-fc001cdb6ae6", log: "xcodebuild build -workspace /work/Other/Other.xcworkspace\n")) == nil)

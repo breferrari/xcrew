@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { historyKey, scopeKey, updatedKey } from './timing'
-import { callTool, runCommand, withoutIfBuilt } from './testing'
+import { callTool, runCommand } from './testing'
 
 /** Stands for the engine: registers commands, and answers `bin/xcrew` with `outputs[subcommand]`. */
 function engine(on: On, outputs: Record<string, string> = {}) {
@@ -13,12 +13,15 @@ function engine(on: On, outputs: Record<string, string> = {}) {
     return { value: { command: e.name } }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('process.run', (_, e) => {
-    // The shim's `--if-built` runs the build that's there; a command's run is the same with or without it.
-    const argv = [e.argv[0] ?? '', ...withoutIfBuilt(e.argv.slice(1))]
-    // The session start's own look for problems, and its read of Xcode's selection, aren't a command's run.
+  on('process.spawn', async function* (_, e) {
+    const argv = e.argv
+    // Which build to run, the session start's own look for problems, and its read of Xcode's selection, aren't a
+    // command's run.
+    if (argv.includes('--binary-path')) return { value: { code: 0, signal: null } }
     if (!argv.includes('--problems') && !argv.includes('--xcode')) runs.push(argv)
-    return { value: { exitCode: 0, stdout: outputs[argv[1] ?? ''] ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    const stdout = outputs[argv[1] ?? ''] ?? ''
+    if (stdout) yield { stream: 'stdout' as const, text: stdout }
+    return { value: { code: 0, signal: null } }
   })
   return { registered, runs }
 }
@@ -55,6 +58,41 @@ test('/xcrew doctor shows the doctor\'s report without a turn for Claude', async
   expect(seen.runs[0]?.[0]).toMatch(/\/bin\/xcrew$/)
   expect(ran.text).toContain('warn  xcode/pin')
   expect(ran.context).toBeUndefined()
+})
+
+/**
+ * The doctor waits for a new Xcode MCP bridge however long it takes, and says what it waits on as it waits: the line
+ * shows in the status line until the doctor answers, and the report is the doctor's alone.
+ */
+test('/xcrew doctor shows what it waits on while it waits', async ($, on) => {
+  mock.store(on)
+  const statuses: (string | undefined)[] = []
+  on('ui.status', (_, e) => {
+    statuses.push(e.text)
+    return { value: undefined }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  let release = () => {}
+  const released = new Promise<void>(resolve => (release = resolve))
+  let waiting = () => {}
+  const said = new Promise<void>(resolve => (waiting = resolve))
+  on('process.spawn', async function* (_, e) {
+    if (!e.argv.includes('--text-and-problems')) return { value: { code: 0, signal: null } }
+    yield { stream: 'stderr' as const, text: 'xcrew progress: waiting for a new Xcode MCP bridge to answer (xcrew mcpbridge)\n' }
+    waiting()
+    await released
+    yield { stream: 'stdout' as const, text: JSON.stringify({ text: 'ok    xcode-mcp/handshake  answers', problems: [] }) }
+    return { value: { code: 0, signal: null } }
+  })
+  await start($)
+  const ran = runCommand($, 'xcrew', 'doctor')
+  await said
+  await Promise.resolve()
+  expect(statuses.at(-1)).toBe('xcrew doctor: waiting for a new Xcode MCP bridge to answer (xcrew mcpbridge)')
+  release()
+  expect((await ran).text).toBe('ok    xcode-mcp/handshake  answers')
+  expect(statuses.at(-1)).toBeUndefined()
 })
 
 test('/xcrew history lists each tool\'s usual duration, slowest first', async ($, on) => {

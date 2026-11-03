@@ -201,9 +201,9 @@ public enum Space {
         }
     }
 
-    /// A folder's size from `du -sk`, capped.
+    /// A folder's size from `du -sk`.
     static let du: @Sendable (String, any CommandRunning) async -> Int? = { path, runner in
-        let ran = await runner.run(["du", "-sk", path], stdin: nil, timeout: DeadlineRunner.untimed)
+        let ran = await runner.run(["du", "-sk", path], stdin: nil)
         return ran.succeeded ? ran.stdout.split(separator: "\t").first.flatMap { Int($0) }.map { $0 * 1024 } : nil
     }
 

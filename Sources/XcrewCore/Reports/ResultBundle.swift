@@ -247,35 +247,42 @@ public struct ResultBundle: Sendable {
         let tests: String
         if knownIssues.isEmpty {
             let api = names.isEmpty ? "XCTExpectFailure or withKnownIssue" : "XCTExpectFailure"
-            tests = (expected == 1 ? "1 test also ran as an expected failure" : "\(expected) tests also ran as expected failures") + " (\(api))" + listed(names)
+            tests = (expected == 1 ? "1 test also ran as an expected failure" : "\(expected) tests also ran as expected failures") + " (\(api))" + listed(names, rest: inTheBundle)
         } else if names.isEmpty {
-            tests = (expected == 1 ? "1 test also ran with a known issue" : "\(expected) tests also ran with known issues") + " (withKnownIssue)" + listed(knownIssues)
+            tests = (expected == 1 ? "1 test also ran with a known issue" : "\(expected) tests also ran with known issues") + " (withKnownIssue)" + listed(knownIssues, rest: inTheBundle)
         } else {
             let failures = names.count == 1 ? "an expected failure" : "expected failures", issues = knownIssues.count == 1 ? "a known issue" : "known issues"
-            tests = "\(expected) tests also ran expecting a failure: \(joined(names)) as \(failures) (XCTExpectFailure), \(joined(knownIssues)) with \(issues) (withKnownIssue)"
+            tests = "\(expected) tests also ran expecting a failure: \(joined(names, rest: inTheBundle)) as \(failures) (XCTExpectFailure), \(joined(knownIssues, rest: inTheBundle)) with \(issues) (withKnownIssue)"
         }
         let total = (counts?["totalTestCount"] as? Int).map { ": \($0) tests ran in all" } ?? ""
         return "xcrew: \(tests). They count as neither passed nor failed in the result\(total)."
     }
 
-    /// `: A, B and C`, or `: A, B, C, D, E and 2 more`; nothing without names.
-    static func listed(_ names: [String], separator: String = ", ") -> String {
-        names.isEmpty ? "" : ": " + joined(names, separator: separator)
+    /// What a counted list says when nothing else holds the rest: said, so the list doesn't read as whole.
+    static let noList = "no list of them is kept"
+
+    /// Where a run's tests are all listed: its result bundle.
+    static let inTheBundle = "the run's result bundle lists them all"
+
+    /// `: A, B and C`, or `: A, B, C, D, E and 2 more (rest)`; nothing without names.
+    static func listed(_ names: [String], separator: String = ", ", rest: String) -> String {
+        names.isEmpty ? "" : ": " + joined(names, separator: separator, rest: rest)
     }
 
-    /// Names one after another, `a, b and c`, a few at most and the rest counted; with `or`, `a, b or c`.
-    static func joined(_ names: [String], separator: String = ", ", or: Bool = false) -> String {
+    /// Names one after another, `a, b and c`, a few at most and the rest counted with `rest`, which says where they all
+    /// are, or that no list of them is kept (`noList`); with `or`, `a, b or c`.
+    static func joined(_ names: [String], separator: String = ", ", or: Bool = false, rest: String) -> String {
         guard let last = names.last else { return "" }
         let conjunction = or ? " or " : " and "
-        if names.count > mostNamed { return names.prefix(mostNamed).joined(separator: separator) + conjunction + "\(names.count - mostNamed) more" }
+        if names.count > mostNamed { return names.prefix(mostNamed).joined(separator: separator) + conjunction + "\(names.count - mostNamed) more (\(rest))" }
         return names.count == 1 ? last : names.dropLast().joined(separator: separator) + conjunction + last
     }
 
     // MARK: Asking xcresulttool
 
-    /// What `xcresulttool` answers, or nothing. It has no limit of its own: the call's deadline, passed down, decides.
+    /// What `xcresulttool` answers, or nothing; it runs to its end.
     static func xcresulttool(_ arguments: [String], runner: any CommandRunning) async -> String {
-        let ran = await runner.run(["xcrun", "xcresulttool"] + arguments, stdin: nil, timeout: DeadlineRunner.untimed)
+        let ran = await runner.run(["xcrun", "xcresulttool"] + arguments, stdin: nil)
         return ran.succeeded ? ran.stdout : ""
     }
 
@@ -315,9 +322,9 @@ public struct ResultBundle: Sendable {
         await xccov(["--file", file, "--json"])
     }
 
-    /// What `xccov view` answers of the bundle, or nothing. It has no limit of its own: the call's deadline decides.
+    /// What `xccov view` answers of the bundle, or nothing; it runs to its end.
     func xccov(_ arguments: [String], archive: Bool = true) async -> String {
-        let ran = await runner.run(["xcrun", "xccov", "view"] + (archive ? ["--archive"] : []) + arguments + [path], stdin: nil, timeout: DeadlineRunner.untimed)
+        let ran = await runner.run(["xcrun", "xccov", "view"] + (archive ? ["--archive"] : []) + arguments + [path], stdin: nil)
         return ran.succeeded ? ran.stdout : ""
     }
 
@@ -389,7 +396,7 @@ extension ResultBundle {
         let named = decisions.prefix(mostNamed).map { test in
             test.verdict == .flaky ? "\(test.test) is flaky, failing \(test.failed) of \(test.runs)" : "\(test.test) failed every run, a real failure"
         }
-        let unnamed = decisions.count > mostNamed ? ["and \(decisions.count - mostNamed) more flaky or failing"] : []
+        let unnamed = decisions.count > mostNamed ? ["and \(decisions.count - mostNamed) more flaky or failing (\(inTheBundle))"] : []
         let passed = repeated.count { $0.verdict == .passed }
         let undecided = repeated.count { $0.verdict == .none }
         let each = repeated.allSatisfy { $0.runs == runs } ? "across \(runs) runs each" : "across repeated runs"

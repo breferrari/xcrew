@@ -73,49 +73,9 @@ export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 export type Ran = { stdout: string; stderr: string; exitCode?: number }
 
 /**
- * The time xcrew's work around a tool call has: each read before the call starts, and its work on the result, counted
- * from when that came back: 10 s, the limit for keeping a person's attention on a wait (Nielsen,
- * *Usability Engineering*, 1993, ch. 5), past which the server's own result serves better than one that waits on
- * xcrew's notes (docs/findings.md, *Deadlines inside the CLI*).
- */
-export const ON_RESULT_MS = 10_000
-
-/**
- * The time what a person or Claude asks of xcrew has, a `/xcrew` command or the evidence: Claude Code's own point where
- * a command stops holding the conversation, `BASH_DEFAULT_TIMEOUT_MS`'s 120 s. The CLI takes the same when given none.
- */
-export const ASKED_MS = 120_000
-
-/** What a call fails with when its time ran out before the CLI answered, or before it could start. */
-export class OutOfTime extends Error {
-  constructor() {
-    super("the call's time ran out before the CLI answered")
-  }
-}
-
-/** The one line a result gets when its report's time, `ms`, ran out first: what's left out, as a fact. */
-export function reportCutNote(ms: number): string {
-  return `xcrew: its report on this result didn't answer within its ${ms / 1000} s, so its notes are left out.`
-}
-
-/** What a call fails with when its time ran out waiting for the CLI's build, which goes on. */
-export class StillBuilding extends Error {
-  constructor() {
-    super('the CLI is still being built for this version')
-  }
-}
-
-/**
- * The time a call nobody waits on has, as a timer's or a task's no result waits for: the mods API's own default for
- * running a process, 30 s when a call names no `timeoutMs` (its types' doc). The mod passes no limit of its own for
- * such a call, and tells the CLI this one, to pass down to its commands.
- */
-export const UNWAITED_MS = 30_000
-
-/**
  * How long the shim's answer is trusted before asking again, and a build that named nothing remembered: a development
- * checkout rebuilds when its sources change, and shows it within this. Nothing measured it (docs/findings.md,
- * *Deadlines inside the CLI*).
+ * checkout rebuilds when its sources change, and shows it within this. A freshness window, which stops no work; nothing
+ * measured it.
  */
 const RECHECK_MS = 30_000
 
@@ -124,21 +84,26 @@ export function shimPath(pluginRoot: string): string {
   return `${pluginRoot}/bin/xcrew`
 }
 
-/** The build to run while the shim's last answer is fresh; `ask` when it's stale or there is none. */
-export function knownBuild(known: CliBuild | null, now: number): string | undefined | 'ask' {
-  if (known && now >= known.at && now - known.at < RECHECK_MS) return known.path ?? undefined
-  return 'ask'
+/** A build the shim couldn't make: why, from what it wrote. */
+export type FailedBuild = { failed: string }
+
+/** The build to run while the shim's last answer is fresh, or why it failed; `ask` when it's stale or there is none. */
+export function knownBuild(known: CliBuild | null, now: number): string | FailedBuild | undefined | 'ask' {
+  if (!known || now < known.at || now - known.at >= RECHECK_MS) return 'ask'
+  return known.path ?? (known.failed ? { failed: known.failed } : undefined)
+}
+
+/** Why the shim named no build: the first line of what it wrote that holds `error:`, as the compiler words one, else its last line. */
+export function buildFailure(ran: Ran): string {
+  const lines = ran.stderr.split('\n').map(line => line.trim()).filter(line => line !== '')
+  const why = lines.find(line => line.includes('error:')) ?? lines.at(-1) ?? `the shim exited ${ran.exitCode ?? 'without a status'}`
+  return `its CLI couldn't be built for this version: ${why}`
 }
 
 /** Only a path to a build counts: anything else on stdout leaves the CLI to the shim. */
 export function namedBuild(stdout: string): string | null {
   const path = stdout.trim()
   return path.startsWith('/') && path.endsWith('/xcrew') ? path : null
-}
-
-/** A command that ran out of time isn't started again through the shim, which would double the wait. */
-export function ranOutOfTime(startedAt: number, now: number, timeoutMs: number): boolean {
-  return now - startedAt >= timeoutMs
 }
 
 export function reportArgs(server: string, kind: string, isError: boolean, repeated = false, passed = false): string[] {
@@ -305,9 +270,6 @@ export function couldntRun(args: readonly string[], error: unknown): string {
   return `xcrew ${args.join(' ')} couldn't run: ${error instanceof Error ? error.message : String(error)}`
 }
 
-/** The shim's status when `--if-built` finds no build for this version: sysexits' EX_TEMPFAIL, try again later. */
-export const NOT_BUILT = 75
-
 /** Whether a CLI command printed nothing and ended well, as `card --save` does: an answer of nothing, not a failure. */
 export function endedQuietly(ran: Ran): boolean {
   return ran.stdout.trim() === '' && (ran.exitCode ?? 0) === 0
@@ -334,10 +296,17 @@ export function readKey(read: string): string {
   return read.split(' ').filter((_, at, args) => !PER_RUN_OPTIONS.includes(args[at - 1] ?? '')).join(' ')
 }
 
+/** What the CLI writes to standard error before a line saying what it waits on, as `Progress.prefix` in the CLI. */
+export const PROGRESS_PREFIX = 'xcrew progress: '
+
+/** The lines in `text` that say what the CLI waits on, without their prefix. */
+export function progressLines(text: string): string[] {
+  return text.split('\n').filter(line => line.startsWith(PROGRESS_PREFIX)).map(line => line.slice(PROGRESS_PREFIX.length).trim())
+}
+
 function unreadBecause(ran: Ran): string {
-  const said = ran.stderr.split('\n').map(line => line.trim()).find(line => line !== '')
+  const said = ran.stderr.split('\n').map(line => line.trim()).find(line => line !== '' && !line.startsWith(PROGRESS_PREFIX.trim()))
   if (said !== undefined) return said
-  if (ran.exitCode === NOT_BUILT) return "the CLI isn't built for this version yet"
   if (ran.exitCode !== undefined && ran.exitCode !== 0) return `it exited ${ran.exitCode}${ran.stdout.trim() === '' ? ', writing nothing' : ''}`
   return 'it printed something other than JSON'
 }

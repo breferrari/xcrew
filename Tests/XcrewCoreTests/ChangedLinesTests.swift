@@ -62,7 +62,7 @@ import XcrewTestSupport
         let project = Project.temporary()
         let runner = SystemCommandRunner()
         func git(_ arguments: String...) async {
-            _ = await runner.run(["git", "-C", project.root.path, "-c", "user.name=xcrew", "-c", "user.email=xcrew@example.com", "-c", "commit.gpgsign=false"] + arguments, stdin: nil, timeout: .seconds(30))
+            _ = await runner.run(["git", "-C", project.root.path, "-c", "user.name=xcrew", "-c", "user.email=xcrew@example.com", "-c", "commit.gpgsign=false"] + arguments, stdin: nil)
         }
         await git("init", "-q")
         project.write("a\nb\n", to: "My App/A b.swift")

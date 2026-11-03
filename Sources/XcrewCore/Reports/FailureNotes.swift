@@ -4,10 +4,8 @@ import Foundation
 /// location, a crash's exception and frames, the images a failed test attached, a pointer to `look`
 /// under a failed UI test, and each skipped test's reason, including skipped tests the text leaves out.
 public enum FailureNotes {
-    /// At most this many tests are looked up: past it, the first ones are enough to start from.
-    static let mostLookups = 10
-    /// At most this many tests are looked up at once: each is one or two xcresulttool processes on
-    /// the same bundle, and a crowd of them on a busy Mac runs into their timeouts.
+    /// At most this many tests are looked up at once: each is one or two xcresulttool processes on the same bundle, which
+    /// a crowd of them only slows. Every test is looked up; this sets how many at a time.
     static let mostAtOnce = 4
 
     /// `0.006`, as MobileBuildMCP writes a test's time: three decimals, whatever the Mac's locale.
@@ -140,17 +138,15 @@ public enum FailureNotes {
         let readsSkips: Bool
 
         /// The text with every note, `skips` the run's skipped tests from its test list: a listed one's reason under its
-        /// line, a few the text leaves out added; nil when it adds nothing.
+        /// line, each the text leaves out added; nil when it adds nothing.
         func adding(skips: [(test: TestID, skip: ResultBundle.Skip)]) -> Added? {
             var notes = notes
             let listed = Set(listedSkips)
             let reason = { (skip: ResultBundle.Skip) in skip.reason.map { [MobileBuildMCPLine.skipReason($0)] } ?? [] }
-            var unlisted = 0
             for (test, skip) in skips {
                 if listed.contains(test) {
                     notes.skipped[test] = reason(skip)
-                } else if unlisted < mostLookups {
-                    unlisted += 1
+                } else {
                     notes.unlisted += ["  ⏭️ \(test.xcresultID) (\(seconds(skip.seconds))s)"] + reason(skip)
                 }
             }
@@ -172,9 +168,9 @@ public enum FailureNotes {
             if text.location(after: index) != nil { located.insert(failing.test) }
             if isCrash(failing.message) { crashed.insert(failing.test) }
         }
-        // A test the text doesn't place, or that crashed, is looked up for that; the first failed tests for their images too.
-        let detailed = Set(order.filter { !located.contains($0) || crashed.contains($0) }.prefix(mostLookups))
-        let imaged = Set(imagesFolder == nil ? [] : order.prefix(mostLookups))
+        // A test the text doesn't place, or that crashed, is looked up for that; every failed test for its images too.
+        let detailed = Set(order.filter { !located.contains($0) || crashed.contains($0) })
+        let imaged = Set(imagesFolder == nil ? [] : order)
         let lookups = order.filter { detailed.contains($0) || imaged.contains($0) }
         let listedSkips = text.lines.compactMap { line -> TestID? in
             if case let .skipped(test) = line.kind { return test }

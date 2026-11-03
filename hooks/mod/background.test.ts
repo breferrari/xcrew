@@ -376,17 +376,17 @@ test("the log's verdict ends the band, and the notification records the run once
   expect(stored().filter(key => /^failed\./.test(key)).length).toBe(1)
 })
 
-/** A log that stops without a verdict, as when its server was killed, leaves the band, and nothing reads it on. */
-test('a run whose log goes quiet leaves the band, and its log is read no more', async ($, on) => {
+/** A run in the background stays followed, its log however quiet, until its verdict or its notification ends it. */
+test('a run whose log goes quiet stays on the band, followed until its notification', async ($, on) => {
   let quiet = false
   const { clock, cli } = session(on, { surface: 'terminal', phase: () => ({ log: LOG, phase: 'testing', scheme: 'App', ...(quiet ? { quiet: true } : {}) }) })
   await callTool($, TEST, { tool_use_id: 'toolu_bg' })
   quiet = true
   await clock.advance(2_000)
-  expect(await bandShows($, /test_sim/)).toBe(false)
+  expect(await bandShows($, /test_sim/)).toBe(true)
   const read = phaseCalls(cli)
   await clock.advance(60_000)
-  expect(phaseCalls(cli)).toBe(read)
+  expect(phaseCalls(cli)).toBeGreaterThan(read)
 })
 
 /** Two runs in the background each follow their own log, and each ends on its own. */
@@ -407,8 +407,8 @@ test('two runs in the background each follow their own log', async ($, on) => {
   expect(phaseCalls(cli, 'test_sim')).toBeGreaterThan(testedAt)
 })
 
-/** More calls waiting than are kept: the oldest is dropped, and its ticker with it, so it reads no phase on. */
-test('a backgrounded call dropped from the waiting ones stops following its log', async ($, on) => {
+/** Every call moved to the background is kept and followed until its notification, however many wait. */
+test('every backgrounded call is followed until its notification, however many wait', async ($, on) => {
   // Calls that answer at once, each moved to a task of its own: no tick runs until the clock moves below.
   const tasks: Partial<Report>[] = Array.from({ length: 20 }, (_, call) => ({ ...UNREAD, backgroundTask: `task${call + 1}` }))
   const { clock, cli } = session(on, { surface: 'terminal', callMs: 0, reports: tasks })
@@ -416,6 +416,6 @@ test('a backgrounded call dropped from the waiting ones stops following its log'
   await clock.settle()
   const before = phaseCalls(cli)
   await clock.advance(1_000)
-  // One second: one read for each of the 20 calls kept, none for the one dropped.
-  expect(phaseCalls(cli) - before).toBe(20)
+  // One second: one read for each of the 21 calls.
+  expect(phaseCalls(cli) - before).toBe(21)
 })

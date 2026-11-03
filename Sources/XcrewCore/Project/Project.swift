@@ -75,12 +75,12 @@ public struct Project: Sendable, Equatable {
         return folders.lazy.compactMap { read("\($0)/\(Self.xcodePinFile)") }.first
     }
 
-    /// What a pin file at `path` from the root holds, trimmed: a small regular file inside the project, so a workflow can't
-    /// send it outside, to a device or a pipe. Nil without one, or when it's empty.
+    /// What a pin file at `path` from the root holds, trimmed: a regular file inside the project, so a workflow can't send
+    /// it outside, to a device or a pipe. Nil without one, or when it's empty.
     func pinned(at path: String) -> String? {
         guard !path.hasPrefix("/"), !path.split(separator: "/").contains(".."),
-              let values = try? root.appending(path: path).resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-              values.isRegularFile == true, (values.fileSize ?? 0) <= 1024,
+              let values = try? root.appending(path: path).resourceValues(forKeys: [.isRegularFileKey]),
+              values.isRegularFile == true,
               let text = try? String(contentsOf: root.appending(path: path), encoding: .utf8)
         else { return nil }
         let version = text.trimmingCharacters(in: .whitespacesAndNewlines)

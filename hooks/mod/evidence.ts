@@ -1,5 +1,4 @@
-import { ASKED_MS } from './cli'
-import type { LedgerEntry } from './ledger'
+import { type LedgerEntry, shownMessage } from './ledger'
 
 /**
  * A pull request's evidence: `xcrew evidence`'s block for this branch, then the images to attach, from the ledger the mod
@@ -16,13 +15,11 @@ export const EVIDENCE_TOOL = {
 /** The full name Claude calls it by: a plugin's registered tool is `mcp__<plugin>__<name>`. */
 export const EVIDENCE_TOOL_NAME = 'mcp__xcrew__evidence'
 
-/** Asked for, as a `/xcrew` command is: `ASKED_MS`, which the CLI passes down to every bundle and coverage read. */
-export const EVIDENCE_TIMEOUT_MS = ASKED_MS
-
 /** Without the branch, its ledger can't be read: said so, rather than evidence that would say no test failed. */
 export const EVIDENCE_UNAVAILABLE = "The evidence couldn't be read: xcrew's CLI didn't say which branch is checked out, so the tests it took from red to green aren't known. Run `/xcrew doctor`."
 
 /** What `xcrew evidence` reads on stdin: the branch's ledger. */
 export function evidenceInput(entries: readonly LedgerEntry[]): string {
-  return JSON.stringify({ ledger: entries })
+  // Each message as the block shows it: its first line, the whole kept in the ledger.
+  return JSON.stringify({ ledger: entries.map(entry => ({ ...entry, red: { ...entry.red, message: shownMessage(entry.red.message) } })) })
 }

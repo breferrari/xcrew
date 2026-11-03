@@ -282,7 +282,7 @@ struct MobileText: Sendable {
             default: !listedAbove && MobileBuildMCPLine.isFailed(line.text)
             }
         }
-        let note = listedAbove ? "  (\(passed) passing tests left out; failing tests are listed in full above)" : "  (\(passed) passing tests left out)"
+        let note = "  (\(passed) passing tests left out: the run's result bundle lists them" + (listedAbove ? "; failing tests are listed in full above)" : ")")
         return MobileText(lines: Array(lines[...start]) + [Line(note)] + kept + Array(lines[end...]))
     }
 

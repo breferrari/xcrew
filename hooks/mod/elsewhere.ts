@@ -22,6 +22,6 @@ export const ELSEWHERE_LABEL = 'elsewhere: '
 /** `feature · test_sim · testing 120 of 959`: a fact, the first runs named and the rest counted. */
 export function elsewhereRuns(runs: ElsewhereRun[]): string {
   const named = runs.slice(0, NAMED).map(run => [run.worktree, run.tool, ...(run.phase ? [run.phase] : [])].join(' · '))
-  const more = runs.length > NAMED ? [`+${runs.length - NAMED} more`] : []
+  const more = runs.length > NAMED ? [`+${runs.length - NAMED} more; \`xcrew runs\` lists them all`] : []
   return [...named, ...more].join('; ')
 }

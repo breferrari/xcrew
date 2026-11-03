@@ -313,7 +313,7 @@ import XcrewTestSupport
 
         """
         let script = "const y = require(process.argv[1]); const c = y.parse(require('fs').readFileSync(0, 'utf8')); console.log(JSON.stringify(c.sessionDefaultsProfiles))"
-        let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, libexec.appending(path: "node_modules/yaml").path], stdin: Data(yaml.utf8), timeout: .seconds(30))
+        let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, libexec.appending(path: "node_modules/yaml").path], stdin: Data(yaml.utf8))
         let upstream = try #require(try JSONSerialization.jsonObject(with: Data(ran.stdout.utf8)) as? [String: [String: Any]], "MobileBuildMCP's yaml gave \(ran.stdout) \(ran.stderr)")
         let theirs = upstream.mapValues { $0.filter { !($0.value is NSNull) } }
         let ours = Dictionary(uniqueKeysWithValues: ConfigRenderer.sessions(in: yaml).profiles.map { ($0.name, LiveDefaults.defaults($0.lines, root: URL(fileURLWithPath: "/work/App"), home: URL(fileURLWithPath: "/home/someone"))) })

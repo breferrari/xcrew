@@ -57,7 +57,7 @@ import XcrewTestSupport
         FakeXcode.install(in: apps, "Xcode-27.2.app", version: "27.2", build: "27C5")
         for app in bundled { try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-27.2.app/\(app)"), withIntermediateDirectories: true) }
         let base = Self.machine(project, version: "2.7.1")
-        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps)
+        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now)
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
         #expect(text.contains("- **xcrew:** Xcode 27.2 shows simulators in DeviceHub (`open -a DeviceHub`); no Xcode here has Simulator.app.") == named, "\(text)")
     }
@@ -71,7 +71,7 @@ import XcrewTestSupport
         try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-27.2.app/Contents/Applications/DeviceHub.app"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-26.4.app/Contents/Developer/Applications/Simulator.app"), withIntermediateDirectories: true)
         let base = Self.machine(project, version: "2.7.1")
-        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps)
+        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now)
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
         #expect(!text.contains("DeviceHub"), "\(text)")
     }
@@ -116,8 +116,8 @@ import XcrewTestSupport
         #expect(text.contains("Test plan `App`, the default of schemes `App`, `Beta` and `Zed`, runs each test"), "\(text)")
     }
 
-    /// A project with hundreds of shared schemes is read only so far at session start, and each plan only once.
-    @Test func briefingReadsSchemesOnlySoFar() async {
+    /// Every shared scheme is read for its test plan, however many a project has, and each plan only once.
+    @Test func briefingReadsEverySchemesPlan() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         for index in 1...80 {
             let name = "S" + String(repeating: "0", count: 3 - String(index).count) + String(index)
@@ -125,12 +125,12 @@ import XcrewTestSupport
             project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "\(name).xctestplan")
         }
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
-        // 50 schemes read: 5 named, 45 counted, and more unread.
-        #expect(text.contains("- **xcrew:** and at least 45 more test plans run each test under several configurations."), "\(text)")
+        // 80 schemes read: 5 named, 75 counted.
+        #expect(text.contains("- **xcrew:** and 75 more test plans run each test under several configurations (no list of them is kept)."), "\(text)")
     }
 
-    /// Reading stopped with nothing unnamed: no count of 0 more, only that the rest weren't read.
-    @Test func briefingStoppedWithNothingLeftCountsNoMorePlans() async {
+    /// With every scheme read and one plan to name, nothing more is said.
+    @Test func briefingWithOnePlanSaysNoMore() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         for index in 1...80 {
             let name = "S" + String(repeating: "0", count: 3 - String(index).count) + String(index)
@@ -141,7 +141,7 @@ import XcrewTestSupport
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
         #expect(text.contains("Test plan `S001`"), "\(text)")
         #expect(!text.contains("at least 0"), "\(text)")
-        #expect(text.contains("- **xcrew:** Schemes past the first \(TestPlans.mostSchemes) weren't read for test plans."), "\(text)")
+        #expect(!text.contains("weren't read"), "\(text)")
     }
 
     /// One line per test plan, whichever schemes share it, and a few plans at most: a large modular app's schemes would
@@ -159,7 +159,7 @@ import XcrewTestSupport
         #expect(notes.first == "- **xcrew:** Test plan `Shared`, the default of schemes `A`, `B` and `C`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which.", "\(notes)")
         #expect(notes.contains("- **xcrew:** Test plan `P1`, the default of scheme `P1`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which."), "\(notes)")
         #expect(notes.count == 6, "\(notes)")
-        #expect(notes.last == "- **xcrew:** and 2 more test plans run each test under several configurations.", "\(notes)")
+        #expect(notes.last == "- **xcrew:** and 2 more test plans run each test under several configurations (no list of them is kept).", "\(notes)")
     }
 
     /// MobileBuildMCP writes a config of its own when Claude saves session defaults: one without a profile naming a
@@ -245,13 +245,14 @@ import XcrewTestSupport
     static let failover = "Until it is, the routing rules' MobileBuildMCP rows don't apply: build with the Xcode MCP's `BuildProject` and test with `RunAllTests`. They work through Xcode itself, on the open project, its active scheme and destination, in Xcode's own DerivedData. Lost meanwhile: coverage reports, simulator control, UI automation and LLDB. Tell the person once that MobileBuildMCP is unavailable and what that loses, then carry on. If a build or test needs a scheme other than Xcode's active one, ask before switching it: that changes their open Xcode. If the Xcode MCP's tools refuse too, run `xcrew doctor`."
 
     /// A Mac whose `mobilebuildmcp` is a real file, answering `--version` with `version` (nil: no answer). The file is
-    /// written once, since the version's cache is keyed by its modification time.
+    /// written once, since the version's cache is keyed by its modification time. Its clock stands at the moment it's
+    /// made, so a test's dates and the briefing's "ago" agree however long the test takes.
     static func machine(_ project: Project, version: String?, branch: String? = nil) -> Machine {
         if !FileManager.default.fileExists(atPath: project.root.appending(path: "bin/mobilebuildmcp").path) { project.write("#!/bin/sh\n", to: "bin/mobilebuildmcp") }
         var runner = FakeRunner(installed: ["mobilebuildmcp"], responses: version.map { ["mobilebuildmcp --version": CommandResult(status: 0, stdout: $0 + "\n")] } ?? [:])
         if let branch { runner.responses["git -C \(project.root.path) symbolic-ref --short -q HEAD"] = CommandResult(status: 0, stdout: branch + "\n") }
         runner.paths["mobilebuildmcp"] = project.root.appending(path: "bin/mobilebuildmcp").path
-        return CheckContext.fake(runner, project: project).machine
+        return CheckContext.fake(runner, project: project, now: Date()).machine
     }
 
     @Test func aMissingMobileBuildMCPSendsBuildsAndTestsToTheXcodeMCP() async {

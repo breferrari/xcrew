@@ -212,6 +212,13 @@ import XcrewTestSupport
         #expect(root.xcodePin?.file == "ios/.xcode-version")
     }
 
+    /// A pin file is read whole, however long: what it holds, trimmed, is the version.
+    @Test func aLongPinFileIsReadWhole() {
+        let root = Project.temporary(containing: ["App.xcodeproj"])
+        root.write("26.4" + String(repeating: "\n", count: 2_000), to: ".xcode-version")
+        #expect(root.xcodePin?.version == "26.4")
+    }
+
     /// The selected Xcode is the one `DEVELOPER_DIR` names, else `xcode-select`'s, as the app holding the developer folder.
     @Test func theSelectedXcodeIsTheAppAroundTheDeveloperFolder() async {
         let apps = Self.applications()

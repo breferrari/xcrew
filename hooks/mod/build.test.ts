@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { BUILT_BINARY, callTool, stubCli } from './testing'
+import { BUILT_BINARY, callTool, runCommand, stubCli } from './testing'
 
 /** A session in a terminal, its CLI stubbed with `spawn` for the session start's background build. */
 function session(on: On, spawn: { held?: Promise<void>; fails?: boolean; printsNothing?: boolean } = {}) {
@@ -38,7 +38,7 @@ test("a session start starts the shim's build without waiting for it", async ($,
 
 /**
  * The background build is dispatched first of the session start's calls on the shim, ahead of the doctor's read and
- * the rest, which run under time limits of their own, so it's the likeliest to take the shim's lock.
+ * the rest, so it's the likeliest to take the shim's lock.
  */
 test("the background build is dispatched first of the session start's calls on the shim", async ($, on) => {
   const { clock, cli } = session(on)
@@ -49,7 +49,7 @@ test("the background build is dispatched first of the session start's calls on t
   expect(shim.length).toBeGreaterThan(1)
 })
 
-/** With no build and a background build that can't start, a call builds through the shim as it did before. */
+/** With no build and a background build that can't start, a call runs through the shim, which builds. */
 test("a background build that can't start leaves the first CLI call to build", async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
@@ -60,110 +60,59 @@ test("a background build that can't start leaves the first CLI call to build", a
   on('ui.toast', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {}, text: 'done' }))
-  const cli = stubCli(on, { built: () => false, spawn: { fails: true } })
+  const cli = stubCli(on, { spawn: { fails: true } })
   await start($)
   await clock.settle()
   await callTool($, 'mcp__xcode__BuildProject')
   await clock.settle()
-  expect(cli.filter(call => call.args[0] === 'report').map(call => [call.program ?? 'the shim', call.ifBuilt ?? false])).toEqual([['the shim', false]])
+  expect(cli.filter(call => call.args[0] === 'report').map(call => call.program ?? 'the shim')).toEqual(['the shim'])
 })
 
-/** A background build that ends naming no binary, as one killed or failed does, records nothing: calls keep the build they found. */
-test('a background build that names no binary leaves the known build as it was', async ($, on) => {
+/** A background build that failed is remembered with why: a call says so and asks the shim for nothing more. */
+test('a background build that failed is said by the calls after it, which build nothing again', async ($, on) => {
   const { clock, cli } = session(on, { printsNothing: true })
   await start($)
   await clock.settle()
-  await callTool($, 'mcp__xcode__BuildProject')
+  // The session start's own reads may each ask, as they go at once; the shim's lock keeps them to one build.
+  const asked = cli.filter(call => call.args[0] === '--binary-path').length
+  const result = await callTool($, 'mcp__xcode__BuildProject')
   await clock.settle()
-  expect(cli.filter(call => call.args[0] === 'report').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
+  expect(cli.filter(call => call.args[0] === 'report')).toEqual([])
+  expect(cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(asked)
+  expect(String(result.context ?? '')).toContain("its CLI couldn't be built for this version: Sources/xcrew/main.swift:1:1: error: cannot find 'x' in scope")
 })
 
 /**
- * At a reload the background build is the only builder: a call made meanwhile asks the shim only whether a build is
- * there, starts none and stops none, and waits for it no longer than its own time, then answers without its note.
+ * At a reload the background build runs to its end: a call made meanwhile asks the shim for the build, which waits for
+ * it through the shim's lock, however long it takes, and answers whole.
  */
-test("a quick call during the background build doesn't build, doesn't stop it, and gives up in its own time", async ($, on) => {
+test('a call during the background build waits for it through the shim and answers whole', async ($, on) => {
   let finish: () => void = () => {}
   const held = new Promise<void>(resolve => { finish = resolve })
-  let built = false
   const clock = mock.clock(on)
   mock.store(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
-  on('tool.describe', (_, e) => ({ description: e.description }))
   on('session.surfaces', () => ({ value: ['vscode'] }))
   on('ui.toast', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
-  on('tool.call', () => ({ result: { ok: true } }))
-  const cli = stubCli(on, { built: () => built, spawn: { held }, project: () => ({ isGenerated: true }) })
+  on('ui.invalidate', () => ({ value: undefined }))
+  const cli = stubCli(on, { spawn: { held }, affected: () => ({ base: 'origin/main, from 0123456789ab', changed: [], selections: [] }), problems: [] })
   await start($)
-  const before = cli.length
-  let answered = false
-  const call = callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' }).then(result => {
-    answered = true
-    return result
-  })
-  await clock.advance(9_000)
-  expect(answered).toBe(false)
-  await clock.advance(2_000)
-  // Without the CLI's answer the edit goes through as the server takes it: the note it would have added is dropped.
-  expect((await call).result).toEqual({ ok: true })
-  expect(cli.filter(call => call.spawned)).toHaveLength(1)
-  // Every call only asked whether a build is there, and none ran its command through the shim once its time was up.
-  const asked = cli.slice(before).filter(call => !call.spawned)
-  expect(asked.every(call => call.ifBuilt && call.args[0] === '--binary-path')).toBe(true)
-  expect(asked.map(call => call.timeoutMs)).toContain(10_000)
-  built = true
+  const affected = callTool($, 'mcp__xcrew__affected')
+  const doctor = runCommand($, 'xcrew', 'doctor')
+  // Past any time an older xcrew gave a call, the build still going.
+  await clock.advance(11_000)
   finish()
-  await clock.settle()
-  // The build went on to its end, and the next call runs it.
-  await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' })
-  expect(cli.filter(call => call.args[0] === 'project').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
+  expect(String((await affected).result)).toStartWith('Nothing has changed')
+  expect(String((await doctor).text)).toBe("the doctor's report")
+  // The wait went through the shim's own build, spawned.
+  expect(cli.filter(call => call.args[0] === '--binary-path').every(call => call.spawned)).toBe(true)
 })
 
-test("a call that waited for the background build gives its command only what's left of its time", async ($, on) => {
-  let finish: () => void = () => {}
-  const held = new Promise<void>(resolve => { finish = resolve })
-  let built = false
-  const clock = mock.clock(on)
-  mock.store(on)
-  on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
-  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
-  on('tool.describe', (_, e) => ({ description: e.description }))
-  on('session.surfaces', () => ({ value: ['vscode'] }))
-  on('ui.toast', () => ({ value: undefined }))
-  on('ui.status', () => ({ value: undefined }))
-  on('tool.call', () => ({ result: { ok: true } }))
-  const cli = stubCli(on, { built: () => built, spawn: { held }, project: () => ({ isGenerated: true }) })
-  await start($)
-  const call = callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' })
-  await clock.advance(4_000)
-  built = true
-  finish()
-  await call
-  expect(cli.filter(call => call.args[0] === 'project').map(call => call.timeoutMs)).toEqual([6_000, 6_000])
-})
-
-test("a report its 10 s cut says so in one line, beside the server's result", async ($, on) => {
-  const clock = mock.clock(on)
-  mock.store(on)
-  on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
-  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
-  on('session.surfaces', () => ({ value: ['vscode'] }))
-  on('ui.toast', () => ({ value: undefined }))
-  on('ui.status', () => ({ value: undefined }))
-  on('tool.call', () => ({ result: {}, text: 'the server\'s result' }))
-  stubCli(on, { reportTimesOut: clock })
-  const result = await callTool($, 'mcp__xcode__BuildProject')
-  expect(result.context).toContain("xcrew: its report on this result didn't answer within its 10 s, so its notes are left out.")
-})
-
-/** What xcrew adds to a tool's result has 10 s, which also goes to the CLI, to pass down to every command it starts. */
-test("a call on a tool's result has 10 s, given to the CLI too", async ($, on) => {
-  const seen: { args: readonly string[]; timeoutMs?: number; within?: string }[] = []
+/** Every CLI call runs to its end: each is spawned, none run under a time of xcrew's or the API's. */
+test('every CLI call is spawned, none given a time', async ($, on) => {
   mock.clock(on)
   mock.store(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -173,18 +122,9 @@ test("a call on a tool's result has 10 s, given to the CLI too", async ($, on) =
   on('ui.toast', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {}, text: 'done' }))
-  on('process.run', (_, e) => {
-    const args = e.argv.slice(1)
-    seen.push({ args, ...(e.init?.timeoutMs === undefined ? {} : { timeoutMs: e.init.timeoutMs }), ...(e.init?.env?.XCREW_WITHIN_MS === undefined ? {} : { within: e.init.env.XCREW_WITHIN_MS }) })
-    const stdout = args.includes('--binary-path') ? `${BUILT_BINARY}\n` : args[0] === 'affected' ? 'null' : '{}'
-    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-  })
-  on('process.spawn', async function* () {
-    return { value: { code: 0, signal: null } }
-  })
+  const cli = stubCli(on, { affected: () => null })
   await callTool($, 'mcp__xcode__BuildProject')
   await callTool($, 'mcp__xcrew__affected')
-  const timed = (command: string) => seen.filter(call => call.args[0] === command).map(call => [call.timeoutMs, call.within])
-  expect(timed('report')).toEqual([[10_000, '10000']])
-  expect(timed('affected')).toEqual([[10_000, '10000']])
+  expect(cli.filter(call => ['report', 'affected'].includes(call.args[0] ?? '')).length).toBe(2)
+  expect(cli.every(call => call.spawned)).toBe(true)
 })

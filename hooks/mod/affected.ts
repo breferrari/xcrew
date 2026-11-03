@@ -24,8 +24,8 @@ export const AFFECTED_TOOL_NAME = 'mcp__xcrew__affected'
 /** What `xcrew affected` answers. */
 export type Affected = { base?: string; changed?: string[]; selections?: string[] | null; runAll?: string | null; uiSelections?: string[]; schemes?: { name: string; container: string; targets: string[] }[]; whole?: Reach; nearest?: Reach[] }
 
-/** A scheme that tests selected targets, as the CLI chose it: those it tests, and how many more. */
-export type Reach = { name: string; container: string; tests: string[]; more: number }
+/** A scheme that tests selected targets, as the CLI chose it: those it tests, and the others it tests besides. */
+export type Reach = { name: string; container: string; tests: string[]; others: string[] }
 
 export function affectedArgs(input: Record<string, unknown>): string[] {
   return ['affected', ...(typeof input.base === 'string' && input.base !== '' ? ['--base', input.base] : [])]
@@ -43,6 +43,12 @@ function namedOrCounted(targets: readonly string[], many: (count: number) => str
   return targets.length > NAMED_UP_TO ? many(targets.length) : named(targets)
 }
 
+/** The targets a scheme tests beyond the selected ones, each named: `, and A and B besides`. */
+function besides(reach: Reach): string {
+  const others = Array.isArray(reach.others) ? reach.others : []
+  return others.length > 0 ? `, and ${joined(others)} besides` : ''
+}
+
 /** One kind's targets, with the arguments that run them while they're few enough to use, else a few named and where the rest are. */
 function group(targets: readonly string[]): string {
   if (targets.length > ARGUMENTS_UP_TO) return `${targets.slice(0, NAMED_UP_TO).join(', ')} and ${targets.length - NAMED_UP_TO} more; ${WHOLE_LIST}`
@@ -55,16 +61,16 @@ function group(targets: readonly string[]): string {
  * them tests, the scheme that tests it with the fewest more, and the targets no shared scheme tests.
  */
 function schemesText(affected: Affected, selections: readonly string[]): string {
-  if (affected.whole) return ` The changes reach most of the suite: ${schemeName(affected.whole, [])} tests every selected target${affected.whole.more > 0 ? ` and ${affected.whole.more} more` : ''}.`
+  if (affected.whole) return ` The changes reach most of the suite: ${schemeName(affected.whole, [])} tests every selected target${besides(affected.whole)}.`
   const schemes = Array.isArray(affected.schemes) ? affected.schemes : []
   const nearest = Array.isArray(affected.nearest) ? affected.nearest : []
   if (schemes.length === 0 && nearest.length === 0) return ''
-  const named = schemes.slice(0, NAMED_UP_TO).map(scheme => `${schemeName(scheme, schemes)} (${namedOrCounted(scheme.targets, count => `${count} targets`, targets => targets.join(', '))})`)
+  const named = schemes.slice(0, NAMED_UP_TO).map(scheme => `${schemeName(scheme, schemes)} (${namedOrCounted(scheme.targets, count => `${count} targets; ${WHOLE_LIST}`, targets => targets.join(', '))})`)
   const list = schemes.length > NAMED_UP_TO ? `${named.join(', ')} and ${schemes.length - NAMED_UP_TO} more; ${WHOLE_LIST}` : joined(named)
   const tested = new Set([...schemes.flatMap(scheme => scheme.targets), ...nearest.flatMap(reach => reach.tests)])
   const untested = selections.filter(target => !tested.has(target))
-  const near = nearest.map(reach => `${schemeName(reach, nearest)} tests ${joined(reach.tests)} with ${reach.more} more.`)
-  const cover = untested.length > 0 ? [`No shared scheme tests ${namedOrCounted(untested, count => `${count} of the selected targets`)}.`] : near.length === 0 ? ['Between them they test every selected target.'] : []
+  const near = nearest.map(reach => `${schemeName(reach, nearest)} tests ${joined(reach.tests)}${besides(reach)}.`)
+  const cover = untested.length > 0 ? [`No shared scheme tests ${namedOrCounted(untested, count => `${count} of the selected targets; ${WHOLE_LIST}`)}.`] : near.length === 0 ? ['Between them they test every selected target.'] : []
   return [...(schemes.length > 0 ? [` Schemes that test only selected targets: ${list}.`] : ['']), ...near, ...cover].join(' ')
 }
 

@@ -19,7 +19,7 @@ const DAY_MS = 24 * 60 * 60_000
  * A project on `branch` (the CLI names it and the project's root), whose test runs report the next of `reports`. The
  * store starts with `stored`; registered tools are collected in `registered`.
  */
-function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; readsStore?: boolean; reportFails?: () => boolean; holdFirst?: Promise<void>; flaky?: unknown[]; beforeBranch?: () => Promise<void> } = {}) {
+function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; readsStore?: boolean; reportFails?: () => boolean; holdFirst?: Promise<void>; flaky?: unknown[] | ((stdin: string | undefined) => unknown); beforeBranch?: () => Promise<void> } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 9, 30, 12, 0) })
   // A test that reads what the mod kept gets the store as a plain map.
   const store = options.readsStore ? mapStore(on) : (mock.store(on, options.stored ?? {}), undefined)
@@ -38,8 +38,9 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
   const calls = stubCli(on, {
     reports,
     ...(options.reportFails ? { reportFails: options.reportFails } : {}),
-    // `xcrew flaky`'s answers, one per repeated run, in order: the CLI works out the marks, the mod keeps them.
-    ...(options.flaky ? { flaky: () => options.flaky?.shift() ?? null } : {}),
+    // `xcrew flaky`'s answers, one per repeated run, in order, or worked out from what it's sent: the CLI works out the
+    // marks, the mod keeps them.
+    ...(options.flaky ? { flaky: (stdin: string | undefined) => { const flaky = options.flaky; return typeof flaky === 'function' ? flaky(stdin) : (flaky?.shift() ?? null) } } : {}),
     project: async args => {
       if (!args.includes('--branch')) return { isGenerated: false }
       await options.beforeBranch?.()
@@ -75,21 +76,6 @@ test('a test that fails and then passes in the same scope is listed red, then gr
   expect(text).toContain('Red, then green, on feat/ledger (1 test)')
   expect(text).toMatch(new RegExp(`- ${TEST}: red .* in test_sim › AppTests: XCTAssertEqual failed.*; green .* in test_sim › AppTests`))
   expect(text).not.toContain('Still red')
-})
-
-test("a ledger read that doesn't answer takes none of the report's 10 s", async ($, on) => {
-  let stuck = false
-  const { calls, clock } = project(on, [PASSED], { beforeBranch: () => (stuck ? new Promise<void>(() => {}) : Promise.resolve()) })
-  await run($, 'AppTests')
-  // Past the time a branch read is shared, so the next run reads it again, and that read never answers.
-  await clock.advance(6_000)
-  stuck = true
-  // The result waits for nothing of the ledger's: with no time passing, it comes back.
-  await run($, 'AppTests')
-  // Not knowing whether a red waits, it asks for the passed tests, and the report has its whole 10 s.
-  const report = calls.filter(call => call.args[0] === 'report').at(-1)
-  expect(report?.timeoutMs).toBe(10_000)
-  expect(report?.args).toContain('--passed')
 })
 
 test('a test run asks the CLI for its passed tests only while its branch has a red waiting', async ($, on) => {
@@ -581,6 +567,24 @@ test('the mod sends the CLI the marks it keeps and the run\'s repeated tests', a
   ])
 })
 
+/**
+ * The CLI's marks as the stand-in works them out: each clean repeated run adds its 5 passes to the mark it's sent, the
+ * first run marks the test, and 6 passes settle it.
+ */
+const addsPasses = (stdin: string | undefined) => {
+  const sent = JSON.parse(stdin ?? '{}') as { marks: { passes: number }[] }
+  const passes = (sent.marks[0]?.passes ?? -5) + 5
+  return MARKED(passes, passes >= 6)
+}
+
+test('two repeated runs ending together each count their passes', async ($, on) => {
+  project(on, [FAILED, MIXED, CLEAN, CLEAN], { flaky: addsPasses })
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await Promise.all([repeat($), repeat($)])
+  expect(await ledgerText($)).toContain(`${TEST} (flaky: failed 2 of 5 runs; passed 10 in a row in repeated runs since, of 6 needed)`)
+})
+
 test('a plain run that fails a flaky test starts its passes over, and asks the CLI nothing', async ($, on) => {
   const { calls } = project(on, [FAILED, MIXED, CLEAN, FAILED], { flaky: [MARKED(0), MARKED(5)] })
   await run($, 'AppTests/GreetingTests/testHello')
@@ -720,4 +724,15 @@ test('/xcrew flaky with none marked says so, and without a branch says why', asy
   await clock.advance(BRANCH_FRESH_MS)
   // The read that failed is said after it.
   expect(String((await runCommand($, 'xcrew', 'flaky')).text)).toMatch(/^The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out\. Run `\/xcrew doctor`\.\nxcrew project --branch couldn't run: ./)
+})
+
+test('a red is kept with its whole message, and shown by its first line', async ($, on) => {
+  const message = `XCTAssertEqual failed: ${'a long expected value '.repeat(10)}\nwith a second line`
+  const { store } = project(on, [{ ok: false, failures: [{ title: TEST, message, where: 'GreetingTests.swift:9', isTest: true }] }], { readsStore: true })
+  await run($)
+  const ledger = [...(store?.entries() ?? [])].find(([key]) => key.startsWith('ledger.'))?.[1] as { entries: { test: string; red: { message?: string } }[] } | undefined
+  expect(ledger?.entries.find(entry => entry.test === TEST)?.red.message).toBe(message)
+  const text = await ledgerText($)
+  expect(text).not.toContain('with a second line')
+  expect(text).toContain('XCTAssertEqual failed: a long expected value')
 })

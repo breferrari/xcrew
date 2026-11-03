@@ -10,8 +10,10 @@ struct XcodeMCPHandshakeCheck: Check {
     let startsAServer = true
 
     /// The bridge stops at the end of its input, before it answers: the input stays open until an answer comes or the
-    /// bridge ends without one, which the call's deadline bounds.
+    /// bridge ends without one.
     static let command = ["/bin/sh", "-c", #"f=$(mktemp) && (cat; while [ ! -s "$f" ] && [ ! -e "$f.ended" ]; do sleep 0.1; done) | { xcrun mcpbridge > "$f"; touch "$f.ended"; }; cat "$f"; rm -f "$f" "$f.ended""#]
+    /// What the doctor waits on while the bridge hasn't answered, which it waits for however long it takes.
+    static let waiting = "waiting for a new Xcode MCP bridge to answer (xcrun mcpbridge): if Xcode asks whether to allow an agent, answer it there"
     static let initialize = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-doctor","version":"1"}}}"# + "\n"
 
     func run(_ context: CheckContext) async -> CheckResult {
@@ -19,7 +21,8 @@ struct XcodeMCPHandshakeCheck: Check {
         guard list.ancestors(of: context.machine.processID).contains(where: { $0.program == "claude" }) else {
             return .skip("runs only from a Claude Code session, whose agent Xcode already permits")
         }
-        let ran = await context.runner.run(Self.command, stdin: Data(Self.initialize.utf8), timeout: DeadlineRunner.untimed)
+        context.progress(Self.waiting)
+        let ran = await context.runner.run(Self.command, stdin: Data(Self.initialize.utf8))
         guard let server = Self.server(in: ran.stdout) else {
             return .fail("a new Xcode MCP bridge (xcrun mcpbridge) didn't answer MCP's initialize: xcrun mcp-server status says whether the server is on, and /mcp → Reconnect restarts this session's")
         }

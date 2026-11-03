@@ -54,15 +54,13 @@ public struct SessionBriefing: Sendable {
     /// under one and pass under another, and that `look` says which; a few at most, the rest counted. Read beside the
     /// other checks, since a large workspace has many schemes to read.
     static func testPlans(in containers: [URL]) async -> [String] {
-        let (plans, complete) = TestPlans.configured(containers: containers)
+        let plans = TestPlans.configured(containers: containers)
         let named = plans.prefix(ResultBundle.mostNamed).map { found in
             "\(found.sentence) A test can fail under one and pass under another; `look` names which."
         }
         let more = plans.count - named.count
-        // Reading stopped with nothing left to count: the rest weren't read, which is all that's known.
-        if more == 0 { return named + (complete ? [] : ["Schemes past the first \(TestPlans.mostSchemes) weren't read for test plans."]) }
-        let counted = complete ? "\(more)" : "at least \(more)"
-        return named + ["and \(counted) more test \(more == 1 && complete ? "plan runs" : "plans run") each test under several configurations."]
+        if more == 0 { return named }
+        return named + ["and \(more) more test \(more == 1 ? "plan runs" : "plans run") each test under several configurations (\(ResultBundle.noList))."]
     }
 
     /// Said at the start, and by the mod with the session's first MobileBuildMCP build or test, while MobileBuildMCP has

@@ -146,7 +146,7 @@ export function runTree(elements: Elements, run: BandRun, now: number): RenderEl
  * No `/xcrew failures` here: the pane holds the latest failing run's, and a row stays in the transcript after the next. */
 export function resultTree(elements: Elements, tool: string, row: ResultRow): RenderElement {
   const failures = row.failures.map(failure => line(elements, [segment('✗', 'error'), segment(' '), segment(failure.title), ...(failure.where ? piece(failure.where) : [])]))
-  const more = row.more > 0 ? [line(elements, [segment(`${row.more} more`, 'subtle')])] : []
+  const more = row.more > 0 ? [line(elements, [segment(`${row.more} more · ctrl+o shows them all`, 'subtle')])] : []
   return elements.Box({ flexDirection: 'column', children: [line(elements, [...endedSegments(tool, row.ended), ...by(row.by)]), ...failures, ...more] })
 }
 

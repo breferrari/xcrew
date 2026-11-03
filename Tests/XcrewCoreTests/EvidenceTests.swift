@@ -57,10 +57,9 @@ import XcrewTestSupport
             """)
     }
 
-    /// When the time allowed passed before any run was read, the block says so rather than nothing.
-    @Test func noRunReadInTimeIsSaid() {
-        #expect(BranchCoverage(sentence: "", finished: [], leftOut: 3).line(lastCommit: nil) == "- No test run read in the time allowed speaks for the changed lines: 3 runs are left out.")
-        #expect(BranchCoverage(sentence: "", finished: [], leftOut: 0).line(lastCommit: nil) == "- No test run here speaks for the changed lines: each started before their last change.")
+    /// With every run started before the changes, the block says so rather than nothing.
+    @Test func noRunThatSpeaksIsSaid() {
+        #expect(BranchCoverage(sentence: "", finished: []).line(lastCommit: nil) == "- No test run here speaks for the changed lines: each started before their last change.")
     }
 
     /// A file whose date can't be read has no date, so no run counts as compiling it as it is.

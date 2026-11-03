@@ -47,14 +47,19 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
-        warningsSentence(inChanged, of: total).map { "xcrew: " + $0 }
+        warningsSentence(inChanged, of: total, rest: inTheResult).map { "xcrew: " + $0 }
     }
 
-    static func warningsSentence(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
+    /// Where a result's warnings are all listed, for the ones its note only counts.
+    static let inTheResult = "the result lists them all above"
+
+    /// The warnings in the lines this branch changed, a few named and the rest counted with `rest`, which says where they
+    /// all are, or that no list is kept.
+    static func warningsSentence(_ inChanged: [ToolOutput.Warning], of total: Int, rest: String) -> String? {
         guard !inChanged.isEmpty else { return nil }
         // Messages carry commas, so a semicolon parts them.
         let named = inChanged.map { "\(ToolOutput.basename($0.path ?? "")):\($0.line ?? 0) \($0.message)" }
-        return "\(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; "))."
+        return "\(inChanged.count) of \(total) warnings are in lines this branch changed\(ResultBundle.listed(named, separator: "; ", rest: rest))."
     }
 
     /// What makes a run of no tests, after either note's evidence: the result doesn't tell them apart (docs/findings.md,
@@ -157,7 +162,7 @@ public struct Report: Sendable, Equatable, Codable {
             }
         }
         guard let log else { return unread }
-        return await make(kind: launches ? .run : kind, log: RunLog.end(ofLogAt: log), runner: runner, repeated: repeated, listsPassed: listsPassed)
+        return await make(kind: launches ? .run : kind, log: RunLog.text(ofLogAt: log), runner: runner, repeated: repeated, listsPassed: listsPassed)
     }
 
     /// A result Claude Code saved to a file is read back from it.
@@ -188,7 +193,7 @@ public struct Report: Sendable, Equatable, Codable {
         async let coverage: ChangedLineCoverage? = {
             // A run of no tests ran none of the changed lines, which says nothing of them.
             guard let project, let bundle, (bundleCounts?.ran ?? read.testTotal) != 0 else { return nil }
-            // Behind the report's other reads in the pool: within the call's time, what failed is read first.
+            // Behind the report's other reads in the pool: what failed is read first.
             let behind = CommandPool.lane(of: runner, 1)
             return await ChangedLineCoverage.of(ResultBundle(path: bundle.path, runner: behind, exportFolder: bundle.exportFolder), change: { await change.value() }, project: project, using: behind)
         }()

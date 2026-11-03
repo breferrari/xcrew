@@ -135,7 +135,7 @@ func failingRunText(passing: Int) -> String {
     @Test func aFailingRunKeepsItsFailuresAndSummaryAndCountsItsPassingTests() {
         #expect(ToolOutput(text: failingRunText(passing: 40), server: .mobileBuildMCP).compactTestText == [
             "🧪 Test", "", "Test Failures (1):", "", #"  ✗ FormatterTests / test_symbol(): XCTAssertEqual failed: ("4") is not equal to ("3")"#, "",
-            "Test Results:", "  (40 passing tests left out; failing tests are listed in full above)", "",
+            "Test Results:", "  (40 passing tests left out: the run's result bundle lists them; failing tests are listed in full above)", "",
             "❌ 1 test failed, 40 passed, 0 skipped (⏱️ 65.0s)", "  └ Files:",
             "     └── ~/Library/Developer/MobileBuildMCP/workspaces/sample-0000/logs/test_sim.log — Build Logs",
         ].joined(separator: "\n"))
@@ -143,7 +143,7 @@ func failingRunText(passing: Int) -> String {
 
     /// MobileBuildMCP's MCP results open with a blank line; the run is shortened all the same.
     @Test func aRunOpeningWithABlankLineIsShortenedToo() {
-        #expect(ToolOutput(text: "\n" + failingRunText(passing: 40), server: .mobileBuildMCP).compactTestText?.contains("  (40 passing tests left out; failing tests are listed in full above)") == true)
+        #expect(ToolOutput(text: "\n" + failingRunText(passing: 40), server: .mobileBuildMCP).compactTestText?.contains("  (40 passing tests left out: the run's result bundle lists them; failing tests are listed in full above)") == true)
     }
 
     @Test func aShortListIsLeftAsTheServerWroteIt() {
@@ -153,14 +153,14 @@ func failingRunText(passing: Int) -> String {
     @Test func aListClaudeCodeAlreadyCutIsCountedWhole() {
         let cut = failingRunText(passing: 40).replacingOccurrences(of: "  ✅ FormatterTests/test_case20() (0.001s)", with: "\n... [71437 characters truncated] ...\n\nTests/test_case20() (0.001s)")
         let compact = ToolOutput(text: cut, server: .mobileBuildMCP).compactTestText ?? ""
-        #expect(compact.contains("Test Results:\n  (40 passing tests left out; failing tests are listed in full above)\n\n❌ 1 test failed, 40 passed"))
+        #expect(compact.contains("Test Results:\n  (40 passing tests left out: the run's result bundle lists them; failing tests are listed in full above)\n\n❌ 1 test failed, 40 passed"))
         #expect(!compact.contains("truncated"))
         #expect(!compact.contains("test_case20"))
     }
 
     @Test func skippedTestsKeepTheirLinesAndReasons() {
         let withSkip = failingRunText(passing: 40).replacingOccurrences(of: "  ❌ FormatterTests/test_symbol() (0.010s)", with: "  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API\n  ❌ FormatterTests/test_symbol() (0.010s)")
-        #expect(ToolOutput(text: withSkip, server: .mobileBuildMCP).compactTestText?.contains("  (40 passing tests left out; failing tests are listed in full above)\n  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API\n\n❌") == true)
+        #expect(ToolOutput(text: withSkip, server: .mobileBuildMCP).compactTestText?.contains("  (40 passing tests left out: the run's result bundle lists them; failing tests are listed in full above)\n  ⏭️ FormatterTests/test_skipped() (0.000s)\n      skipped: waiting on the new API\n\n❌") == true)
     }
 
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
@@ -704,9 +704,9 @@ func failingRunText(passing: Int) -> String {
         try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
         let link = home.root.appending(path: "link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: home.root.appending(path: "real"))
-        let realpath = await SystemCommandRunner().run(["/bin/realpath", link.appending(path: "App").path], stdin: nil, timeout: .seconds(10)).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let realpath = await SystemCommandRunner().run(["/bin/realpath", link.appending(path: "App").path], stdin: nil).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(realpath.hasPrefix("/private/"))
-        let hash = await SystemCommandRunner().run(["/usr/bin/shasum", "-a", "256"], stdin: Data(realpath.utf8), timeout: .seconds(10)).stdout.prefix(12)
+        let hash = await SystemCommandRunner().run(["/usr/bin/shasum", "-a", "256"], stdin: Data(realpath.utf8)).stdout.prefix(12)
         let key = "App-\(hash)"
         home.write("mine", to: "\(Self.workspaces)/\(key)/logs/test_sim_1_pid100_a.log")
         #expect(RunLog.find(tool: "test_sim", since: .distantPast, project: link.appending(path: "App"), home: home.root)?.lastPathComponent == "test_sim_1_pid100_a.log")
@@ -725,7 +725,7 @@ func failingRunText(passing: Int) -> String {
         let source = libexec.appending(path: "build/utils/workspace-identity.js")
         for root in ["/work/one/App", "/work/My App (2)", "/", "/work/Cafe\u{301}"] {
             let script = "import(process.argv[1]).then(m => console.log(m.workspaceKeyForRoot(process.argv[2])))"
-            let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, source.path, root], stdin: nil, timeout: .seconds(30))
+            let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, source.path, root], stdin: nil)
             let upstream = ran.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(upstream == RunLog.workspaceKey(root: root), "MobileBuildMCP's workspaceKeyForRoot in build/utils/workspace-identity.js names \(root)'s workspace \(upstream), not \(RunLog.workspaceKey(root: root)): RunLog.workspaceKey has to follow it (\(ran.stderr))")
         }
@@ -742,7 +742,7 @@ func failingRunText(passing: Int) -> String {
         let source = libexec.appending(path: "build/utils/log-naming.js")
         for milliseconds in [0, 1_793_613_600_259, 4_102_444_799_999] {
             let script = "import(process.argv[1]).then(m => console.log(m.formatLogTimestamp(new Date(Number(process.argv[2])))))"
-            let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, source.path, String(milliseconds)], stdin: nil, timeout: .seconds(30))
+            let ran = await SystemCommandRunner().run([libexec.appending(path: "node-runtime").path, "-e", script, source.path, String(milliseconds)], stdin: nil)
             let stamp = ran.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(RunLog.openedAt("test_sim_\(stamp)_pid1_abcd1234.log", tool: "test_sim") == milliseconds, "MobileBuildMCP's formatLogTimestamp in build/utils/log-naming.js names \(milliseconds) ms \(stamp): RunLog.openedAt has to follow it (\(ran.stderr))")
         }
@@ -771,7 +771,7 @@ func failingRunText(passing: Int) -> String {
         private var met = false
         private var waiting: CheckedContinuation<Void, Never>?
 
-        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        func run(_ argv: [String], stdin: Data?) async -> CommandResult {
             running += 1
             mostAtOnce = max(mostAtOnce, running)
             if !met {
@@ -790,7 +790,7 @@ func failingRunText(passing: Int) -> String {
         nonisolated func which(_ name: String) -> String? { nil }
     }
 
-    @Test(.timeLimit(.minutes(1))) func aRunWithManyFailuresLooksThemUpAFewAtATime() async {
+    @Test func aRunWithManyFailuresLooksThemUpAFewAtATime() async {
         let failures = (1...10).map { "  ✗ Suite / test_\($0)(): failed\n" }.joined(separator: "\n")
         let text = "🧪 Test\n\nTest Failures (10):\n\n\(failures)\n❌ 10 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
         let runner = Rendezvous()
@@ -1180,9 +1180,9 @@ final class RecordingRunner: CommandRunning {
 
     var asked: [String] { calls.withLock { $0 } }
 
-    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+    func run(_ argv: [String], stdin: Data?) async -> CommandResult {
         calls.withLock { $0.append(argv.joined(separator: " ")) }
-        return await wrapped.run(argv, stdin: stdin, timeout: timeout)
+        return await wrapped.run(argv, stdin: stdin)
     }
 
     func which(_ name: String) -> String? { wrapped.which(name) }

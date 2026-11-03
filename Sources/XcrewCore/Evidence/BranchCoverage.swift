@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 
 /// What the branch's test runs' coverage says of its changed lines together (docs/findings.md, *The branch's test
 /// runs*). A run speaks for a changed file only while the file is unchanged since the run started: then the run compiled
@@ -17,8 +16,6 @@ struct BranchCoverage: Sendable {
     let sentence: String
     /// When each run that spoke finished, newest first.
     let finished: [Date]
-    /// How many runs that could have spoken weren't read by the call's deadline.
-    let leftOut: Int
 
     /// The runs that can speak for any changed file, newest first: started no earlier than the earliest of the changed
     /// files' last changes, as a run that started before every one of them compiled none of them as they are. Nil with
@@ -57,77 +54,54 @@ struct BranchCoverage: Sendable {
         }
     }
 
-    /// What the branch's runs say of `change`, by the call's deadline: nothing when there's no run here or none says anything, and
-    /// no run at all when every run started before every changed file's last change. The runs are read side by side,
-    /// each in its own lane of the runner's pool, newest first, so the newest runs' commands go ahead and they finish
-    /// first; a run not read by the deadline is left out. The files only test targets build are left out of those
-    /// outside the coverage once, for every run read, after the reading.
+    /// What the branch's runs say of `change`, every run read to its end: nothing when there's no run here or none says
+    /// anything, and no run at all when every run started before every changed file's last change. The runs are read side
+    /// by side, each in its own lane of the runner's pool, newest first, so the newest runs' commands go ahead. The files
+    /// only test targets build are left out of those outside the coverage once, for every run read, after the reading.
     static func read(change: GitChanges.Change, project: Project, machine: Machine) async -> BranchCoverage? {
         let all = runs(project: project, home: machine.home)
         guard !all.isEmpty, let chosen = candidates(all, lastChanges: change.files.compactMap { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }) else { return nil }
-        guard !chosen.isEmpty else { return BranchCoverage(sentence: "", finished: [], leftOut: 0) }
-        // The targets are read at once, beside the runs, so nothing after the reading needs time of its own: the reading
-        // can run to the call's deadline, which each command it starts takes what's left of.
+        guard !chosen.isEmpty else { return BranchCoverage(sentence: "", finished: []) }
+        // The targets are read at once, beside the runs.
         let targets = Task { WorkspaceGraph.read(project) }
-        let gathered = Gathered()
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                await withTaskGroup(of: Void.self) { runs in
-                    for (lane, run) in chosen.enumerated() {
-                        runs.addTask {
-                            let runner = CommandPool.lane(of: machine.runner, lane)
-                            let bundle = ResultBundle(path: run.path, runner: runner)
-                            let reading: ChangedLineCoverage? = ranTests(summary: await bundle.summary())
-                                ? await ChangedLineCoverage.of(bundle, change: { change }, project: project, using: runner, keepingTestFiles: true)
-                                : nil
-                            guard !Task.isCancelled else { return }
-                            let fresh = reading?.fresh(since: run.started) { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }
-                            gathered.state.withLock { gathered in
-                                gathered.reached += 1
-                                if let fresh { gathered.read.append((fresh, run.finished)) }
-                            }
-                        }
-                    }
+        let read = await withTaskGroup(of: (coverage: ChangedLineCoverage, finished: Date)?.self) { runs in
+            for (lane, run) in chosen.enumerated() {
+                runs.addTask {
+                    let runner = CommandPool.lane(of: machine.runner, lane)
+                    let bundle = ResultBundle(path: run.path, runner: runner)
+                    let reading: ChangedLineCoverage? = ranTests(summary: await bundle.summary())
+                        ? await ChangedLineCoverage.of(bundle, change: { change }, project: project, using: runner, keepingTestFiles: true)
+                        : nil
+                    guard let fresh = reading?.fresh(since: run.started, modified: { EvidencePack.modifiedIfKnown(URL(fileURLWithPath: $0)) }) else { return nil }
+                    return (coverage: fresh, finished: run.finished)
                 }
             }
-            group.addTask { await machine.untilDeadline(otherwise: DeadlineRunner.asked) }
-            await group.next()
-            group.cancelAll()
+            var found: [(coverage: ChangedLineCoverage, finished: Date)] = []
+            for await one in runs { if let one { found.append(one) } }
+            return found
         }
-        let read = gathered.state.withLock { $0 }
-        let kept = Set(ChangedLineCoverage.withoutTestFiles(Array(Set(read.read.flatMap(\.coverage.outside))).sorted(), in: await targets.value))
-        let found = read.read.sorted { $0.finished > $1.finished }.map { coverage, finished in
+        let kept = Set(ChangedLineCoverage.withoutTestFiles(Array(Set(read.flatMap(\.coverage.outside))).sorted(), in: await targets.value))
+        let found = read.sorted { $0.finished > $1.finished }.map { coverage, finished in
             var coverage = coverage
             coverage.outside = coverage.outside.filter(kept.contains)
             return (coverage: coverage, finished: finished)
         }
-        return together(found, leftOut: chosen.count - read.reached)
+        return together(found)
     }
 
-    /// What the runs read say together, the runs that spoke named by when they finished; with nothing said and runs left
-    /// out, the cut-off alone.
-    static func together(_ found: [(coverage: ChangedLineCoverage, finished: Date)], leftOut: Int) -> BranchCoverage? {
-        let cutOff = leftOut > 0 ? BranchCoverage(sentence: "", finished: [], leftOut: leftOut) : nil
-        guard let sentence = ChangedLineCoverage.merged(found.map(\.coverage)).sentence else { return cutOff }
-        return BranchCoverage(sentence: sentence, finished: ChangedLineCoverage.speakers(found.map(\.coverage)).map { found[$0].finished }, leftOut: leftOut)
-    }
-
-    /// What the reading has gathered when the deadline passes: the runs read, and how many were reached. A class, as a
-    /// `Mutex` can't be captured by the reading's task.
-    private final class Gathered: Sendable {
-        let state = Mutex<(read: [(coverage: ChangedLineCoverage, finished: Date)], reached: Int)>(([], 0))
+    /// What the runs read say together, the runs that spoke named by when they finished.
+    static func together(_ found: [(coverage: ChangedLineCoverage, finished: Date)]) -> BranchCoverage? {
+        guard let sentence = ChangedLineCoverage.merged(found.map(\.coverage)).sentence else { return nil }
+        return BranchCoverage(sentence: sentence, finished: ChangedLineCoverage.speakers(found.map(\.coverage)).map { found[$0].finished })
     }
 
     /// The evidence block's line: the runs by when they finished, said to be older than the branch's last commit when the
-    /// newest is, then what they say, and the runs left out past the time allowed.
+    /// newest is, then what they say.
     func line(lastCommit: Date?) -> String {
-        guard !finished.isEmpty else {
-            return leftOut > 0 ? "- No test run read in the time allowed speaks for the changed lines: \(leftOut == 1 ? "1 run is" : "\(leftOut) runs are") left out." : "- No test run here speaks for the changed lines: each started before their last change."
-        }
+        guard !finished.isEmpty else { return "- No test run here speaks for the changed lines: each started before their last change." }
         let runs = finished.count == 1 ? "the test run" : "the test runs"
-        let stamps = ResultBundle.joined(finished.map(EvidencePack.stamp))
+        let stamps = ResultBundle.joined(finished.map(EvidencePack.stamp), rest: ResultBundle.noList)
         let dated = EvidencePack.when(runs, of: stamps, at: finished.max() ?? .distantPast, lastCommit: lastCommit)
-        let leftOut = leftOut == 0 ? "" : " \(leftOut == 1 ? "1 earlier run" : "\(leftOut) earlier runs") past the time allowed \(leftOut == 1 ? "isn't" : "aren't") counted."
-        return "- \(dated): \(sentence)\(leftOut)"
+        return "- \(dated): \(sentence)"
     }
 }

@@ -23,12 +23,12 @@ struct LogReading: Codable, Equatable, Sendable {
     var step: String?
     /// The line still being written at the end: counted in this reading's phase, read again whole by the next.
     var pending: String?
-    /// The scheme the log's invocation names, read from its first lines as `RunLog.scheme(in:)` reads them.
+    /// The scheme the log's first invocation names, read wherever the log has it, as `RunLog.scheme(in:)` reads it.
     var scheme: String?
     /// The invocation's heading was the last line read, so the next is the invocation itself.
     var awaitsInvocation = false
-    /// The lines read so far among the first `RunLog.invocationWithin`, where the invocation is.
-    var headLines = 0
+    /// The first invocation was read: a later one is another xcodebuild's, as one a build's script started.
+    var invocationRead = false
     /// The latest `** … **` verdict xcodebuild wrote.
     var verdict: String?
 
@@ -52,11 +52,13 @@ struct LogReading: Codable, Equatable, Sendable {
         let whole = appended.lastIndex(of: newline).map { $0 + 1 } ?? appended.startIndex
         var isFirst = offset == 0
         for line in appended[..<whole].dropLast().split(separator: newline, omittingEmptySubsequences: false) where whole > appended.startIndex {
-            if scheme == nil, headLines < RunLog.invocationWithin || awaitsInvocation {
+            if !invocationRead {
                 let text = String(decoding: line, as: UTF8.self)
-                if awaitsInvocation { scheme = RunLog.scheme(inInvocation: text) }
+                if awaitsInvocation {
+                    scheme = RunLog.scheme(inInvocation: text)
+                    invocationRead = true
+                }
                 awaitsInvocation = !awaitsInvocation && text.hasPrefix("Command line invocation:")
-                headLines += 1
             }
             if let found = Self.verdict(in: line) { verdict = found }
             if line.isEmpty { isFirst = false; continue }

@@ -4,19 +4,13 @@ import Testing
 import XcrewTestSupport
 
 @Suite struct StandardInputTests {
-    /// Writes `chunks` to a pipe from a thread of its own, `gap` apart, then closes it after `closeAfter`, or never.
-    func pipe(writing chunks: [String], gap: Double, closeAfter: Double?) -> FileHandle {
+    /// Writes `text` to a pipe from a thread of its own, as a pipe holds only so much, then closes it.
+    func pipe(writing text: String) -> FileHandle {
         let pipe = Pipe()
         let writer = pipe.fileHandleForWriting
         Thread {
-            for (index, chunk) in chunks.enumerated() {
-                if index > 0 { Thread.sleep(forTimeInterval: gap) }
-                try? writer.write(contentsOf: Data(chunk.utf8))
-            }
-            if let closeAfter {
-                Thread.sleep(forTimeInterval: closeAfter)
-                try? writer.close()
-            }
+            try? writer.write(contentsOf: Data(text.utf8))
+            try? writer.close()
         }.start()
         return pipe.fileHandleForReading
     }
@@ -30,11 +24,11 @@ import XcrewTestSupport
         let ended = Task { await drain.ended(idleFor: .milliseconds(500), clock: clock) }
         let sent = #"{"cwd":"/project"}"#
         try pipe.fileHandleForWriting.write(contentsOf: Data(sent.utf8))
-        try await until(giveUpAfter: .seconds(20)) { drain.data.count == sent.utf8.count }
+        try await until { drain.data.count == sent.utf8.count }
         let quiet = Flag()
         Task { _ = await ended.value; quiet.set() }
         while !quiet.isSet {
-            try await until(giveUpAfter: .seconds(20)) { clock.sleepers == 1 || quiet.isSet }
+            try await until { clock.sleepers == 1 || quiet.isSet }
             clock.advance(by: .milliseconds(500))
             await Task.yield()
         }
@@ -55,12 +49,12 @@ import XcrewTestSupport
         var sent = ""
         for chunk in ["one ", "two ", "three"] {
             // The idle check asleep again, or the read ended: a read cut off fails here, on that, not on a wait.
-            try await until(giveUpAfter: .seconds(20)) { clock.sleepers == 1 || stopped.isSet }
+            try await until { clock.sleepers == 1 || stopped.isSet }
             try #require(!stopped.isSet, "cut off after \(sent.utf8.count) bytes")
             try pipe.fileHandleForWriting.write(contentsOf: Data(chunk.utf8))
             sent += chunk
             let expected = sent.utf8.count
-            try await until(giveUpAfter: .seconds(20)) { drain.data.count == expected }
+            try await until { drain.data.count == expected }
             clock.advance(by: .seconds(1))
         }
         try pipe.fileHandleForWriting.close()
@@ -69,8 +63,10 @@ import XcrewTestSupport
         #expect(clock.now.offset == .seconds(3))
     }
 
+    /// An input its caller closes is read to its end, however slowly it comes: on a clock that never moves, only the end
+    /// of the input ends the read.
     @Test func aClosedInputIsReadToItsEnd() async throws {
-        let input = await StandardInput.read(pipe(writing: [String(repeating: "x", count: 200_000)], gap: 0, closeAfter: 0), idleFor: .seconds(5))
+        let input = await StandardInput.read(pipe(writing: String(repeating: "x", count: 200_000)), idleFor: .seconds(5), clock: ManualClock())
         #expect(input.data.count == 200_000)
         #expect(input.isComplete)
     }
@@ -81,7 +77,7 @@ import XcrewTestSupport
         let file = FileManager.default.temporaryDirectory.appending(path: "xcrew-stdin-\(UUID().uuidString).json")
         try Data(#"{"cwd":"/project"}"#.utf8).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
-        let input = await StandardInput.read(try FileHandle(forReadingFrom: file), idleFor: .seconds(60))
+        let input = await StandardInput.read(try FileHandle(forReadingFrom: file), idleFor: .seconds(60), clock: ManualClock())
         #expect(String(decoding: input.data, as: UTF8.self) == #"{"cwd":"/project"}"#)
         #expect(input.isComplete)
     }

@@ -21,7 +21,6 @@ jobs:
   changes:
     name: Changes
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # docs/findings.md, Deadlines: `ci.yml changes`
     outputs:
       code: ${{ steps.diff.outputs.code }}
       distribution: ${{ steps.diff.outputs.distribution }}
@@ -63,7 +62,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
-    timeout-minutes: 10  # docs/findings.md, Deadlines: `ci.yml swift`
     steps:
       - uses: actions/checkout@v7
       # The test bed's fixtures, at the commit these tests expect: bump the SHA on purpose, with the tag beside it.
@@ -95,7 +93,6 @@ jobs:
     name: Release build, timed
     if: github.event_name == 'push'
     runs-on: macos-26
-    timeout-minutes: 10  # docs/findings.md, Deadlines: `ci.yml release-build`
     steps:
       - uses: actions/checkout@v7
       - name: Use the newest Xcode on the runner
@@ -115,7 +112,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
-    timeout-minutes: 10  # docs/findings.md, Deadlines: `ci.yml swift-floor`
     steps:
       - uses: actions/checkout@v7
       # The test bed's fixtures, at the commit these tests expect: bump the SHA on purpose, with the tag beside it.
@@ -151,7 +147,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
-    timeout-minutes: 6  # docs/findings.md, Deadlines: `ci.yml plugin`
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -169,7 +164,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.distribution == 'true'
     runs-on: macos-26
-    timeout-minutes: 11  # docs/findings.md, Deadlines: `ci.yml distribution`
     env:
       XCREW_ASSETS: ${{ github.workspace }}/xcrew-assets
     steps:
@@ -201,7 +195,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # docs/findings.md, Deadlines: `ci.yml shell`
     steps:
       - uses: actions/checkout@v7
       - name: ShellCheck
@@ -216,7 +209,6 @@ jobs:
     needs: [changes, swift, release-build, swift-floor, plugin, distribution, shell]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # docs/findings.md, Deadlines: `ci.yml ci`
     steps:
       - name: Every job passed, or was skipped for a change it doesn't check
         env:

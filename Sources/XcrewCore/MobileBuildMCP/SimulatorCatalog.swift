@@ -135,7 +135,7 @@ public struct SimulatorCatalog: Sendable {
 
     /// The simulators booted now: none while CoreSimulator's service isn't running, since `xcrun` without one starts it,
     /// or on a Mac without the developer tools offers to install them, so `simctl` is asked only while it runs. Nil when
-    /// `simctl` doesn't answer, as when the call's deadline cuts it.
+    /// `simctl` doesn't answer.
     public static func bootedIfServiceRuns(using runner: any CommandRunning) async -> [Device]? {
         guard await runner.run("pgrep", "-x", coreSimulatorService).status == 0 else { return [] }
         let listed = await runner.run("xcrun", "simctl", "list", "devices", "booted", "--json")

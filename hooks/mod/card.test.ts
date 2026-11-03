@@ -116,16 +116,16 @@ test('without a store the session starts and there is no card', async ($, on) =>
   expect(await card($)).toBeUndefined()
 })
 
-test('however much is stored, the card stays within ten lines and 800 characters, the rest counted', async ($, on) => {
+test('however much is stored, the card keeps every line, and a shortened list says where the rest is', async ($, on) => {
   const reds = Array.from({ length: 40 }, (_, index) => ({ test: `Module${index}Tests/SomeVeryLongTestCaseName/test_somethingQuiteDescriptive_${index}`, failing: `test_sim · Module${index}WithAVeryLongSchemeName` }))
-  const clock = session(on, { ...runs(SLOW), ...ledger(reds) })
+  const selections = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`test_sim · App › Module${index}WithAVeryLongSchemeNameTests`, { runs: [30_000], tests: 100 }]))
+  const clock = session(on, { ...runs({ ...SLOW, ...selections }), ...ledger(reds) })
   await start($, clock)
   const text = (await card($)) ?? ''
-  expect(text.split('\n').length).toBeLessThanOrEqual(10)
-  expect(text.length).toBeLessThanOrEqual(800)
-  expect(text).toMatch(/\+\d+ more/)
+  expect(text).toMatch(/^- Still red on .* \+\d+ more; the ledger tool lists them all$/m)
+  expect(text).toMatch(/^- A full test_sim · App run takes .* \+\d+ more; \/xcrew history lists them all\.$/m)
+  expect(text).not.toContain('…')
 })
-
 test('runs another project left are no notes on this one', async ($, on) => {
   const clock = session(on, { ...runs(SLOW), ...runs({ 'test_sim · Shop': { runs: [250_000], tests: 1200 }, 'test_sim · Shop › ShopTests': { runs: [30_000], tests: 100 } }, '/work/Shop') })
   await start($, clock)
@@ -146,7 +146,7 @@ test('a long red list says how many it left out', async ($, on) => {
   const reds = Array.from({ length: 12 }, (_, index) => ({ test: `Module${index}Tests/SomeVeryLongTestCaseName/test_somethingQuiteDescriptive_${index}`, failing: `test_sim · Module${index}WithAVeryLongSchemeName` }))
   const clock = session(on, ledger(reds))
   await start($, clock)
-  expect((await card($)) ?? '').toMatch(/Still red on feat\/card: .* \+\d+ more$/m)
+  expect((await card($)) ?? '').toMatch(/Still red on feat\/card: .* \+\d+ more; the ledger tool lists them all$/m)
 })
 
 test('a branch the CLI can\'t name leaves the card unsaved, and the session goes on', async ($, on) => {
@@ -171,16 +171,6 @@ test('the saved card carries the time of its oldest line too', async ($, on) => 
   const clock = session(on, { ...runs(SLOW), [updatedKey(scopeKey('/work/App', 'test_sim · App › AppTests'))]: old })
   await start($, clock)
   expect(saved()).toMatchObject({ updated: NOW - 60_000, oldest: old })
-})
-
-test('a save stuck on the CLI holds no later one back', async ($, on) => {
-  let asked = 0
-  const clock = session(on, runs(SLOW), { branch: () => (asked++ === 0 ? new Promise(() => {}) : Promise.resolve('feat/card')) })
-  await start($, clock)
-  await clock.advance(30_000)
-  await callTool($, 'mcp__MobileBuildMCP__test_sim', { scheme: 'App' })
-  await clock.settle()
-  expect(saved()?.text).toContain('A full test_sim · App run')
 })
 
 test('a card that hasn\'t changed isn\'t saved again', async ($, on) => {

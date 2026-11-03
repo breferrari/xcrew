@@ -13,19 +13,21 @@ public struct CommandResult: Sendable, Equatable {
 
     public var succeeded: Bool { status == 0 }
     public static let notFound = CommandResult(status: 127, stderr: "not found")
-    public static let timedOut = CommandResult(status: 124, stderr: "timed out")
+    /// A command whose task was cancelled: it was stopped, with the children it started, or never started.
+    public static let cancelled = CommandResult(status: 125, stderr: "cancelled")
 }
 
 /// Runs external programs. Everything in xcrew that touches the system goes through this, so
 /// tests substitute a fake and no check needs a real Mac setup to be tested.
 public protocol CommandRunning: Sendable {
-    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult
+    /// Runs `argv` to its end: no time limit stops it.
+    func run(_ argv: [String], stdin: Data?) async -> CommandResult
     /// The executable's absolute path, or nil when it isn't installed.
     func which(_ name: String) -> String?
 }
 
 extension CommandRunning {
-    public func run(_ argv: String..., stdin: Data? = nil, timeout: Duration = DeadlineRunner.untimed) async -> CommandResult {
-        await run(argv, stdin: stdin, timeout: timeout)
+    public func run(_ argv: String..., stdin: Data? = nil) async -> CommandResult {
+        await run(argv, stdin: stdin)
     }
 }

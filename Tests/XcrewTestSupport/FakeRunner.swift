@@ -13,7 +13,7 @@ public struct FakeRunner: CommandRunning {
         self.responses = responses
     }
 
-    public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+    public func run(_ argv: [String], stdin: Data?) async -> CommandResult {
         responses[argv.joined(separator: " ")] ?? .notFound
     }
 

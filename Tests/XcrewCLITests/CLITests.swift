@@ -1039,7 +1039,7 @@ import XcrewTestSupport
 /// is detached.
 @Suite struct ProjectBranchTests {
     func realPath(_ project: Project) async -> String {
-        await SystemCommandRunner().run(["/bin/realpath", project.root.path], stdin: nil, timeout: .seconds(10)).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        await SystemCommandRunner().run(["/bin/realpath", project.root.path], stdin: nil).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @Test func aBranchIsNamedWithTheRealRoot() async {

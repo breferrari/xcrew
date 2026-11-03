@@ -230,14 +230,10 @@ public enum RunLog {
 }
 
 extension RunLog {
-    /// How many of a log's first lines its invocation's heading is looked for in: it heads the log (docs/findings.md, *How
-    /// much of the log is read for the scheme*).
-    static let invocationWithin = 64
-
     /// The scheme the run built, from the `Command line invocation:` MobileBuildMCP's log opens with: the line after it is
     /// xcodebuild's command, `-scheme Feature` or `-scheme "My App"`.
     public static func scheme(in log: String) -> String? {
-        let lines = log.split(separator: "\n", maxSplits: invocationWithin, omittingEmptySubsequences: false)
+        let lines = log.split(separator: "\n", omittingEmptySubsequences: false)
         guard let heading = lines.firstIndex(where: { $0.hasPrefix("Command line invocation:") }), heading + 1 < lines.count else { return nil }
         return scheme(inInvocation: lines[heading + 1])
     }
@@ -248,13 +244,11 @@ extension RunLog {
         return String(match.1 ?? match.2 ?? "")
     }
 
-    /// The scheme a log names, read from its first 64 KB only: the invocation is at its top, and `-scheme` comes before
-    /// the test filters (docs/findings.md, *How much of the log is read for the scheme*).
+    /// The scheme a log's first invocation names, read up to it, wherever that is: usually at its top (docs/findings.md,
+    /// *How much of the log is read for the scheme*).
     public static func scheme(ofLogAt url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let head = try? handle.read(upToCount: 65_536) else { return nil }
-        return scheme(in: String(decoding: head, as: UTF8.self))
+        let invocation: String?? = TextFile.firstLine(in: url) { line, previous in previous?.hasPrefix("Command line invocation:") == true ? .some(scheme(inInvocation: line)) : nil }
+        return invocation ?? nil
     }
 
     /// Whether the log's run succeeded, by the last verdict xcodebuild printed; nil before it printed one, and for a verdict
@@ -272,15 +266,11 @@ extension RunLog {
         return verdict.hasSuffix(" SUCCEEDED **") ? true : verdict.hasSuffix(" FAILED **") ? false : nil
     }
 
-    /// How much of a finished log's end holds its verdict and the result bundle it names, with a long list of failing
-    /// tests between them.
-    static let endBytes = 1024 * 1024
-
-    /// The end of the log at `path`, where a finished run's verdict and result bundle are: a clean build's log runs to
-    /// tens of megabytes. Empty when it can't be read.
-    public static func end(ofLogAt path: String) -> String {
+    /// The log at `path`, whole, where a finished run's verdict and result bundle are, however much follows them: a
+    /// clean build's log runs to tens of megabytes. Empty when it can't be read.
+    public static func text(ofLogAt path: String) -> String {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) else { return "" }
-        return String(decoding: data.suffix(endBytes), as: UTF8.self)
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// The result bundle a test run's log names, on the line after xcodebuild's `Test session results`.

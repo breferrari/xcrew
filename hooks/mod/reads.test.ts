@@ -202,7 +202,6 @@ test('an answer the CLI gave but xcrew couldn\'t read says what came back', () =
   expect(readLine(['project', '--hash', 'A.swift'], { stdout: 'oops', stderr: '', exitCode: 0 })).toBe("xcrew project --hash A.swift gave no answer xcrew could read: it printed something other than JSON")
   expect(readLine(['project'], { stdout: '', stderr: '', exitCode: 2 })).toBe('xcrew project gave no answer xcrew could read: it exited 2, writing nothing')
   expect(readLine(['project'], { stdout: '', stderr: '\nerror: no project here\n', exitCode: 1 })).toBe('xcrew project gave no answer xcrew could read: error: no project here')
-  expect(readLine(['project'], { stdout: '', stderr: '', exitCode: 75 })).toBe("xcrew project gave no answer xcrew could read: the CLI isn't built for this version yet")
 })
 
 test('a save of the card that writes only to standard error is no failure', async ($, on) => {
@@ -216,9 +215,9 @@ test('a save of the card that writes only to standard error is no failure', asyn
 })
 
 test('a /xcrew command the CLI ended without a word says how it ended', async ($, on) => {
-  session(on, { exits: args => (args[0] === 'xcode' ? 75 : undefined) })
+  session(on, { exits: args => (args[0] === 'xcode' ? 3 : undefined) })
   const ran = await runCommand($, 'xcrew', 'xcode')
-  expect(String(ran.text)).toBe("xcrew xcode gave no answer xcrew could read: the CLI isn't built for this version yet")
+  expect(String(ran.text)).toBe('xcrew xcode gave no answer xcrew could read: it exited 3, writing nothing')
 })
 
 test('the ledger that couldn\'t be read says which read failed, with it', async ($, on) => {

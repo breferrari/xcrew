@@ -118,13 +118,13 @@ public enum EvidencePack {
     static func changedLines(project: Project, machine: Machine) async -> [String] {
         let runner = machine.runner
         guard case let .success(change) = await GitChanges.since(nil, in: project, using: runner) else { return [] }
-        async let committed = runner.run(["git", "-C", project.root.path, "log", "-1", "--format=%ct"], stdin: nil, timeout: DeadlineRunner.untimed)
+        async let committed = runner.run(["git", "-C", project.root.path, "log", "-1", "--format=%ct"], stdin: nil)
         async let coverage = BranchCoverage.read(change: change, project: project, machine: machine)
         async let warnings: Said? = {
             guard let log = RunLog.newestBuild(project: project.root, home: machine.home), let text = try? String(contentsOf: log, encoding: .utf8) else { return nil }
             let found = BuildLog.warnings(in: text)
             guard let inChanged = await ChangedLines.warnings(found, in: change, project: project, using: runner),
-                  let sentence = Report.warningsSentence(inChanged, of: found.count)
+                  let sentence = Report.warningsSentence(inChanged, of: found.count, rest: ResultBundle.noList)
             else { return nil }
             return ("the build", log, sentence)
         }()
@@ -143,9 +143,9 @@ public enum EvidencePack {
         modifiedIfKnown(url) ?? .distantPast
     }
 
-    /// `- +3 more`, past the tests listed.
+    /// `- +3 more`, past the tests listed, and where they all are.
     static func more(_ count: Int) -> [String] {
-        count > mostTests ? ["- +\(count - mostTests) more"] : []
+        count > mostTests ? ["- +\(count - mostTests) more; `/xcrew ledger` lists them all"] : []
     }
 
     static func quoted(_ message: String) -> String {

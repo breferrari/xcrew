@@ -20,10 +20,9 @@ hook_session() {
     printf '%s' "${named:-_}"
 }
 
-# Takes a briefing left due, by a rename only one taker can make: true for the one that took it.
+# Takes a briefing left due, by a removal only one taker can make: true for the one that took it.
 take_due() {
-    mv "$1" "$1.taken-$$" 2>/dev/null || return 1
-    rm -f "$1.taken-$$"
+    rm "$1" 2>/dev/null
 }
 
 # The Claude Code this hook runs under, by its process id and when it started, as `ps` prints it in the C locale; `none`
@@ -32,12 +31,15 @@ take_due() {
 claude_code() {
     p=$$
     while [ "${p:-0}" -gt 1 ]; do
-        command=$(ps -o comm= -p "$p" 2>/dev/null) || break
+        line=$(ps -o ppid=,comm= -p "$p" 2>/dev/null) || break
+        read -r parent command <<LINE
+$line
+LINE
         if [ "${command##*/}" = claude ]; then
             printf '%s %s\n' "$p" "$(LC_ALL=C ps -o lstart= -p "$p" | tr -s ' ')"
             return
         fi
-        p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+        p=$parent
     done
     echo none
 }
@@ -50,6 +52,51 @@ take_own_due() {
     done
     return 1
 }
+
+# Builds the CLI for `key`, under the lock the caller holds: a build that landed while it waited is used as it is, and
+# one that failed while it waited, its attempt not the one `seen` names, is said with its reason rather than run again.
+build_cli() {
+    binary="$cache/$key/xcrew"
+    [ ! -x "$binary" ] || return 0
+    failed="$cache/$key.failed"
+    if [ -f "$failed" ] && [ "$(sed -n 1p "$failed")" != "$seen" ]; then
+        sed 1d "$failed" >&2
+        return 1
+    fi
+    echo "xcrew: building the CLI for this version (once, 10 to 20 s)…" >&2
+    output="$cache/$key.output-$$"
+    if ! swift build -c release --product xcrew --package-path "$root" --scratch-path "$cache/build" > "$output" 2>&1; then
+        cat "$output" >&2
+        { echo "$$-$(date +%s)"; cat "$output"; } > "$failed.$$" && mv "$failed.$$" "$failed"
+        rm -f "$output"
+        return 1
+    fi
+    cat "$output" >&2
+    rm -f "$output" "$failed"
+    mkdir -p "$cache/$key"
+    cp "$cache/build/release/xcrew" "$binary.partial"
+    mv "$binary.partial" "$binary"
+    # An installed plugin builds once a version, so its scratch folder speeds no later build; a git
+    # checkout keeps it for the next edit's.
+    [ -e "$root/.git" ] || rm -rf "$cache/build"
+    # Builds no checkout has run for two weeks go. Another checkout's current build stays: the
+    # installed plugin and a development clone each keep theirs instead of rebuilding in turn. A build
+    # is a folder named by a key, the 16 hex characters `cut -c1-16` keeps; xcrew's other folders prune their own.
+    hex='[0-9a-f]'
+    keyform="$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex"
+    find "$cache" -mindepth 1 -maxdepth 1 -type d -name "$keyform" ! -name "$key" -mtime +14 -exec rm -rf {} + 2>/dev/null || true
+    find "$cache" -mindepth 1 -maxdepth 1 -type f -name "$keyform.failed" -mtime +14 -delete 2>/dev/null || true
+    # So do the stamps of checkouts no build has hashed for two weeks, as each plugin version's path is
+    # a new checkout; one still in use is hashed again on its next run.
+    find "$cache/roots" -type f -name '*.key' -mtime +14 -delete 2>/dev/null || true
+}
+
+if [ "${1:-}" = --build-under-lock ]; then
+    key=$2
+    seen=${3:-}
+    build_cli
+    exit $?
+fi
 
 # A session's end only moves its stamp aside and removes it: Claude Code gives SessionEnd hooks 1.5 s in all, which
 # a plugin's own timeout doesn't raise (docs/findings.md, *The session hooks*). So it hashes nothing, starts no CLI
@@ -127,48 +174,18 @@ if [ "${1:-}" = --if-built ]; then
 fi
 
 if [ ! -x "$binary" ]; then
-    # One build at a time: at session start the hook and the mod both start this. The second waits,
-    # then finds the first one's build. The holder writes its process id, so a lock left by a build
-    # that was killed outright (no trap runs on SIGKILL) is cleared at once; ten minutes is the backstop.
-    lock="$cache/.lock"
+    # One build at a time: at session start the hook and the mod both start this. The build runs under lockf(1), which
+    # holds a kernel lock on the file while the build runs, waits for another holder however long it builds, and is let
+    # go by the kernel when its holder ends, however it ends (docs/findings.md, *Building after a reload*).
     mkdir -p "$cache"
-    until mkdir "$lock" 2>/dev/null; do
-        holder=$(cat "$lock/pid" 2>/dev/null || true)
-        if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } || [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
-            rm -rf "$lock"
-            continue
-        fi
-        sleep 1
-    done
-    echo $$ > "$lock/pid"
-    trap 'rm -rf "$lock"' EXIT
-fi
-if [ ! -x "$binary" ]; then
-    echo "xcrew: building the CLI for this version (once, 10 to 20 s)…" >&2
-    swift build -c release --product xcrew --package-path "$root" --scratch-path "$cache/build" >&2
-    mkdir -p "$cache/$key"
-    cp "$cache/build/release/xcrew" "$binary.partial"
-    mv "$binary.partial" "$binary"
-    # An installed plugin builds once a version, so its scratch folder speeds no later build; a git
-    # checkout keeps it for the next edit's.
-    [ -e "$root/.git" ] || rm -rf "$cache/build"
-    # Builds no checkout has run for two weeks go. Another checkout's current build stays: the
-    # installed plugin and a development clone each keep theirs instead of rebuilding in turn. A build
-    # is a folder named by a key, the 16 hex characters `cut -c1-16` keeps; xcrew's other folders prune their own.
-    hex='[0-9a-f]'
-    keyform="$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex$hex"
-    find "$cache" -mindepth 1 -maxdepth 1 -type d -name "$keyform" ! -name "$key" -mtime +14 -exec rm -rf {} + 2>/dev/null || true
-    # So do the stamps of checkouts no build has hashed for two weeks, as each plugin version's path is
-    # a new checkout; one still in use is hashed again on its next run.
-    find "$cache/roots" -type f -name '*.key' -mtime +14 -delete 2>/dev/null || true
+    lock="$cache/.build.lock"
+    # The failed attempt this run already knows of, if any, read before it can wait: a failure after it is one it waited on.
+    seen=$(sed -n 1p "$cache/$key.failed" 2>/dev/null || true)
+    lockf -k -s -t 0 "$lock" true || echo "xcrew: waiting for the CLI's build another run started…" >&2
+    lockf -k "$lock" "$root/bin/xcrew" --build-under-lock "$key" "$seen"
 fi
 # Marks this build as in use, for the cleanup above.
 touch "$cache/$key"
-# exec replaces this shell, so the trap wouldn't run: the lock goes first.
-if [ -n "${lock:-}" ]; then
-    rm -rf "$lock"
-    trap - EXIT
-fi
 
 # The mod runs the build directly, and asks here which one to run.
 if [ "${1:-}" = --binary-path ]; then

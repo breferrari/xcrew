@@ -8,7 +8,7 @@ struct HookCommand: Command {
     let takesWords = true
     let usage = [
         "hook session-start   (hook) routing rules and what this project still lacks",
-        "hook session-end     (hook) forgets what the ended session reported",
+        "hook session-end     forgets what the ended session reported, run directly: the plugin's hook ends a session in bin/xcrew, without the CLI",
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {

@@ -9,8 +9,6 @@ import XcrewTestSupport
     let cache: URL
     let log: URL
     let hashLog: URL
-    /// Each `sleep` the shim makes, by a stand-in on the PATH that logs it and then sleeps.
-    let sleepLog: URL
     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
     init() throws {
@@ -19,7 +17,6 @@ import XcrewTestSupport
         cache = base.appending(path: "cache")
         log = base.appending(path: "builds.log")
         hashLog = base.appending(path: "hashes.log")
-        sleepLog = base.appending(path: "sleeps.log")
         try FileManager.default.createDirectory(at: root.appending(path: "bin"), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: repository.appending(path: "bin/xcrew"), to: root.appending(path: "bin/xcrew"))
         try write("// swift-tools-version:6.0\n", to: "Package.swift")
@@ -39,8 +36,6 @@ import XcrewTestSupport
         chmod +x "$scratch/release/xcrew"
         """
         try write(fakeSwift, to: "fakebin/swift", executable: true)
-        // Logs each wait, so a test asserts how often the shim waited rather than how long it took.
-        try write("#!/bin/sh\necho \"$*\" >> \"\(sleepLog.path)\"\nexec /bin/sleep \"$@\"\n", to: "fakebin/sleep", executable: true)
         // Counts the hashing of the sources, the cost a second run should skip.
         try write("""
         #!/bin/sh
@@ -200,13 +195,13 @@ extension ShimTests {
     /// clone don't rebuild in turn; one unused for two weeks goes.
     @Test func aRebuildKeepsRecentBuildsAndRemovesStaleOnes() async throws {
         _ = try await shim("help")
-        let first = try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { !["build", "roots"].contains($0) }
+        let first = try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { !["build", "roots", ".build.lock"].contains($0) }
         let stale = cache.appending(path: "0000000000000000")
         try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -15 * 86_400)], ofItemAtPath: stale.path)
         try write("print(3)\n", to: "Sources/xcrew/main.swift")
         _ = try await shim("help")
-        let second = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { !["build", "roots"].contains($0) })
+        let second = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { !["build", "roots", ".build.lock"].contains($0) })
         #expect(first.count == 1)
         #expect(second.count == 2)
         #expect(second.isSuperset(of: first))
@@ -235,13 +230,36 @@ extension ShimTests {
 }
 
 extension ShimTests {
+    /// The lockf processes waiting on or holding the build's lock, by the command line the shim gives them.
+    func onTheLock() async throws -> Int {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-f", "lockf -k \(cache.appending(path: ".build.lock").path) "]
+        let output = Pipe()
+        process.standardOutput = output
+        try await Self.runToEnd(process)
+        return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").count
+    }
+
+    /// A FIFO a stand-in reads before it goes on, released by `release`.
+    func fifo(_ name: String) async throws -> URL {
+        let path = cache.deletingLastPathComponent().appending(path: name)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mkfifo")
+        process.arguments = [path.path]
+        try await Self.runToEnd(process)
+        return path
+    }
+
+    func release(_ fifo: URL) throws {
+        let writer = try FileHandle(forWritingTo: fifo)
+        try writer.write(contentsOf: Data("go\n".utf8))
+        try writer.close()
+    }
+
     /// At session start the session hook and the mod both start the shim; after an update only one may build.
     @Test func twoFirstRunsAtOnceBuildOnce() async throws {
-        let hold = cache.deletingLastPathComponent().appending(path: "hold")
-        let fifo = Process()
-        fifo.executableURL = URL(fileURLWithPath: "/usr/bin/mkfifo")
-        fifo.arguments = [hold.path]
-        try await Self.runToEnd(fifo)
+        let hold = try await fifo("hold")
         // The first run's build is held; the second starts only once it is, and the build is let go only once the second
         // waits on the lock, so the two always overlap.
         async let first = shim("help", environment: ["HOLD_BUILD": hold.path])
@@ -253,30 +271,100 @@ extension ShimTests {
             return run
         }
         // The second waits on the lock, or, with no lock, builds and finishes: either ends the wait, and the build is let go.
-        try await until { lines(in: sleepLog) > 0 || secondDone.isSet }
-        let writer = try FileHandle(forWritingTo: hold)
-        try writer.write(contentsOf: Data("go\n".utf8))
-        try writer.close()
+        try await until { await ((try? onTheLock()) ?? 0) > 1 || secondDone.isSet }
+        try release(hold)
         let runs = try await [first, second.value]
-        #expect(lines(in: sleepLog) > 0, "the second run didn't wait on the first's build")
+        #expect(runs[1].errors.contains("waiting for the CLI's build another run started"), "the second run didn't wait on the first's build")
         #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
         #expect(builds == 1)
     }
 
-}
+    /// A build that fails while other runs wait on it fails them too, with its reason: they don't each build again in turn.
+    @Test func aBuildThatFailsWhileOthersWaitFailsThemWithoutBuildingAgain() async throws {
+        let hold = try await fifo("hold")
+        async let first = shim("help", environment: ["HOLD_BUILD": hold.path, "FAIL_BUILD": "1"])
+        try await until { builds == 1 }
+        let secondDone = Flag()
+        let second = Task {
+            let run = try await shim("help")
+            secondDone.set()
+            return run
+        }
+        try await until { await ((try? onTheLock()) ?? 0) > 1 || secondDone.isSet }
+        try release(hold)
+        let runs = try await [first, second.value]
+        #expect(runs.allSatisfy { $0.status != 0 && $0.errors.contains("compile error") })
+        #expect(builds == 1, "a waiting run built again")
+    }
 
-extension ShimTests {
-    /// A build killed outright (SIGKILL runs no trap) leaves its lock behind; the next run clears it
-    /// at once rather than waiting out the ten-minute backstop.
-    @Test func aLockLeftByAKilledBuildIsCleared() async throws {
-        let lock = cache.appending(path: ".lock")
-        try FileManager.default.createDirectory(at: lock, withIntermediateDirectories: true)
-        try "999999".write(to: lock.appending(path: "pid"), atomically: true, encoding: .utf8)
+    /// A build's holder is told apart by the kernel, not by how a clock prints: one started under another language
+    /// keeps its lock while it builds.
+    @Test func aLiveBuildUnderAnotherLanguageKeepsItsLock() async throws {
+        let hold = try await fifo("hold")
+        async let first = shim("help", environment: ["HOLD_BUILD": hold.path, "LC_ALL": "de_DE.UTF-8"])
+        try await until { builds == 1 }
+        let secondDone = Flag()
+        let second = Task {
+            let run = try await shim("help", environment: ["LC_ALL": "C"])
+            secondDone.set()
+            return run
+        }
+        try await until { await ((try? onTheLock()) ?? 0) > 1 || builds > 1 || secondDone.isSet }
+        try release(hold)
+        let runs = try await [first, second.value]
+        #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
+        #expect(builds == 1, "a second build started beside the live one")
+    }
+
+    /// A build killed outright (SIGKILL runs no trap) holds nothing: the next run builds at once.
+    @Test func aBuildKilledOutrightHoldsNoLock() async throws {
+        let hold = try await fifo("hold")
+        let first = Task { try await shim("help", environment: ["HOLD_BUILD": hold.path]) }
+        try await until { builds == 1 }
+        let kill = Process()
+        kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        kill.arguments = ["-9", "-f", root.path]
+        try await Self.runToEnd(kill)
+        _ = try await first.value
         let run = try await shim("help")
         #expect(run.status == 0 && run.output.hasPrefix("ran help"))
-        // Cleared at once: the shim never waited on the lock.
-        #expect(lines(in: sleepLog) == 0)
-        #expect(!FileManager.default.fileExists(atPath: lock.path))
+        #expect(builds == 2)
+    }
+
+    /// Two runs that find a dead build's lock build once between them: neither takes the lock from the other.
+    @Test func twoRunsOnADeadBuildsLockBuildOnce() async throws {
+        let holdRemove = try await fifo("hold-remove"), holdBuild = try await fifo("hold-build")
+        let removals = cache.deletingLastPathComponent().appending(path: "removals.log")
+        // Stops the first run just before it first removes a lock, so the second can take it in between.
+        try write("""
+        #!/bin/sh
+        for last; do :; done
+        if [ -n "${HOLD_RM:-}" ] && [ "${last##*/}" = .lock ] && [ ! -e "\(removals.path)" ]; then echo held >> "\(removals.path)"; read -r _ < "$HOLD_RM"; fi
+        exec /bin/rm "$@"
+        """, to: "fakebin/rm", executable: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        // A dead build's lock, as this version and the one before it leave one.
+        try FileManager.default.createSymbolicLink(atPath: cache.appending(path: ".lock").path, withDestinationPath: "999999 Mon Jan 1 00:00:00 2024")
+        FileManager.default.createFile(atPath: cache.appending(path: ".build.lock").path, contents: nil)
+        let firstDone = Flag(), secondDone = Flag()
+        let first = Task {
+            let run = try await shim("help", environment: ["HOLD_RM": holdRemove.path])
+            firstDone.set()
+            return run
+        }
+        try await until { lines(in: removals) > 0 || firstDone.isSet }
+        let second = Task {
+            let run = try await shim("help", environment: ["HOLD_BUILD": holdBuild.path])
+            secondDone.set()
+            return run
+        }
+        try await until { builds > 0 && !firstDone.isSet || secondDone.isSet }
+        if lines(in: removals) > 0 { try release(holdRemove) }
+        try await until { firstDone.isSet || builds > 1 }
+        if !secondDone.isSet { try release(holdBuild) }
+        let runs = try await [first.value, second.value]
+        #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
+        #expect(builds == 1, "two builds ran at once")
     }
 }
 

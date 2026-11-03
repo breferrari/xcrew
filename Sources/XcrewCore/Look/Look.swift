@@ -5,8 +5,6 @@ import Foundation
 public enum Look {
     /// Failed UI tests shown when none is named; the rest are named for a later look.
     static let mostTests = 3
-    /// Failed tests whose steps are read, when none is named, for whether they're UI tests.
-    static let mostScanned = 40
     /// Elements of a hierarchy shown under a failed run; the rest are counted, with the file that holds them all.
     static let mostElements = 30
 
@@ -51,13 +49,13 @@ public enum Look {
             return "xcrew: couldn't read the tests in \(name); xcrun xcresulttool get test-results tests --path \(bundle.path) says why"
         }
         guard !failed.isEmpty else { return "xcrew: nothing failed in \(name)" }
-        // A few at a time, in the listing's order, until enough UI tests are found: a unit test costs one read of its steps.
-        let scanned = Array(failed.prefix(mostScanned))
+        // A few at a time, in the listing's order, until enough UI tests are found, every failed test if need be: a unit
+        // test costs one read of its steps.
         var shown: [String] = []
         var unshown: [TestID] = []
         var next = 0
-        while next < scanned.count, shown.count < mostTests {
-            let batch = Array(scanned[next..<min(next + FailureNotes.mostAtOnce, scanned.count)])
+        while next < failed.count, shown.count < mostTests {
+            let batch = Array(failed[next..<min(next + FailureNotes.mostAtOnce, failed.count)])
             next += batch.count
             let passedUnder = batch.map { FailedRun.passedConfigurations(of: cases[$0] ?? []) }
             let looked = await withTaskGroup(of: (Int, String?).self) { group in
@@ -81,11 +79,10 @@ public enum Look {
         }
         FailureImages.record(run)
         guard !shown.isEmpty else {
-            let among = failed.count > scanned.count ? "none of the first \(scanned.count) failed tests" : "no failed test"
-            return "xcrew: \(among) in \(name) kept a screen recording, as a UI test's failed run does; xcrew look <Suite/test> shows one test's steps"
+            return "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; xcrew look <Suite/test> shows one test's steps"
         }
         unshown += failed.dropFirst(next)
-        let more = unshown.isEmpty ? [] : ["and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { "xcrew look \($0.shown)" })]
+        let more = unshown.isEmpty ? [] : ["and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { "xcrew look \($0.shown)" }, rest: "`xcrun xcresulttool get test-results tests --path \(bundle.path)` lists them all")]
         return (shown + more).joined(separator: "\n")
     }
 

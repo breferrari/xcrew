@@ -74,7 +74,7 @@ test('other tools forwarded through MobileBuildMCP run, and its call tool keeps 
 })
 
 test('when the CLI can\'t say, XcodeWrite is let through: refusing it would block a classic project', async ($, on) => {
-  on('process.run', () => {
+  on('process.spawn', async function* () {
     throw new Error('xcrew not built')
   })
   on('tool.call', () => ({ result: { ok: true } }))
@@ -169,7 +169,7 @@ test('without the CLI, the outcome is whether the server reported an error', asy
     return { value: undefined }
   })
   on('ui.status', () => ({ value: undefined }))
-  on('process.run', () => {
+  on('process.spawn', async function* () {
     throw new Error('xcrew not built')
   })
   on('tool.call', () => ({ result: {}, isError: true, text: 'failed' }))
@@ -749,25 +749,16 @@ test('the build is asked for again after 30 s, so a development checkout\'s rebu
   expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(3)
 })
 
-test('when the shim names no build, the CLI runs through the shim', async ($, on) => {
+/** A failed build is the call's answer: the shim isn't asked to run the command, which would build again. */
+test('when the build fails, a call says why and runs nothing through the shim', async ($, on) => {
   mock.clock(on)
   const seen = watch(on, {}, { noBuild: true })
   on('tool.call', () => ({ result: {}, text: 'ok' }))
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  const report = seen.cli.find(call => call.args[0] === 'report')
-  expect(report?.program).toBeUndefined()
-})
-
-test('a command that runs past its time is not run a second time through the shim', async ($, on) => {
-  const clock = mock.clock(on)
-  const seen = watch(on, {}, { build: { fails: 'by timing out', clock } })
-  on('tool.call', () => ({ result: {}, text: 'ok' }))
-
-  await callTool($, 'mcp__xcode__BuildProject')
-
-  expect(seen.cli.filter(call => call.args[0] === 'report')).toHaveLength(1)
+  expect(seen.cli.filter(call => call.args[0] === 'report')).toEqual([])
+  expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
 })
 
 test('a build that can\'t be started falls back to the shim', async ($, on) => {
@@ -781,31 +772,20 @@ test('a build that can\'t be started falls back to the shim', async ($, on) => {
   expect(reports.map(call => call.program)).toEqual([BUILT_BINARY, undefined])
 })
 
-test('asking which build to run takes no longer than the caller allows', async ($, on) => {
-  mock.clock(on)
-  mock.store(on)
-  const seen = projectThatIs(on, 'classic')
-  on('tool.call', () => ({ result: { ok: true } }))
-
-  await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })
-
-  expect(seen.find(call => call.args[0] === '--binary-path')?.timeoutMs).toBe(10_000)
-})
-
-test('callers at once share one question to the shim, and a build it can\'t name is remembered too', async ($, on) => {
+test('a build that failed is remembered, so later calls ask the shim no more', async ($, on) => {
   mock.clock(on)
   mock.store(on)
   on('tool.describe', (_, e) => ({ description: e.description }))
   const seen = stubCli(on, { noBuild: true })
   on('tool.call', () => ({ result: { ok: true } }))
 
-  await Promise.all([1, 2, 3].map(() => callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })))
+  await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })
+  const asked = seen.filter(call => call.args[0] === '--binary-path').length
   await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'b', content: '' })
 
-  // One question, and one build started for the callers to wait on, which named nothing: both are remembered.
-  expect(seen.filter(call => !call.spawned && call.args[0] === '--binary-path')).toHaveLength(1)
-  expect(seen.filter(call => call.spawned)).toHaveLength(1)
-  expect(seen.filter(call => call.args[0] === 'project')).toHaveLength(4)
+  expect(asked).toBe(1)
+  expect(seen.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
+  expect(seen.filter(call => call.args[0] === 'project')).toHaveLength(0)
 })
 
 test('a test run repeated with -test-iterations asks the CLI to read each test\'s runs', async ($, on) => {

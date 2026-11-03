@@ -3,19 +3,17 @@ import { covers, flakyLabel, isWholeScope, type LedgerEntry } from './ledger'
 
 /**
  * The project card: what earlier runs in this folder say about the project, saved after each run and at session start
- * for `xcrew hook session-start` to print at the start of a conversation, and again after a /clear or a compaction. It's
- * kept small: every conversation carries it.
+ * for `xcrew hook session-start` to print at the start of a conversation, and again after a /clear or a compaction. Every
+ * conversation carries it, so a long list names a few and says where the rest is; no line is cut or dropped.
  */
 
 /** The saved card's format, which the CLI reads (`ProjectCard` in the Swift package). */
 export const CARD_VERSION = 1
 export type SavedCard = { version: number; folder: string; branch: string; updated: number; oldest: number; text?: string }
-export const CARD_MAX_LINES = 10
-export const CARD_MAX_CHARACTERS = 800
 /** A full run at least this long is worth a selection instead. */
 export const SLOW_FULL_RUN_MS = 2 * 60_000
 const SELECTIONS_SHOWN = 3
-/** The red line's names stop here, so its count of the rest is never cut off. */
+/** The red line's names stop here, the rest counted with where they all are. */
 const RED_LINE_MAX = 360
 
 /** A run scope's stored history: its durations, and its test total when it's a test run. */
@@ -35,36 +33,26 @@ export function cardText(history: readonly ScopeHistory[], red: readonly LedgerE
   const slow = timed.find(entry => isWholeScope(entry.scope) && entry.tests !== undefined && entry.usual >= SLOW_FULL_RUN_MS)
   const selections = slow ? timed.filter(entry => entry.scope !== slow.scope && covers(slow.scope, entry.scope)) : []
   const slowLine = slow && selections.length > 0
-    ? [`- A full ${slow.scope} run takes ${stopwatch(slow.usual)}; selections run before: ${selections.slice(0, SELECTIONS_SHOWN).map(entry => entry.scope).join(', ')}${more(selections.length, SELECTIONS_SHOWN)}.`]
+    ? [`- A full ${slow.scope} run takes ${stopwatch(slow.usual)}; selections run before: ${selections.slice(0, SELECTIONS_SHOWN).map(entry => entry.scope).join(', ')}${more(selections.length, SELECTIONS_SHOWN, '/xcrew history lists them all')}.`]
     : []
   if (red.length === 0 && slowLine.length === 0) return undefined
-  // The red tests come first: when the card is cut, what's still failing matters more than how long runs take.
-  return capped(['Xcrew\'s notes on this project, from earlier runs:', ...(red.length > 0 ? [redLine(red, branch)] : []), ...slowLine])
+  // The red tests come first: what's still failing matters more than how long runs take.
+  return ['Xcrew\'s notes on this project, from earlier runs:', ...(red.length > 0 ? [redLine(red, branch)] : []), ...slowLine].join('\n')
 }
 
-/** The red tests, as many as fit, then how many more. */
+/** The red tests, as many as fit, then how many more and where they all are. */
 function redLine(red: readonly LedgerEntry[], branch: string): string {
   const opening = `- Still red on ${branch}: `
   const names: string[] = []
   for (const entry of red) {
     const name = `${entry.test}${flakyLabel(entry)} (${entry.failing})`
-    if (names.length > 0 && opening.length + [...names, name].join(', ').length + more(red.length, names.length + 1).length > RED_LINE_MAX) break
+    if (names.length > 0 && opening.length + [...names, name].join(', ').length > RED_LINE_MAX) break
     names.push(name)
   }
-  return `${opening}${names.join(', ')}${more(red.length, names.length)}`
+  return `${opening}${names.join(', ')}${more(red.length, names.length, 'the ledger tool lists them all')}`
 }
 
-function more(count: number, shown: number): string {
-  return count > shown ? ` +${count - shown} more` : ''
-}
-
-/** At most `CARD_MAX_LINES` lines and `CARD_MAX_CHARACTERS` characters: a line that doesn't fit is cut, and the lines after it dropped. */
-function capped(lines: readonly string[]): string {
-  const kept: string[] = []
-  for (const line of lines.slice(0, CARD_MAX_LINES)) {
-    const room = CARD_MAX_CHARACTERS - [...kept, ''].join('\n').length
-    if (room <= 1) break
-    kept.push(line.length > room ? `${line.slice(0, room - 1)}…` : line)
-  }
-  return kept.join('\n')
+/** How many more than `shown` there are, and where they all are. */
+function more(count: number, shown: number, where: string): string {
+  return count > shown ? ` +${count - shown} more; ${where}` : ''
 }

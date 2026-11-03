@@ -429,21 +429,21 @@ import XcrewTestSupport
     @Test func aClaudeCodeInAFolderWithSpacesIsTheSession() async throws {
         let project = Project.temporary()
         project.write("", to: ".mobilebuildmcp/.xcrew-managed")
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)], ofItemAtPath: project.managedMarker.path)
+        try FileManager.default.setAttributes([.modificationDate: Self.now.addingTimeInterval(-60)], ofItemAtPath: project.managedMarker.path)
         let claude = "/Users/me/Library/Application Support/Claude/claude-code/1.0/claude"
         let ps = "  100 1 01:00:00 \(claude) --resume\n  200 100 05:00 \(Self.server)\n  300 100 00:01 /plugins/xcrew/.build/xcrew doctor\n  400 1 01:00:00 claude\n  500 400 10:00 \(Self.server)\n"
         let comm = "  100 \(claude)\n  200 /opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/node-runtime\n  300 /plugins/xcrew/.build/xcrew\n  400 /Users/me/.local/bin/claude\n  500 /opt/homebrew/Cellar/mobilebuildmcp/2.7.1/libexec/node-runtime\n"
-        #expect(await ConfigLoadedCheck().run(.fake(runner(ps: ps, comm: comm, cwd: [200, 500], project: project), project: project, processID: 300)) == .warn("the config changed after this session's MobileBuildMCP started: restart Claude Code to load it"))
+        #expect(await ConfigLoadedCheck().run(.fake(runner(ps: ps, comm: comm, cwd: [200, 500], project: project), project: project, processID: 300, now: Self.now)) == .warn("the config changed after this session's MobileBuildMCP started: restart Claude Code to load it"))
     }
 
     /// A server whose Claude Code exited is adopted by launchd; no session owns it, so no restart reaches it.
     @Test func anOrphanedServerIsNobodysToRestart() async throws {
         let project = Project.temporary()
         project.write("", to: ".mobilebuildmcp/.xcrew-managed")
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)], ofItemAtPath: project.managedMarker.path)
+        try FileManager.default.setAttributes([.modificationDate: Self.now.addingTimeInterval(-60)], ofItemAtPath: project.managedMarker.path)
         let ps = "  400 1 01:00:00 claude\n  500 400 00:30 \(Self.server)\n  700 1 10:00 \(Self.server)\n  600 1 00:01 /plugins/xcrew/.build/xcrew doctor\n"
         let comm = "  400 claude\n  500 node-runtime\n  700 node-runtime\n  600 xcrew\n"
-        #expect(await ConfigLoadedCheck().run(.fake(runner(ps: ps, comm: comm, cwd: [500, 700], project: project), project: project, processID: 600)).status == .pass)
+        #expect(await ConfigLoadedCheck().run(.fake(runner(ps: ps, comm: comm, cwd: [500, 700], project: project), project: project, processID: 600, now: Self.now)).status == .pass)
     }
 
     @Test func withNoServerRunningTheCheckSkips() async throws {
@@ -543,7 +543,7 @@ import XcrewTestSupport
         private var statuses = 0
         var statusCalls: Int { lock.withLock { statuses } }
 
-        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        func run(_ argv: [String], stdin: Data?) async -> CommandResult {
             if argv == ["xcrun", "mcp-server", "status"] { lock.withLock { statuses += 1 } }
             return CommandResult(status: 0, stdout: "Permission: enabled\ncom.anthropic.claude-code")
         }

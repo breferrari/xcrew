@@ -313,4 +313,11 @@ import XcrewTestSupport
     @Test func aDestinationWithADashIsReadWhole() async {
         #expect(await Self.note([Running(arguments: "build -destination platform=iOS Simulator,name=Test - iPhone 17 -derivedDataPath \(Self.derivedData)")])?.contains("for platform=iOS Simulator,name=Test - iPhone 17,") == true)
     }
+
+    /// The DerivedData folder is read wherever the log names it.
+    @Test func theDerivedDataIsReadPastTheLogsStart() throws {
+        let log = FileManager.default.temporaryDirectory.appending(path: "xcrew-why-\(UUID().uuidString).log")
+        try (String(repeating: "note: preparing\n", count: 6_000) + "/usr/bin/xcrun xcodebuild -scheme App -derivedDataPath /dd/Late build\n").write(to: log, atomically: true, encoding: .utf8)
+        #expect(BuildLog.derivedData(ofLogAt: log.path) == "/dd/Late")
+    }
 }

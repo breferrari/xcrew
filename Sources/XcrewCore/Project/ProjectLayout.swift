@@ -59,7 +59,8 @@ public struct ProjectLayout: Sendable {
         }
     }
 
-    /// How many folders below the root a walk looks: a repository often keeps its app in `ios/` or `apps/ios/`.
+    /// How many folders below the root a walk looks: as far as MobileBuildMCP's own project discovery, so a container it
+    /// finds is one this finds (docs/findings.md, *No budgets*). A repository often keeps its app in `ios/` or `apps/ios/`.
     static let searchDepth = 2
     /// The folder Tuist keeps its helpers, dependencies and settings in, beside its manifests.
     static let tuistFolder = "Tuist"
@@ -81,8 +82,6 @@ public struct ProjectLayout: Sendable {
     static let packageMarkers = ["Package.swift"]
     /// Folders that hold other projects' code, never this one's manifests.
     static let dependencyFolders: Set = ["node_modules", "Pods", "Carthage", "DerivedData", "build"]
-    /// How much of a manifest is read to find its imports.
-    static let importWindow = 8192
 
     /// Where the walk starts. Listing a URL doesn't follow a symlink at its end, so a project opened through one is
     /// walked from where it leads.
@@ -244,14 +243,11 @@ public struct ProjectLayout: Sendable {
         Manifests(generator: generator, folder: entry.url.deletingLastPathComponent(), path: (entry.path as NSString).deletingLastPathComponent)
     }
 
-    /// Whether a line near the top of `file` imports ProjectDescription, or ProjectDescriptionHelpers, which re-exports it.
-    /// A heuristic: a manifest can't describe a project without it, and no doc defines a manifest by its text.
+    /// Whether a line of `file` imports ProjectDescription, or ProjectDescriptionHelpers, which re-exports it, read up to
+    /// the first that does. A heuristic: a manifest can't describe a project without it, and no doc defines a manifest by
+    /// its text.
     static func importsProjectDescription(_ file: URL) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: file), let head = try? handle.read(upToCount: importWindow) else { return false }
-        try? handle.close()
-        return String(decoding: head, as: UTF8.self).split(whereSeparator: \.isNewline).contains {
-            $0.trimmingCharacters(in: .whitespaces).hasPrefix("import ProjectDescription")
-        }
+        TextFile.firstLine(in: file) { line, _ in line.trimmingCharacters(in: .whitespaces).hasPrefix("import ProjectDescription") ? true : nil } ?? false
     }
 
     /// Visits the entries of each level, nearest first, and returns the first answer `visit` gives. Each entry carries its

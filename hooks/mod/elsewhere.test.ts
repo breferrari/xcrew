@@ -80,7 +80,7 @@ test('past two runs, the line counts the rest', async ($, on) => {
   await start($, clock)
   await submitPrompt($, 'go on')
   await clock.settle()
-  expect((await bandLines($)).find(line => line.startsWith('elsewhere: '))).toBe('elsewhere: feature · test_sim · testing 120 of 959; spike · build_sim · compiling; +1 more')
+  expect((await bandLines($)).find(line => line.startsWith('elsewhere: '))).toBe('elsewhere: feature · test_sim · testing 120 of 959; spike · build_sim · compiling; +1 more; `xcrew runs` lists them all')
 })
 
 test('the line sits below a problem the band ranks first', async ($, on) => {
@@ -118,18 +118,6 @@ test('reads started together share one timer, which stops once the line goes', a
   const asked = calls.filter(call => call.args[0] === 'runs').length
   await clock.advance(60_000)
   expect(calls.filter(call => call.args[0] === 'runs').length).toBe(asked)
-})
-
-/** Nobody waits on a timer's read: it has `$.process.run`'s own limit, and the CLI is told that limit's 30 s. */
-test("a timer's read of the other worktrees has the process's own limit, none of xcrew's", async ($, on) => {
-  const { clock, calls } = session(on, [[FEATURE]])
-  await start($, clock)
-  await submitPrompt($, 'go on')
-  await clock.settle()
-  await clock.advance(5_000)
-  const runs = calls.filter(call => call.args[0] === 'runs' && !call.ifBuilt)
-  expect(runs.length).toBeGreaterThan(1)
-  expect(runs.map(call => [call.timeoutMs, call.within])).toEqual(runs.map(() => [undefined, '30000']))
 })
 
 /** A timer's read of the other worktrees that hasn't answered keeps the next ticks from starting another. */

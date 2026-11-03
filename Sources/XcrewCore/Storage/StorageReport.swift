@@ -68,7 +68,7 @@ public struct StorageReport: Sendable, Equatable {
         case .all: ["--scope", "all"]
         case .workspace(let key): ["--scope", "workspace", "--workspace-key", key]
         }
-        let answer = await runner.run(["mobilebuildmcp", "purge", "--report"] + scoped + ["--json"], stdin: nil, timeout: DeadlineRunner.untimed)
+        let answer = await runner.run(["mobilebuildmcp", "purge", "--report"] + scoped + ["--json"], stdin: nil)
         return answer.succeeded ? StorageReport(json: Data(answer.stdout.utf8)) : nil
     }
 }

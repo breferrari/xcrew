@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import XcrewTestSupport
 @testable import XcrewCore
 
 /// The elements on screen at each failed run's failure, as `look` lists them under each run.
@@ -56,5 +57,15 @@ import Testing
     @Test func noScreenshotOrAFoundQueryAddsNothing() throws {
         #expect(!Look.hierarchyLines(try Self.hierarchy(), query: UIQuery(text: "checkout", type: "Button"), screenshot: false).contains(Self.appsOnly))
         #expect(!Look.hierarchyLines(try Self.hierarchy(), query: UIQuery(text: "continue", type: "Button"), screenshot: true).contains(Self.appsOnly))
+    }
+
+    /// Every failed test is looked at for a screen recording, however many failed: with none recorded, look says no
+    /// failed test kept one, not that none of the first few did.
+    @Test func everyFailedTestIsLookedAtForARecording() async {
+        let bundle = "/runs/test_sim_1.xcresult"
+        let nodes = (1...41).map { #"{"nodeType":"Test Case","nodeIdentifier":"Suite/test_\#($0)()","name":"test_\#($0)()","result":"Failed"}"# }.joined(separator: ",")
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: #"{"testNodes":[\#(nodes)]}"#)])
+        let text = await Look.report(bundle: ResultBundle(path: bundle, runner: runner), named: nil, keptIn: FileManager.default.temporaryDirectory.appending(path: "xcrew-look-\(UUID().uuidString)"), now: Date())
+        #expect(text.hasPrefix("xcrew: no failed test in test_sim_1.xcresult kept a screen recording"), "\(text)")
     }
 }

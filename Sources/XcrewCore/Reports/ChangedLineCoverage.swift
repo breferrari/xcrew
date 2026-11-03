@@ -188,7 +188,7 @@ struct ChangedLineCoverage: Sendable, Equatable {
     }
 
     /// What a test run's coverage says of the lines a branch changed: nothing when the run gathered no coverage, or
-    /// when the call's deadline cut what it needs. A bundle that says it holds none asks nothing of `xccov`, whose start
+    /// `xccov` couldn't read it. A bundle that says it holds none asks nothing of `xccov`, whose start
     /// alone takes over half a second; otherwise the change is read while `xccov`'s report, which names every file the
     /// archive holds, is. `keepingTestFiles` is as `of(_:in:targets:bundle:project:using:keepingTestFiles:)` says.
     static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
@@ -213,21 +213,21 @@ struct ChangedLineCoverage: Sendable, Equatable {
         if total > 0 {
             let counted = ran == total ? (total == 1 ? "the 1 changed line that can run" : "all \(total) changed lines that can run") : "\(ran) of \(total) changed lines that can run"
             let named = notRun.flatMap { file in Self.ranges(file.lines).map { "\(ToolOutput.basename(file.path)):\($0)" } }
-            sentences.append("\(counted) ran in \(runs == 1 ? "this test run" : "these test runs")." + (named.isEmpty ? "" : " Not run\(ResultBundle.listed(named))."))
+            sentences.append("\(counted) ran in \(runs == 1 ? "this test run" : "these test runs")." + (named.isEmpty ? "" : " Not run\(ResultBundle.listed(named, rest: ResultBundle.noList))."))
         }
         if !unreached.isEmpty {
             let files = unreached.reduce(0) { $0 + $1.files }
-            let named = ResultBundle.joined(unreached.map(\.target), or: true)
+            let named = ResultBundle.joined(unreached.map(\.target), or: true, rest: ResultBundle.noList)
             let these = runs == 1 ? "test run" : "test runs"
             sentences.append("\(sentences.isEmpty ? (runs == 1 ? "this" : "these") : (runs == 1 ? "This" : "These")) \(these) ran nothing in \(named), where \(files == 1 ? "1 changed file is" : "\(files) changed files are").")
         }
         if !outside.isEmpty {
             let files = outside.count == 1 ? "1 changed file isn't" : "\(outside.count) changed files aren't"
-            sentences.append("\(files) in \(runs == 1 ? "this run's" : "these runs'") coverage\(ResultBundle.listed(outside.map(ToolOutput.basename))).")
+            sentences.append("\(files) in \(runs == 1 ? "this run's" : "these runs'") coverage\(ResultBundle.listed(outside.map(ToolOutput.basename), rest: ResultBundle.noList)).")
         }
         if !stale.isEmpty {
             let files = stale.count == 1 ? "1 changed file" : "\(stale.count) changed files"
-            sentences.append("\(files) changed after every run that covered \(stale.count == 1 ? "it" : "them")\(ResultBundle.listed(stale.map(ToolOutput.basename))).")
+            sentences.append("\(files) changed after every run that covered \(stale.count == 1 ? "it" : "them")\(ResultBundle.listed(stale.map(ToolOutput.basename), rest: ResultBundle.noList)).")
         }
         return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }

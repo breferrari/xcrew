@@ -514,17 +514,16 @@ import Testing
     }
 
     /// The MobileBuildMCP launcher reads the exit statuses the CLI's `xcode --developer-dir` and the shim's `--if-built`
-    /// give, and waits no longer than its named limit; the mod reads the shim's too.
+    /// give, and waits for the answer however long it takes.
     @Test func theLauncherReadsTheCLIsAndTheShimsStatuses() throws {
         let launcher = try text("libexec/mobilebuildmcp-server"), shim = try text("bin/xcrew")
         #expect(launcher.contains("\"$plugin/bin/xcrew\" --if-built xcode --developer-dir"))
         #expect(launcher.contains("\n        \(XcodeCommand.noPin)) outcome= ;;"))
         #expect(launcher.contains("\n        \(XcodeCommand.noMatch)) outcome=\"no match\" ;;"))
-        #expect(launcher.contains("\n        \(XcodeCommand.timedOut)) outcome=\"timed out $PIN_SECONDS\" ;;"))
         #expect(shim.contains("[ -x \"$binary\" ] || exit 75") && launcher.contains("\n        75) outcome=\"not built\" ;;"))
-        // The mod names it too, in what it says of a read the shim answered that way.
-        #expect(try text("hooks/mod/cli.ts").contains("\nexport const NOT_BUILT = 75\n"))
-        #expect(launcher.contains("\nPIN_SECONDS=2\n"))
+        #expect(!launcher.contains("PIN_SECONDS") && !launcher.contains("kill") && !launcher.contains("sleep"), "the launcher keeps a time of its own")
+        // Its quick look for a pin reaches as deep as the CLI's, which looks beside containers found within searchDepth.
+        #expect(launcher.contains("find . -maxdepth \(ProjectLayout.searchDepth + 1) "))
     }
 
     /// The launcher writes its record where the doctor reads it, in the words it parses: xcrew's cache, as the shim and
@@ -541,10 +540,10 @@ import Testing
         try FileManager.default.createDirectory(at: project.root, withIntermediateDirectories: true)
         let machine = Machine(environment: ["XCREW_CACHE": folder.appending(path: "cache").path], home: folder, runner: SystemCommandRunner())
         #expect(Xcodes.launchRecord(of: project, on: machine).path == folder.appending(path: "cache").path + "/launches" + project.canonicalRoot + ".launch")
-        let written: [(String, Xcodes.Launch)] = [("applied $developer", .applied("/Apps/X.app/Contents/Developer")), ("no match", .noMatch), ("not built", .notBuilt), ("timed out $PIN_SECONDS", .timedOut("2")), ("failed $status", .failed("1"))]
+        let written: [(String, Xcodes.Launch)] = [("applied $developer", .applied("/Apps/X.app/Contents/Developer")), ("no match", .noMatch), ("not built", .notBuilt), ("failed $status", .failed("1"))]
         for (outcome, launch) in written {
             #expect(launcher.contains("outcome=\"\(outcome)\""), "\(outcome)")
-            let line = outcome.replacingOccurrences(of: "$developer", with: "/Apps/X.app/Contents/Developer").replacingOccurrences(of: "$PIN_SECONDS", with: "2").replacingOccurrences(of: "$status", with: "1")
+            let line = outcome.replacingOccurrences(of: "$developer", with: "/Apps/X.app/Contents/Developer").replacingOccurrences(of: "$status", with: "1")
             let record = Xcodes.launchRecord(of: project, on: machine)
             try FileManager.default.createDirectory(at: record.deletingLastPathComponent(), withIntermediateDirectories: true)
             try "\(line)\n".write(to: record, atomically: true, encoding: .utf8)
@@ -833,60 +832,15 @@ import Testing
         #expect(shim == built, "the shim builds with \(shim), CI with \(built)")
     }
 
-    /// The deadlines and the durations they come from, as docs/findings.md's *Deadlines* table records them, by the key
-    /// each deadline's comment names: the slowest measured, in seconds, and the deadline in the table's unit.
-    func deadlineRows() throws -> [String: (slowest: Double, deadline: Int, unit: String)] {
-        let findings = try text("docs/findings.md")
-        let section = try #require(findings.firstMatch(of: #/(?s)\n## Deadlines\n(.*?)\n## /#)).output.1
-        var rows: [String: (slowest: Double, deadline: Int, unit: String)] = [:]
-        for row in section.matches(of: /(?m)^\| `([^`]+)` \| ([\d.]+) s \| \d+ \| (\d+) (min|s) \|$/) {
-            rows[String(row.output.1)] = (Double(row.output.2) ?? 0, Int(row.output.3) ?? 0, String(row.output.4))
-        }
-        return rows
-    }
-
-    /// A hung job or step stops at a deadline of its own, not at GitHub's six hours, and the release script's waits and
-    /// the canary's fetches end too: each names its row in findings' *Deadlines*, whose number it holds, and each row's
-    /// deadline is the rule's: 3 × the slowest, in whole minutes and at least 5 for a job or step, at least 300 s for a
-    /// script's wait; for a fetch, 3 × the slowest up to the next 10 seconds.
-    @Test func everyDeadlineIsItsRowsAndTheRowIsTheRules() throws {
-        let rows = try deadlineRows()
-        #expect(rows.count >= 14, "the Deadlines table reads as fewer rows than it holds: \(rows.keys.sorted())")
-        func check(_ key: String, _ value: Int, in file: String) {
-            guard let row = rows[key] else { Issue.record("\(file): no Deadlines row \(key)"); return }
-            #expect(value == row.deadline, "\(file): \(key) is \(value), its row says \(row.deadline)")
-            let rule = switch row.unit {
-            case "min": max(Int((3 * row.slowest / 60).rounded(.up)), 5)
-            case _ where key.hasSuffix(" curl"): Int((3 * row.slowest / 10).rounded(.up)) * 10
-            default: max(Int((3 * row.slowest).rounded(.up)), 300)
-            }
-            #expect(row.deadline == rule, "\(key)'s row says \(row.deadline), the rule gives \(rule)")
-        }
-        for workflow in [".github/workflows/ci.yml", ".github/workflows/canary.yml", ".github/workflows/release.yml"] {
-            let text = try text(workflow)
-            let jobs = try #require(text.firstMatch(of: /(?s)\njobs:\n(.*)/)).output.1
-            let names = jobs.matches(of: /(?m)^  ([a-z0-9_][a-z0-9_-]*):$/).map { String($0.output.1) }
-            #expect(!names.isEmpty, "\(workflow)")
-            let deadlines = text.matches(of: /(?m)^ +timeout-minutes: (\d+) +# docs\/findings\.md, Deadlines: `([^`]+)`$/)
-            #expect(deadlines.count >= names.count, "\(workflow): a job has no deadline naming its row")
-            for deadline in deadlines { check(String(deadline.output.2), Int(deadline.output.1) ?? 0, in: workflow) }
-            for name in names { #expect(deadlines.contains { $0.output.2 == "\(workflow.split(separator: "/").last ?? "") \(name)" }, "\(workflow): \(name) has no deadline") }
-        }
-        for file in ["scripts/release.sh", "scripts/readme-images.sh", ".github/workflows/canary.yml"] {
+    /// No job, step, fetch or script wait carries a time of xcrew's: a job runs to its end under GitHub's own limit, and
+    /// the release script waits until it knows how things stand, which Ctrl-C ends (docs/findings.md, *No budgets*).
+    @Test func noCIJobOrScriptWaitsOnATimeOfItsOwn() throws {
+        for file in [".github/workflows/ci.yml", ".github/workflows/canary.yml", ".github/workflows/release.yml", "scripts/release.sh", "scripts/readme-images.sh", "scripts/registered-tools.sh", "scripts/stable-check.sh"] {
             let text = try text(file)
-            for wait in text.matches(of: /(?:deadline=\$\(\(\$\(date \+%s\) \+ |\bwait=)(\d+)\)?\)? +# docs\/findings\.md, Deadlines: `([^`]+)`/) {
-                check(String(wait.output.2), Int(wait.output.1) ?? 0, in: file)
-            }
-            for fetch in text.matches(of: /--max-time (\d+) .*# docs\/findings\.md, Deadlines: `([^`]+)`|# docs\/findings\.md, Deadlines: `([^`]+ curl)`\n[^\n]*--max-time (\d+)/) {
-                let key = String(fetch.output.2 ?? fetch.output.3 ?? ""), value = Int(fetch.output.1 ?? fetch.output.4 ?? "") ?? 0
-                check(key, value, in: file)
+            for budget in ["timeout-minutes", "--max-time", "alarm ", "deadline", "86400"] {
+                #expect(!text.contains(budget), "\(file) names \(budget)")
             }
         }
-        let script = try text("scripts/release.sh")
-        #expect(script.matches(of: #/(?:deadline=\$\(\(\$\(date \+%s\) \+ |\bwait=)\d+\)?\)? +# docs\/findings\.md, Deadlines: /#).count >= 2, "release.sh's waits name no deadline")
-        #expect(!script.contains("gh run watch"), "gh run watch waits with no deadline")
-        #expect(try text("scripts/readme-images.sh").contains("Deadlines: `readme-images.sh curl`"))
-        #expect(try text(".github/workflows/canary.yml").contains("Deadlines: `canary.yml sosumi curl`"))
     }
 
     /// Every job that builds Swift says which toolchain it used, so a failure on CI names the compiler that said no.
@@ -1186,22 +1140,13 @@ import Testing
         #expect(pattern.matches(of: /\$hex/).count == Int(kept), "the build pattern names \(pattern.matches(of: /\$hex/).count) characters, the key keeps \(kept)")
     }
 
-    /// The mod gives each CLI call its time under the name the CLI reads it by, so the call's deadline passes down to
-    /// every command it starts; and what a person or Claude asks for has the CLI's own time when none is given, 120 s.
-    @Test func theModGivesEachCallItsTimeAndAskedCallsTheCLIs() throws {
-        let register = try text("hooks/mod/register.ts")
-        let start = try #require(register.firstMatch(of: /(?s)\nfunction start\([^\n]*\n(.*?)\n\}/)?.1, "register.ts has no start")
-        #expect(start.contains("\(DeadlineRunner.variable): String(timeoutMs)"), "start doesn't give the CLI its time under \(DeadlineRunner.variable)")
-        let cli = try text("hooks/mod/cli.ts")
-        let asked = try #require(cli.firstMatch(of: /export const ASKED_MS = ([\d_]+)/)?.1, "cli.ts names no ASKED_MS")
-        #expect(Int(asked.replacingOccurrences(of: "_", with: "")) == Int(DeadlineRunner.asked.components.seconds) * 1000)
-        #expect(try text("hooks/mod/evidence.ts").contains("export const EVIDENCE_TIMEOUT_MS = ASKED_MS"))
-    }
-
-    /// Each call on the CLI has the time of who waits on it: `ON_RESULT_MS` on a tool's call, `ASKED_MS` when asked, and
-    /// none of xcrew's own when nobody waits, as a timer's; never a number written at the call.
-    @Test func everyCallOnTheCLINamesWhoWaits() throws {
-        let register = try text("hooks/mod/register.ts")
+    /// The mod gives no CLI call a time: none names one, by a constant or at the call, and each runs to its end
+    /// (docs/findings.md, *No budgets*).
+    @Test func theModGivesNoCallATime() throws {
+        let register = try text("hooks/mod/register.ts"), cli = try text("hooks/mod/cli.ts")
+        for name in ["XCREW_WITHIN_MS", "timeoutMs", "ON_RESULT_MS", "ASKED_MS", "UNWAITED_MS", "OutOfTime", "StillBuilding"] {
+            #expect(!register.contains(name) && !cli.contains(name), "the mod names \(name)")
+        }
         let numbered = register.matches(of: /(?:answer|xcrew)\(\$, [^\n]*?, (\d[\d_]*)(?:\)|, )/).map { String($0.output.0) }
         #expect(numbered.isEmpty, "calls with a time written at the call: \(numbered)")
     }
@@ -1387,31 +1332,45 @@ import Testing
         }
     }
 
-    /// Under one deadline a command's own limit adds nothing, and one taken from a fast Mac would cut notes on a slow
-    /// one: no command names a time of its own. The times that stay are the deadline's own, the runner's grace on a
-    /// stopped program's pipes, and how long standard input may sit idle, none of them a command's limit.
-    @Test func noCommandHasATimeLimitOfItsOwn() throws {
+    /// A hook waits only on `$` calls: Claude Code counts a hook's other waits against its 10 s, and drops a hook past it
+    /// (docs/findings.md, *No budgets*). So no module-level promise is awaited, returned or chained on from anywhere in the
+    /// hooks module, through a helper or not, but the two write chains whose links are the store's calls alone, which keep
+    /// two runs ending together from losing each other's writes.
+    @Test func noHookWaitsOnAModuleLevelPromise() throws {
+        let register = try text("hooks/mod/register.ts")
+        let promises = Set(register.matches(of: /(?m)^(?:let|const) (\w+)(?::[^=\n]*Promise[^=\n]*| = new Map<[^>]*Promise)/).map { String($0.1) })
+        let storeChains: Set = ["ledgerWrites", "durationWrites"]
+        #expect(promises.isSuperset(of: storeChains) && promises.contains("cardWrites"), "\(promises.sorted())")
+        for name in promises.subtracting(storeChains) {
+            // Waited on, returned, or chained on other than to append to it (`name = name.then(...)`).
+            let waited = register.matches(of: try Regex("(?:await|return) \\(?\(name)\\b")).count
+            let chained = register.matches(of: try Regex("\\b\(name)\\??\\.(?:then|catch|finally)\\(")).count
+            let appended = register.matches(of: try Regex("\(name) = \(name)\\??\\.then\\(")).count
+            let uses = waited + chained - appended
+            #expect(uses == 0, "\(name) is waited on \(uses) times")
+        }
+        // The chains' links call no CLI: their wait is the store's alone.
+        let writeLedger = try #require(register.firstMatch(of: /(?s)\nasync function writeLedger\(.*?\n\}/)?.output)
+        #expect(!writeLedger.contains("answer") && !writeLedger.contains("xcrew(") && !writeLedger.contains("currentHead"))
+    }
+
+    /// No command is cut on time: no Swift call names a timeout, nothing passes a deadline in, and the only times kept
+    /// are the runner's grace on a finished program's pipes and how long standard input may sit idle, which cut no work.
+    @Test func noCommandIsCutOnTime() throws {
         let sources = Self.repository.appending(path: "Sources")
         let files = (FileManager.default.enumerator(atPath: sources.path)?.allObjects as? [String] ?? []).filter { $0.hasSuffix(".swift") }
-        let kept: Set = ["answering", "asked", "untimed", "deadlineStep", "grace", "idleLimit"]
+        let kept: Set = ["grace", "idleLimit"]
         var named: [String] = []
         for file in files {
             let text = try text("Sources/\(file)")
-            named += text.matches(of: /timeout: (?:Duration = )?(?:Duration)?\.(?:seconds|milliseconds)\(/).map { _ in "Sources/\(file): a timeout written at the call" }
+            named += text.matches(of: /timeout:/).map { _ in "Sources/\(file): a timeout" }
+            named += text.matches(of: /DeadlineRunner|XCREW_WITHIN_MS/).map { _ in "Sources/\(file): a deadline" }
             named += text.matches(of: /static let (\w+)(?:: Duration)? = (?:Duration)?\.(?:seconds|milliseconds)\(/).map { String($0.1) }.filter { !kept.contains($0) }.map { "Sources/\(file): \($0)" }
         }
+        for file in ["bin/xcrew", "libexec/mobilebuildmcp-server", "hooks/hooks.json"] where try text(file).contains("XCREW_WITHIN_MS") {
+            named.append("\(file): a deadline")
+        }
         #expect(named.isEmpty, "\(named)")
-    }
-
-    /// The MobileBuildMCP launcher carries its pin's wait; run with none, as from a terminal, the CLI takes an asked
-    /// call's 120 s. The session hooks carry no time of their own (`noHookCarriesATimeOfItsOwn`).
-    @Test func everyWayIntoTheCLICarriesADeadline() throws {
-        let launcher = try text("libexec/mobilebuildmcp-server")
-        #expect(launcher.contains(#"XCREW_WITHIN_MS=$((PIN_SECONDS * 1000)) "$plugin/bin/xcrew" --if-built xcode"#))
-        // Every command runs under the call's deadline, an asked call's when none is given.
-        #expect(try text("Sources/XcrewCLI/CLI.swift").contains("context.machine.answering(by: DeadlineRunner.deadline(for: context.machine))"))
-        let unset = Machine(environment: [:], home: URL(fileURLWithPath: "/nonexistent"), runner: SystemCommandRunner(), monotonic: { .zero })
-        #expect(DeadlineRunner.deadline(for: unset) == .milliseconds(118_500))
     }
 
     // MARK: mcs techpack
@@ -1620,13 +1579,34 @@ import Testing
         }
     }
 
-    /// One call site starts a process, `start` in the hooks module, and it runs only the shim or the build the shim names;
-    /// `cli.ts` decides which and reads what comes back.
+    /// Claude Code stops a hook's or a call's CLI with SIGTERM, a person's Ctrl-C sends SIGINT: either cancels the CLI's
+    /// work, so the programs it started stop with it.
+    @Test func theCLIStopsWhatItStartedOnSIGTERMAndSIGINT() throws {
+        let main = try String(contentsOf: ManifestTests.repository.appending(path: "Sources/xcrew/main.swift"), encoding: .utf8)
+        #expect(main.contains("Interruption.run(on: [SIGTERM, SIGINT])"))
+    }
+
+    /// The canary reads the release workflow's runs, which its token reads only with `actions: read`; without it the
+    /// read fails, and the canary fails with that reason.
+    @Test func theCanaryMayReadTheReleaseRuns() throws {
+        let canary = try String(contentsOf: ManifestTests.repository.appending(path: ".github/workflows/canary.yml"), encoding: .utf8)
+        #expect(canary.contains("\n  actions: read\n"))
+    }
+
+    /// The CLI says what it waits on with a prefix the mod reads to show the line, and to tell it from a failure's reason.
+    @Test func theCLIAndTheModNameOneProgressPrefix() throws {
+        #expect(try #require(try Self.sources().first { $0.name == "cli.ts" }).text.contains("\nexport const PROGRESS_PREFIX = '\(Progress.prefix)'\n"))
+    }
+
+    /// The mod starts a process from one place, spawned to its end: `start`, which runs only the shim or the build the
+    /// shim names. `cli.ts` decides which and reads what comes back.
     @Test func theModStartsOnlyTheCLIFromOnePlace() throws {
         let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
-        #expect(try Self.sources().map(\.text).joined().matches(of: /\$\.process\.run\(/).count == 1)
-        let start = try #require(register.firstMatch(of: /(?ms)^function start\(.*?^}/)).output
-        #expect(start.contains("$.process.run("))
+        let sources = try Self.sources().map(\.text).joined()
+        #expect(sources.matches(of: /\$\.process\.run\(/).isEmpty, "a process run under the API's own time")
+        #expect(sources.matches(of: /\$\.process\.spawn\(/).count == 1)
+        let start = try #require(register.firstMatch(of: /(?ms)^async function start\(.*?^}/)).output
+        #expect(start.contains("$.process.spawn("))
         let programs = Set(register.matches(of: /start\(\$, ([^,]+),/).map { String($0.1) })
         #expect(programs == ["shimPath($.plugin.root)", "binary"])
         #expect(register.contains("const binary = await build("))
