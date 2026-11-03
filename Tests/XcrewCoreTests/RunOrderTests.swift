@@ -73,7 +73,7 @@ struct RunOrderTests {
     @Test func theNoteNamesSeveralDisagreeingTestsEachWithItsResult() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/skipped()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/expected()","result":"Expected Failure"}]}"#)
         #expect(Report.notFailedInBundleNote(["skipped", "expected"].map { TestID(suite: "Suite", name: $0) }, results: ResultBundle.results(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't list among its failures under that name: Suite/skipped, which the bundle counts as skipped; Suite/expected, which the bundle counts as an expected failure. A test the bundle counts as passed, an expected failure or skipped is left out of the failures here.")
+            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't list among its failures under that name: Suite/skipped, which the bundle counts as skipped; Suite/expected, which the bundle counts as an expected failure. A test the bundle counts as passed, an expected failure or skipped in every entry, test plan configuration and device is left out of the failures here.")
     }
 
     /// A disagreeing test the bundle records neither passed, skipped nor an expected failure, as `unknown` for one its
@@ -156,7 +156,7 @@ struct RunOrderTests {
     @Test func theNoteCountsATestSkippedInOneEntryAndPassedInAnotherAsBoth() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed"}]}"#)
         #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], results: ResultBundle.results(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Suite/test, which the bundle counts as passed and skipped. A test the bundle counts as passed, an expected failure or skipped is left out of the failures here.")
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Suite/test, which the bundle counts as passed and skipped. A test the bundle counts as passed, an expected failure or skipped in every entry, test plan configuration and device is left out of the failures here.")
     }
 
     /// A device below a test's case that records no result says nothing either way, as `look` reads it: the test is

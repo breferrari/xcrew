@@ -166,8 +166,8 @@ public struct ResultBundle: Sendable {
         return found
     }
 
-    /// What `results(in:)` gives for an entry that records no result.
-    static let noResult = "no result"
+    /// What `results(in:)` gives for an entry that records no result: empty, as no result `xcresulttool` writes is.
+    static let noResult = ""
 
     /// The tests among `results` the bundle counts as passed, skipped or an expected failure in every entry, test plan
     /// configuration and device: no failure whatever another listing says. A test of one name with another result in any, as
