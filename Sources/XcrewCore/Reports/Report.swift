@@ -192,7 +192,7 @@ public struct Report: Sendable, Equatable, Codable {
         let base: Substring
         if detail.hasSuffix(separator + named) {
             base = detail.dropLast((separator + named).count)
-        } else if detail.hasSuffix("…"), let cut = detail.range(of: separator, options: .backwards), named.hasPrefix(detail[cut.upperBound...].dropLast()) {
+        } else if detail.hasSuffix("…"), let cut = detail.ranges(of: separator).first(where: { named.hasPrefix(detail[$0.upperBound...].dropLast()) }) {
             base = detail[..<cut.lowerBound]
         } else {
             return detail

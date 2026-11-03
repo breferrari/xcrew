@@ -195,6 +195,8 @@ struct RunOrderTests {
         #expect(Report.naming(shortened, first: other, insteadOf: long) == "1 of 312 failed · CheckoutViewModelTests/test_givenValidCard_whenUserTapsPay_thenCompletesThePurcha…")
         #expect(Report.naming("1 of 4 failed · Inner/test", first: other, insteadOf: "Inner/test")?.count == 100)
         #expect(Report.naming("1 of 4 failed · Suite/`login · retries`", first: nil, insteadOf: "Suite/`login · retries`") == "1 of 4 failed")
+        let spaced = "CheckoutTests/`given an expired card · when the user taps pay · then it presents the retry alert`"
+        #expect(Report.naming(ToolOutput.shorten("1 of 312 failed · " + spaced), first: nil, insteadOf: spaced) == "1 of 312 failed")
     }
 
     /// The note names five disagreeing tests at most and says where the rest are.
@@ -203,6 +205,8 @@ struct RunOrderTests {
         let note = Report.notFailedInBundleNote(tests, results: [:]) ?? ""
         #expect(note.contains("Suite/t5, which the bundle has no entry for under that name; and 2 more, each among MobileBuildMCP's failures in the result."))
         #expect(!note.contains("Suite/t6") && !note.contains("Suite/t7"))
+        let sixthCleared = Report.notFailedInBundleNote(tests, results: [tests[5]: ["Passed"]]) ?? ""
+        #expect(!sixthCleared.contains("is left out of the failures here"))
     }
 
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure
