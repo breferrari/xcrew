@@ -1365,15 +1365,14 @@ import Testing
     /// number, so no code, doc, script, workflow or skill names a budget for it or a variable that sets one; only the
     /// tests that say it stays gone and the changelog's history do (docs/findings.md, *No budgets*).
     @Test func noStorageBudgetComesBack() throws {
-        let named = /XCREW_STORAGE_BUDGET_GB|StorageBudget|its budget of|past its budget|[Bb]udget of \d/
+        let named = /XCREW_STORAGE_BUDGET_GB|StorageBudget|its budget of|past its budget|[Bb]udget of \d|\d ?GB budget/
         let saying: Set = ["Tests/ManifestTests/ManifestTests.swift", "Tests/XcrewCoreTests/ProjectStorageTests.swift", "CHANGELOG.md"]
         let files = try repositoryFiles { path in
             !saying.contains(path) && ([".swift", ".ts", ".md", ".yml", ".yaml", ".json", ".sh"].contains(where: path.hasSuffix) || path.hasPrefix("bin/") || path.hasPrefix("libexec/"))
         }
         var found: [String] = []
         for path in files {
-            guard let text = try? String(contentsOf: Self.repository.appending(path: path), encoding: .utf8) else { continue }
-            found += text.matches(of: named).map { "\(path): \($0.output)" }
+            found += try text(path).matches(of: named).map { "\(path): \($0.output)" }
         }
         #expect(found.isEmpty, "\(found)")
     }
