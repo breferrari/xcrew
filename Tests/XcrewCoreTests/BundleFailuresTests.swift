@@ -374,7 +374,7 @@ struct BundleFailuresTests {
     /// A crashed test the bundle has more than one test by the name of keeps the runtime error the run lists: it's said
     /// under its line though nothing is looked up for it. The timing capture's crash, its name two nested suites'.
     @Test func anAmbiguousCrashedTestKeepsTheRuntimeError() async throws {
-        let ambiguous = TestID.Resolution.ambiguous([TestID(xcresultID: "A/CrashTests/testOutOfRange()"), TestID(xcresultID: "B/CrashTests/testOutOfRange()")])
+        let ambiguous = TestLookup.Resolution.ambiguous([TestID(xcresultID: "A/CrashTests/testOutOfRange()"), TestID(xcresultID: "B/CrashTests/testOutOfRange()")])
         let added = await FailureNotes.adding(to: MobileText(try Raw.text("timing")), from: ResultBundle(path: try Raw.bundle("timing"), runner: FakeRunner()),
                                               bundleIDs: [TestID(suite: "CrashTests", name: "testOutOfRange"): ambiguous])
         #expect(added?.text.text.contains("Fatal error: Index out of range") == true, "\(added?.text.text ?? "")")
@@ -409,7 +409,7 @@ struct BundleFailuresTests {
     /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
     @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {
         let runner = RecordingRunner(FakeRunner())
-        let ambiguous = TestID.Resolution.ambiguous([TestID(xcresultID: "A/Inner/fails()"), TestID(xcresultID: "B/Inner/fails()")])
+        let ambiguous = TestLookup.Resolution.ambiguous([TestID(xcresultID: "A/Inner/fails()"), TestID(xcresultID: "B/Inner/fails()")])
         let added = await FailureNotes.adding(to: MobileText(try Raw.text("nested")), from: ResultBundle(path: try Raw.bundle("nested"), runner: runner),
                                               keepingImagesIn: (FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)"), Date()),
                                               bundleIDs: [TestID(suite: "Inner", name: "fails"): ambiguous])

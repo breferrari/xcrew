@@ -122,7 +122,7 @@ public enum FailureNotes {
     /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
     /// are removed. The skips are read from the bundle's own test list, after the failures are looked up. `bundleIDs` and
     /// `labels` are as `lookingUp` takes them.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestID.Resolution] = [:], labels: [TestID: String] = [:]) async -> Added? {
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestLookup.Resolution] = [:], labels: [TestID: String] = [:]) async -> Added? {
         guard let pending = await lookingUp(text, from: bundle, keepingImagesIn: images, repetitions: repetitions, bundleIDs: bundleIDs, labels: labels) else { return nil }
         return pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: TestList(await bundle.tests())) : [])
     }
@@ -165,7 +165,7 @@ public enum FailureNotes {
     /// no skip to read. Each test is looked up under the bundle's id for it in `bundleIDs`, by the name the text gives it,
     /// and its images are keyed by that id; one whose resolution is `.ambiguous` gets a line saying so. A test's `labels`
     /// entry goes under its place, before its other notes.
-    static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestID.Resolution] = [:], labels: [TestID: String] = [:]) async -> Pending? {
+    static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestLookup.Resolution] = [:], labels: [TestID: String] = [:]) async -> Pending? {
         let imagesFolder = images?.folder
         var order: [TestID] = []
         var located: Set<TestID> = []

@@ -108,7 +108,7 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest,
     /// kept under its title or under the bundle's id for it in `resolutions`.
-    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure], resolutions: [TestID: TestID.Resolution] = [:]) -> [ToolOutput.Failure] {
+    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure], resolutions: [TestID: TestLookup.Resolution] = [:]) -> [ToolOutput.Failure] {
         failures.map { failure in
             guard failure.isTest else { return failure }
             let test = TestID(xcresultID: failure.title)
@@ -127,7 +127,7 @@ public struct Report: Sendable, Equatable, Codable {
     /// which the bundle counts as passed, skipped or an expected failure in every entry, configuration and device under
     /// that name, as a retry it passed, is none of the run's failures; any other stays a failure in its place as the text
     /// gives it, since no entry, an entry with no result, or another result is no sign it passed.
-    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>, resolutions: [TestID: TestID.Resolution]? = nil) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
+    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>, resolutions: [TestID: TestLookup.Resolution]? = nil) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
         let named = Set(pending.map(\.test))
         let failed = TestLookup(ids: named)
@@ -334,7 +334,7 @@ public struct Report: Sendable, Equatable, Codable {
         }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
         let repetitions = if repeated, bundle != nil { ResultBundle.repetitions(listing: await testList()) } else { [ResultBundle.Repeated]() }
-        var bundleIDs: [TestID: TestID.Resolution] = [:]
+        var bundleIDs: [TestID: TestLookup.Resolution] = [:]
         var labels: [TestID: String] = [:]
         if var text = final.mobileText {
             var changed = false
@@ -347,7 +347,6 @@ public struct Report: Sendable, Equatable, Codable {
             }
             if bundle != nil, text.isTestRun, !final.summary.ok {
                 let listing = await testList()
-                let cases = ResultBundle.testCases(in: listing.nodes)
                 let lookup = await lookup()
                 bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, lookup.resolution(of: $0)) }) { first, _ in first }
                 let named = Set(bundleIDs.values.compactMap(\.found)).union(bundleIDs.keys)
@@ -361,7 +360,7 @@ public struct Report: Sendable, Equatable, Codable {
                 let outcomes = Dictionary(said.map { (lookup.resolution(of: $0.0).found ?? $0.0, $0.1) }) { first, _ in first }
                 let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
                 labels = Dictionary(entries.compactMap { entry in outcomes[entry.id].map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
-                if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: cases)) }) {
+                if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: lookup.cases)) }) {
                     (text, changed) = (added, true)
                     for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
                 }
@@ -421,8 +420,11 @@ public struct Report: Sendable, Equatable, Codable {
         let bundled = ResultBundle.failedTests(listing: listing)
         let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
         let unresolved = final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil }
-        let lookup = unresolved.isEmpty || bundled == nil ? TestLookup(ids: []) : await lookup()
-        let resolutions = bundleIDs.merging(unresolved.map { ($0, lookup.resolution(of: $0)) }) { own, _ in own }
+        var resolutions = bundleIDs
+        if !unresolved.isEmpty, bundled != nil {
+            let lookup = await lookup()
+            for test in unresolved where resolutions[test] == nil { resolutions[test] = lookup.resolution(of: test) }
+        }
         let results = recorded.merging(resolutions.compactMap { test, resolution in
             resolution.found.flatMap { recorded[$0] }.map { (test, $0) }
         }) { own, _ in own }

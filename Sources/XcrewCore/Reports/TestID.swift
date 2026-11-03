@@ -28,23 +28,4 @@ public struct TestID: Sendable, Hashable {
     /// is filed as, by itself.
     public var xcresultID: String { name.isEmpty ? suite : "\(suite)/\(function)" }
 
-    /// How a test the text names is found among the result bundle's ids.
-    enum Resolution: Sendable, Equatable {
-        /// The bundle's id for it: its own, the one nested id that ends with it, or the `System Failures` case its crash is
-        /// filed under (`TestLookup.resolution(of:)`).
-        case found(TestID)
-        /// Two or more nested ids end with it, so none is taken.
-        case ambiguous([TestID])
-        case missing
-
-        /// The bundle's id, when there's one.
-        var found: TestID? {
-            if case let .found(id) = self { id } else { nil }
-        }
-
-        /// Whether two or more nested ids end with the name, so none is taken.
-        var isAmbiguous: Bool {
-            if case .ambiguous = self { true } else { false }
-        }
-    }
 }

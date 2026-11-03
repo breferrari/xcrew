@@ -226,7 +226,7 @@ struct RunOrderTests {
     @Test func theRunOrderTakesTheReportsResolutions() {
         let bundled = [ToolOutput.Failure(title: "Outer/Inner/fails", message: "from the bundle", isTest: true)]
         let text = [ToolOutput.Failure(title: "Inner/fails", message: "from the text", isTest: true)]
-        let ambiguous = TestID.Resolution.ambiguous([TestID(xcresultID: "Other/Inner/fails()"), TestID(xcresultID: "Outer/Inner/fails()")])
+        let ambiguous = TestLookup.Resolution.ambiguous([TestID(xcresultID: "Other/Inner/fails()"), TestID(xcresultID: "Outer/Inner/fails()")])
         let ordered = Report.inRunOrder(bundled, text: text, cleared: [], resolutions: [TestID(suite: "Inner", name: "fails"): ambiguous])
         #expect(ordered.failures.map(\.title) == ["Inner/fails", "Outer/Inner/fails"])
         #expect(ordered.disagreeing == [TestID(suite: "Inner", name: "fails")])
