@@ -176,7 +176,8 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
     /// is no failure, and after it when the text names none. With no failing test, `first` nil, the one the text named
-    /// goes.
+    /// goes. The summary is one line, shortened, which can cut the name it ends with: a cut name is matched by its start,
+    /// and what this gives is shortened again.
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail else { return nil }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
@@ -185,7 +186,6 @@ public struct Report: Sendable, Equatable, Codable {
             guard let first, detail.hasSuffix(ToolOutput.Summary.failedCounts) else { return detail }
             return ToolOutput.shorten(detail + separator + first)
         }
-        // The summary is shortened to one line, which can cut the name it ends with.
         guard first != named, let cut = detail.range(of: separator, options: .backwards) else { return detail }
         let shown = detail[cut.upperBound...]
         guard shown == named || (shown.hasSuffix("…") && named.hasPrefix(shown.dropLast())) else { return detail }

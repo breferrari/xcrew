@@ -192,7 +192,7 @@ struct RunOrderTests {
         #expect(shortened.hasSuffix("…"))
         #expect(Report.naming(shortened, first: nil, insteadOf: long) == "1 of 312 failed")
         let other = "CheckoutViewModelTests/test_givenValidCard_whenUserTapsPay_thenCompletesThePurchaseAndShowsTheReceipt"
-        #expect(Report.naming(shortened, first: other, insteadOf: long) == ToolOutput.shorten("1 of 312 failed · " + other))
+        #expect(Report.naming(shortened, first: other, insteadOf: long) == "1 of 312 failed · CheckoutViewModelTests/test_givenValidCard_whenUserTapsPay_thenCompletesThePurcha…")
         #expect(Report.naming("1 of 4 failed · Inner/test", first: other, insteadOf: "Inner/test")?.count == 100)
     }
 
