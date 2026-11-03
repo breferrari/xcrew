@@ -154,9 +154,9 @@ public struct ResultBundle: Sendable {
     /// What `results(in:)` gives for an entry that records no result.
     static let noResult = "no result"
 
-    /// The tests among `results` the bundle counts as passed, skipped or an expected failure in every entry: no failure
-    /// whatever another listing says. A test of one name with another result in any entry, as `unknown` for one whose
-    /// process was killed in another test bundle, isn't: a pass in one entry is no sign of the other.
+    /// The tests among `results` the bundle counts as passed, skipped or an expected failure in every entry and test plan
+    /// configuration: no failure whatever another listing says. A test of one name with another result in any, as
+    /// `unknown` for one whose process was killed in another test bundle, isn't: a pass in one is no sign of the other.
     static func cleared(in results: [TestID: Set<String>]) -> Set<TestID> {
         Set(results.filter { $0.value.isSubset(of: clearingResults) }.keys)
     }

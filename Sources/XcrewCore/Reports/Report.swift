@@ -121,9 +121,9 @@ public struct Report: Sendable, Equatable, Codable {
     /// bundle from the outermost: it's matched by the end of the bundle's name for it, when no other's ends the same way
     /// and none is the text's whole. A test only the bundle lists comes after; the text's other failures stay where
     /// they were. A test only the text lists disagrees with the bundle, and is returned once as disagreeing. One among
-    /// `cleared`, which the bundle counts as passed, skipped or an expected failure in every entry under that name, as
-    /// a retry it passed, is none of the run's failures. Any other stays a failure in its place as the text gives it,
-    /// since no entry, an entry with no result, or another result is no sign it passed.
+    /// `cleared`, which the bundle counts as passed, skipped or an expected failure in every entry and configuration
+    /// under that name, as a retry it passed, is none of the run's failures. Any other stays a failure in its place as
+    /// the text gives it, since no entry, an entry with no result, or another result is no sign it passed.
     /// Never one the bundle lists as failed under its name or a nested name ending with it.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }

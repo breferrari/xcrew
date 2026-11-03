@@ -172,7 +172,7 @@ struct BundleFailuresTests {
         #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ProbeTests/testFlaky, which the bundle records as unknown. A test the bundle doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it."))
     }
 
-    /// Every test case result the captures' test lists hold is one the report reads: a clearing one, or `Failed` or
+    /// Every test case and test plan configuration result the captures' test lists hold is one the report reads: a clearing one, or `Failed` or
     /// `unknown`, the schema's others. A value xcresulttool renames shows up here, not as a skip read as a failure.
     @Test func everyCapturedResultIsOneTheReportReads() throws {
         let folder = Testbed.root.appending(path: "captures/raw")
@@ -180,7 +180,7 @@ struct BundleFailuresTests {
         #expect(!names.isEmpty)
         var found: Set<String> = []
         for name in names {
-            for node in TestList(try Raw.file(name)).nodes where node["nodeType"] as? String == "Test Case" {
+            for node in TestList(try Raw.file(name)).nodes where ["Test Case", "Test Plan Configuration"].contains(node["nodeType"] as? String) {
                 if let result = node["result"] as? String { found.insert(result) }
             }
         }
