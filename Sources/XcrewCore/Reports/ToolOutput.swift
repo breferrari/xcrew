@@ -61,6 +61,11 @@ public struct ToolOutput: Sendable {
             self.ok = ok
             self.detail = detail
         }
+
+        /// A failed run's verdict: `1 of 4 failed`, then its first failing test when one is named.
+        static func failing(_ failed: Int, of total: Int, first: String?) -> Summary {
+            Summary(ok: false, detail: "\(failed) of \(total)\(failedCounts)\(first.map { beforeFirstFailing + $0 } ?? "")")
+        }
     }
 
     /// One failing test or compile error, for the failure pane.

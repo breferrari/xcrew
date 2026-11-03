@@ -54,7 +54,7 @@ struct XcodeMCPResult: Decodable, Sendable {
             if (counts.total ?? passed + failed) == 0 { return ToolOutput.Summary(ok: false, detail: ToolOutput.noTestsRan) }
             if failed == 0 { return ToolOutput.Summary(ok: true, detail: "\(passed) passed") }
             let first = results?.first { $0.state == "Failed" }?.identifier
-            return ToolOutput.Summary(ok: false, detail: "\(failed) of \(counts.total ?? failed)\(ToolOutput.Summary.failedCounts)\(first.map { ToolOutput.Summary.beforeFirstFailing + $0 } ?? "")")
+            return .failing(failed, of: counts.total ?? failed, first: first)
         }
         if buildResult != nil, errors != nil {
             let real = realErrors
