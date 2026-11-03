@@ -121,6 +121,14 @@ struct BundleFailuresTests {
         ])
     }
 
+    /// A name the text gives that the ends of two of the bundle's share matches neither: both follow the run's order, as
+    /// tests only the bundle lists, rather than one taking the other's place.
+    @Test func aNameTwoNestedSuitesShareMatchesNeither() {
+        let bundled = ["Later/test", "A/Inner/test", "B/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
+        let text = ["Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
+        #expect(Report.inRunOrder(bundled, text: text).map(\.title) == ["Later/test", "A/Inner/test", "B/Inner/test"])
+    }
+
     /// A nested suite's failed test has the images the notes kept under the text's name for it.
     @Test func aNestedSuitesTestHasTheImagesKeptUnderTheTextsName() {
         let images = [TestID(suite: "Inner", name: "test"): FailureImages(paths: ["/run/Inner/test/screen.png"], folder: "/run/Inner/test")]
