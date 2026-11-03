@@ -17,7 +17,7 @@ export const LOOK_TOOL = {
 export const LOOK_TOOL_NAME = 'mcp__xcrew__look'
 
 export function lookArgs(input: Record<string, unknown>): string[] {
-  const named = (key: string) => (typeof input[key] === 'string' && input[key] !== '' ? (input[key] as string) : undefined)
-  const test = named('test'), bundle = named('bundle')
-  return ['look', ...(test ? [test] : []), ...(bundle ? ['--bundle', bundle] : [])]
+  const test = typeof input.test === 'string' && input.test !== '' ? input.test : undefined
+  const bundle = typeof input.bundle === 'string' ? input.bundle : undefined
+  return ['look', ...(test ? [test] : []), ...(bundle !== undefined ? ['--bundle', bundle] : [])]
 }

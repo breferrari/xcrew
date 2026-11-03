@@ -170,7 +170,8 @@ struct TestbedLookTests {
         ], "\(text)")
         // On this run's bundle, in a temporary folder, quoted or not as its path needs.
         let more = try #require(heads.last)
-        #expect(more.hasPrefix("and 1 more failed test: `xcrew look UITests/testRenamedLabel --bundle ") && (more.hasSuffix("/UITests.xcresult`") || more.hasSuffix("/UITests.xcresult'`")), "\(text)")
+        let command = "and 1 more failed test: `xcrew look UITests/testRenamedLabel --bundle "
+        #expect((more.hasPrefix(command + "/") && more.hasSuffix("/UITests.xcresult`")) || (more.hasPrefix(command + "'/") && more.hasSuffix("/UITests.xcresult'`")), "\(text)")
         let planA = try #require(text.components(separatedBy: "xcrew look: ").first { $0.hasPrefix("UITests/testPlanA,") })
         #expect(!planA.contains("\n  Plan A ·"), "\(planA)")
         #expect(planA.contains("Plan B ·"), "\(planA)")

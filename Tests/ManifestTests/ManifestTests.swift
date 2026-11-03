@@ -492,6 +492,8 @@ import Testing
         let line = FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/runs/Run.xcresult")
         #expect(line.contains("`\(name)` tool"))
         #expect(line.contains("`xcrew \(LookCommand().name) Suite/test --bundle /runs/Run.xcresult`"))
+        // The look tool's description names a nested suite's test as look's own lines do.
+        #expect(try text("hooks/mod/look.ts").contains(TestID(xcresultID: "Outer/Inner/test()").lookName))
         #expect(Look.noRecording(in: "Run.xcresult", bundle: "/runs/Run.xcresult").contains("`xcrew \(LookCommand().name) <Suite/test> --bundle /runs/Run.xcresult`"))
         #expect(FailureNotes.lookLine(TestID(xcresultID: "Outer/Inner/testX()"), bundle: "/b.xcresult").contains("`xcrew look 'Outer/Inner/testX()' --bundle /b.xcresult`"))
         #expect(FailureNotes.lookLine(TestID(xcresultID: "Outer/Inner/sizes(value:)"), bundle: "/b.xcresult").contains("`xcrew look 'Outer/Inner/sizes(value:)' --bundle /b.xcresult`"))

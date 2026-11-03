@@ -50,6 +50,16 @@ import XcrewTestSupport
 
     /// A test in a nested suite is named as the result bundle names it, `()` and all, so its suite's `/` isn't taken
     /// for a target's.
+    /// A crash's case, as look's own lines name it, is headed by its name alone whether its steps show a failure or not.
+    @Test func aCrashsCaseIsHeadedByItsNameAlone() async {
+        let crash = "xctest (1) encountered an error"
+        let steps = "xcrun xcresulttool get test-results activities --test-id \(crash) --path /runs/Run.xcresult --compact"
+        let failed = await Run("look", "'\(crash)'", "--bundle", "/runs/Run.xcresult", context: context([steps: Self.activities(recorded: false)]))
+        #expect(failed.text.hasPrefix("xcrew look: \(crash), in Run.xcresult\n"), "\(failed.text)")
+        let passed = await Run("look", "'\(crash)'", "--bundle", "/runs/Run.xcresult", context: context([steps: Self.activities(recorded: false, passed: true)]))
+        #expect(passed.text == "xcrew: \(crash) didn't fail in Run.xcresult", "\(passed.text)")
+    }
+
     @Test func aTestNamedAsTheBundleNamesItIsFoundAsIs() async {
         let run = await Run("look", "Outer/Inner/testX()", "--bundle", "/runs/Run.xcresult", context: context([Self.steps("Outer/Inner/testX"): Self.activities(recorded: false)]))
         #expect(run.text.hasPrefix("xcrew look: Outer/Inner/testX, in Run.xcresult\n"), "\(run.text)")

@@ -29,7 +29,7 @@ public struct TestID: Sendable, Hashable {
 
     /// The name `look` takes for it: a nested suite's test as the bundle names it, `()` and all, so its suite's `/` isn't
     /// read as a target's (`Target/Suite/test`), and an id with no `/`, as a crash's case, by itself.
-    var lookName: String { name.isEmpty || shown.count(where: { $0 == "/" }) > 1 ? xcresultID : shown }
+    var lookName: String { name.isEmpty || name.contains("/") ? xcresultID : shown }
 
     /// The `xcrew look` command on it in `bundle`, each a word a shell passes on as it is.
     func lookCommand(bundle: String) -> String { Self.lookCommand(naming: ShellWord.word(lookName), bundle: bundle) }
