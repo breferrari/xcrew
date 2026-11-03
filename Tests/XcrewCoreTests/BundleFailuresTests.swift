@@ -506,9 +506,9 @@ struct BundleFailuresTests {
     /// An entry ends at a line it doesn't indent: one the text doesn't read as a failure, right after it with no blank
     /// line between, stays.
     @Test func aReplacedEntryEndsAtALineItDoesntIndent() {
-        let text = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ Inner / fails(): one\n    A.swift:3\n  ✗ LLVM Profile Error: Failed to write file \"default.profraw\"\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        let text = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ Inner / fails(): one\n    A.swift:3\n  ⚠ Something the text reads as no failure\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
         let replaced = text.replacing(TestID(suite: "Inner", name: "fails"), with: [(test: TestID(xcresultID: "A/Inner/fails()"), message: "one", place: nil)])
-        #expect(replaced?.text.text.contains("  ✗ A / Inner/fails(): one\n\n  ✗ LLVM Profile Error: Failed to write file \"default.profraw\"\n") == true, "\(replaced?.text.text ?? "")")
+        #expect(replaced?.text.text.contains("  ✗ A / Inner/fails(): one\n\n  ⚠ Something the text reads as no failure\n") == true, "\(replaced?.text.text ?? "")")
     }
 
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the

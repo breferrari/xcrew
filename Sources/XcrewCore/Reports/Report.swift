@@ -361,7 +361,9 @@ public struct Report: Sendable, Equatable, Codable {
                     if case let .ambiguous(ids) = resolution, ids.contains(where: failed.contains) { ids } else { nil }
                 }
                 let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
-                let listed = { (entry: (test: TestID, message: String, id: TestID)) in (entry.test, entry.message, ResultBundle.place(of: entry.id, in: lookup.cases)) }
+                let listed = { (entry: (test: TestID, message: String, id: TestID)) -> MobileText.FailureLine in
+                    (test: entry.test, message: entry.message, place: ResultBundle.place(of: entry.id, in: lookup.cases))
+                }
                 let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
                     if let test = MobileBuildMCPLine.passed(line.text) { return (test, "passed") }
                     if case let .skipped(test?) = line.kind { return (test, "skipped") }
@@ -371,7 +373,7 @@ public struct Report: Sendable, Equatable, Codable {
                 labels = Dictionary(entries.compactMap { entry in outcomes[entry.id].map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
                 var placed: Set<TestID> = []
                 for (name, ids) in reported.sorted(by: { $0.key.shown < $1.key.shown }) {
-                    let candidates = entries.filter { ids.contains($0.test) && !placed.contains($0.test) }
+                    let candidates = entries.filter { Set(ids).contains($0.test) && !placed.contains($0.test) }
                     for candidate in candidates { labels[candidate.test] = Self.reported(name, matching: ids) }
                     guard let swapped = text.replacing(name, with: candidates.map(listed)) else { continue }
                     (text, changed) = (swapped.text, true)
