@@ -28,9 +28,9 @@ public enum Look {
         let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
         if cases[exact] != nil { return exact }
         if let withoutTarget, cases[withoutTarget] != nil { return withoutTarget }
-        let (ids, crashes) = (Set(cases.keys), ResultBundle.crashCases(in: cases.values.flatMap(\.self)))
+        let lookup = TestLookup(ids: Set(cases.keys), crashCases: ResultBundle.crashCases(in: cases.values.flatMap(\.self)))
         for candidate in [exact, withoutTarget].compactMap(\.self) {
-            if let id = ResultBundle.resolution(of: candidate, among: ids, crashCases: crashes).found { return id }
+            if let id = lookup.resolution(of: candidate).found { return id }
         }
         return named.hasSuffix("()") ? exact : withoutTarget ?? exact
     }

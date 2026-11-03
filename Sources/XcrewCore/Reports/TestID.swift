@@ -21,14 +21,17 @@ public struct TestID: Sendable, Hashable {
     /// `Suite/test`, as Xcrew shows a test.
     public var shown: String { "\(suite)/\(name)" }
 
+    /// `test()`, or a test that takes arguments as the bundle lists it, with its labels: `parameterised(value:)`.
+    public var function: String { name.hasSuffix(")") ? name : "\(name)()" }
+
     /// `Suite/test()`, as `xcresulttool` names one; an id it read with no `/`, as the case a crash under `System Failures`
     /// is filed as, by itself.
-    public var xcresultID: String { name.isEmpty ? suite : "\(shown)()" }
+    public var xcresultID: String { name.isEmpty ? suite : "\(suite)/\(function)" }
 
     /// How a test the text names is found among the result bundle's ids.
     enum Resolution: Sendable, Equatable {
         /// The bundle's id for it: its own, the one nested id that ends with it, or the `System Failures` case its crash is
-        /// filed under (`ResultBundle.resolution(of:among:crashCases:)`).
+        /// filed under (`TestLookup.resolution(of:)`).
         case found(TestID)
         /// Two or more nested ids end with it, so none is taken.
         case ambiguous([TestID])
@@ -43,15 +46,5 @@ public struct TestID: Sendable, Hashable {
         var isAmbiguous: Bool {
             if case .ambiguous = self { true } else { false }
         }
-    }
-
-    /// This test among `ids`, the bundle's: its own id first; else a nested suite's test whose id ends with it, when
-    /// exactly one does. A bundle id's suite holds no `/`, as `init(xcresultID:)` splits at the first, so a nested
-    /// suite's path is in its name.
-    func resolved(among ids: Set<TestID>) -> Resolution {
-        if ids.contains(self) { return .found(self) }
-        let (whole, tail) = (shown, "/\(shown)")
-        let nested = ids.filter { $0.name == whole || $0.name.hasSuffix(tail) }.sorted { $0.shown < $1.shown }
-        return nested.count == 1 ? .found(nested[0]) : nested.isEmpty ? .missing : .ambiguous(nested)
     }
 }

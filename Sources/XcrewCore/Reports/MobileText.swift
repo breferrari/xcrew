@@ -301,7 +301,7 @@ struct MobileText: Sendable {
     func adding(unlisted failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
         guard !failures.isEmpty else { return nil }
         let listed = failures.flatMap { failure in
-            [Line("  ✗ \(failure.test.suite) / \(failure.test.name)(): \(failure.message)")]
+            [Line("  ✗ \(failure.test.suite) / \(failure.test.function): \(failure.message)")]
                 + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
         }
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else {

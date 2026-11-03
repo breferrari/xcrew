@@ -120,7 +120,7 @@ public struct Report: Sendable, Equatable, Codable {
     /// The bundle's failed tests in the order the run reported them, the text's: the bundle lists its own by plan,
     /// target and suite. Each test the text lists takes its place there, with the bundle's name and content, the text's
     /// message and place where the bundle gives none. A test is matched by its own name among `bundled`, else by
-    /// `resolutions`, the bundle's id for it by the rule `TestID.resolved(among:)` keeps, as a nested suite's test from
+    /// `resolutions`, the bundle's id for it by the rule `TestLookup` keeps, as a nested suite's test from
     /// its outermost suite; by that rule among `bundled` when none is given. A test only the bundle lists comes after;
     /// the text's other failures stay where they were. A test the text lists that matches none of the bundle's failures,
     /// as one several ids end with, disagrees with the bundle, and is returned once as disagreeing: one among `cleared`,
@@ -130,6 +130,7 @@ public struct Report: Sendable, Equatable, Codable {
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>, resolutions: [TestID: TestID.Resolution]? = nil) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
         let named = Set(pending.map(\.test))
+        let failed = TestLookup(ids: named)
         var ordered: [ToolOutput.Failure] = []
         var disagreeing: [TestID] = []
         for failure in text {
@@ -138,7 +139,7 @@ public struct Report: Sendable, Equatable, Codable {
                 continue
             }
             let test = TestID(xcresultID: failure.title)
-            let resolution = named.contains(test) ? .found(test) : resolutions?[test] ?? test.resolved(among: named)
+            let resolution = named.contains(test) ? .found(test) : resolutions?[test] ?? failed.resolution(of: test)
             let found = resolution.found
             if let found, let index = pending.firstIndex(where: { $0.test == found }) {
                 ordered.append(pending.remove(at: index).failure.filling(from: failure))
@@ -323,6 +324,14 @@ public struct Report: Sendable, Equatable, Codable {
             parsed = list
             return list
         }
+        // The test list's ids, a test the text names found among them by the one rule, built once.
+        var built: TestLookup?
+        func lookup() async -> TestLookup {
+            if let built { return built }
+            let made = TestLookup(nodes: await testList().nodes)
+            built = made
+            return made
+        }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
         let repetitions = if repeated, bundle != nil { ResultBundle.repetitions(listing: await testList()) } else { [ResultBundle.Repeated]() }
         var bundleIDs: [TestID: TestID.Resolution] = [:]
@@ -333,17 +342,14 @@ public struct Report: Sendable, Equatable, Codable {
             // A repeated run's text lists no failures, and with test timing on, each test once for each run.
             if bundle != nil, text.isTestRun, !repetitions.isEmpty {
                 if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
-                let nodes = await testList().nodes
-                let ids = Set(ResultBundle.testCases(in: nodes).keys)
-                let crashes = ResultBundle.crashCases(in: nodes)
-                if let once = text.listingRunsOnce(repetitions, resolving: { ResultBundle.resolution(of: $0, among: ids, crashCases: crashes).found ?? $0 }) { (text, changed) = (once, true) }
+                let lookup = await lookup()
+                if let once = text.listingRunsOnce(repetitions, resolving: { lookup.resolution(of: $0).found ?? $0 }) { (text, changed) = (once, true) }
             }
             if bundle != nil, text.isTestRun, !final.summary.ok {
                 let listing = await testList()
                 let cases = ResultBundle.testCases(in: listing.nodes)
-                let ids = Set(cases.keys)
-                let crashes = ResultBundle.crashCases(in: listing.nodes)
-                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, ResultBundle.resolution(of: $0, among: ids, crashCases: crashes)) }) { first, _ in first }
+                let lookup = await lookup()
+                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, lookup.resolution(of: $0)) }) { first, _ in first }
                 let named = Set(bundleIDs.values.compactMap(\.found)).union(bundleIDs.keys)
                 let unlisted = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
                 let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
@@ -351,14 +357,10 @@ public struct Report: Sendable, Equatable, Codable {
                     if case let .skipped(test?) = line.kind { return (test, "skipped") }
                     return nil
                 }
-                let outcomes = Dictionary(said) { first, _ in first }
-                let saying = { (test: TestID) -> String? in
-                    let parts = test.shown.split(separator: "/")
-                    let names = [test] + (1..<max(parts.count - 1, 1)).map { TestID(xcresultID: parts[$0...].joined(separator: "/") + "()") }
-                    return names.lazy.compactMap { name in outcomes[name].flatMap { name == test || name.resolved(among: ids) == .found(test) ? $0 : nil } }.first
-                }
-                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: ResultBundle.resolution(of: test, among: ids, crashCases: crashes).found ?? test) }
-                labels = Dictionary(entries.compactMap { entry in saying(entry.test).map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
+                // What the text says of each test, by the bundle id its name is found as.
+                let outcomes = Dictionary(said.map { (lookup.resolution(of: $0.0).found ?? $0.0, $0.1) }) { first, _ in first }
+                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
+                labels = Dictionary(entries.compactMap { entry in outcomes[entry.id].map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
                 if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: cases)) }) {
                     (text, changed) = (added, true)
                     for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
@@ -419,9 +421,8 @@ public struct Report: Sendable, Equatable, Codable {
         let bundled = ResultBundle.failedTests(listing: listing)
         let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
         let unresolved = final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil }
-        let caseIDs = unresolved.isEmpty || bundled == nil ? [] : Set(ResultBundle.testCases(in: listing.nodes).keys)
-        let crashes = caseIDs.isEmpty ? [:] : ResultBundle.crashCases(in: listing.nodes)
-        let resolutions = bundleIDs.merging(unresolved.map { ($0, ResultBundle.resolution(of: $0, among: caseIDs, crashCases: crashes)) }) { own, _ in own }
+        let lookup = unresolved.isEmpty || bundled == nil ? TestLookup(ids: []) : await lookup()
+        let resolutions = bundleIDs.merging(unresolved.map { ($0, lookup.resolution(of: $0)) }) { own, _ in own }
         let results = recorded.merging(resolutions.compactMap { test, resolution in
             resolution.found.flatMap { recorded[$0] }.map { (test, $0) }
         }) { own, _ in own }

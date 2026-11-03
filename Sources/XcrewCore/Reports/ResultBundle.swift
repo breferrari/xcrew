@@ -107,14 +107,6 @@ public struct ResultBundle: Sendable {
         return found
     }
 
-    /// The bundle's id for a test the run's text names, `test`, among `ids`, the test list's: its own, else the one nested
-    /// id that ends with it (`TestID.resolved(among:)`), else the case its crash is filed under in `crashCases`.
-    static func resolution(of test: TestID, among ids: Set<TestID>, crashCases: [TestID: TestID]) -> TestID.Resolution {
-        let resolved = test.resolved(among: ids)
-        guard resolved == .missing, let crash = crashCases[test] else { return resolved }
-        return .found(crash)
-    }
-
     /// The first `Failure Message` node below a test's cases.
     static func firstFailureMessage(in cases: [[String: Any]]) -> [String: Any]? {
         cases.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first

@@ -288,6 +288,20 @@ struct BundleFailuresTests {
         #expect(report.failures.first { $0.title == "ProbeTests/testPasses" }?.message == "", "\(report.failures)")
     }
 
+    /// A nested suite's failure only the bundle records, of a test the text lists as passed under the name it gives it,
+    /// from its own suite, is labelled as the bundle's: the text's name is found as the bundle's id by the one rule. The
+    /// retried nested capture, its text given the Test Results `showTestTiming` writes, `Inner/fails()` passed (composed).
+    @Test func aNestedFailureTheTextListsAsPassedIsLabelled() async throws {
+        let summary = "\n\n❌ 3 tests failed, 4 passed"
+        let captured = try Raw.text("nested-retry")
+        #expect(captured.contains(summary))
+        let timed = captured.replacingOccurrences(of: summary, with: "\n\nTest Results:\n  ✅ Inner/fails() (0.010s)\(summary)")
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("nested-retry")) --compact": .init(status: 0, stdout: try Raw.file("nested-retry.tests.json"))])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: timed, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        let text = try #require(report.result)
+        #expect(text.contains("✗ Outer / Inner/fails(): Expectation failed: Kit.name == \"Other\"\n    /testbed/swift-testing/NestedTests/NestedTests.swift:8\n      the result bundle's; MobileBuildMCP's text lists it as passed\n"), "\(text)")
+    }
+
     /// A crash filed under `System Failures` whose message names a test in a nested suite is said once: the text's line
     /// names it as the bundle's failure does, from the innermost suite its message names, so no line is added for it.
     /// Field shape as above, the bundle's entry the `xctest (<pid>)` case, the message composed.
