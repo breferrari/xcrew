@@ -106,11 +106,13 @@ public struct Report: Sendable, Equatable, Codable {
         (try? URL(fileURLWithPath: String(path)).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
-    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest.
-    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
+    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest,
+    /// kept under its title or under the bundle's id for it in `resolutions`.
+    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure], resolutions: [TestID: TestID.Resolution] = [:]) -> [ToolOutput.Failure] {
         failures.map { failure in
             guard failure.isTest else { return failure }
-            let found = images[TestID(xcresultID: failure.title)]
+            let test = TestID(xcresultID: failure.title)
+            let found = images[test] ?? { if case let .found(id)? = resolutions[test] { images[id] } else { nil } }()
             return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: found?.shown, moreImages: found?.more, target: failure.target)
         }
     }
@@ -344,10 +346,11 @@ public struct Report: Sendable, Equatable, Codable {
                     if case let .skipped(test?) = line.kind { return (test, "skipped") }
                     return nil
                 }
-                let saying = Dictionary(said.compactMap { test, outcome in if case let .found(id) = test.resolved(among: ids) { (id, outcome) } else { nil } }) { first, _ in first }
-                if let added = text.adding(unlisted: unlisted.map { ($0.0, $0.1.message, ResultBundle.place(of: $0.0, in: cases) ?? $0.1.where, saying[$0.0].map(Self.listedOtherwise)) }) {
+                let saying = { (test: TestID) in said.first { $0.0 == test || (!ids.contains($0.0) && $0.0.isNested(in: test)) }?.1 }
+                let entries = unlisted.map { test, failure in (test, failure, ResultBundle.crashCase(of: test, in: cases) ?? test) }
+                if let added = text.adding(unlisted: entries.map { ($0.0, $0.1.message, ResultBundle.place(of: $0.2, in: cases) ?? $0.1.where, saying($0.0).map(Self.listedOtherwise)) }) {
                     (text, changed) = (added, true)
-                    for (test, _) in unlisted { bundleIDs[test] = .found(test) }
+                    for (test, _, id) in entries { bundleIDs[test] = .found(id) }
                 }
             }
             if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, bundleIDs: bundleIDs),
@@ -404,7 +407,8 @@ public struct Report: Sendable, Equatable, Codable {
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
         let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
-        let resolutions = bundleIDs.merging(final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.map { ($0, $0.resolved(among: Set(recorded.keys))) }) { own, _ in own }
+        let recordedIDs = Set(recorded.keys)
+        let resolutions = bundleIDs.merging(final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil }.map { ($0, $0.resolved(among: recordedIDs)) }) { own, _ in own }
         let results = recorded.merging(resolutions.compactMap { test, resolution in
             if case let .found(id) = resolution, let found = recorded[id] { (test, found) } else { nil }
         }) { own, _ in own }
@@ -432,7 +436,7 @@ public struct Report: Sendable, Equatable, Codable {
             detail: Self.naming(summary.detail, first: failures.first(where: \.isTest)?.title, insteadOf: final.failures.first(where: \.isTest)?.title),
             durationMs: final.reportedDuration,
             tests: tests,
-            failures: summary.ok ? [] : Self.attaching(images, to: failures),
+            failures: summary.ok ? [] : Self.attaching(images, to: failures, resolutions: resolutions),
             result: comesBack ? shortened : nil,
             notes: notes,
             repeated: repeatedTests,

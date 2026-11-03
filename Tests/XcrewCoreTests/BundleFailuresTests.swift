@@ -280,6 +280,34 @@ struct BundleFailuresTests {
         #expect(report.failures.filter(\.isTest).map(\.title) == ["AssertCrashTests/test_crash"])
     }
 
+    /// A crash the bundle files under `System Failures` that the text doesn't list gets its line, and is looked up under
+    /// the bundle's id for it, its `xctest (<pid>)` case, the one xcresulttool knows. Field shape as above, the text's
+    /// line for the crash left out.
+    @Test func aCrashUnderSystemFailuresTheTextLeavesOutIsLookedUpUnderItsCase() async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()\n"
+        let text = try Raw.text("system-failure-crash")
+        #expect(text.contains(filed))
+        let runner = RecordingRunner(FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Self.filedUnderSystemFailures(Raw.file("system-failure-crash.tests.json")))]))
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: filed, with: ""), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect((report.result ?? "").contains("✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"), "\(report.result ?? "")")
+        #expect(runner.asked.contains { $0.contains("--test-id xctest (80341) encountered an error") }, "\(runner.asked)")
+        #expect(!runner.asked.contains { $0.contains("--test-id AssertCrashTests/test_crash()") }, "\(runner.asked)")
+    }
+
+    /// The label on a line the bundle's list adds comes after the place the run's details give it.
+    @Test func theLabelOnAnAddedLineComesAfterItsPlace() async throws {
+        let passed = #""nodeIdentifierURL":"test://com.apple.xcode/Feature/FeatureTests/ProbeTests/testPasses","nodeType":"Test Case","result":"Passed""#
+        let bundle = try Raw.bundle("timing")
+        let runner = FakeRunner(responses: [
+            "xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("timing.tests.json").replacingOccurrences(of: passed, with: passed.replacingOccurrences(of: #""result":"Passed""#, with: #""result":"Failed""#))),
+            "xcrun xcresulttool get test-results test-details --test-id ProbeTests/testPasses() --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("timing.details.ProbeTests.testFails.json")),
+        ])
+        let report = await Report.make(kind: .test, output: try Raw.output("timing"), home: Captured.home, runner: runner)
+        let text = try #require(report.result)
+        #expect(text.contains("✗ ProbeTests / testPasses(): \n    /testbed/field/Modules/Feature/Tests/ProbeTests.swift:11\n      the result bundle's; MobileBuildMCP's text lists it as passed\n"), "\(text)")
+    }
+
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
     /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
     @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {

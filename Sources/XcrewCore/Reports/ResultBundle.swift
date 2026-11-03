@@ -76,7 +76,7 @@ public struct ResultBundle: Sendable {
         let targets = Self.targets(listing: listing)
         var listed: Set<TestID> = []
         return failedTests(in: found).compactMap { test in
-            let first = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
+            let first = cases[test].flatMap(firstFailureMessage)
             let parsed = first.map(Self.failure)
             let line = parsed?.line ?? "", location = parsed?.location
             let place = location.map { "\(ToolOutput.basename($0.file)):\($0.line)" }
@@ -94,11 +94,25 @@ public struct ResultBundle: Sendable {
         }
     }
 
+    /// The case the bundle files `test`'s crash under, `xctest (<pid>) encountered an error` in `System Failures`, when its
+    /// message names `test`, from `cases`, the test list's test cases by id; nil when there's none.
+    static func crashCase(of test: TestID, in cases: [TestID: [[String: Any]]]) -> TestID? {
+        guard cases[test] == nil else { return nil }
+        return cases.first { _, filed in
+            guard MobileBuildMCPLine.isProcessCrash(filed.first?["name"] as? String ?? ""), let message = firstFailureMessage(in: filed) else { return false }
+            return MobileBuildMCPLine.crashedTest(message: failure(message).line) == test
+        }?.key
+    }
+
+    /// The first `Failure Message` node below a test's cases.
+    static func firstFailureMessage(in cases: [[String: Any]]) -> [String: Any]? {
+        cases.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
+    }
+
     /// Where a failed test's first failure happened, `/path/File.swift:12`, as MobileBuildMCP's text writes a place, from
     /// `cases`, the test list's test cases by id; nil when its test list gives none.
     static func place(of test: TestID, in cases: [TestID: [[String: Any]]]) -> String? {
-        let first = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
-        return first.flatMap { failure($0).location }.map { "\($0.file):\($0.line)" }
+        cases[test].flatMap(firstFailureMessage).flatMap { failure($0).location }.map { "\($0.file):\($0.line)" }
     }
 
     /// A `Failure Message` node's message as MobileBuildMCP's text words it, its first line without XCTest's
@@ -254,7 +268,7 @@ public struct ResultBundle: Sendable {
         let images = report["usedImages"] as? [[String: Any]] ?? []
         let exception = report["exception"] as? [String: Any]
         let crashed = (exception?["type"] as? String).map { type in "crashed: \(type)\((exception?["signal"] as? String).map { " (\($0))" } ?? "")" }
-        let named = test.map { "\($0.suite).\($0.name)(" }
+        let named = test.map { $0.shown.replacingOccurrences(of: "/", with: ".") + "(" }
         let ownIndex = frames.firstIndex { frame in named.map { (frame["symbol"] as? String)?.contains($0) == true } == true && ownFrame(frame) != nil }
             ?? frames.firstIndex { ownFrame($0) != nil }
         let own = ownIndex.map { min($0 + 1, mostFrames) } ?? topFrames

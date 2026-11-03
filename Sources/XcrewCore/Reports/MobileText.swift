@@ -309,8 +309,9 @@ struct MobileText: Sendable {
             return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
         }
         let ending = lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
-        let counted = lines[heading].text.firstMatch(of: #/\((\d+)\)/#).flatMap { Int($0.1) } ?? 0
-        return MobileText(lines: Array(lines[..<heading]) + [Line("Test Failures (\(counted + failures.count)):")] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
+        var counted = lines[heading].text
+        if let count = MobileBuildMCPLine.failureCount(in: counted) { counted.replaceSubrange(count.range, with: "Test Failures (\(count.count + failures.count)):") }
+        return MobileText(lines: Array(lines[..<heading]) + [Line(counted)] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
     }
 
     /// With `showTestTiming`, a repeated run's Test Results list each test once for each of its runs: this lists each test

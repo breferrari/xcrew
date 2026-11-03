@@ -354,6 +354,12 @@ func failingRunText(passing: Int) -> String {
         #expect(added.contains("Test Failures (2):"), "\(added)")
     }
 
+    /// A nested suite's test's line is its own frame too, `Outer.Inner.test()`, found by the bundle's id for it.
+    @Test func aNestedSuitesCrashsLineIsTheTestsOwnFrame() {
+        let log = #"{"app_name":"xctest"}\#n{"faultingThread":0,"exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"usedImages":[{"name":"libswiftCore.dylib"},{"name":"Model"},{"name":"NestedTests"}],"threads":[{"frames":[{"imageIndex":0,"symbol":"_assertionFailure(_:_:file:line:flags:)"},{"imageIndex":1,"symbol":"Model.load()","sourceFile":"/work/Packages/Model/Sources/Model.swift","sourceLine":10},{"imageIndex":2,"symbol":"Outer.Inner.test()","sourceFile":"/work/App/Tests/NestedTests.swift","sourceLine":20}]}]}"#
+        #expect(ResultBundle.crashReport(log: log, test: TestID(xcresultID: "Outer/Inner/test()"))?.location == "NestedTests.swift:20")
+    }
+
     /// The test's line is its own frame, found by its name, though a dependency built from source trapped first.
     @Test func aCrashsLineIsTheTestsOwnFrame() {
         let log = #"{"app_name":"xctest"}\#n{"faultingThread":0,"exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"usedImages":[{"name":"libswiftCore.dylib"},{"name":"Queue"},{"name":"AppTests"}],"threads":[{"frames":[{"imageIndex":0,"symbol":"_assertionFailure(_:_:file:line:flags:)"},{"imageIndex":1,"symbol":"Queue.pop()","sourceFile":"/work/Packages/Queue/Sources/Queue.swift","sourceLine":40},{"imageIndex":2,"symbol":"QueueTests.testPop()","sourceFile":"/work/App/Tests/QueueTests.swift","sourceLine":12}]}]}"#
