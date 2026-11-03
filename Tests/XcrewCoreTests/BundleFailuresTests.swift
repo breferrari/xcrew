@@ -261,6 +261,22 @@ struct BundleFailuresTests {
         #expect(text.contains("✗ ProbeTests / testPasses():  (the result bundle's; MobileBuildMCP's text lists it as passed)"), "\(text)")
     }
 
+    /// A crash filed under `System Failures` whose message names a test in a nested suite is said once: the text's line
+    /// names it as the bundle's failure does, from its innermost suite, so no line is added for it. Field shape as above,
+    /// the message composed.
+    @Test func aNestedSuitesCrashUnderSystemFailuresIsSaidOnce() async throws {
+        let message = "Crash: xctest at implicit closure #1 in Outer.AssertCrashTests.test_crash()"
+        let bundle = try Raw.bundle("system-failure-crash")
+        let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"
+        let fieldText = try Raw.text("system-failure-crash").replacingOccurrences(of: filed, with: "  ✗ System Failures / xctest (80341) encountered an error: \(message)")
+        let fieldListing = try Self.filedUnderSystemFailures(Raw.file("system-failure-crash.tests.json"))
+            .replacingOccurrences(of: "Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()", with: message)
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: fieldListing)])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: fieldText, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(!(report.result ?? "").contains("✗ AssertCrashTests / test_crash()"), "\(report.result ?? "")")
+        #expect(report.failures.filter(\.isTest).map(\.title) == ["AssertCrashTests/test_crash"])
+    }
+
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
     /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
     @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {

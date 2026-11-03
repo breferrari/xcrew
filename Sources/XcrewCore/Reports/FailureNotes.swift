@@ -120,7 +120,8 @@ public enum FailureNotes {
 
     /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `images`, each failed
     /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
-    /// are removed. The skips are read from the bundle's own test list, after the failures are looked up.
+    /// are removed. The skips are read from the bundle's own test list, after the failures are looked up. `bundleIDs` are
+    /// as `lookingUp` takes them.
     static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestID.Resolution] = [:]) async -> Added? {
         guard let pending = await lookingUp(text, from: bundle, keepingImagesIn: images, repetitions: repetitions, bundleIDs: bundleIDs) else { return nil }
         return pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: TestList(await bundle.tests())) : [])
@@ -156,7 +157,8 @@ public enum FailureNotes {
     }
 
     /// The first step of `adding`: each failed test's lookups and its repeated runs. Nil when there's nothing to add and
-    /// no skip to read.
+    /// no skip to read. Each test is looked up under the bundle's id for it in `bundleIDs`, by the name the text gives it,
+    /// and its images are keyed by that id; one with several ids, `ambiguous`, gets a line saying so.
     static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestID.Resolution] = [:]) async -> Pending? {
         let imagesFolder = images?.folder
         var order: [TestID] = []

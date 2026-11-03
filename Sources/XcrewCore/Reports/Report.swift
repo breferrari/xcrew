@@ -338,7 +338,8 @@ public struct Report: Sendable, Equatable, Codable {
                 let listing = await testList()
                 let ids = Set(ResultBundle.testCases(in: listing.nodes).keys)
                 bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, $0.resolved(among: ids)) }) { first, _ in first }
-                let named = Set(bundleIDs.values.compactMap { if case let .found(id) = $0 { id } else { nil } })
+                // Named by the text: under the bundle's id for it, or as it is, as a crash the bundle files under `System Failures`.
+                let named = Set(bundleIDs.values.compactMap { if case let .found(id) = $0 { id } else { nil } }).union(bundleIDs.keys)
                 let unlisted = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
                 // One the text lists as passed or skipped is labelled the bundle's: there the two disagree.
                 let said = text.lines.compactMap { line -> (TestID, String)? in

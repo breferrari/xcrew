@@ -290,12 +290,8 @@ struct MobileText: Sendable {
     /// failures already, or has neither place to put them.
     /// It shapes only the text Claude reads: the report takes the failures from the bundle itself.
     func addingFailures(_ failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
-        guard !failures.isEmpty, !lines.contains(where: { $0.isHeading(.testFailures) }),
-              let at = lines.firstIndex(where: { $0.isHeading(.testResults) }) ?? lines.firstIndex(where: \.isSummary) else { return nil }
-        let listed = failures.flatMap { failure in
-            [Line("  ✗ \(failure.test.suite) / \(failure.test.name)(): \(failure.message)")] + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
-        }
-        return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
+        guard !lines.contains(where: { $0.isHeading(.testFailures) }) else { return nil }
+        return adding(unlisted: failures.map { ($0.test, $0.message, $0.place, nil) })
     }
 
     /// The text with a line under Test Failures for each of `failures`, failed tests the result bundle records that the

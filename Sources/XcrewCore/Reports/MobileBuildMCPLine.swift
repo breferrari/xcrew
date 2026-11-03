@@ -121,12 +121,12 @@ enum MobileBuildMCPLine {
         line.unicodeScalars.contains("⏭")
     }
 
-    /// `✅ Suite/test() (0.001s)`, a passing test in the Test Results list.
     /// The test a Test Results line lists as passed, `✅ Suite/test (0.001s)`.
     static func passed(_ line: String) -> TestID? {
         line.firstMatch(of: #/^\s*✅ (\S+?)\/(\S+?) \(/#).map { TestID(suite: $0.1, name: $0.2) }
     }
 
+    /// `✅ Suite/test() (0.001s)`, a passing test in the Test Results list.
     static func isPassed(_ line: String) -> Bool {
         line.drop { $0 == " " }.hasPrefix("✅")
     }
