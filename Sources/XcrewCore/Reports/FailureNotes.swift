@@ -122,8 +122,8 @@ public enum FailureNotes {
     /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
     /// are removed. The skips are read from the bundle's own test list, after the failures are looked up. `bundleIDs` are
     /// as `lookingUp` takes them.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestID.Resolution] = [:]) async -> Added? {
-        guard let pending = await lookingUp(text, from: bundle, keepingImagesIn: images, repetitions: repetitions, bundleIDs: bundleIDs) else { return nil }
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestID.Resolution] = [:], labels: [TestID: String] = [:]) async -> Added? {
+        guard let pending = await lookingUp(text, from: bundle, keepingImagesIn: images, repetitions: repetitions, bundleIDs: bundleIDs, labels: labels) else { return nil }
         return pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: TestList(await bundle.tests())) : [])
     }
 
@@ -163,8 +163,9 @@ public enum FailureNotes {
 
     /// The first step of `adding`: each failed test's lookups and its repeated runs. Nil when there's nothing to add and
     /// no skip to read. Each test is looked up under the bundle's id for it in `bundleIDs`, by the name the text gives it,
-    /// and its images are keyed by that id; one with several ids, `ambiguous`, gets a line saying so.
-    static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestID.Resolution] = [:]) async -> Pending? {
+    /// and its images are keyed by that id; one whose resolution is `.ambiguous` gets a line saying so. A test's `labels`
+    /// entry goes under its place, before its other notes.
+    static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestID.Resolution] = [:], labels: [TestID: String] = [:]) async -> Pending? {
         let imagesFolder = images?.folder
         var order: [TestID] = []
         var located: Set<TestID> = []
@@ -179,7 +180,7 @@ public enum FailureNotes {
         let detailed = Set(order.filter { !located.contains($0) || crashed.contains($0) })
         let imaged = Set(imagesFolder == nil ? [] : order)
         let ambiguous = Set(order.filter { bundleIDs[$0]?.isAmbiguous == true })
-        let lookups = order.filter { detailed.contains($0) || imaged.contains($0) || ambiguous.contains($0) }
+        let lookups = order.filter { detailed.contains($0) || imaged.contains($0) || ambiguous.contains($0) || labels[$0] != nil }
         let listedSkips = text.lines.compactMap { line -> TestID? in
             if case let .skipped(test) = line.kind { return test }
             return nil
@@ -215,6 +216,7 @@ public enum FailureNotes {
                     if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: id)) ?? crash?.location {
                         added.append("    \(location)")
                     }
+                    if let label = labels[test] { added.append("      \(label)") }
                     if isCrashed {
                         let alone = crash == nil && oneCrashed ? await ranAlone(discovered: discovered, bundle: bundle) : false
                         let summary = crash?.summary ?? [alone ? noCrashLogAlone : noCrashLog]

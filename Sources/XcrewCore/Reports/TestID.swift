@@ -25,12 +25,6 @@ public struct TestID: Sendable, Hashable {
     /// is filed as, by itself.
     public var xcresultID: String { name.isEmpty ? suite : "\(shown)()" }
 
-    /// Whether `outer` is this test named from an outer suite, as a result bundle names a nested suite's test,
-    /// `Outer/Suite/test`, that MobileBuildMCP's text names from its own, `Suite/test`.
-    func isNested(in outer: TestID) -> Bool {
-        outer.shown.hasSuffix("/\(shown)")
-    }
-
     /// How a test the text names is found among the result bundle's ids.
     enum Resolution: Sendable, Equatable {
         /// The bundle's id for it: its own, the one nested id that ends with it, or the `System Failures` case its crash is
@@ -55,7 +49,8 @@ public struct TestID: Sendable, Hashable {
     /// exactly one does.
     func resolved(among ids: Set<TestID>) -> Resolution {
         if ids.contains(self) { return .found(self) }
-        let nested = ids.filter(isNested).sorted { $0.shown < $1.shown }
+        let (whole, tail) = (shown, "/\(shown)")
+        let nested = ids.filter { $0.name == whole || $0.name.hasSuffix(tail) }.sorted { $0.shown < $1.shown }
         return nested.count == 1 ? .found(nested[0]) : nested.isEmpty ? .missing : .ambiguous(nested)
     }
 }

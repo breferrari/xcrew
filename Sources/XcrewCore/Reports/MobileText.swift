@@ -291,18 +291,17 @@ struct MobileText: Sendable {
     /// It shapes only the text Claude reads: the report takes the failures from the bundle itself.
     func addingFailures(_ failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
         guard !lines.contains(where: { $0.isHeading(.testFailures) }) else { return nil }
-        return adding(unlisted: failures.map { ($0.test, $0.message, $0.place, nil) })
+        return adding(unlisted: failures)
     }
 
     /// The text with a line under Test Failures for each of `failures`, failed tests the result bundle records that the
-    /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place, then a `label` under it
-    /// as a note is, where there is one; the section's count raised, or the section added before Test Results or the summary
+    /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place; the section's count raised, or the section added before Test Results or the summary
     /// when the text has none. Nil when there's nothing to add, or nowhere to add it.
-    func adding(unlisted failures: [(test: TestID, message: String, place: String?, label: String?)]) -> MobileText? {
+    func adding(unlisted failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
         guard !failures.isEmpty else { return nil }
         let listed = failures.flatMap { failure in
             [Line("  ✗ \(failure.test.suite) / \(failure.test.name)(): \(failure.message)")]
-                + (failure.place.map { [Line("    \($0)")] } ?? []) + (failure.label.map { [Line("      \($0)")] } ?? []) + [Line("")]
+                + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
         }
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else {
             guard let at = lines.firstIndex(where: { $0.isHeading(.testResults) }) ?? lines.firstIndex(where: \.isSummary) else { return nil }
@@ -317,7 +316,7 @@ struct MobileText: Sendable {
     /// With `showTestTiming`, a repeated run's Test Results list each test once for each of its runs: this lists each test
     /// once, a repeated one with its runs counted, as `✅ Suite/test(): passed 5 of 5 runs`. Nil when nothing repeats.
     /// It shapes only the text Claude reads: the report counts the runs from the bundle itself.
-    func listingRunsOnce(_ repetitions: [ResultBundle.Repeated]) -> MobileText? {
+    func listingRunsOnce(_ repetitions: [ResultBundle.Repeated], resolving: (TestID) -> TestID = { $0 }) -> MobileText? {
         guard let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
         let counted = Dictionary(repetitions.map { ($0.test, $0) }, uniquingKeysWith: { first, _ in first })
         var end = start + 1
@@ -339,7 +338,7 @@ struct MobileText: Sendable {
                 changed = true
                 continue
             }
-            if let runs = counted[TestID(xcresultID: name).shown], runs.verdict != .none {
+            if let runs = counted[resolving(TestID(xcresultID: name)).shown], runs.verdict != .none {
                 let said = runs.failed > 0 ? "❌ \(name): failed \(runs.failed) of \(runs.runs) runs" : "✅ \(name): passed \(runs.passed) of \(runs.runs) runs"
                 kept.append(Line(String(listed.1) + said))
                 changed = true

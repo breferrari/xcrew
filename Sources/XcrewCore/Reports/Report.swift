@@ -326,13 +326,15 @@ public struct Report: Sendable, Equatable, Codable {
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
         let repetitions = if repeated, bundle != nil { ResultBundle.repetitions(listing: await testList()) } else { [ResultBundle.Repeated]() }
         var bundleIDs: [TestID: TestID.Resolution] = [:]
+        var labels: [TestID: String] = [:]
         if var text = final.mobileText {
             var changed = false
             if let cleaned = text.withoutExcerpts() { (text, changed) = (cleaned, true) }
             // A repeated run's text lists no failures, and with test timing on, each test once for each run.
             if bundle != nil, text.isTestRun, !repetitions.isEmpty {
                 if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
-                if let once = text.listingRunsOnce(repetitions) { (text, changed) = (once, true) }
+                let ids = Set(ResultBundle.testCases(in: await testList().nodes).keys)
+                if let once = text.listingRunsOnce(repetitions, resolving: { ResultBundle.resolution(of: $0, among: ids, crashCases: [:]).found ?? $0 }) { (text, changed) = (once, true) }
             }
             if bundle != nil, text.isTestRun, !final.summary.ok {
                 let listing = await testList()
@@ -354,12 +356,13 @@ public struct Report: Sendable, Equatable, Codable {
                     return names.lazy.compactMap { name in outcomes[name].flatMap { name == test || name.resolved(among: ids) == .found(test) ? $0 : nil } }.first
                 }
                 let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: ResultBundle.resolution(of: test, among: ids, crashCases: crashes).found ?? test) }
-                if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: cases), saying($0.test).map(Self.listedOtherwise)) }) {
+                labels = Dictionary(entries.compactMap { entry in saying(entry.test).map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
+                if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: cases)) }) {
                     (text, changed) = (added, true)
                     for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
                 }
             }
-            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, bundleIDs: bundleIDs),
+            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, bundleIDs: bundleIDs, labels: labels),
                let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {
                 (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
             } else if changed {
