@@ -197,6 +197,27 @@ func failingRunText(passing: Int) -> String {
         #expect(ResultBundle.passedTests(listing: TestList(listing)) == [TestID(xcresultID: "LoginTests/testLogsIn()")])
     }
 
+    /// A failing run that also skipped a test has its failure looked up before its test list is read for the skip: what
+    /// failed is read first.
+    @Test func aRunsFailuresAreLookedUpBeforeItsSkips() async throws {
+        let text = Captured.text("mobileTestsFailedUnlocated")
+            .replacingOccurrences(of: "  ❌ FormatterTests/test_symbol() (4.774s)\n", with: "  ❌ FormatterTests/test_symbol() (4.774s)\n  ⏭️ FormatterTests/test_later() (0.000s)\n")
+            .replacingOccurrences(of: "1 passed, 0 skipped", with: "1 passed, 1 skipped")
+        let runner = RecordingRunner(FakeRunner())
+        _ = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        let details = try #require(runner.asked.firstIndex { $0.contains("test-results test-details") }, "\(runner.asked)")
+        let list = try #require(runner.asked.firstIndex { $0.contains("test-results tests ") }, "\(runner.asked)")
+        #expect(details < list, "\(runner.asked)")
+    }
+
+    /// A skipped line that names no test, with no skip counted, reads no test list: nothing names a skip to explain.
+    @Test func aSkippedLineNamingNoTestReadsNoTestList() async {
+        let runner = RecordingRunner(FakeRunner())
+        let text = MobileText("🧪 Test\n\nTest Results:\n  ⏭️ something odd\n")
+        #expect(await FailureNotes.adding(to: text, from: ResultBundle(path: "/b.xcresult", runner: runner)) == nil)
+        #expect(runner.asked.isEmpty, "\(runner.asked)")
+    }
+
     /// The summary names the first test still failed, not one the test list counts passed.
     @Test func theSummaryNamesTheFirstTestStillFailed() {
         #expect(Report.naming("1 of 4 failed · ProbeTests/testAFlaky", first: "ProbeTests/testFails", insteadOf: "ProbeTests/testAFlaky") == "1 of 4 failed · ProbeTests/testFails")

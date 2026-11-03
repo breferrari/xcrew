@@ -245,7 +245,9 @@ public struct Report: Sendable, Equatable, Codable {
                 if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
                 if let once = text.listingRunsOnce(repetitions) { (text, changed) = (once, true) }
             }
-            if let bundle, text.isTestRun, let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, skips: FailureNotes.readsSkips(text) ? ResultBundle.skippedTests(listing: await testList()) : nil) {
+            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions),
+               // The test list is read for the skips once the failures are looked up: what failed is read first.
+               let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {
                 (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
             } else if changed {
                 (final, edited) = (ToolOutput(text, isError: output.isError), true)
