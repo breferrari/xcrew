@@ -308,6 +308,52 @@ struct BundleFailuresTests {
         #expect(!runner.asked.contains { $0.contains("--test-id AssertCrashTests/test_crash()") }, "\(runner.asked)")
     }
 
+    /// A failure the text leaves out is looked up under its own id before a `System Failures` case that names it: the
+    /// crash capture's own case, with a crash case naming it added to its test list, its line left out of the text.
+    @Test func aFailureTheTextLeavesOutIsLookedUpUnderItsOwnIDFirst() async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()\n"
+        let text = try Raw.text("system-failure-crash")
+        #expect(text.contains(filed))
+        let crashCase = #"{"nodeType":"Test Suite","name":"System Failures","children":[{"nodeType":"Test Case","name":"xctest (9) encountered an error","nodeIdentifier":"xctest (9) encountered an error","result":"Failed","children":[{"nodeType":"Failure Message","name":"Crash: xctest at AssertCrashTests.test_crash()"}]}]},"#
+        let listing = try Raw.file("system-failure-crash.tests.json")
+        #expect(listing.contains(#""testNodes":["#))
+        let runner = RecordingRunner(FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: listing.replacingOccurrences(of: #""testNodes":["#, with: #""testNodes":["# + crashCase))]))
+        _ = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: filed, with: ""), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(runner.asked.contains { $0.contains("--test-id AssertCrashTests/test_crash() --only-failures") }, "\(runner.asked)")
+        #expect(!runner.asked.contains { $0.contains("--test-id xctest (9) encountered an error") }, "\(runner.asked)")
+    }
+
+    /// A repeated run's nested suite's test, named from its own suite in the text, has its runs counted under its line:
+    /// the nested capture's text against the retried run's test list, each of `fails()`'s three runs failed.
+    @Test func aRepeatedNestedTestHasItsRunsCountedUnderTheTextsName() async throws {
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("nested")) --compact": .init(status: 0, stdout: try Raw.file("nested-retry.tests.json"))])
+        let report = await Report.make(kind: .test, output: try Raw.output("nested"), home: Captured.home, runner: runner, repeated: true)
+        let text = try #require(report.result)
+        #expect(text.contains("✗ Inner / fails(): Expectation failed: Kit.name == \"Other\"\n      failed 3 of 3 runs\n"), "\(text)")
+    }
+
+    /// A crashed test the bundle has more than one test by the name of keeps the runtime error the run lists: it's said
+    /// under its line though nothing is looked up for it. The timing capture's crash, its name two nested suites'.
+    @Test func anAmbiguousCrashedTestKeepsTheRuntimeError() async throws {
+        let ambiguous = TestID.Resolution.ambiguous([TestID(xcresultID: "A/CrashTests/testOutOfRange()"), TestID(xcresultID: "B/CrashTests/testOutOfRange()")])
+        let added = await FailureNotes.adding(to: MobileText(try Raw.text("timing")), from: ResultBundle(path: try Raw.bundle("timing"), runner: FakeRunner()),
+                                              bundleIDs: [TestID(suite: "CrashTests", name: "testOutOfRange"): ambiguous])
+        #expect(added?.text.text.contains("Fatal error: Index out of range") == true, "\(added?.text.text ?? "")")
+    }
+
+    /// What xcresulttool answers about each of the nested capture's failed tests, under the bundle's id and under the
+    /// text's name for it: `test-details`, `activities` and `export attachments` answer to the bundle's id alone.
+    @Test func xcresulttoolAnswersANestedTestUnderItsFullIDAlone() throws {
+        let lookups = try #require(try JSONSerialization.jsonObject(with: Data(Raw.file("nested.lookups.json").utf8)) as? [String: [String: Any]])
+        for test in ["fails", "flaky", "attaches", "addsNumbers"] {
+            #expect(lookups["Outer/Inner/\(test)()"]?["test-details"] as? Bool == true && lookups["Outer/Inner/\(test)()"]?["activities"] as? Bool == true, "\(test)")
+            #expect(lookups["Inner/\(test)()"]?["test-details"] as? Bool == false && lookups["Inner/\(test)()"]?["activities"] as? Bool == false, "\(test)")
+            #expect(lookups["Inner/\(test)()"]?["export attachments"] as? String == "none", "\(test)")
+        }
+        #expect(lookups["Outer/Inner/attaches()"]?["export attachments"] as? Int == 1)
+    }
+
     /// The label on a line the bundle's list adds comes after the place the run's details give it.
     @Test func theLabelOnAnAddedLineComesAfterItsPlace() async throws {
         let passed = #""nodeIdentifierURL":"test://com.apple.xcode/Feature/FeatureTests/ProbeTests/testPasses","nodeType":"Test Case","result":"Passed""#

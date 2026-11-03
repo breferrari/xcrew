@@ -178,7 +178,7 @@ public enum FailureNotes {
         // A test the text doesn't place, or that crashed, is looked up for that; every failed test for its images too.
         let detailed = Set(order.filter { !located.contains($0) || crashed.contains($0) })
         let imaged = Set(imagesFolder == nil ? [] : order)
-        let ambiguous = Set(order.filter { if case .ambiguous? = bundleIDs[$0] { true } else { false } })
+        let ambiguous = Set(order.filter { bundleIDs[$0]?.isAmbiguous == true })
         let lookups = order.filter { detailed.contains($0) || imaged.contains($0) || ambiguous.contains($0) }
         let listedSkips = text.lines.compactMap { line -> TestID? in
             if case let .skipped(test) = line.kind { return test }
@@ -205,7 +205,7 @@ public enum FailureNotes {
                 let isLocated = !detailed.contains(test) || located.contains(test), isCrashed = detailed.contains(test) && crashed.contains(test)
                 let keepsImages = imaged.contains(test) ? imagesFolder : nil
                 let resolution = bundleIDs[test]
-                let id = if case let .found(found)? = resolution { found } else { test }
+                let id = resolution?.found ?? test
                 let named = MobileBuildMCPLine.isProcessCrash(id.suite) ? test : id
                 group.addTask {
                     if case let .ambiguous(ids)? = resolution { return (test, id, ["      \(Self.severalByThatName(ids))"], nil) }
@@ -246,8 +246,9 @@ public enum FailureNotes {
             return found
         }
         if let imagesFolder, !images.isEmpty { FailureImages.record(bundle.runFolder(in: imagesFolder)) }
+        let textNames = Dictionary(bundleIDs.compactMap { name, resolution in resolution.found.map { ($0, name) } }) { first, _ in first }
         for repeated in repetitions {
-            let test = TestID(xcresultID: repeated.test)
+            let test = textNames[TestID(xcresultID: repeated.test)] ?? TestID(xcresultID: repeated.test)
             notes.repeated.insert(test)
             notes.failures[test, default: []].append("      failed \(repeated.failed) of \(repeated.runs) runs")
         }

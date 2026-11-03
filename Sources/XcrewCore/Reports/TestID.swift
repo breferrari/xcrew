@@ -34,11 +34,20 @@ public struct TestID: Sendable, Hashable {
     /// How a test the text names is found among the result bundle's ids.
     enum Resolution: Sendable, Equatable {
         /// The bundle's id for it: its own, the one nested id that ends with it, or the `System Failures` case its crash is
-        /// filed under (`ResultBundle.resolution(of:in:crashCases:)`).
+        /// filed under (`ResultBundle.resolution(of:among:crashCases:)`).
         case found(TestID)
         /// Two or more nested ids end with it, so none is taken.
         case ambiguous([TestID])
         case missing
+
+        /// The bundle's id, when there's one.
+        var found: TestID? {
+            if case let .found(id) = self { id } else { nil }
+        }
+
+        var isAmbiguous: Bool {
+            if case .ambiguous = self { true } else { false }
+        }
     }
 
     /// This test among `ids`, the bundle's: its own id first; else a nested suite's test whose id ends with it, when

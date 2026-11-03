@@ -95,21 +95,22 @@ public struct ResultBundle: Sendable {
     }
 
     /// Each test a crash under `System Failures` names, `xctest (<pid>) encountered an error`, by the case the bundle
-    /// files it under, from `cases`, the test list's test cases by id: the first by id when several name one test.
-    static func crashCases(in cases: [TestID: [[String: Any]]]) -> [TestID: TestID] {
+    /// files it under, from a test list's `nodes`: the first in the list when several name one test, as `failedTests`
+    /// keeps the first.
+    static func crashCases(in nodes: [[String: Any]]) -> [TestID: TestID] {
         var found: [TestID: TestID] = [:]
-        for (id, filed) in cases.sorted(by: { $0.key.xcresultID < $1.key.xcresultID }) {
-            guard MobileBuildMCPLine.isProcessCrash(filed.first?["name"] as? String ?? ""), let message = firstFailureMessage(in: filed),
+        for node in nodes where node["nodeType"] as? String == "Test Case" && MobileBuildMCPLine.isProcessCrash(node["name"] as? String ?? "") {
+            guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), let message = firstFailureMessage(in: [node]),
                   let test = MobileBuildMCPLine.crashedTest(message: failure(message).line), found[test] == nil else { continue }
             found[test] = id
         }
         return found
     }
 
-    /// The bundle's id for a test the run's text names, `test`, among `cases`: its own, else the one nested id that ends
-    /// with it (`TestID.resolved(among:)`), else the case its crash is filed under in `crashCases`.
-    static func resolution(of test: TestID, in cases: [TestID: [[String: Any]]], crashCases: [TestID: TestID]) -> TestID.Resolution {
-        let resolved = test.resolved(among: Set(cases.keys))
+    /// The bundle's id for a test the run's text names, `test`, among `ids`, the test list's: its own, else the one nested
+    /// id that ends with it (`TestID.resolved(among:)`), else the case its crash is filed under in `crashCases`.
+    static func resolution(of test: TestID, among ids: Set<TestID>, crashCases: [TestID: TestID]) -> TestID.Resolution {
+        let resolved = test.resolved(among: ids)
         guard resolved == .missing, let crash = crashCases[test] else { return resolved }
         return .found(crash)
     }

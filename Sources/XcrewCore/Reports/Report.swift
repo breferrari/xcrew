@@ -112,7 +112,7 @@ public struct Report: Sendable, Equatable, Codable {
         failures.map { failure in
             guard failure.isTest else { return failure }
             let test = TestID(xcresultID: failure.title)
-            let found = images[test] ?? { if case let .found(id)? = resolutions[test] { images[id] } else { nil } }()
+            let found = images[test] ?? resolutions[test]?.found.flatMap { images[$0] }
             return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: found?.shown, moreImages: found?.more, target: failure.target)
         }
     }
@@ -139,7 +139,7 @@ public struct Report: Sendable, Equatable, Codable {
             }
             let test = TestID(xcresultID: failure.title)
             let resolution = named.contains(test) ? .found(test) : resolutions?[test] ?? test.resolved(among: named)
-            let found: TestID? = if case let .found(id) = resolution { id } else { nil }
+            let found = resolution.found
             if let found, let index = pending.firstIndex(where: { $0.test == found }) {
                 ordered.append(pending.remove(at: index).failure.filling(from: failure))
             } else if found.map(named.contains) != true {
@@ -338,17 +338,22 @@ public struct Report: Sendable, Equatable, Codable {
                 let listing = await testList()
                 let cases = ResultBundle.testCases(in: listing.nodes)
                 let ids = Set(cases.keys)
-                let crashes = ResultBundle.crashCases(in: cases)
-                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, ResultBundle.resolution(of: $0, in: cases, crashCases: crashes)) }) { first, _ in first }
-                let named = Set(bundleIDs.values.compactMap { if case let .found(id) = $0 { id } else { nil } }).union(bundleIDs.keys)
+                let crashes = ResultBundle.crashCases(in: listing.nodes)
+                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, ResultBundle.resolution(of: $0, among: ids, crashCases: crashes)) }) { first, _ in first }
+                let named = Set(bundleIDs.values.compactMap(\.found)).union(bundleIDs.keys)
                 let unlisted = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
                 let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
                     if let test = MobileBuildMCPLine.passed(line.text) { return (test, "passed") }
                     if case let .skipped(test?) = line.kind { return (test, "skipped") }
                     return nil
                 }
-                let saying = { (test: TestID) in said.first { $0.0 == test || (!ids.contains($0.0) && $0.0.isNested(in: test) && $0.0.resolved(among: ids) == .found(test)) }?.1 }
-                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: crashes[test] ?? test) }
+                let outcomes = Dictionary(said) { first, _ in first }
+                let saying = { (test: TestID) -> String? in
+                    let parts = test.shown.split(separator: "/")
+                    let names = [test] + (1..<max(parts.count - 1, 1)).map { TestID(xcresultID: parts[$0...].joined(separator: "/") + "()") }
+                    return names.lazy.compactMap { name in outcomes[name].flatMap { name == test || name.resolved(among: ids) == .found(test) ? $0 : nil } }.first
+                }
+                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: ResultBundle.resolution(of: test, among: ids, crashCases: crashes).found ?? test) }
                 if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: cases), saying($0.test).map(Self.listedOtherwise)) }) {
                     (text, changed) = (added, true)
                     for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
@@ -409,15 +414,15 @@ public struct Report: Sendable, Equatable, Codable {
         let bundled = ResultBundle.failedTests(listing: listing)
         let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
         let unresolved = final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil }
-        let cases = unresolved.isEmpty || bundled == nil ? [:] : ResultBundle.testCases(in: listing.nodes)
-        let crashes = ResultBundle.crashCases(in: cases)
-        let resolutions = bundleIDs.merging(unresolved.map { ($0, ResultBundle.resolution(of: $0, in: cases, crashCases: crashes)) }) { own, _ in own }
+        let caseIDs = unresolved.isEmpty || bundled == nil ? [] : Set(ResultBundle.testCases(in: listing.nodes).keys)
+        let crashes = caseIDs.isEmpty ? [:] : ResultBundle.crashCases(in: listing.nodes)
+        let resolutions = bundleIDs.merging(unresolved.map { ($0, ResultBundle.resolution(of: $0, among: caseIDs, crashCases: crashes)) }) { own, _ in own }
         let results = recorded.merging(resolutions.compactMap { test, resolution in
-            if case let .found(id) = resolution, let found = recorded[id] { (test, found) } else { nil }
+            resolution.found.flatMap { recorded[$0] }.map { (test, $0) }
         }) { own, _ in own }
         let ordered = bundled.map { Self.inRunOrder($0, text: final.failures, cleared: ResultBundle.cleared(in: results), resolutions: resolutions) }
         let failures = ordered?.failures ?? final.failures
-        if let ordered, let note = Self.notFailedInBundleNote(ordered.disagreeing, results: results, ambiguous: Set(resolutions.compactMap { if case .ambiguous = $0.value { $0.key } else { nil } })) { notes.append(note) }
+        if let ordered, let note = Self.notFailedInBundleNote(ordered.disagreeing, results: results, ambiguous: Set(resolutions.filter(\.value.isAmbiguous).keys)) { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?

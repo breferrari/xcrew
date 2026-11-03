@@ -47,10 +47,10 @@ import Testing
     @Test func aTestIsItsOwnIDTheOneNestedIDOrItsCrashCase() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"Outer/Inner/fails()","result":"Failed"},{"nodeType":"Test Case","name":"xctest (1) encountered an error","nodeIdentifier":"xctest (1) encountered an error","result":"Failed","children":[{"nodeType":"Failure Message","name":"Crash: xctest at Suite.crashes()"}]}]}"#)
         let cases = ResultBundle.testCases(in: listing.nodes)
-        let crashes = ResultBundle.crashCases(in: cases)
-        #expect(ResultBundle.resolution(of: TestID(suite: "Inner", name: "fails"), in: cases, crashCases: crashes) == .found(TestID(xcresultID: "Outer/Inner/fails()")))
-        #expect(ResultBundle.resolution(of: TestID(suite: "Suite", name: "crashes"), in: cases, crashCases: crashes) == .found(TestID(xcresultID: "xctest (1) encountered an error")))
-        #expect(ResultBundle.resolution(of: TestID(suite: "Suite", name: "gone"), in: cases, crashCases: crashes) == .missing)
+        let (ids, crashes) = (Set(cases.keys), ResultBundle.crashCases(in: listing.nodes))
+        #expect(ResultBundle.resolution(of: TestID(suite: "Inner", name: "fails"), among: ids, crashCases: crashes) == .found(TestID(xcresultID: "Outer/Inner/fails()")))
+        #expect(ResultBundle.resolution(of: TestID(suite: "Suite", name: "crashes"), among: ids, crashCases: crashes) == .found(TestID(xcresultID: "xctest (1) encountered an error")))
+        #expect(ResultBundle.resolution(of: TestID(suite: "Suite", name: "gone"), among: ids, crashCases: crashes) == .missing)
     }
 
     /// The line on a test several nested ids end with names five at most, and counts the rest.
