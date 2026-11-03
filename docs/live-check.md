@@ -34,7 +34,7 @@ D. Doctor. Find the plugin's `bin/xcrew` (under ~/.claude/plugins/cache) and run
 
 E. The CLI's shim, with the same `bin/xcrew`:
    1. `bin/xcrew --binary-path` prints the path of a built `xcrew`, and that path's `--version` is the version under test.
-   2. Run `bin/xcrew --version` twice and time the second: well under 100 ms, since the shim keeps its key and doesn't hash the sources again.
+   2. Run `bin/xcrew --version` twice and note the second's time, for the record: the shim keeps its key and doesn't hash the sources again, so it's much quicker than the first.
    3. `bin/xcrew report --server other --kind build </dev/null` exits 64, and its message names `MobileBuildMCP or xcode`.
 
 F. Profiles. Switch MobileBuildMCP's session profile with its `session_` tools, to another scheme or simulator and back, and report each answer.
