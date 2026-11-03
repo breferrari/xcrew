@@ -243,13 +243,21 @@ export const register: Register = on => {
       const ok = found.outcome
       if (usesBand) await showEndingOf($, started, { at: now, elapsed: now - started, ok })
     }
+    // A tick still going holds back the next, so reads of a slow CLI don't pile up behind it.
+    let ticking = false
     const ticker = started === undefined ? undefined : await quietly(() =>
       $.clock.every(1000, async () => {
-        const found = followsLog ? await readPhase(started) : undefined
-        if (inBackground && found && (found.outcome !== undefined || found.quiet)) return endInBackground(found)
-        if (usesBand) return quietly(() => $.ui.invalidate('ui.render'))
-        const now = await quietly(() => $.clock.now())
-        if (now !== undefined) await quietly(() => $.ui.status(statusLine(label, started, now, measuredFrom, usual, following.phase)))
+        if (ticking) return
+        ticking = true
+        try {
+          const found = followsLog ? await readPhase(started) : undefined
+          if (inBackground && found && (found.outcome !== undefined || found.quiet)) return await endInBackground(found)
+          if (usesBand) return await quietly(() => $.ui.invalidate('ui.render'))
+          const now = await quietly(() => $.clock.now())
+          if (now !== undefined) await quietly(() => $.ui.status(statusLine(label, started, now, measuredFrom, usual, following.phase)))
+        } finally {
+          ticking = false
+        }
       }),
     )
 

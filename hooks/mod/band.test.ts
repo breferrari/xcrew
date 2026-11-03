@@ -151,6 +151,38 @@ test('where the band draws, it carries the outcome alone, with no toast repeatin
   expect(toasts).toEqual([])
 })
 
+/** A tick's read of the run's phase that hasn't answered keeps the next ticks from starting another. */
+test("a phase read still going holds back the next tick's", async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  inTerminal(on)
+  on('ui.status', () => ({ value: undefined }))
+  let release = () => {}
+  const held = new Promise<void>(resolve => {
+    release = resolve
+  })
+  let asked = 0
+  const phase = () => {
+    asked += 1
+    return asked === 1 ? held.then(() => ({ phase: 'compiling' })) : { phase: 'compiling' }
+  }
+  stubCli(on, { phase: phase as unknown as (args: readonly string[]) => { phase: string } })
+  const seen: number[] = []
+  on('tool.call', async () => {
+    await clock.advance(1_000)
+    await clock.advance(3_000)
+    seen.push(asked)
+    release()
+    await clock.advance(1_000)
+    seen.push(asked)
+    return { result: {}, text: replays['swift-testing'].text }
+  })
+
+  await callTool($, 'mcp__MobileBuildMCP__test_sim')
+
+  expect(seen).toEqual([1, 2])
+})
+
 test('the band carries the phase after the time, in the theme\'s text colour', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on, { [testsKey(scopeKey('', 'test_sim · App'))]: 959 })

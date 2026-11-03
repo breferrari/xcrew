@@ -16,7 +16,7 @@ const FIX = { worktree: 'fix', root: '/work/trees/fix', tool: 'build_sim' }
 const PROBLEM: Problem = { status: 'fail', id: 'xcode-mcp/claude-approved', message: "Claude Code isn't approved in Xcode" }
 
 /** A session where `xcrew runs` answers the next of `answers` each time it's asked, the last one again after. */
-function session(on: On, answers: unknown[], options: { problems?: Problem[]; surfaces?: RenderSurface[]; reports?: Partial<Report>[]; held?: Promise<void> } = {}) {
+function session(on: On, answers: unknown[], options: { problems?: Problem[]; surfaces?: RenderSurface[]; reports?: Partial<Report>[]; held?: Promise<void>; runs?: () => unknown } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 10, 1, 12, 0) })
   mock.store(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -38,7 +38,7 @@ function session(on: On, answers: unknown[], options: { problems?: Problem[]; su
     return { result: {}, text: 'ok' }
   })
   const queue = [...answers]
-  const calls = stubCli(on, { runs: () => (queue.length > 1 ? queue.shift() : queue[0]), problems: options.problems ?? [], reports: options.reports ?? [{ ok: true }] })
+  const calls = stubCli(on, { runs: options.runs ?? (() => (queue.length > 1 ? queue.shift() : queue[0])), problems: options.problems ?? [], reports: options.reports ?? [{ ok: true }] })
   return { clock, calls, statuses }
 }
 
@@ -130,6 +130,30 @@ test("a timer's read of the other worktrees has the process's own limit, none of
   const runs = calls.filter(call => call.args[0] === 'runs' && !call.ifBuilt)
   expect(runs.length).toBeGreaterThan(1)
   expect(runs.map(call => [call.timeoutMs, call.within])).toEqual(runs.map(() => [undefined, '30000']))
+})
+
+/** A timer's read of the other worktrees that hasn't answered keeps the next ticks from starting another. */
+test("a read of the other worktrees still going holds back the next tick's", async ($, on) => {
+  let release = () => {}
+  const held = new Promise<void>(resolve => {
+    release = resolve
+  })
+  let asked = 0
+  // The first read shows a run elsewhere, so the timer goes on; the second, the timer's first, holds.
+  const { clock } = session(on, [], {
+    runs: () => {
+      asked += 1
+      return asked === 2 ? held.then(() => [FEATURE]) : [FEATURE]
+    },
+  })
+  await start($, clock)
+  await submitPrompt($, 'go on')
+  await clock.settle()
+  await clock.advance(5_000)
+  await clock.advance(15_000)
+  expect(asked).toBe(2)
+  release()
+  await clock.settle()
 })
 
 test('the line goes when the CLI answers none, and the refresh stops', async ($, on) => {
