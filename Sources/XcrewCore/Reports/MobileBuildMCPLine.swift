@@ -121,9 +121,10 @@ enum MobileBuildMCPLine {
         line.unicodeScalars.contains("⏭")
     }
 
-    /// The test a Test Results line lists as passed, `✅ Suite/test (0.001s)`.
+    /// The test a Test Results line lists as passed, `✅ Suite/test (0.001s)`, or a repeated run's once its runs are
+    /// counted, `✅ Suite/test(): passed 5 of 5 runs`.
     static func passed(_ line: String) -> TestID? {
-        line.firstMatch(of: #/^\s*✅ (\S+?)\/(\S+?) \(/#).map { TestID(suite: $0.1, name: $0.2) }
+        line.firstMatch(of: #/^\s*✅ (\S+?)\/(\S+?)(?: \(|: )/#).map { TestID(suite: $0.1, name: $0.2) }
     }
 
     /// `✅ Suite/test() (0.001s)`, a passing test in the Test Results list.

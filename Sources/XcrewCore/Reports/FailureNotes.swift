@@ -156,6 +156,11 @@ public enum FailureNotes {
         }
     }
 
+    /// The line under a failed test whose name ends several of the bundle's ids, `ids`: it's looked up under none.
+    static func severalByThatName(_ ids: [TestID]) -> String {
+        "the result bundle has more than one test by that name: \(ids.map(\.shown).joined(separator: ", "))"
+    }
+
     /// The first step of `adding`: each failed test's lookups and its repeated runs. Nil when there's nothing to add and
     /// no skip to read. Each test is looked up under the bundle's id for it in `bundleIDs`, by the name the text gives it,
     /// and its images are keyed by that id; one with several ids, `ambiguous`, gets a line saying so.
@@ -173,7 +178,6 @@ public enum FailureNotes {
         // A test the text doesn't place, or that crashed, is looked up for that; every failed test for its images too.
         let detailed = Set(order.filter { !located.contains($0) || crashed.contains($0) })
         let imaged = Set(imagesFolder == nil ? [] : order)
-        // One the bundle has more than one test by that name for is looked up to say so.
         let ambiguous = Set(order.filter { if case .ambiguous? = bundleIDs[$0] { true } else { false } })
         let lookups = order.filter { detailed.contains($0) || imaged.contains($0) || ambiguous.contains($0) }
         let listedSkips = text.lines.compactMap { line -> TestID? in
@@ -200,14 +204,11 @@ public enum FailureNotes {
                 guard let test = pending.next() else { return }
                 let isLocated = !detailed.contains(test) || located.contains(test), isCrashed = detailed.contains(test) && crashed.contains(test)
                 let keepsImages = imaged.contains(test) ? imagesFolder : nil
-                // xcresulttool answers to the bundle's id alone, which a nested suite's test has from its outermost suite.
                 let resolution = bundleIDs[test]
                 let id = if case let .found(found)? = resolution { found } else { test }
                 group.addTask {
+                    if case let .ambiguous(ids)? = resolution { return (test, id, ["      \(Self.severalByThatName(ids))"], nil) }
                     var added: [String] = []
-                    if case let .ambiguous(ids)? = resolution {
-                        added.append("      the result bundle has more than one test by that name: \(ids.map(\.shown).joined(separator: ", "))")
-                    }
                     let crash = isCrashed ? await bundle.crash(of: id) : nil
                     // Where the bundle places the failure, or for a crash, the crash log's frame in the test's own code.
                     if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: id)) ?? crash?.location {

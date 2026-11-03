@@ -45,13 +45,13 @@ struct RunOrderTests {
         ])
     }
 
-    /// A name the text gives that the ends of two of the bundle's share matches neither: both follow the run's order, as
-    /// tests only the bundle lists, rather than one taking the other's place.
+    /// A name the text gives that the ends of two of the bundle's share matches neither: no guess is taken, so the text's
+    /// line stays in its place and disagrees, and both of the bundle's follow the run's order, as tests only it lists.
     @Test func aNameTwoNestedSuitesShareMatchesNeither() {
         let bundled = ["Later/test", "A/Inner/test", "B/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
         let text = ["Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
-        #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map(\.title) == ["Later/test", "A/Inner/test", "B/Inner/test"])
-        #expect(Report.inRunOrder(bundled, text: text, cleared: []).disagreeing.isEmpty)
+        #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map(\.title) == ["Inner/test", "Later/test", "A/Inner/test", "B/Inner/test"])
+        #expect(Report.inRunOrder(bundled, text: text, cleared: []).disagreeing == [TestID(suite: "Inner", name: "test")])
     }
 
     /// A nested suite's test the text lists twice is matched once and never disagrees: the bundle lists it as failed.
@@ -219,6 +219,17 @@ struct RunOrderTests {
         #expect(!note.contains("Suite/t6") && !note.contains("Suite/t7"))
         let sixthCleared = Report.notFailedInBundleNote(tests, results: [tests[5]: ["Passed"]]) ?? ""
         #expect(!sixthCleared.contains("is left out of the failures here"))
+    }
+
+    /// The run order takes the report's resolutions: a test the text names that two of the bundle's ids end with, one of
+    /// them failed and the other passed, matches neither, so it stays and disagrees, and the failed one follows.
+    @Test func theRunOrderTakesTheReportsResolutions() {
+        let bundled = [ToolOutput.Failure(title: "Outer/Inner/fails", message: "from the bundle", isTest: true)]
+        let text = [ToolOutput.Failure(title: "Inner/fails", message: "from the text", isTest: true)]
+        let ambiguous = TestID.Resolution.ambiguous([TestID(xcresultID: "Other/Inner/fails()"), TestID(xcresultID: "Outer/Inner/fails()")])
+        let ordered = Report.inRunOrder(bundled, text: text, cleared: [], resolutions: [TestID(suite: "Inner", name: "fails"): ambiguous])
+        #expect(ordered.failures.map(\.title) == ["Inner/fails", "Outer/Inner/fails"])
+        #expect(ordered.disagreeing == [TestID(suite: "Inner", name: "fails")])
     }
 
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure

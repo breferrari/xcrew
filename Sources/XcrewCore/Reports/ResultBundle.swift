@@ -94,6 +94,13 @@ public struct ResultBundle: Sendable {
         }
     }
 
+    /// Where a failed test's first failure happened, `/path/File.swift:12`, as MobileBuildMCP's text writes a place, from
+    /// `cases`, the test list's test cases by id; nil when its test list gives none.
+    static func place(of test: TestID, in cases: [TestID: [[String: Any]]]) -> String? {
+        let first = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
+        return first.flatMap { failure($0).location }.map { "\($0.file):\($0.line)" }
+    }
+
     /// A `Failure Message` node's message as MobileBuildMCP's text words it, its first line without XCTest's
     /// `failed - `, and the file and line it names.
     static func failure(_ message: [String: Any]) -> (line: String, location: (file: String, line: Int)?) {

@@ -239,11 +239,13 @@ struct BundleFailuresTests {
     /// failure from the log.
     @Test func aFailureOnlyTheBundleRecordsIsListedInTheText() async throws {
         let bundle = try Raw.bundle("nested-retry")
-        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("nested-retry.tests.json"))])
+        let runner = RecordingRunner(FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("nested-retry.tests.json"))]))
         let report = await Report.make(kind: .test, output: try Raw.output("nested-retry"), home: Captured.home, runner: runner, repeated: true)
         let text = try #require(report.result)
         #expect(text.contains("Test Failures (4):"), "\(text)")
-        #expect(text.contains("✗ Outer / Inner/fails(): Expectation failed: Kit.name == \"Other\""), "\(text)")
+        // With its place as the text writes one, the whole path, so it isn't looked up again.
+        #expect(text.contains("✗ Outer / Inner/fails(): Expectation failed: Kit.name == \"Other\"\n    /testbed/swift-testing/NestedTests/NestedTests.swift:8\n"), "\(text)")
+        #expect(!runner.asked.contains { $0.contains("test-details --test-id Outer/Inner/fails()") }, "\(runner.asked)")
         #expect(text.contains("✗ Outer / Inner/attaches(): Expectation failed: Kit.name == \"Other\""), "\(text)")
     }
 
@@ -258,7 +260,8 @@ struct BundleFailuresTests {
         let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("timing")) --compact": .init(status: 0, stdout: listing.replacingOccurrences(of: passed, with: passed.replacingOccurrences(of: #""result":"Passed""#, with: #""result":"Failed""#)))])
         let report = await Report.make(kind: .test, output: try Raw.output("timing"), home: Captured.home, runner: runner)
         let text = try #require(report.result)
-        #expect(text.contains("✗ ProbeTests / testPasses():  (the result bundle's; MobileBuildMCP's text lists it as passed)"), "\(text)")
+        #expect(text.contains("✗ ProbeTests / testPasses(): \n      the result bundle's; MobileBuildMCP's text lists it as passed\n"), "\(text)")
+        #expect(report.failures.first { $0.title == "ProbeTests/testPasses" }?.message == "", "\(report.failures)")
     }
 
     /// A crash filed under `System Failures` whose message names a test in a nested suite is said once: the text's line
@@ -283,13 +286,14 @@ struct BundleFailuresTests {
         let runner = RecordingRunner(FakeRunner())
         let ambiguous = TestID.Resolution.ambiguous([TestID(xcresultID: "A/Inner/fails()"), TestID(xcresultID: "B/Inner/fails()")])
         let added = await FailureNotes.adding(to: MobileText(try Raw.text("nested")), from: ResultBundle(path: try Raw.bundle("nested"), runner: runner),
+                                              keepingImagesIn: (FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)"), Date()),
                                               bundleIDs: [TestID(suite: "Inner", name: "fails"): ambiguous])
         #expect(added?.text.text.contains("""
               ✗ Inner / fails(): Expectation failed: Kit.name == "Other"
                   the result bundle has more than one test by that name: A/Inner/fails, B/Inner/fails
                 Kit.name → "Kit": the name is Kit
             """) == true, "\(added?.text.text ?? "")")
-        #expect(!runner.asked.contains { $0.contains("A/Inner/fails()") || $0.contains("B/Inner/fails()") })
+        #expect(!runner.asked.contains { $0.contains("A/Inner/fails()") || $0.contains("B/Inner/fails()") || $0.contains("--test-id Inner/fails()") }, "\(runner.asked)")
     }
 
     /// `xcresulttool export attachments` as the nested capture's bundle answers it: what it wrote for `attaches()` under

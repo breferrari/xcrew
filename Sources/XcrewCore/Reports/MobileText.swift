@@ -295,14 +295,14 @@ struct MobileText: Sendable {
     }
 
     /// The text with a line under Test Failures for each of `failures`, failed tests the result bundle records that the
-    /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place, a `label` after the
-    /// message where there is one; the section's count raised, or the section added before Test Results or the summary
+    /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place, then a `label` under it
+    /// as a note is, where there is one; the section's count raised, or the section added before Test Results or the summary
     /// when the text has none. Nil when there's nothing to add, or nowhere to add it.
     func adding(unlisted failures: [(test: TestID, message: String, place: String?, label: String?)]) -> MobileText? {
         guard !failures.isEmpty else { return nil }
         let listed = failures.flatMap { failure in
-            [Line("  ✗ \(failure.test.suite) / \(failure.test.name)(): \(failure.message)\(failure.label.map { " (\($0))" } ?? "")")]
-                + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
+            [Line("  ✗ \(failure.test.suite) / \(failure.test.name)(): \(failure.message)")]
+                + (failure.place.map { [Line("    \($0)")] } ?? []) + (failure.label.map { [Line("      \($0)")] } ?? []) + [Line("")]
         }
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else {
             guard let at = lines.firstIndex(where: { $0.isHeading(.testResults) }) ?? lines.firstIndex(where: \.isSummary) else { return nil }
