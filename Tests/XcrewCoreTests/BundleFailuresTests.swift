@@ -504,18 +504,22 @@ struct BundleFailuresTests {
     }
 
     /// An entry ends at a line it doesn't indent: one the text doesn't read as a failure, right after it with no blank
-    /// line between, stays. Its place stays in it however it's indented, as the text reads a place.
+    /// line between, stays.
     @Test func aReplacedEntryEndsAtALineItDoesntIndent() {
         let text = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ Inner / fails(): one\n    A.swift:3\n  ⚠ Something the text reads as no failure\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
         let replaced = text.replacing(TestID(suite: "Inner", name: "fails"), with: [(test: TestID(xcresultID: "A/Inner/fails()"), message: "one", place: nil)])
         #expect(replaced?.text.text.contains("  ✗ A / Inner/fails(): one\n\n  ⚠ Something the text reads as no failure\n") == true, "\(replaced?.text.text ?? "")")
+    }
+
+    /// A failure's place stays in its entry however it's indented, as the text reads a place: a tab's.
+    @Test func aReplacedEntryKeepsItsPlaceHoweverItsIndented() {
         let tabbed = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ Inner / fails(): one\n\t/work/A.swift:3\n  ⚠ Something the text reads as no failure\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
         let swapped = tabbed.replacing(TestID(suite: "Inner", name: "fails"), with: [(test: TestID(xcresultID: "A/Inner/fails()"), message: "one", place: nil)])
         #expect(swapped?.text.text.contains("  ✗ A / Inner/fails(): one\n\n  ⚠ Something the text reads as no failure\n") == true, "\(swapped?.text.text ?? "")")
     }
 
     /// Two names the text gives, one the other's end, whose failed candidates are the same tests: each failed test is
-    /// listed once, under the first name it takes the place of. Composed: MobileBuildMCP names a nested test from its own
+    /// listed once. Composed: MobileBuildMCP names a nested test from its own
     /// suite, so its text gives no such pair today.
     @Test func aFailedTestTwoNamesShareIsListedOnce() async throws {
         let home = "/testbed/user"
