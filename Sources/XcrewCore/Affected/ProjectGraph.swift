@@ -253,18 +253,9 @@ struct ProjectGraph: Sendable {
         testHost.split(separator: "/").first { $0.hasSuffix(".app") }.map(String.init)
     }
 
-    /// A path with `.` and `..` resolved by its words alone. `standardizedFileURL` would also drop `/private` from
-    /// `/private/var`, while the paths it's matched against keep it.
+    /// A URL's path by `LexicalPath`.
     static func lexical(_ url: URL) -> String {
-        var parts: [String] = []
-        for part in url.path.split(separator: "/") {
-            switch part {
-            case ".": continue
-            case "..": if !parts.isEmpty { parts.removeLast() }
-            default: parts.append(String(part))
-            }
-        }
-        return "/" + parts.joined(separator: "/")
+        LexicalPath.of(url.path)
     }
 
     /// Whether a settings key sets `setting`, a conditional one (`PRODUCT_MODULE_NAME[config=Debug]`) too.

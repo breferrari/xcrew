@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: read
 
 jobs:
   canary:
@@ -20,9 +21,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          read -r tag published <<< "$(gh release view --json tagName,publishedAt --jq '.tagName + " " + .publishedAt')"
-          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$tag...stable" -q .status || true)
-          scripts/stable-check.sh "$tag" "$published" "$(date -u +%s)" "$status" 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
+          # A read that fails fails the step, with gh's own reason, which the issue the canary opens quotes.
+          failed() { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
+          tag=$(gh release view --json tagName --jq .tagName 2>> "$RUNNER_TEMP/reasons") || failed
+          run=$(gh run list --workflow release.yml --branch "$tag" --limit 1 --json status --jq '.[0].status // "completed"' 2>> "$RUNNER_TEMP/reasons") || failed
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$tag...stable" -q .status 2>> "$RUNNER_TEMP/reasons") || failed
+          scripts/stable-check.sh "$tag" "$run" "$status" 2>> "$RUNNER_TEMP/reasons" || failed
         shell: bash
       - uses: actions/setup-node@v7
         with:
@@ -88,7 +92,16 @@ jobs:
           log=$(mktemp)
           # Through the plugin's launcher, as Claude Code starts the server. The project pins no Xcode, so the server
           # starts unchanged: nothing of the launcher's on its standard error, and no launch record.
-          ("$PWD/libexec/mobilebuildmcp-server" "$project" < /dev/null > /dev/null 2> "$log" &) ; sleep 5
+          # Its input stays open until the line is read, so it doesn't exit first; waited on the line, not on a time,
+          # while the server runs.
+          open=$(mktemp -u) && mkfifo "$open"
+          "$PWD/libexec/mobilebuildmcp-server" "$project" < "$open" > /dev/null 2> "$log" &
+          server=$!
+          exec 3> "$open"
+          until grep -qF "Loaded project config" "$log" || ! kill -0 "$server" 2> /dev/null; do sleep 0.2; done
+          exec 3>&-
+          kill "$server" 2> /dev/null || true
+          wait "$server" 2> /dev/null || true
           grep -F "Loaded project config" "$log" || { cat "$log"; exit 1; }
           if grep -F "mobilebuildmcp-server" "$log"; then echo "the launcher wrote to the server's standard error" >&2; exit 1; fi
           record="${XCREW_CACHE:-$HOME/Library/Caches/xcrew}/launches$(cd "$project" && pwd -P).launch"
@@ -98,7 +111,7 @@ jobs:
         run: scripts/readme-images.sh 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       - name: Sosumi answers
         run: |
-          curl --fail --silent --show-error --max-time 20 -o /dev/null https://sosumi.ai/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"0"}}}'
+          curl --fail --silent --show-error -o /dev/null https://sosumi.ai/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"0"}}}'
       # Only for main, scheduled or dispatched there: a dispatch on a branch tests the canary itself.
       - name: Open an issue when something broke
         if: failure() && github.ref == 'refs/heads/main'

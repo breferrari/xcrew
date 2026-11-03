@@ -17,15 +17,28 @@ fi
 # shellcheck disable=SC2016 # the backticks are literal: a tool is named in code spans
 grep -rhoE '`session_[a-z_]+`' context skills hooks/mod --include='*.md' --include='*.ts' --exclude='*.test.ts' | tr -d '`' >> "$work/wanted"
 sort -u -o "$work/wanted" "$work/wanted"
-# Asked once the server has registered its groups, which it logs a moment after it starts; it exits once its input
-# closes, and the alarm bounds it if it doesn't.
-{
-  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"1"}}}' \
-    '{"jsonrpc":"2.0","method":"notifications/initialized"}'
-  sleep 5
-  printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
-  sleep 3
-} | perl -e 'alarm 30; exec @ARGV' libexec/mobilebuildmcp-server "$project" > "$work/replies" 2> "$work/log" || true
+# Asked once the server has answered `initialize` and logged its registered tools, and its input closed once it has
+# answered `tools/list`: each step waits on what the server wrote, never on a time, and ends if the server exits.
+mkfifo "$work/in"
+libexec/mobilebuildmcp-server "$project" < "$work/in" > "$work/replies" 2> "$work/log" &
+server=$!
+exec 3> "$work/in"
+until_written() {
+  until grep -qE "$1" "$2" 2> /dev/null; do
+    kill -0 "$server" 2> /dev/null || return 0
+    sleep 0.1
+  done
+}
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"1"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' >&3
+until_written '"id":1[,}]' "$work/replies"
+until_written 'Registered [0-9]+ tools' "$work/log"
+printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' >&3
+until_written '"id":2[,}]' "$work/replies"
+# It has answered all that's asked, and it may not exit on its input closing: it's stopped.
+exec 3>&-
+kill "$server" 2> /dev/null || true
+wait "$server" 2> /dev/null || true
 # Each reply is one JSON line: the tool list is the one whose id is 2, read by its keys, not by its text.
 : > "$work/listed"
 while IFS= read -r reply; do

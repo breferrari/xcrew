@@ -60,17 +60,23 @@ export type Report = {
   scheme?: string
 }
 
-/** What `xcrew phase` says of a running MobileBuildMCP call. */
-/** The running call's log and phase; `outcome`, the log's verdict once printed, and `quiet`, a log that stopped without one. */
+/**
+ * What `xcrew phase` says of a running MobileBuildMCP call: its log and phase; `outcome`, the log's verdict once printed,
+ * and `quiet`, a log that stopped without one.
+ */
 export type Phase = { log?: string; phase?: string; scheme?: string; outcome?: boolean; quiet?: boolean }
 
 /** One line of `xcrew doctor --problems --json`. */
 export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 
-/** A finished program's output, as the hooks module hands it back. */
-export type Ran = { stdout: string; stderr: string }
+/** A finished program's output, as the hooks module hands it back, with its exit status where the engine gave one. */
+export type Ran = { stdout: string; stderr: string; exitCode?: number }
 
-/** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
+/**
+ * How long the shim's answer is trusted before asking again, and a build that named nothing remembered: a development
+ * checkout rebuilds when its sources change, and shows it within this. A freshness window, which stops no work; nothing
+ * measured it.
+ */
 const RECHECK_MS = 30_000
 
 
@@ -78,10 +84,20 @@ export function shimPath(pluginRoot: string): string {
   return `${pluginRoot}/bin/xcrew`
 }
 
-/** The build to run while the shim's last answer is fresh; `ask` when it's stale or there is none. */
-export function knownBuild(known: CliBuild | null, now: number): string | undefined | 'ask' {
-  if (known && now >= known.at && now - known.at < RECHECK_MS) return known.path ?? undefined
-  return 'ask'
+/** A build the shim couldn't make: why, from what it wrote. */
+export type FailedBuild = { failed: string }
+
+/** The build to run while the shim's last answer is fresh, or why it failed; `ask` when it's stale or there is none. */
+export function knownBuild(known: CliBuild | null, now: number): string | FailedBuild | undefined | 'ask' {
+  if (!known || now < known.at || now - known.at >= RECHECK_MS) return 'ask'
+  return known.path ?? (known.failed ? { failed: known.failed } : undefined)
+}
+
+/** Why the shim named no build: the first line of what it wrote that holds `error:`, as the compiler words one, else its last line. */
+export function buildFailure(ran: Ran): string {
+  const lines = ran.stderr.split('\n').map(line => line.trim()).filter(line => line !== '')
+  const why = lines.find(line => line.includes('error:')) ?? lines.at(-1) ?? `the shim exited ${ran.exitCode ?? 'without a status'}`
+  return `its CLI couldn't be built for this version: ${why}`
 }
 
 /** Only a path to a build counts: anything else on stdout leaves the CLI to the shim. */
@@ -90,17 +106,12 @@ export function namedBuild(stdout: string): string | null {
   return path.startsWith('/') && path.endsWith('/xcrew') ? path : null
 }
 
-/** A command that ran out of time isn't started again through the shim, which would double the wait. */
-export function ranOutOfTime(startedAt: number, now: number, timeoutMs: number): boolean {
-  return now - startedAt >= timeoutMs
-}
-
 export function reportArgs(server: string, kind: string, isError: boolean, repeated = false, passed = false): string[] {
   return ['report', '--server', server, '--kind', kind, ...(isError ? ['--error'] : []), ...(repeated ? ['--repeated'] : []), ...(passed ? ['--passed'] : [])]
 }
 
-export function phaseArgs(tool: string, since: number, expectedTests: number | undefined, log: string | undefined): string[] {
-  return ['phase', '--tool', tool, '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
+export function phaseArgs(tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined): string[] {
+  return ['phase', '--tool', tool, ...(launches ? ['--launches'] : []), '--since', String(since), ...(expectedTests === undefined ? [] : ['--expected', String(expectedTests)]), ...(log === undefined ? [] : ['--log', log])]
 }
 
 /** The CLI's JSON answer, or nothing when it didn't run or said something else. */
@@ -127,6 +138,12 @@ export function phaseOf(answer: unknown): Phase {
 /** What `xcrew doctor` finds wrong, worst first; nothing outside an Apple-platform project. */
 export function problemsOf(answer: unknown): Problem[] {
   return (answer as Problem[] | undefined) ?? []
+}
+
+/** `xcrew doctor --text-and-problems`'s answer: the report and the band's problems from one run; nothing when it gave neither. */
+export function textAndProblemsOf(answer: unknown): { text: string; problems: Problem[] } | undefined {
+  const both = answer as { text?: unknown; problems?: unknown } | undefined
+  return typeof both?.text === 'string' && Array.isArray(both.problems) ? { text: both.text, problems: both.problems as Problem[] } : undefined
 }
 
 /** Whether Tuist or XcodeGen generates this project; false when the CLI can't say, which leaves XcodeWrite allowed. */
@@ -173,7 +190,13 @@ export function elsewhereOf(answer: unknown): ElsewhereRun[] | undefined {
   })
 }
 
-/** The scheme selected in Xcode, as `xcrew project --xcuserstate <file>` answers. */
+/** The folders `xcrew gone` found aren't there any more; none when its answer can't be read. */
+export function goneOf(answer: unknown): string[] {
+  const gone = (answer ?? {}) as { gone?: unknown }
+  return Array.isArray(gone.gone) ? gone.gone.filter((folder): folder is string => typeof folder === 'string') : []
+}
+
+/** The scheme selected in Xcode, as `xcrew project --xcode` answers. */
 export function xcodeSchemeOf(answer: unknown): string | undefined {
   const scheme = (answer as { xcodeScheme?: unknown } | undefined)?.xcodeScheme
   return typeof scheme === 'string' && scheme !== '' ? scheme : undefined
@@ -228,10 +251,15 @@ export function headOf(answer: unknown): Head | undefined {
   return { root, ...(typeof branch === 'string' ? { branch } : {}), ...(typeof commit === 'string' ? { commit } : {}) }
 }
 
-/** The manifest to edit instead of a generated file and the command that regenerates it, when `xcrew project --generated` named one. */
 /** A file a generator writes: the manifest to edit instead, and the command that regenerates it. */
 export type Generated = { manifest: string; generate: string }
 
+/** The other worktrees whose run went meanwhile, as `xcrew runs --overlapped` answers; none when it couldn't say. */
+export function overlappedOf(answer: unknown): string[] {
+  return Array.isArray(answer) ? answer.filter((name): name is string => typeof name === 'string') : []
+}
+
+/** The manifest to edit instead of a generated file and the command that regenerates it, when `xcrew project --generated` named one. */
 export function generatedOf(answer: unknown): Generated | undefined {
   const { manifest, generate } = (answer ?? {}) as { manifest?: unknown; generate?: unknown }
   return typeof manifest === 'string' && typeof generate === 'string' ? { manifest, generate } : undefined
@@ -240,4 +268,45 @@ export function generatedOf(answer: unknown): Generated | undefined {
 /** Why a CLI command couldn't run. */
 export function couldntRun(args: readonly string[], error: unknown): string {
   return `xcrew ${args.join(' ')} couldn't run: ${error instanceof Error ? error.message : String(error)}`
+}
+
+/** Whether a CLI command printed nothing and ended well, as `card --save` does: an answer of nothing, not a failure. */
+export function endedQuietly(ran: Ran): boolean {
+  return ran.stdout.trim() === '' && (ran.exitCode ?? 0) === 0
+}
+
+/** What a command printed, or, with nothing printed and an ending that wasn't quiet and well, how it ended. */
+export function printedOr(args: readonly string[], ran: Ran, printed: string): string {
+  return printed.trim() === '' && (ran.stderr.trim() !== '' || (ran.exitCode ?? 0) !== 0) ? readLine(args, ran) : printed.trimEnd()
+}
+
+/**
+ * What's said of a CLI command that ran but gave no answer xcrew could read: the first line it wrote to standard error,
+ * else its exit status, else that what it printed wasn't JSON.
+ */
+export function readLine(args: readonly string[], ran: Ran): string {
+  return `xcrew ${args.join(' ')} gave no answer xcrew could read: ${unreadBecause(ran)}`
+}
+
+/** The options whose values name a moment or a run, which a read is the same read without. */
+const PER_RUN_OPTIONS = ['--since', '--until', '--log', '--expected']
+
+/** A read as one read whatever moments or run it names: its arguments without those options' values. */
+export function readKey(read: string): string {
+  return read.split(' ').filter((_, at, args) => !PER_RUN_OPTIONS.includes(args[at - 1] ?? '')).join(' ')
+}
+
+/** What the CLI writes to standard error before a line saying what it waits on, as `Progress.prefix` in the CLI. */
+export const PROGRESS_PREFIX = 'xcrew progress: '
+
+/** The lines in `text` that say what the CLI waits on, without their prefix. */
+export function progressLines(text: string): string[] {
+  return text.split('\n').filter(line => line.startsWith(PROGRESS_PREFIX)).map(line => line.slice(PROGRESS_PREFIX.length).trim())
+}
+
+function unreadBecause(ran: Ran): string {
+  const said = ran.stderr.split('\n').map(line => line.trim()).find(line => line !== '' && !line.startsWith(PROGRESS_PREFIX.trim()))
+  if (said !== undefined) return said
+  if (ran.exitCode !== undefined && ran.exitCode !== 0) return `it exited ${ran.exitCode}${ran.stdout.trim() === '' ? ', writing nothing' : ''}`
+  return 'it printed something other than JSON'
 }

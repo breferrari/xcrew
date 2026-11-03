@@ -19,12 +19,12 @@ public struct AffectedTests: Sendable, Equatable, Codable {
     /// the selections, each once; absent when every selected target is tested.
     public var nearest: [Reach]?
 
-    /// A scheme that tests selected targets and maybe others: those it tests, and how many more.
+    /// A scheme that tests selected targets and maybe others: those it tests, and the others it tests besides, each named.
     public struct Reach: Sendable, Equatable, Codable {
         public let name: String
         public let container: String
         public let tests: [String]
-        public let more: Int
+        public let others: [String]
     }
 
     /// Files whose effect on the build the reading doesn't model: build settings, packages, test plans.
@@ -78,9 +78,9 @@ public struct AffectedTests: Sendable, Equatable, Codable {
     /// selected target none of those tests, the scheme that tests it with the fewest beyond the selection.
     static func reach(of schemes: [TestSchemes.Scheme], selections: Set<String>, mostOf tests: Int) -> (schemes: [TestSchemes.Scheme], whole: Reach?, nearest: [Reach]) {
         func reach(_ scheme: TestSchemes.Scheme) -> Reach {
-            Reach(name: scheme.name, container: scheme.container, tests: scheme.targets.filter(selections.contains), more: scheme.targets.count { !selections.contains($0) })
+            Reach(name: scheme.name, container: scheme.container, tests: scheme.targets.filter(selections.contains), others: scheme.targets.filter { !selections.contains($0) })
         }
-        let fewestMore = { (lhs: Reach, rhs: Reach) in (lhs.more, lhs.name, lhs.container) < (rhs.more, rhs.name, rhs.container) }
+        let fewestMore = { (lhs: Reach, rhs: Reach) in (lhs.others.count, lhs.name, lhs.container) < (rhs.others.count, rhs.name, rhs.container) }
         if selections.count * 2 > tests, let whole = schemes.map(reach).filter({ Set($0.tests) == selections }).min(by: fewestMore) {
             return ([], whole, [])
         }

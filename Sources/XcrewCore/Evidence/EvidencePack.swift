@@ -3,6 +3,9 @@ import Foundation
 /// A pull request's evidence from what xcrew knows of its branch: a Markdown block safe to paste into the PR, and apart
 /// from it, the local images for the person to attach. The block never holds a path of this Mac or an id of its devices.
 public enum EvidencePack {
+    /// What a red test the newest run in its scope didn't run is said to be; the mod's ledger says it in the same words.
+    public static let notInNewestRun = "not in the newest run of its scope"
+
     /// The block to paste, and the images to attach, which never go inside it.
     public struct Text: Sendable, Equatable {
         public let block: String
@@ -15,7 +18,7 @@ public enum EvidencePack {
     /// Tests listed in each part; the rest are counted.
     static let mostTests = 10
 
-    /// The pack for the ledger and times the mod holds, with each red-to-green test's images read again from its failing
+    /// The pack for the ledger the mod holds, with each red-to-green test's images read again from its failing
     /// run's result bundle, which `open` opens. Nil when there's nothing to say.
     public static func make(_ input: EvidenceInput, project: Project, machine: Machine, open: @escaping @Sendable (String) -> ResultBundle) async -> Text? {
         async let changed = changedLines(project: project, machine: machine)
@@ -30,7 +33,7 @@ public enum EvidencePack {
             var lines = ["Tests this branch took from red to green:"]
             for ((entry, green), found) in zip(shown, looked) {
                 let message = entry.red.message.map { " (\(quoted($0)))" } ?? ""
-                let flaky = entry.flaky.flatMap { flaky in flaky.needed.map { " Flaky: it failed \(flaky.failed) of \(flaky.runs) runs, then passed \(flaky.passes ?? 0) in a row, of \($0) needed." } } ?? ""
+                let flaky = entry.flaky.flatMap { flaky in flaky.needed.map { " Flaky: it failed \(flaky.failed) of \(flaky.runs) runs, then passed \(flaky.passes ?? 0) in a row in repeated runs, of \($0) needed." } } ?? ""
                 lines.append("- `\(entry.test)`: failed in `\(entry.red.scope)`\(message), then passed in `\(green.scope)`.\(found.said)\(flaky)")
                 if let paths = found.paths { attach += ["- `\(entry.test)`, \(found.label.lowercased()):"] + paths.map { "  \($0)" } }
             }
@@ -41,8 +44,8 @@ public enum EvidencePack {
         if !red.isEmpty {
             let lines = red.prefix(mostTests).map { entry in
                 "- `\(entry.test)`: " + quoted(entry.red.message ?? "failed") + (entry.flaky.map { flaky in
-                    ", flaky, failing \(flaky.failed) of \(flaky.runs) runs" + (flaky.needed.map { ", passed \(flaky.passes ?? 0) of the \($0) needed since" } ?? "")
-                } ?? "")
+                    ", flaky, failing \(flaky.failed) of \(flaky.runs) runs" + (flaky.needed.map { ", passed \(flaky.passes ?? 0) of the \($0) needed \(FlakyMark.passesCountedFrom)" } ?? "")
+                } ?? "") + (entry.unseen == nil ? "" : ", \(Self.notInNewestRun)")
             }
             parts.append(["Still red:"] + lines + more(red.count))
         }
@@ -50,7 +53,6 @@ public enum EvidencePack {
 
         let changedLines = await changed
         if !changedLines.isEmpty { parts.append(["Changed lines:"] + changedLines) }
-        if !input.times.isEmpty { parts.append(["Usual run times:"] + input.times.map { "- \($0)" }) }
 
         guard !parts.isEmpty else { return nil }
         let block = scrubbed(([heading] + parts.map { $0.joined(separator: "\n") }).joined(separator: "\n\n"), roots: [project.root.path, project.canonicalRoot])
@@ -77,6 +79,10 @@ public enum EvidencePack {
             while let (index, one) = await group.next() {
                 results[index] = one
                 next()
+            }
+            for path in Set(entries.compactMap(\.red.bundle)) {
+                let run = open(path).runFolder(in: images)
+                if FileManager.default.fileExists(atPath: run.path) { FailureImages.record(run) }
             }
             return results
         }
@@ -107,39 +113,39 @@ public enum EvidencePack {
     /// One run's say on the changed lines: what it was, the file that dates it, and its sentence.
     typealias Said = (what: String, dated: URL, sentence: String)
 
-    /// What the newest finished test run's coverage and the newest build's warnings say of the lines this branch changed,
+    /// What the branch's test runs' coverage and the newest build's warnings say of the lines this branch changed,
     /// in this project's MobileBuildMCP workspace, each dated by its run and said to be older than the last commit when it is.
     static func changedLines(project: Project, machine: Machine) async -> [String] {
         let runner = machine.runner
         guard case let .success(change) = await GitChanges.since(nil, in: project, using: runner) else { return [] }
-        async let committed = runner.run(["git", "-C", project.root.path, "log", "-1", "--format=%ct"], stdin: nil, timeout: .seconds(10))
-        async let coverage: Said? = {
-            guard let path = await ResultBundle.newest(project: project.root, machine: machine),
-                  let sentence = await ChangedLineCoverage.of(ResultBundle(path: path, runner: runner), change: { change }, project: project, using: runner)?.sentence
-            else { return nil }
-            return ("the test run", URL(fileURLWithPath: path), sentence)
-        }()
+        async let committed = runner.run(["git", "-C", project.root.path, "log", "-1", "--format=%ct"], stdin: nil)
+        async let coverage = BranchCoverage.read(change: change, project: project, machine: machine)
         async let warnings: Said? = {
             guard let log = RunLog.newestBuild(project: project.root, home: machine.home), let text = try? String(contentsOf: log, encoding: .utf8) else { return nil }
             let found = BuildLog.warnings(in: text)
             guard let inChanged = await ChangedLines.warnings(found, in: change, project: project, using: runner),
-                  let sentence = Report.warningsSentence(inChanged, of: found.count)
+                  let sentence = Report.warningsSentence(inChanged, of: found.count, rest: ResultBundle.noList)
             else { return nil }
             return ("the build", log, sentence)
         }()
         let lastCommit = TimeInterval(await committed.stdout.trimmingCharacters(in: .whitespacesAndNewlines)).map(Date.init(timeIntervalSince1970:))
-        return [await coverage, await warnings].compactMap { said in
-            said.map { "- \(when($0.what, at: modified($0.dated), lastCommit: lastCommit)): \($0.sentence)" }
-        }
+        let tested = await coverage?.line(lastCommit: lastCommit)
+        let built = await warnings.map { "- \(when($0.what, at: modified($0.dated), lastCommit: lastCommit)): \($0.sentence)" }
+        return [tested, built].compactMap { $0 }
+    }
+
+    /// When the file was last modified; nil when that can't be read, as for a file that isn't there.
+    static func modifiedIfKnown(_ url: URL) -> Date? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
     static func modified(_ url: URL) -> Date {
-        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+        modifiedIfKnown(url) ?? .distantPast
     }
 
-    /// `- +3 more`, past the tests listed.
+    /// `- +3 more`, past the tests listed, and where they all are.
     static func more(_ count: Int) -> [String] {
-        count > mostTests ? ["- +\(count - mostTests) more"] : []
+        count > mostTests ? ["- +\(count - mostTests) more; `/xcrew ledger` lists them all"] : []
     }
 
     static func quoted(_ message: String) -> String {
@@ -159,7 +165,12 @@ public enum EvidencePack {
 
     /// `From the test run of 2026-10-30 14:24 UTC`, said to be older than the branch's last commit when it is.
     static func when(_ what: String, at: Date, lastCommit: Date?) -> String {
-        let said = "From \(what) of \(stamp(at))"
+        when(what, of: stamp(at), at: at, lastCommit: lastCommit)
+    }
+
+    /// `From <what> of <stamps>`, said to be older than the branch's last commit when `at`, its newest, is.
+    static func when(_ what: String, of stamps: String, at: Date, lastCommit: Date?) -> String {
+        let said = "From \(what) of \(stamps)"
         guard let lastCommit, at < lastCommit else { return said }
         return "\(said), older than the branch's last commit (\(stamp(lastCommit)))"
     }

@@ -14,8 +14,6 @@ public enum Xcodes {
         case notBuilt
         /// `no match`: no installed Xcode was the pinned one.
         case noMatch
-        /// `timed out <seconds>`: the CLI didn't answer within the launcher's limit.
-        case timedOut(String)
         /// `failed <status>`: the CLI exited with another status.
         case failed(String)
 
@@ -25,7 +23,6 @@ public enum Xcodes {
             case .applied: nil
             case .notBuilt: "the xcrew CLI wasn't built yet; it is once the session has started"
             case .noMatch: "no installed Xcode was the pinned one when it started"
-            case let .timedOut(seconds): "the xcrew CLI took longer than \(seconds) s"
             case let .failed(status): "the xcrew CLI failed, with status \(status)"
             }
         }
@@ -60,7 +57,7 @@ public enum Xcodes {
     }
 
     static func spotlight(on machine: Machine) async -> [URL] {
-        let found = await machine.runner.run(["mdfind", "kMDItemCFBundleIdentifier == '\(bundleIdentifier)'"], stdin: nil, timeout: .seconds(10))
+        let found = await machine.runner.run(["mdfind", "kMDItemCFBundleIdentifier == '\(bundleIdentifier)'"], stdin: nil)
         return found.succeeded ? found.stdout.split(whereSeparator: \.isNewline).map { URL(fileURLWithPath: String($0)) } : []
     }
 
@@ -94,10 +91,10 @@ public enum Xcodes {
     }
 
     /// The Xcode builds use when nothing overrides it: the one `DEVELOPER_DIR` names, else `xcode-select`'s.
-    public static func selected(on machine: Machine, timeout: Duration = .seconds(10)) async -> XcodeInstall? {
+    public static func selected(on machine: Machine) async -> XcodeInstall? {
         var developer = machine.value("DEVELOPER_DIR")
         if developer == nil {
-            let selected = await machine.runner.run(["xcode-select", "-p"], stdin: nil, timeout: timeout)
+            let selected = await machine.runner.run(["xcode-select", "-p"], stdin: nil)
             developer = selected.succeeded ? GitHead.firstLine(selected.stdout) : nil
         }
         return developer.flatMap(app(holding:)).flatMap(install)
@@ -140,7 +137,6 @@ public enum Xcodes {
 
     static func parse(_ line: String) -> Launch? {
         if line.hasPrefix("applied ") { return .applied(String(line.dropFirst("applied ".count))) }
-        if line.hasPrefix("timed out ") { return .timedOut(String(line.dropFirst("timed out ".count))) }
         if line.hasPrefix("failed ") { return .failed(String(line.dropFirst("failed ".count))) }
         return ["not built": Launch.notBuilt, "no match": .noMatch][line]
     }

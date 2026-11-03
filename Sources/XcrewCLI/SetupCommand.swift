@@ -25,7 +25,7 @@ struct SetupCommand: Command {
         "      [--app-scheme NAME] [--bundle-id ID] [--ui-scheme NAME] [--test-scheme NAME]",
         "      [--debugger-backend dap|lldb-cli] [--force]",
         "      write .mobilebuildmcp/config.yaml; simulators default to the newest iPhone installed,",
-        "      and the test scheme to the shared scheme that runs unit tests; over a config for the same",
+        "      and the test scheme to the shared scheme that runs the most unit-test targets; over a config for the same",
         "      container, each profile keeps what it holds unless an option names another, or none when empty",
         "setup --choices [--container NAME]   what the setup form offers, as JSON: containers, shared schemes with what each builds and tests, installed simulators, the starting picks, and the config there is; writes nothing",
         "setup --worktree [--force] [--no-simulator | --fresh-simulator]   in a linked git worktree, write its config from the main checkout's, with simulators of its own, cloned from the main checkout's while they're shut down unless --fresh-simulator; --no-simulator shares the main checkout's",
@@ -71,9 +71,10 @@ struct SetupCommand: Command {
         }
         let existing = try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)
         let chosenContainer = Self.chosenContainer(existing, in: context)
-        let container = try invocation.arguments["container"] ?? chosenContainer ?? Self.container(in: context)
-        let spelled = { ConfigRenderer.relative(ConfigRenderer.resolved($0, root: context.project.root, home: context.machine.home), to: context.project.root) }
-        var chosen = chosenContainer.map(spelled) == spelled(container) ? existing.flatMap(SetupChoices.Picks.chosen(in:)) : nil
+        let named = try invocation.arguments["container"] ?? chosenContainer ?? Self.container(in: context)
+        let kept = chosenContainer == SetupChoices.Picks.spelled(named, root: context.project.root, home: context.machine.home) ? chosenContainer : nil
+        let container = kept ?? named
+        var chosen = kept == nil ? nil : existing.flatMap(SetupChoices.Picks.chosen(in:))
         if let app = invocation.arguments["app-scheme"], app != chosen?.appScheme { chosen?.bundleID = nil }
         let before: [String: String] = chosen.map { [
             "test-simulator": $0.testSimulator, "app-simulator": $0.appSimulator, "app-scheme": $0.appScheme,
@@ -102,12 +103,12 @@ struct SetupCommand: Command {
         var notes: [String] = []
         if answers.testScheme == nil {
             let ask = "pass --test-scheme <name> to add the unit profile"
-            switch TestSchemes.choose(in: context.project.root.appending(path: container), preferring: answers.appScheme) {
+            switch TestSchemes.choose(in: URL(fileURLWithPath: ConfigRenderer.resolved(container, root: context.project.root, home: context.machine.home)), preferring: answers.appScheme) {
             case .scheme(let scheme):
                 answers.testScheme = scheme
                 notes.append("xcrew: unit tests run with the \(scheme) scheme (--test-scheme <name> picks another)")
             case .several(let schemes):
-                notes.append("xcrew: several schemes run unit tests (\(schemes.joined(separator: ", "))): \(ask)")
+                notes.append("xcrew: several schemes tie for the most unit-test targets (\(schemes.joined(separator: ", "))): \(ask)")
             case .unknown(let schemes):
                 notes.append("xcrew: couldn't tell whether these schemes run unit tests (\(schemes.joined(separator: ", "))): \(ask)")
             case .none:
@@ -134,9 +135,8 @@ struct SetupCommand: Command {
         if !carriedKeys.isEmpty, ConfigWriter.keeping(context.project) != nil {
             notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into " + (answers.profileNames.isEmpty ? "the session defaults" : "each profile"))
         }
-        let began = Date()
-        let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"))
-        Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container)"], since: began)
+        let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"), now: context.machine.now())
+        Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container)"])
         if answers.appScheme == nil {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
         }
@@ -159,7 +159,7 @@ struct SetupCommand: Command {
         }
         async let catalog = SimulatorCatalog.load(using: context.runner, choosingADefault: true)
         async let checkout = Worktree.checkout(of: context.project, using: context.runner)
-        var choices = SetupChoices.read(container: container, containers: context.project.layout(.anywhereButHome).containers, containerProblem: problem, in: context.project, catalog: await catalog)
+        var choices = SetupChoices.read(container: container, containers: context.project.layout(.anywhereButHome).containers, containerProblem: problem, in: context.project, home: context.machine.home, catalog: await catalog)
         if await checkout != nil { choices.worktree = true }
         // mcs's answers are what setup writes with no option, unless the config's profiles hold the person's own.
         func mcs(_ option: String) -> String? { Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } }
@@ -174,28 +174,31 @@ struct SetupCommand: Command {
         return 0
     }
 
-    /// What became of the config: kept as it was, with what `--force` would do, or written, with `written`'s lines.
-    /// What setup did with the config. Written, it names the `session_set_defaults` calls that give a running
-    /// MobileBuildMCP its session defaults, and asks for a restart only when the part those can't set changed `since`.
-    static func report(_ outcome: ConfigWriter.Outcome, in invocation: Invocation, written: [String], since began: Date) {
+    /// What setup did with the config: kept as it was, with what `--force` would do, or written, with `written`'s lines.
+    /// Written, it names the `session_set_defaults` calls that give a running MobileBuildMCP its session defaults, and
+    /// asks for a restart only when the part those can't set changed, as the writer says.
+    static func report(_ outcome: ConfigWriter.Outcome, in invocation: Invocation, written: [String]) {
         switch outcome {
         case .keptEdited:
             invocation.print("xcrew: .mobilebuildmcp/config.yaml was edited after xcrew wrote it; left as is (--force replaces it, keeping a backup)")
         case .keptUnmanaged:
             invocation.print("xcrew: .mobilebuildmcp/config.yaml exists and xcrew didn't write it; left as is (--force replaces it, keeping a backup)")
-        case .written(let backup):
+        case let .written(backup, serverChanged):
             if let backup { invocation.print("xcrew: kept the old config as \(backup.lastPathComponent)") }
             written.forEach(invocation.print)
             let project = invocation.context.project
-            let calls = (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)).map { LiveDefaults.calls(in: $0, root: project.root) } ?? []
+            let calls = (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)).map { LiveDefaults.calls(in: $0, root: project.root, home: invocation.context.machine.home) } ?? []
             if !calls.isEmpty {
                 invocation.print("xcrew: a running MobileBuildMCP takes these session defaults without a restart, one call each:")
                 calls.forEach { invocation.print("  " + $0) }
             }
-            let serverChanged = (try? FileManager.default.attributesOfItem(atPath: project.serverMarker.path)[.modificationDate] as? Date).map { $0 >= began } ?? false
-            if serverChanged { invocation.print("xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it") }
+            if serverChanged { invocation.print(Self.restartLine) }
         }
     }
+
+    /// The line setup prints when the config changed what MobileBuildMCP reads only when it launches; the setup form tells
+    /// it by how it begins.
+    static let restartLine = "xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it"
 
     /// The config names this Mac's simulators by ID, and DerivedData may live beside it, so it never belongs in the
     /// repository: kept out through the exclude file every worktree of it shares.
@@ -235,11 +238,10 @@ struct SetupCommand: Command {
                 for: worktreeTop, main: checkout.main, config: config, fresh: invocation.arguments.has("fresh-simulator"), record: record, using: context.runner
             )
         }
-        let began = Date()
-        let outcome = try ConfigWriter.write(config, to: context.project, force: force)
+        let outcome = try ConfigWriter.write(config, to: context.project, force: force, now: context.machine.now())
         Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path))"]
             + leftOut.map { "xcrew: left out \($0.key) \($0.path), which the main checkout uses: this worktree's builds go in a DerivedData of its own" }
-            + simulators, since: began)
+            + simulators)
         await Self.keepOutOfGit(in: invocation)
         return 0
     }

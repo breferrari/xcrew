@@ -19,7 +19,7 @@ export type LedgerRun = { scope: string; at: number }
  * One test: its first red, the scope it fails in now (where a pass must run it), its green once seen, when a run last
  * wrote it, and its target, from the result bundle, when the report named one.
  */
-export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun & { listed?: true }; last: number; flaky?: Flakiness; target?: string }
+export type LedgerEntry = { test: string; red: LedgerRun & { message: string; bundle?: string }; failing: string; green?: LedgerRun & { listed?: true }; last: number; flaky?: Flakiness; target?: string; unseen?: LedgerRun }
 
 /**
  * A flaky mark: the failures and runs of the repeated runs up to its last failure, and the repeated run that found the
@@ -32,9 +32,10 @@ export type Ledger = { entries: LedgerEntry[]; updated: number }
 
 /**
  * A finished test run, as the ledger reads it. `passed`: the tests its results list as passed, each with the test bundle
- * the result bundle files it under when it names one; absent when the CLI couldn't read them.
+ * the result bundle files it under when it names one; absent when the CLI couldn't read them. `narrowed`: the run left some
+ * of its scope's tests out on purpose, by a skip, a test plan or a configuration, or repeated them.
  */
-export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; repeated?: readonly Repetition[]; passed?: readonly Passed[]; bundle?: string }
+export type TestRun = LedgerRun & { ok: boolean; failures: readonly Failure[]; repeated?: readonly Repetition[]; passed?: readonly Passed[]; bundle?: string; narrowed?: true }
 
 /** The checkout as the ledger names it: its branch, or its commit, short in text and whole in the key. */
 export function label(head: Head, isShort: boolean): string {
@@ -47,15 +48,24 @@ export function ledgerKey(head: Head): string {
   return `${LEDGER_PREFIX}${head.root} @ ${label(head, false)}`
 }
 
+/** The checkout a stored ledger's key names: up to its last ` @ `, as the label after it, a branch's name or `commit <sha>`, holds no ` @ `. */
+export function ledgerRoot(key: string): string | undefined {
+  if (!key.startsWith(LEDGER_PREFIX)) return undefined
+  const at = key.lastIndexOf(' @ ')
+  return at < 0 ? undefined : key.slice(LEDGER_PREFIX.length, at)
+}
+
 /** A ledger as stored, or none: a value in another shape is ignored rather than trusted. A green
  * not marked `listed` was inferred from a run's selection by an older xcrew, and could name a test that run never
- * ran: it's read as still red, to turn green again from a run that lists it. An entry that isn't an object is left out.
+ * ran; its red is long over, so the entry is left out, and the ledger rebuilds from new runs. One marked flaky keeps its
+ * mark and its red, without the green: one clean repeated run turned it green then, short of the passes it needs. An
+ * entry that isn't an object is left out too.
  */
 export function ledgerOf(stored: unknown): Ledger | undefined {
   const ledger = stored as Ledger | undefined
   if (!Array.isArray(ledger?.entries) || typeof ledger?.updated !== 'number') return undefined
   const entries = ledger.entries.filter((entry): entry is LedgerEntry => typeof entry === 'object' && entry !== null)
-  return { ...ledger, entries: entries.map(entry => (entry.green && !entry.green.listed ? withoutGreen(entry) : entry)) }
+  return { ...ledger, entries: entries.flatMap(entry => (!entry.green || entry.green.listed ? [entry] : entry.flaky ? [withoutGreen(entry)] : [])) }
 }
 
 function withoutGreen({ green: _, ...entry }: LedgerEntry): LedgerEntry {
@@ -81,6 +91,15 @@ export function passes(scope: string, passed: readonly Passed[], entry: LedgerEn
   return passed.some(each => bare(each.test) === test && (each.target === undefined || entry.target === undefined || each.target === entry.target))
 }
 
+/** Whether a run of `scope` would have run a red of `failing`'s: the same scheme, and its whole suite, or a selection holding each of the red run's own. */
+export function wouldRun(scope: string, failing: string): boolean {
+  if (schemeOfScope(scope) === '' || schemeOfScope(scope) !== schemeOfScope(failing)) return false
+  if (isWholeScope(scope)) return true
+  const selected = new Set(scopeParts(scope).selections)
+  const reds = scopeParts(failing).selections
+  return reds.length > 0 && reds.every(selection => selected.has(selection))
+}
+
 /** A test's name without a Swift Testing method's `()`. */
 function bare(test: string): string {
   return test.endsWith('()') ? test.slice(0, -2) : test
@@ -95,15 +114,15 @@ export function isWholeScope(scope: string): boolean {
  * The ledger after a test run.
  * - A failing test enters red, or turns red again after a green, keeping its first red's date and bundle; either way it
  *   now fails in this run's scope, with this run's message.
+ * - A flaky test that fails with no repeated verdict for it, as in a plain run, starts its passes in a row over.
+ * - A repeated test takes the CLI's verdict and marks: a flaky one stays red, marked so, until the CLI says its passes in
+ *   a row are enough, as one run passing it is no evidence; one failing every run is a real failure, flaky no longer.
  * - A run turns green each red test its results list as passed (`passes`), a failing run included. A run whose
  *   results the CLI couldn't read turns nothing green.
  * - An entry no run has written for as long as the history is kept is dropped.
  */
 export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: readonly FlakyMark[]): Ledger {
   const failed = new Map(run.failures.filter(failure => failure.isTest).map(failure => [failure.title, failure]))
-  // The CLI's verdict on each repeated test, and its marks after the run. A flaky test stays red, marked so, until the
-  // CLI says its passes in a row are enough; one run passing it is no evidence. A test failing every run is a real
-  // failure, flaky no longer.
   const repeated = new Map((run.repeated ?? []).map(test => [test.test, test]))
   const marked = new Map((marks ?? []).map(mark => [mark.test, mark]))
   const failing = new Set([...failed.keys(), ...[...repeated.values()].filter(test => test.verdict === 'flaky' || test.verdict === 'real').map(test => test.test)])
@@ -113,28 +132,47 @@ export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: r
     const mark = marked.get(test)
     const counts = mark ? { failed: mark.failed, runs: mark.runs, passes: mark.passes, needed: mark.needed, settled: mark.settled } : undefined
     if (verdict === 'flaky') return { ...(counts ?? { failed: repeated.get(test)?.failed ?? 0, runs: repeated.get(test)?.runs ?? 0 }), scope: run.scope, at: run.at }
-    return before && counts ? { ...before, ...counts } : before
+    const after = before && counts ? { ...before, ...counts } : before
+    // A failure no repeated verdict counts, a plain run's, adds nothing to the rate but ends the passes in a row.
+    return after && verdict === undefined && failed.has(test) ? { ...after, passes: 0, settled: false } : after
   }
   const entries = (ledger?.entries ?? []).filter(entry => !isStale(entry.last, run.at)).map((entry): LedgerEntry => {
     if (failing.has(entry.test)) {
       const flaky = flakyAfter(entry.test, entry.flaky)
       const target = failed.get(entry.test)?.target ?? entry.target
       // Its first red's date and bundle stay, for the evidence block; its message is the newest failure's.
-      const message = firstLine(failed.get(entry.test)?.message ?? verdictMessage(repeated.get(entry.test)))
+      const message = failed.get(entry.test)?.message ?? verdictMessage(repeated.get(entry.test))
       return { test: entry.test, red: { ...entry.red, message }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) }
     }
     const flaky = flakyAfter(entry.test, entry.flaky)
     const updated = flaky === entry.flaky ? entry : { ...entry, ...(flaky ? { flaky } : {}), last: run.at }
     const cleared = !flaky || (repeated.get(entry.test)?.verdict === 'passed' && flaky.settled === true)
-    const isGreen = !entry.green && cleared && run.passed !== undefined && passes(run.scope, run.passed, entry)
-    return isGreen ? { ...updated, green: { scope: run.scope, at: run.at, listed: true }, last: run.at } : updated
+    const read = !entry.green && run.passed !== undefined
+    const listed = read && passes(run.scope, run.passed ?? [], entry)
+    if (listed && cleared) {
+      const { unseen: _, ...green } = updated
+      return { ...green, green: { scope: run.scope, at: run.at, listed: true }, last: run.at }
+    }
+    // A run that ran it, listing it passed or repeating it, ends a note that one didn't.
+    const ranIt = listed || repeated.has(entry.test)
+    if (ranIt && updated.unseen) {
+      const { unseen: _, ...ran } = updated
+      return ran
+    }
+    // A run whose passed tests are listed whole, from its result bundle, that didn't list it, of its scheme's whole suite or
+    // of a selection holding the red's own, as for a test deleted since: said, and the entry's age left as it was, so it
+    // goes once no run has failed it for as long as the history is kept. The Xcode MCP's list stops at 100 results, and a
+    // run that passed nothing, as a failed build, lists none.
+    const listsWhole = run.bundle !== undefined && (run.passed?.length ?? 0) > 0
+    const isUnseen = read && !ranIt && listsWhole && !run.narrowed && wouldRun(run.scope, entry.failing)
+    return isUnseen ? { ...updated, unseen: { scope: run.scope, at: run.at } } : updated
   })
   for (const test of failing) {
     if (entries.some(entry => entry.test === test)) continue
     const flaky = flakyAfter(test)
     const message = failed.get(test)?.message ?? verdictMessage(repeated.get(test))
     const target = failed.get(test)?.target
-    entries.push({ test, red: { scope: run.scope, at: run.at, message: firstLine(message), bundle: run.bundle }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) })
+    entries.push({ test, red: { scope: run.scope, at: run.at, message, bundle: run.bundle }, failing: run.scope, last: run.at, ...(flaky ? { flaky } : {}), ...(target ? { target } : {}) })
   }
   return { entries, updated: run.at }
 }
@@ -162,7 +200,7 @@ export function ledgerText(ledger: Ledger | undefined, head: Head): string {
   if (entries.length === 0) return `No test has failed on ${name} yet.`
   const green = entries.filter((entry): entry is GreenEntry => entry.green !== undefined)
   const red = entries.filter(entry => !entry.green)
-  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${entry.red.message}`
+  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${shownMessage(entry.red.message)}${entry.unseen ? `; ${NOT_IN_NEWEST}, ${dayAndTime(entry.unseen.at)}` : ''}`
   const named = (entry: LedgerEntry) => `${entry.test}${flakyLabel(entry)}`
   return [
     ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${named(entry)}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
@@ -192,8 +230,11 @@ function count(tests: number): string {
   return `${tests} ${tests === 1 ? 'test' : 'tests'}`
 }
 
-/** A failure message's first line, cut short: the ledger points at the failure, the pane shows it whole. */
-function firstLine(message: string): string {
+/**
+ * A failure message as the ledger and the evidence show it: its first line, cut short, pointing at the failure, which
+ * the store keeps whole and the pane shows whole.
+ */
+export function shownMessage(message: string): string {
   const line = message.split('\n')[0] ?? ''
   return line.length > 100 ? `${line.slice(0, 99)}…` : line
 }
@@ -212,21 +253,30 @@ export const LEDGER_TOOL_NAME = 'mcp__xcrew__ledger'
 export const LEDGER_UNAVAILABLE = "The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out. Run `/xcrew doctor`."
 
 /**
- * ` (flaky: failed 2 of 5 runs; passed 5 of the 6 needed since)` for a test marked flaky, without the passes when the
- * CLI hasn't counted them, and nothing otherwise: the ledger and the card say it alike.
+ * ` (flaky: failed 2 of 5 runs; passed 5 of the 6 needed in repeated runs since)` for a test marked flaky, without
+ * the passes when the CLI hasn't counted them, and nothing otherwise: the ledger and the card say it alike.
  */
 export function flakyLabel(entry: LedgerEntry): string {
   if (!entry.flaky) return ''
   return ` (flaky: ${flakyCounts(entry.flaky)}${entry.flaky.needed === undefined ? '' : `; ${passedSince(entry.flaky)}`})`
 }
 
+/** What a red test the newest run in its scope didn't run is said to be; the evidence block says it in the same words. */
+export const NOT_IN_NEWEST = 'not in the newest run of its scope'
+
+/** Where a mark's passes come from: only a repeated run's count. The evidence block says it in the same words. */
+export const PASSES_COUNTED = 'in repeated runs since'
+
 /** What the passes needed are, said once where they're listed. */
 export const PASSES_NEEDED = 'Passes needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.'
 
-/** `passed 5 of the 6 needed since`, or once it has them, `passed 10 in a row since, of 6 needed`. */
+/**
+ * `passed 5 of the 6 needed in repeated runs since`, or once it has them, `passed 10 in a row in repeated runs since, of 6
+ * needed`.
+ */
 function passedSince(flaky: Flakiness): string {
   const passes = flaky.passes ?? 0
-  return flaky.settled ? `passed ${passes} in a row since, of ${flaky.needed} needed` : `passed ${passes} of the ${flaky.needed} needed since`
+  return flaky.settled ? `passed ${passes} in a row ${PASSES_COUNTED}, of ${flaky.needed} needed` : `passed ${passes} of the ${flaky.needed} needed ${PASSES_COUNTED}`
 }
 
 /** `failed 2 of 5 runs`: how a flaky mark's counts read wherever it's shown. */

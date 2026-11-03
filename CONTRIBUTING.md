@@ -62,7 +62,7 @@ Claude Code keeps people on a plugin's `version` until it changes, so every rele
 
 Every step can run again: after a failure, run `scripts/release.sh <version>` again, and it finds the tag and goes on from the release workflow.
 
-The weekly canary fails, and opens an issue, when `stable` is still behind the latest release a day after it was published.
+The weekly canary fails, and opens an issue, when `stable` is behind the latest release though that release's run has ended, or holds commits no release has: it reads how things stand, never the clock.
 
 After a release, check that a fresh install lands on the tag without touching your own install: run `claude plugin marketplace add breferrari/xcrew` and `claude plugin install xcrew@breferrari --scope user` with `CLAUDE_CONFIG_DIR` set to a new temporary folder, and compare `gitCommitSha` in that folder's `plugins/installed_plugins.json` with the tag's commit, which `stable` points at.
 

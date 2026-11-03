@@ -38,21 +38,26 @@ public enum BinaryPropertyList: Sendable, Equatable {
         let referenceSize: Int
         let count: Int
         let table: Int
-        /// Objects left to read: an object shared by many reads once per reference, so a file whose references fan out
-        /// ends here. Xcode's state holds a few thousand.
-        var budget: Int
+        /// Each object read so far, by its index: an object shared by many references is read once, so a file whose
+        /// references fan out is read in time linear in its objects, whole.
+        var read: [Int: BinaryPropertyList] = [:]
 
         /// Nesting deeper than any keyed archive's, so a list that refers to itself ends.
         static let deepest = 64
 
         init(bytes: [UInt8], offsetSize: Int, referenceSize: Int, count: Int, table: Int) {
             (self.bytes, self.offsetSize, self.referenceSize, self.count, self.table) = (bytes, offsetSize, referenceSize, count, table)
-            budget = max(count * 4, 1_000)
         }
 
         func object(_ index: Int, depth: Int) -> BinaryPropertyList? {
-            budget -= 1
-            guard budget >= 0, index >= 0, index < count, depth < Self.deepest,
+            if let known = read[index] { return known }
+            let found = decode(index, depth: depth)
+            if let found { read[index] = found }
+            return found
+        }
+
+        func decode(_ index: Int, depth: Int) -> BinaryPropertyList? {
+            guard index >= 0, index < count, depth < Self.deepest,
                   let start = number(bytes, at: table + index * offsetSize, size: offsetSize), start < bytes.count else { return nil }
             let marker = bytes[start], low = Int(marker & 0x0F)
             switch marker >> 4 {

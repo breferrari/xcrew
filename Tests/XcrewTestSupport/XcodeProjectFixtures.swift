@@ -13,7 +13,7 @@ extension Project {
 
     /// A scheme whose build action builds `building` for running and whose test action runs `targets`, and optionally a
     /// test plan, laid out as Xcode writes one.
-    public func writeScheme(_ name: String, building: [String] = [], testing targets: [String] = [], skipped: Bool = false, plan: String? = nil, container: String = "App.xcodeproj", folder: String = "App.xcodeproj/xcshareddata") {
+    public func writeScheme(_ name: String, building: [String] = [], testing targets: [String] = [], skipped: Bool = false, plan: String? = nil, launching: String? = nil, container: String = "App.xcodeproj", folder: String = "App.xcodeproj/xcshareddata") {
         let entries = building.map { target in
             "<BuildActionEntry buildForTesting = \"YES\" buildForRunning = \"YES\"><BuildableReference BuildableIdentifier = \"primary\" BuildableName = \"\(target).app\" BlueprintName = \"\(target)\" ReferencedContainer = \"container:\(container)\"></BuildableReference></BuildActionEntry>"
         }
@@ -22,7 +22,8 @@ extension Project {
             "<TestableReference skipped = \"\(skipped ? "YES" : "NO")\"><BuildableReference BuildableIdentifier = \"primary\" BuildableName = \"\(target).xctest\" BlueprintName = \"\(target)\" ReferencedContainer = \"container:\(container)\"></BuildableReference></TestableReference>"
         }
         let plans = plan.map { "<TestPlans><TestPlanReference reference = \"container:\($0)\" default = \"YES\"></TestPlanReference></TestPlans>" } ?? ""
-        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Scheme LastUpgradeVersion = \"2700\" version = \"1.7\">\(build)<TestAction buildConfiguration = \"Debug\">\(plans)<Testables>\(testables.joined())</Testables></TestAction></Scheme>\n"
+        let launch = launching.map { "<LaunchAction buildConfiguration = \"Debug\"><BuildableProductRunnable runnableDebuggingMode = \"0\"><BuildableReference BuildableIdentifier = \"primary\" BuildableName = \"\($0).app\" BlueprintName = \"\($0)\" ReferencedContainer = \"container:\(container)\"></BuildableReference></BuildableProductRunnable></LaunchAction>" } ?? ""
+        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Scheme LastUpgradeVersion = \"2700\" version = \"1.7\">\(build)<TestAction buildConfiguration = \"Debug\">\(plans)<Testables>\(testables.joined())</Testables></TestAction>\(launch)</Scheme>\n"
         write(xml, to: "\(folder)/xcschemes/\(name).xcscheme")
     }
 }

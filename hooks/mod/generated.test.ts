@@ -81,7 +81,7 @@ test('a file no generator writes is edited without a question, and only a genera
 
 test('when the CLI can\'t answer, the edit goes through', async ($, on) => {
   mock.store(on)
-  on('process.run', () => {
+  on('process.spawn', async function* () {
     throw new Error('xcrew not built')
   })
   on('tool.call', () => ({ result: {}, text: 'done' }))

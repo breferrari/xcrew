@@ -19,7 +19,7 @@ public struct SessionBriefing: Sendable {
         let containers = layout.containers.map { project.root.appending(path: $0) }
         async let plans = Self.testPlans(in: containers)
         async let offer = project.hasSchemeToBuild ? nil : Self.setupOffer(for: project, using: machine.runner)
-        async let status = MobileBuildMCPStatus.assess(machine, timeout: Self.versionTimeout)
+        async let status = MobileBuildMCPStatus.assess(machine)
         async let bootedNow = booted()
         async let head = GitHead.of(project, using: machine.runner)
         async let simulatorApp = simulatorApp()
@@ -27,7 +27,7 @@ public struct SessionBriefing: Sendable {
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
         let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), await simulatorApp, bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + [await offer].compactMap { $0 }
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
-        let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), now: Date(), on: machine)
+        let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), on: machine)
         return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "")
     }
 
@@ -40,7 +40,7 @@ public struct SessionBriefing: Sendable {
     /// The selected Xcode's simulator app when it's DeviceHub, as from Xcode 27, and no Xcode in the applications folder
     /// has a Simulator.app for `open -a Simulator` to open.
     func simulatorApp() async -> String? {
-        guard let xcode = await Xcodes.selected(on: machine, timeout: Self.versionTimeout), xcode.hasDeviceHubOnly,
+        guard let xcode = await Xcodes.selected(on: machine), xcode.hasDeviceHubOnly,
               !Xcodes.applications(on: machine).compactMap(Xcodes.install(at:)).contains(where: \.hasSimulatorApp)
         else { return nil }
         return Self.deviceHubNote(xcode.label)
@@ -54,15 +54,13 @@ public struct SessionBriefing: Sendable {
     /// under one and pass under another, and that `look` says which; a few at most, the rest counted. Read beside the
     /// other checks, since a large workspace has many schemes to read.
     static func testPlans(in containers: [URL]) async -> [String] {
-        let (plans, complete) = TestPlans.configured(containers: containers)
+        let plans = TestPlans.configured(containers: containers)
         let named = plans.prefix(ResultBundle.mostNamed).map { found in
             "\(found.sentence) A test can fail under one and pass under another; `look` names which."
         }
         let more = plans.count - named.count
-        // Reading stopped with nothing left to count: the rest weren't read, which is all that's known.
-        if more == 0 { return named + (complete ? [] : ["Schemes past the first \(TestPlans.mostSchemes) weren't read for test plans."]) }
-        let counted = complete ? "\(more)" : "at least \(more)"
-        return named + ["and \(counted) more test \(more == 1 && complete ? "plan runs" : "plans run") each test under several configurations."]
+        if more == 0 { return named }
+        return named + ["and \(more) more test \(more == 1 ? "plan runs" : "plans run") each test under several configurations (\(ResultBundle.noList))."]
     }
 
     /// Said at the start, and by the mod with the session's first MobileBuildMCP build or test, while MobileBuildMCP has
@@ -77,16 +75,9 @@ public struct SessionBriefing: Sendable {
         return "MobileBuildMCP profiles here: \(named.joined(separator: ", ")). Switch with `session_use_defaults_profile`."
     }
 
-    /// How long the briefing waits for `mobilebuildmcp --version` when its cache is cold: about half a second after an
-    /// upgrade (docs/findings.md), and a version it can't read in time doesn't fail over.
-    static let versionTimeout = Duration.seconds(2)
-
-    /// How long the briefing waits for `simctl`, after which the runner takes up to its grace to stop it (docs/findings.md).
-    static let simctlTimeout = Duration.seconds(1)
-
     /// The simulators booted now, or none when `simctl` can't say in time (`SimulatorCatalog.bootedIfServiceRuns`).
     func booted() async -> [SimulatorCatalog.Device] {
-        await SimulatorCatalog.bootedIfServiceRuns(using: machine.runner, timeout: Self.simctlTimeout) ?? []
+        await SimulatorCatalog.bootedIfServiceRuns(using: machine.runner) ?? []
     }
 
     /// Each with its UDID, since a name can be installed on several runtimes and only one of them is booted.

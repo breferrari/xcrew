@@ -148,12 +148,12 @@ struct MobileText: Sendable {
         lines.lazy.compactMap { MobileBuildMCPLine.duration(in: $0.text) }.first.map(ToolOutput.milliseconds)
     }
 
-    /// The `.xcresult` path the text lists: the workspace folder, then the bundle under it.
     /// How many tests the run's filter selected, when MobileBuildMCP lists them.
     var discovered: Int? {
         lines.lazy.compactMap { MobileBuildMCPLine.discovered($0.text) }.first
     }
 
+    /// The `.xcresult` path the text lists: the workspace folder, then the bundle under it.
     var resultBundle: String? {
         guard let folder = workspaceFolder, let bundle = lines.lazy.compactMap({ MobileBuildMCPLine.resultBundle($0.text) }).first else { return nil }
         return folder + bundle
@@ -282,7 +282,7 @@ struct MobileText: Sendable {
             default: !listedAbove && MobileBuildMCPLine.isFailed(line.text)
             }
         }
-        let note = listedAbove ? "  (\(passed) passing tests left out; failing tests are listed in full above)" : "  (\(passed) passing tests left out)"
+        let note = "  (\(passed) passing tests left out: the run's result bundle lists them" + (listedAbove ? "; failing tests are listed in full above)" : ")")
         return MobileText(lines: Array(lines[...start]) + [Line(note)] + kept + Array(lines[end...]))
     }
 
@@ -357,6 +357,42 @@ struct MobileText: Sendable {
                 if index < kept.count, kept[index].isBlank { kept.remove(at: index) }
             }
         }
+        return MobileText(lines: kept)
+    }
+
+    /// The text with only the warnings `keep` holds, each with its location line, and one line in their section saying
+    /// how many it left out, under a heading that then counts the warnings it lists, or with no heading after the run's
+    /// header; nil when it leaves none out.
+    func keepingWarnings(_ keep: (RepeatedWarnings.Warning) -> Bool, leftOut: (Int) -> String) -> MobileText? {
+        let all = warnings
+        var kept: [Line] = []
+        var dropped = 0
+        var next = 0
+        var skipping = Set<Int>()
+        for (index, line) in lines.enumerated() {
+            if skipping.contains(index) { continue }
+            guard line.warning != nil else {
+                kept.append(line)
+                continue
+            }
+            let warning = all[next]
+            next += 1
+            if keep(warning) {
+                kept.append(line)
+                continue
+            }
+            dropped += 1
+            // Its location line goes with it, and the blank line after, so the section keeps one between warnings.
+            if location(after: index) != nil { skipping.insert(index + 1) }
+            let after = location(after: index) != nil ? index + 2 : index + 1
+            if after < lines.count, lines[after].isBlank { skipping.insert(after) }
+        }
+        guard dropped > 0 else { return nil }
+        let heading = kept.firstIndex { $0.text.hasPrefix("Warnings (") }
+        if let heading { kept[heading] = Line("Warnings (\(all.count - dropped)):") }
+        let anchor = heading ?? kept.firstIndex { !$0.isBlank && $0.warning == nil } ?? 0
+        let at = anchor + 1 < kept.count && kept[anchor + 1].isBlank ? anchor + 2 : anchor + 1
+        kept.insert(contentsOf: [Line("  " + leftOut(dropped)), Line("")], at: min(at, kept.count))
         return MobileText(lines: kept)
     }
 

@@ -13,10 +13,15 @@ function engine(on: On, outputs: Record<string, string> = {}) {
     return { value: { command: e.name } }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('process.run', (_, e) => {
-    // The session start's own look for problems, and its read of Xcode's selection, aren't a command's run.
-    if (!e.argv.includes('--problems') && !e.argv.includes('--xcode')) runs.push(e.argv)
-    return { value: { exitCode: 0, stdout: outputs[e.argv[1] ?? ''] ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  on('process.spawn', async function* (_, e) {
+    const argv = e.argv
+    // Which build to run, the session start's own look for problems, and its read of Xcode's selection, aren't a
+    // command's run.
+    if (argv.includes('--binary-path')) return { value: { code: 0, signal: null } }
+    if (!argv.includes('--problems') && !argv.includes('--xcode')) runs.push(argv)
+    const stdout = outputs[argv[1] ?? ''] ?? ''
+    if (stdout) yield { stream: 'stdout' as const, text: stdout }
+    return { value: { code: 0, signal: null } }
   })
   return { registered, runs }
 }
@@ -34,24 +39,60 @@ test('the session offers /xcrew', async ($, on) => {
 
 test('/xcrew doctor names its session, so the doctor checks the session it runs in', async ($, on) => {
   mock.store(on)
-  const seen = engine(on, { doctor: 'ok    xcrew/briefing-current  the running xcrew\'s\n' })
+  const seen = engine(on, { doctor: JSON.stringify({ text: 'ok    xcrew/briefing-current  the running xcrew\'s', problems: [] }) })
   on('session.id', () => ({ value: '5f0c1a2b-0000-4000-8000-000000000004' }))
   await start($)
   await runCommand($, 'xcrew', 'doctor')
-  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor', '--session', '5f0c1a2b-0000-4000-8000-000000000004']])
+  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor', '--text-and-problems', '--session', '5f0c1a2b-0000-4000-8000-000000000004']])
 })
 
 test('/xcrew doctor shows the doctor\'s report without a turn for Claude', async ($, on) => {
   mock.store(on)
-  const seen = engine(on, { doctor: 'ok    xcode-mcp/headless-enabled  enabled\nwarn  xcode/pin  Xcode 26.4 is not installed\n' })
+  const seen = engine(on, { doctor: JSON.stringify({ text: 'ok    xcode-mcp/headless-enabled  enabled\nwarn  xcode/pin  Xcode 26.4 is not installed', problems: [] }) })
   await start($)
 
   const ran = await runCommand($, 'xcrew', 'doctor')
 
-  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor']])
+  // One run of the checks gives both the report and the band's problems.
+  expect(seen.runs.map(argv => argv.slice(1))).toEqual([['doctor', '--text-and-problems']])
   expect(seen.runs[0]?.[0]).toMatch(/\/bin\/xcrew$/)
   expect(ran.text).toContain('warn  xcode/pin')
   expect(ran.context).toBeUndefined()
+})
+
+/**
+ * The doctor waits for a new Xcode MCP bridge however long it takes, and says what it waits on as it waits: the line
+ * shows in the status line until the doctor answers, and the report is the doctor's alone.
+ */
+test('/xcrew doctor shows what it waits on while it waits', async ($, on) => {
+  mock.store(on)
+  const statuses: (string | undefined)[] = []
+  on('ui.status', (_, e) => {
+    statuses.push(e.text)
+    return { value: undefined }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  let release = () => {}
+  const released = new Promise<void>(resolve => (release = resolve))
+  let waiting = () => {}
+  const said = new Promise<void>(resolve => (waiting = resolve))
+  on('process.spawn', async function* (_, e) {
+    if (!e.argv.includes('--text-and-problems')) return { value: { code: 0, signal: null } }
+    yield { stream: 'stderr' as const, text: 'xcrew progress: waiting for a new Xcode MCP bridge to answer (xcrew mcpbridge)\n' }
+    waiting()
+    await released
+    yield { stream: 'stdout' as const, text: JSON.stringify({ text: 'ok    xcode-mcp/handshake  answers', problems: [] }) }
+    return { value: { code: 0, signal: null } }
+  })
+  await start($)
+  const ran = runCommand($, 'xcrew', 'doctor')
+  await said
+  await Promise.resolve()
+  expect(statuses.at(-1)).toBe('xcrew doctor: waiting for a new Xcode MCP bridge to answer (xcrew mcpbridge)')
+  release()
+  expect((await ran).text).toBe('ok    xcode-mcp/handshake  answers')
+  expect(statuses.at(-1)).toBeUndefined()
 })
 
 test('/xcrew history lists each tool\'s usual duration, slowest first', async ($, on) => {

@@ -7,6 +7,9 @@ import XcrewTestSupport
 /// A failed test's images: the attachments `xcresulttool export attachments` writes for it, kept under the CLI's cache
 /// and named under the test, so Claude can Read them.
 @Suite struct FailureImagesTests {
+    /// The tests' own time, which the runs kept are dated against.
+    static let now = Date(timeIntervalSince1970: 1_767_225_600)
+
     /// Past the cap the oldest runs' images go first, the newest staying whatever its size; within two weeks and the cap
     /// every run's stay.
     @Test func keptImagesPastTheCapLoseTheOldestRunsFirst() throws {
@@ -16,14 +19,58 @@ import XcrewTestSupport
             let run = folder.appending(path: "run\(index)/Suite/test")
             try FileManager.default.createDirectory(at: run, withIntermediateDirectories: true)
             try Data(count: bytes).write(to: run.appending(path: "shot.png"))
-            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(index - 10) * 3_600)], ofItemAtPath: folder.appending(path: "run\(index)").path)
+            try FileManager.default.setAttributes([.modificationDate: Self.now.addingTimeInterval(Double(index - 10) * 3_600)], ofItemAtPath: folder.appending(path: "run\(index)").path)
         }
-        FailureImages.prune(in: folder, keepingAtMost: 1_000)
+        FailureImages.prune(in: folder, keepingAtMost: 1_000, now: Self.now)
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["run0", "run1", "run2", "run3"])
-        FailureImages.prune(in: folder, keepingAtMost: 200)
+        FailureImages.prune(in: folder, keepingAtMost: 200, now: Self.now)
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["run2", "run3"])
-        FailureImages.prune(in: folder, keepingAtMost: 100)
+        FailureImages.prune(in: folder, keepingAtMost: 100, now: Self.now)
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["run3"])
+    }
+
+    /// Pruning reads each run's size as it was recorded when its images were kept, not by walking its files: a run that
+    /// records 500 bytes counts as 500, whatever its files hold now.
+    @Test func pruningReadsEachRunsRecordedSize() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-images-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        for (index, recorded) in [500, 40].enumerated() {
+            let run = folder.appending(path: "run\(index)")
+            try FileManager.default.createDirectory(at: run.appending(path: "Suite/test"), withIntermediateDirectories: true)
+            try Data(count: 40).write(to: run.appending(path: "Suite/test/shot.png"))
+            try Data(String(recorded).utf8).write(to: run.appending(path: FailureImages.sizeRecord))
+            try FileManager.default.setAttributes([.modificationDate: Self.now.addingTimeInterval(Double(index - 10) * 3_600)], ofItemAtPath: run.path)
+        }
+        FailureImages.prune(in: folder, keepingAtMost: 200, now: Self.now)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["run1"])
+    }
+
+    /// A run kept before sizes were recorded is measured once, and its size recorded, its age left as it was.
+    @Test func aRunWithoutARecordIsMeasuredOnceAndKeepsItsAge() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-images-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let run = folder.appending(path: "run0")
+        try FileManager.default.createDirectory(at: run.appending(path: "Suite/test"), withIntermediateDirectories: true)
+        try Data(count: 40).write(to: run.appending(path: "Suite/test/shot.png"))
+        let written = Date(timeIntervalSince1970: 1_793_613_600)
+        try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: run.path)
+        FailureImages.prune(in: folder, keepingAtMost: 1_000, now: written.addingTimeInterval(3_600))
+        #expect(try String(contentsOf: run.appending(path: FailureImages.sizeRecord), encoding: .utf8) == "40")
+        #expect(try run.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == written)
+    }
+
+    /// Recording a run's size measures its files, its record left out, and leaves its folder's date, its age, as it was.
+    @Test func recordingARunsSizeLeavesItsAge() throws {
+        let run = FileManager.default.temporaryDirectory.appending(path: "xcrew-record-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: run) }
+        try FileManager.default.createDirectory(at: run.appending(path: "Suite/test"), withIntermediateDirectories: true)
+        try Data(count: 40).write(to: run.appending(path: "Suite/test/shot.png"))
+        try Data("999".utf8).write(to: run.appending(path: FailureImages.sizeRecord))
+        let written = Date(timeIntervalSince1970: 1_793_613_600)
+        try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: run.path)
+        #expect(FailureImages.record(run) == 40)
+        #expect(try String(contentsOf: run.appending(path: FailureImages.sizeRecord), encoding: .utf8) == "40")
+        #expect(try run.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == written)
     }
 
     static let bundle = "/runs/test_sim_1.xcresult"
@@ -65,6 +112,7 @@ import XcrewTestSupport
         cache.appending(path: "images/test_sim_1/CardTests/testCard/\(name)").path
     }
 
+    /// The run's size is recorded once the images are kept: three images of the PNG header's 12 bytes, 36.
     @Test func aFailedTestsImagesAreListedReferenceThenFailureThenDifference() async throws {
         // Swift Testing numbers each image 0, in no set order; the exported names carry no extension.
         let (cache, bundle, images) = try Self.export([
@@ -84,6 +132,7 @@ import XcrewTestSupport
             """), "\(added)")
         #expect(FileManager.default.contents(atPath: Self.kept(cache, "difference_0_D.png")) == Self.png)
         #expect(!added.contains("Complete Issue Description"))
+        #expect(try String(contentsOf: cache.appending(path: "images/test_sim_1/\(FailureImages.sizeRecord)"), encoding: .utf8) == "36")
     }
 
     @Test func iOSSnapshotTestCaseNamesSortTheSameWay() async throws {
@@ -163,7 +212,7 @@ import XcrewTestSupport
     /// Records each command it's asked to run, and answers none.
     final class RecordingRunner: CommandRunning {
         let calls = Mutex<[String]>([])
-        func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        func run(_ argv: [String], stdin: Data?) async -> CommandResult {
             calls.withLock { $0.append(argv.joined(separator: " ")) }
             return .notFound
         }
@@ -182,19 +231,38 @@ import XcrewTestSupport
         #expect(exports.contains { $0.hasSuffix("--only-failures") }, "\(exports)")
     }
 
-    /// Past the tests looked up for images, a test the text doesn't place is still looked up for its location.
+    /// A late test the text doesn't place is looked up for its location among many it does.
     @Test func aLateFailureTheTextDoesntPlaceStillGetsItsLocation() async {
-        let located = (1...FailureNotes.mostLookups + 1).map { "  ✗ Suite / test_\($0)(): failed\n    /Users/dev/App/Tests/Suite.swift:\($0)\n" }.joined(separator: "\n")
+        let located = (1...11).map { "  ✗ Suite / test_\($0)(): failed\n    /Users/dev/App/Tests/Suite.swift:\($0)\n" }.joined(separator: "\n")
         let text = "🧪 Test\n\nTest Failures (12):\n\n\(located)\n  ✗ Suite / test_late(): failed\n\n❌ 12 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
         let runner = RecordingRunner()
         _ = await FailureNotes.addingText(to: text, from: ResultBundle(path: Self.bundle, runner: runner), keepingImagesIn: URL(fileURLWithPath: "/nonexistent/images"))
         #expect(runner.calls.withLock { $0 }.contains("xcrun xcresulttool get test-results test-details --test-id Suite/test_late() --path \(Self.bundle) --compact"))
     }
 
+    /// Every failed test the text doesn't place is looked up, however many failed.
+    @Test func everyFailureTheTextDoesntPlaceIsLookedUp() async {
+        let failures = (1...12).map { "  ✗ Suite / test_\($0)(): failed" }.joined(separator: "\n")
+        let text = "🧪 Test\n\nTest Failures (12):\n\n\(failures)\n\n❌ 12 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)"
+        let runner = RecordingRunner()
+        _ = await FailureNotes.addingText(to: text, from: ResultBundle(path: Self.bundle, runner: runner), keepingImagesIn: URL(fileURLWithPath: "/nonexistent/images"))
+        let looked = runner.calls.withLock { $0 }.filter { $0.contains("test-details") }
+        #expect(Set(looked).count == 12, "\(looked)")
+    }
+
+    /// Every skipped test the text leaves out is added from the bundle, however many.
+    @Test func everySkippedTestTheTextLeavesOutIsAdded() async {
+        let nodes = (1...12).map { #"{"nodeType":"Test Case","nodeIdentifier":"Suite/test_\#($0)()","name":"test_\#($0)()","result":"Skipped"}"# }.joined(separator: ",")
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(Self.bundle) --compact": .init(status: 0, stdout: #"{"testNodes":[\#(nodes)]}"#)])
+        let text = "🧪 Test\n\nTest Results:\n  ✅ Other / test_ok() (0.001s)\n\n✅ 1 test passed, 0 failed, 12 skipped (⏱️ 1.0s)"
+        let added = await FailureNotes.addingText(to: text, from: ResultBundle(path: Self.bundle, runner: runner))
+        #expect((1...12).allSatisfy { added.contains("⏭️ Suite/test_\($0)()") }, "\(added)")
+    }
+
     /// The failures pane shows the same paths under the test.
     @Test func theFailureCarriesItsImagesForThePane() async throws {
         let (cache, bundle, images) = try Self.export((1...4).map { Attachment(suggested: "Screenshot \($0).png", exported: "\($0)", bytes: Self.png) })
-        let added = try #require(await FailureNotes.adding(to: MobileText(Self.failed), from: bundle, keepingImagesIn: images))
+        let added = try #require(await FailureNotes.adding(to: MobileText(Self.failed), from: bundle, keepingImagesIn: (images, Date())))
         let failures = Report.attaching(added.images, to: ToolOutput(added.text, isError: false).failures)
         let withImages = try #require(failures.first)
         #expect(withImages.images == (1...3).map { Self.kept(cache, "Screenshot \($0).png") })

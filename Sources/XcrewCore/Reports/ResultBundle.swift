@@ -66,9 +66,9 @@ public struct ResultBundle: Sendable {
 
     /// Each failed test in `xcresulttool get test-results tests` output, once whatever configurations it failed under,
     /// with its first failure message; nil when the output isn't a listing, as when `xcresulttool` couldn't read the bundle.
-    public static func failedTests(listing: String) -> [ToolOutput.Failure]? {
-        guard let json = parse(listing) as? [String: Any], json["testNodes"] != nil else { return nil }
-        let found = nodes(json)
+    static func failedTests(listing: TestList) -> [ToolOutput.Failure]? {
+        guard listing.isListing else { return nil }
+        let found = listing.nodes
         let cases = testCases(in: found)
         return failedTests(in: found).map { test in
             let message = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" }?["name"] as? String }.first
@@ -79,9 +79,9 @@ public struct ResultBundle: Sendable {
     /// Each failed test of a repeated run, with the first message and place below its first failed repetition, worded as
     /// MobileBuildMCP words a message, without `failed - `: its text lists none, since it reads messages only from right
     /// below a test case (docs/findings.md, *A repeated run's failures*).
-    static func repeatedFailures(listing: String) -> [(test: TestID, message: String, place: String?)] {
+    static func repeatedFailures(listing: TestList) -> [(test: TestID, message: String, place: String?)] {
         var seen: Set<TestID> = []
-        return nodes(parse(listing)).compactMap { node in
+        return listing.nodes.compactMap { node in
             guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Failed",
                   let test = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), !seen.contains(test) else { return nil }
             let failed = nodes(node["children"]).filter { $0["nodeType"] as? String == "Repetition" && $0["result"] as? String == "Failed" }
@@ -100,8 +100,8 @@ public struct ResultBundle: Sendable {
 
     /// Each skipped test in `xcresulttool get test-results tests` output, in the listing's order, with why it was
     /// skipped (its message, without the prefix `skipPrefixes` names) and how long it ran.
-    public static func skippedTests(listing: String) -> [(test: TestID, skip: Skip)] {
-        nodes(parse(listing)).compactMap { node in
+    static func skippedTests(listing: TestList) -> [(test: TestID, skip: Skip)] {
+        listing.nodes.compactMap { node in
             guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Skipped",
                   let test = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:))
             else { return nil }
@@ -117,13 +117,9 @@ public struct ResultBundle: Sendable {
     /// Each test the run's test list counts passed, as MobileBuildMCP's count does: a retried test that passed on a later
     /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
     /// target.
-    static func passedTests(listing: String) -> Set<TestID> {
-        passedTests(in: parse(listing))
-    }
-
-    static func passedTests(in json: Any?) -> Set<TestID> {
+    static func passedTests(listing: TestList) -> Set<TestID> {
         var passed: Set<TestID> = [], failed: Set<TestID> = []
-        for node in nodes(json) where node["nodeType"] as? String == "Test Case" {
+        for node in listing.nodes where node["nodeType"] as? String == "Test Case" {
             guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)) else { continue }
             switch node["result"] as? String {
             case "Passed": passed.insert(id)
@@ -136,10 +132,10 @@ public struct ResultBundle: Sendable {
 
     /// Each test `passedTests` counts passed, once per test bundle it passed in, the bundle its target, as `Suite/test`; a
     /// test case filed under no bundle has none. Nil when the listing isn't a test list.
-    static func passed(listing: String) -> [PassedTest]? {
-        guard let json = parse(listing) as? [String: Any], json["testNodes"] != nil else { return nil }
-        let bundles = bundles(in: json, result: "Passed")
-        return passedTests(in: json).flatMap { id -> [PassedTest] in
+    static func passed(listing: TestList) -> [PassedTest]? {
+        guard listing.isListing else { return nil }
+        let bundles = bundles(in: listing, result: "Passed")
+        return passedTests(listing: listing).flatMap { id -> [PassedTest] in
             let targets = bundles[id] ?? []
             return targets.isEmpty ? [PassedTest(id)] : targets.map { PassedTest(id, target: $0) }
         }.sorted()
@@ -148,14 +144,14 @@ public struct ResultBundle: Sendable {
     /// Each failed test's target in `xcresulttool get test-results tests` output: the test bundle it's filed under, a unit
     /// or UI test bundle named as its target is. A test of the same name failing in two bundles has none: the ledger would
     /// trust a guess.
-    public static func targets(listing: String) -> [TestID: String] {
-        bundles(in: parse(listing), result: "Failed").compactMapValues { $0.count == 1 ? $0.first : nil }
+    static func targets(listing: TestList) -> [TestID: String] {
+        bundles(in: listing, result: "Failed").compactMapValues { $0.count == 1 ? $0.first : nil }
     }
 
     /// The test bundles each test case of `result` is filed under, by its id.
-    static func bundles(in json: Any?, result: String) -> [TestID: Set<String>] {
+    static func bundles(in listing: TestList, result: String) -> [TestID: Set<String>] {
         var found: [TestID: Set<String>] = [:]
-        for bundle in nodes(json) where (bundle["nodeType"] as? String)?.hasSuffix("test bundle") == true {
+        for bundle in listing.nodes where (bundle["nodeType"] as? String)?.hasSuffix("test bundle") == true {
             guard let name = bundle["name"] as? String else { continue }
             for node in nodes(bundle["children"]) where node["nodeType"] as? String == "Test Case" && node["result"] as? String == result {
                 if let id = node["nodeIdentifier"] as? String { found[TestID(xcresultID: id), default: []].insert(name) }
@@ -217,18 +213,18 @@ public struct ResultBundle: Sendable {
 
     /// The XCTest tests in `xcresulttool get test-results tests` output that ran as expected failures
     /// (`XCTExpectFailure`), in the listing's order.
-    public static func expectedFailures(listing: String) -> [String] {
+    static func expectedFailures(listing: TestList) -> [String] {
         expectedFailureNodes(listing).filter { !isSwiftTesting($0) }.compactMap { $0["nodeIdentifier"] as? String }
     }
 
     /// The Swift Testing tests in the listing that ran with a known issue (`withKnownIssue`), which
     /// `xcresulttool` files as an Expected Failure too, in the listing's order.
-    public static func knownIssues(listing: String) -> [String] {
+    static func knownIssues(listing: TestList) -> [String] {
         expectedFailureNodes(listing).filter(isSwiftTesting).compactMap { $0["nodeIdentifier"] as? String }
     }
 
-    static func expectedFailureNodes(_ listing: String) -> [[String: Any]] {
-        nodes(parse(listing)).filter { $0["nodeType"] as? String == "Test Case" && $0["result"] as? String == "Expected Failure" }
+    static func expectedFailureNodes(_ listing: TestList) -> [[String: Any]] {
+        listing.nodes.filter { $0["nodeType"] as? String == "Test Case" && $0["result"] as? String == "Expected Failure" }
     }
 
     /// A Swift Testing test's identifier URL names it, `test://com.apple.xcode/SwiftTesting/KitTests/…`, where
@@ -251,34 +247,42 @@ public struct ResultBundle: Sendable {
         let tests: String
         if knownIssues.isEmpty {
             let api = names.isEmpty ? "XCTExpectFailure or withKnownIssue" : "XCTExpectFailure"
-            tests = (expected == 1 ? "1 test also ran as an expected failure" : "\(expected) tests also ran as expected failures") + " (\(api))" + listed(names)
+            tests = (expected == 1 ? "1 test also ran as an expected failure" : "\(expected) tests also ran as expected failures") + " (\(api))" + listed(names, rest: inTheBundle)
         } else if names.isEmpty {
-            tests = (expected == 1 ? "1 test also ran with a known issue" : "\(expected) tests also ran with known issues") + " (withKnownIssue)" + listed(knownIssues)
+            tests = (expected == 1 ? "1 test also ran with a known issue" : "\(expected) tests also ran with known issues") + " (withKnownIssue)" + listed(knownIssues, rest: inTheBundle)
         } else {
             let failures = names.count == 1 ? "an expected failure" : "expected failures", issues = knownIssues.count == 1 ? "a known issue" : "known issues"
-            tests = "\(expected) tests also ran expecting a failure: \(joined(names)) as \(failures) (XCTExpectFailure), \(joined(knownIssues)) with \(issues) (withKnownIssue)"
+            tests = "\(expected) tests also ran expecting a failure: \(joined(names, rest: inTheBundle)) as \(failures) (XCTExpectFailure), \(joined(knownIssues, rest: inTheBundle)) with \(issues) (withKnownIssue)"
         }
         let total = (counts?["totalTestCount"] as? Int).map { ": \($0) tests ran in all" } ?? ""
         return "xcrew: \(tests). They count as neither passed nor failed in the result\(total)."
     }
 
-    /// `: A, B and C`, or `: A, B, C, D, E and 2 more`; nothing without names.
-    static func listed(_ names: [String], separator: String = ", ") -> String {
-        names.isEmpty ? "" : ": " + joined(names, separator: separator)
+    /// What a counted list says when nothing else holds the rest: said, so the list doesn't read as whole.
+    static let noList = "no list of them is kept"
+
+    /// Where a run's tests are all listed: its result bundle.
+    static let inTheBundle = "the run's result bundle lists them all"
+
+    /// `: A, B and C`, or `: A, B, C, D, E and 2 more (rest)`; nothing without names.
+    static func listed(_ names: [String], separator: String = ", ", rest: String) -> String {
+        names.isEmpty ? "" : ": " + joined(names, separator: separator, rest: rest)
     }
 
-    /// Names one after another, `a, b and c`, a few at most and the rest counted; with `or`, `a, b or c`.
-    static func joined(_ names: [String], separator: String = ", ", or: Bool = false) -> String {
+    /// Names one after another, `a, b and c`, a few at most and the rest counted with `rest`, which says where they all
+    /// are, or that no list of them is kept (`noList`); with `or`, `a, b or c`.
+    static func joined(_ names: [String], separator: String = ", ", or: Bool = false, rest: String) -> String {
         guard let last = names.last else { return "" }
         let conjunction = or ? " or " : " and "
-        if names.count > mostNamed { return names.prefix(mostNamed).joined(separator: separator) + conjunction + "\(names.count - mostNamed) more" }
+        if names.count > mostNamed { return names.prefix(mostNamed).joined(separator: separator) + conjunction + "\(names.count - mostNamed) more (\(rest))" }
         return names.count == 1 ? last : names.dropLast().joined(separator: separator) + conjunction + last
     }
 
     // MARK: Asking xcresulttool
 
+    /// What `xcresulttool` answers, or nothing; it runs to its end.
     static func xcresulttool(_ arguments: [String], runner: any CommandRunning) async -> String {
-        let ran = await runner.run(["xcrun", "xcresulttool"] + arguments, stdin: nil, timeout: .seconds(15))
+        let ran = await runner.run(["xcrun", "xcresulttool"] + arguments, stdin: nil)
         return ran.succeeded ? ran.stdout : ""
     }
 
@@ -294,11 +298,6 @@ public struct ResultBundle: Sendable {
     /// Every test the run ran, with its result: `xcresulttool get test-results tests`.
     public func tests() async -> String {
         await listing.value()
-    }
-
-    /// The run's skipped tests: MobileBuildMCP's list can leave one out.
-    public func skips() async -> [(test: TestID, skip: Skip)] {
-        Self.skippedTests(listing: await tests())
     }
 
     public func summary() async -> String {
@@ -323,8 +322,9 @@ public struct ResultBundle: Sendable {
         await xccov(["--file", file, "--json"])
     }
 
+    /// What `xccov view` answers of the bundle, or nothing; it runs to its end.
     func xccov(_ arguments: [String], archive: Bool = true) async -> String {
-        let ran = await runner.run(["xcrun", "xccov", "view"] + (archive ? ["--archive"] : []) + arguments + [path], stdin: nil, timeout: .seconds(15))
+        let ran = await runner.run(["xcrun", "xccov", "view"] + (archive ? ["--archive"] : []) + arguments + [path], stdin: nil)
         return ran.succeeded ? ran.stdout : ""
     }
 
@@ -376,8 +376,8 @@ extension ResultBundle {
 
     /// Each test that ran more than once, with its runs counted: a `Test Case` and every `Repetition` below it, under
     /// each of its arguments for a parameterized Swift Testing test, in the listing's order.
-    public static func repetitions(listing: String) -> [Repeated] {
-        nodes(parse(listing)).compactMap { node in
+    static func repetitions(listing: TestList) -> [Repeated] {
+        listing.nodes.compactMap { node in
             guard node["nodeType"] as? String == "Test Case", let id = node["nodeIdentifier"] as? String else { return nil }
             let runs = nodes(node["children"]).filter { $0["nodeType"] as? String == "Repetition" }
             guard runs.count > 1 else { return nil }
@@ -396,7 +396,7 @@ extension ResultBundle {
         let named = decisions.prefix(mostNamed).map { test in
             test.verdict == .flaky ? "\(test.test) is flaky, failing \(test.failed) of \(test.runs)" : "\(test.test) failed every run, a real failure"
         }
-        let unnamed = decisions.count > mostNamed ? ["and \(decisions.count - mostNamed) more flaky or failing"] : []
+        let unnamed = decisions.count > mostNamed ? ["and \(decisions.count - mostNamed) more flaky or failing (\(inTheBundle))"] : []
         let passed = repeated.count { $0.verdict == .passed }
         let undecided = repeated.count { $0.verdict == .none }
         let each = repeated.allSatisfy { $0.runs == runs } ? "across \(runs) runs each" : "across repeated runs"

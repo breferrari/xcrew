@@ -41,7 +41,7 @@ import XcrewTestSupport
     }()
 
     func choices(_ project: Project) -> SetupChoices {
-        SetupChoices.read(container: "App.xcodeproj", containers: ["App.xcodeproj"], containerProblem: nil, in: project, catalog: Self.catalog)
+        SetupChoices.read(container: "App.xcodeproj", containers: ["App.xcodeproj"], containerProblem: nil, in: project, home: project.root.appending(path: "home"), catalog: Self.catalog)
     }
 
     @Test func eachSchemeSaysWhatItBuildsAndTests() {
@@ -50,6 +50,39 @@ import XcrewTestSupport
         #expect(schemes.map(\.roles) == [[.app, .unitTests, .uiTests], [.unitTests]])
         #expect(schemes.map(\.app) == ["App", nil])
         #expect(schemes.map(\.container) == ["App.xcodeproj", "App.xcodeproj"])
+    }
+
+    /// Each scheme says how many unit-test and UI-test targets it runs, so one testing a single target stands out from one
+    /// testing every module.
+    @Test func eachSchemeSaysHowManyTestTargetsItRuns() {
+        let project = project()
+        project.writeScheme("All", testing: ["AppTests", "CoreTests", "AppUITests"])
+        let schemes = choices(project).schemes
+        #expect(schemes.map(\.name) == ["All", "App", "Core"])
+        #expect(schemes.map(\.unitTestTargets) == [2, 1, 1])
+        #expect(schemes.map(\.uiTestTargets) == [1, 1, nil])
+    }
+
+    /// The unit profile's starting pick is the scheme that tests the most, not the app's.
+    @Test func theUnitPickIsTheWidestScheme() {
+        let project = project()
+        project.writeScheme("All", testing: ["AppTests", "CoreTests"])
+        #expect(choices(project).picks.testScheme == "All")
+    }
+
+    /// A gallery scheme builds several apps for running; its app is the one it launches.
+    @Test func theAppIsTheOneTheSchemeLaunches() {
+        let spec = Self.spec.replacing(#"{ "name": "Core","#, with: #"{ "name": "Gallery", "id": "G", "product-type": "application", "product": "Products/Gallery.app" }, { "name": "Core","#)
+        let project = project(spec: spec)
+        project.writeScheme("Everything", building: ["Gallery", "App"], launching: "App")
+        #expect(choices(project).schemes.first { $0.name == "Everything" }?.app == "App")
+    }
+
+    /// A module's scheme may launch the host app it doesn't build for running, as Tuist writes one: it's no app scheme.
+    @Test func aSchemeThatOnlyLaunchesAnAppBuildsNone() {
+        let project = project()
+        project.writeScheme("Core", testing: ["CoreTests"], launching: "App")
+        #expect(choices(project).schemes.first { $0.name == "Core" }?.roles == [.unitTests])
     }
 
     @Test func thePicksAreWhatSetupWouldWrite() {
@@ -81,7 +114,7 @@ import XcrewTestSupport
         #expect(choices(project).config == nil)
         project.write("schemaVersion: 1\nsessionDefaults:\n  scheme: Mine\n", to: ".mobilebuildmcp/config.yaml")
         #expect(choices(project).config == .init(owner: .other, scheme: "Mine"))
-        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 18", appScheme: "App"), to: project, force: true)
+        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 18", appScheme: "App"), to: project, force: true, now: Date())
         #expect(choices(project).config?.owner == .xcrew)
     }
 
@@ -90,7 +123,7 @@ import XcrewTestSupport
         let project = project()
         project.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version = \"1.0\"><FileRef location = \"group:App.xcodeproj\"></FileRef></Workspace>\n", to: "App.xcworkspace/contents.xcworkspacedata")
         project.writeScheme("App", building: ["App"], testing: ["AppTests", "AppUITests"], folder: "App.xcworkspace/xcshareddata")
-        let choices = SetupChoices.read(container: "App.xcworkspace", containers: ["App.xcworkspace"], containerProblem: nil, in: project, catalog: Self.catalog)
+        let choices = SetupChoices.read(container: "App.xcworkspace", containers: ["App.xcworkspace"], containerProblem: nil, in: project, home: project.root.appending(path: "home"), catalog: Self.catalog)
         #expect(choices.picks.appScheme == "App")
         #expect(choices.picks.bundleID == "dev.example.App")
     }
@@ -102,14 +135,14 @@ import XcrewTestSupport
         project.write(Self.spec, to: "App.xcodeproj/project.xcproj")
         project.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Workspace version = \"1.0\"><FileRef location = \"group:Demo.xcodeproj\"></FileRef><FileRef location = \"group:App.xcodeproj\"></FileRef></Workspace>\n", to: "App.xcworkspace/contents.xcworkspacedata")
         project.writeScheme("App", building: ["App"], container: "App.xcodeproj", folder: "App.xcworkspace/xcshareddata")
-        let choices = SetupChoices.read(container: "App.xcworkspace", containers: ["App.xcworkspace"], containerProblem: nil, in: project, catalog: Self.catalog)
+        let choices = SetupChoices.read(container: "App.xcworkspace", containers: ["App.xcworkspace"], containerProblem: nil, in: project, home: project.root.appending(path: "home"), catalog: Self.catalog)
         #expect(choices.picks.bundleID == "dev.example.App")
     }
 
     /// A config xcrew wrote holds what the person chose before: the form starts from it, not from setup's defaults.
     @Test func theProfilesXcrewWroteAreThePicks() throws {
         let project = project()
-        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 17", appSimulator: "iPhone Duo", appScheme: "Core", bundleID: "dev.example.Chosen", testScheme: "Core"), to: project, force: true)
+        _ = try ConfigWriter.write(ProfileAnswers(container: "App.xcodeproj", testSimulator: "iPhone 17", appSimulator: "iPhone Duo", appScheme: "Core", bundleID: "dev.example.Chosen", testScheme: "Core"), to: project, force: true, now: Date())
         #expect(choices(project).picks == SetupChoices.Picks(appScheme: "Core", uiScheme: nil, testScheme: "Core", bundleID: "dev.example.Chosen", testSimulator: "iPhone 17", appSimulator: "iPhone Duo"))
     }
 }

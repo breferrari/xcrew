@@ -15,8 +15,8 @@ const CHOICES = {
   container: 'Field.xcworkspace',
   containers: ['Field.xcworkspace'],
   schemes: [
-    { name: 'App', container: 'Modules/App/App.xcodeproj', roles: ['app', 'unit-tests', 'ui-tests'], app: 'App' },
-    { name: 'Core', container: 'Modules/Core/Core.xcodeproj', roles: ['unit-tests'] },
+    { name: 'App', container: 'Modules/App/App.xcodeproj', roles: ['app', 'unit-tests', 'ui-tests'], app: 'App', unitTestTargets: 1, uiTestTargets: 1 },
+    { name: 'Core', container: 'Modules/Core/Core.xcodeproj', roles: ['unit-tests'], unitTestTargets: 2 },
   ],
   picks: { appScheme: 'App', uiScheme: 'App', testScheme: 'App', bundleID: 'dev.example.App', testSimulator: 'iPhone 18' },
   simulators: [{ name: 'iPhone 18', runtime: '27.2' }, { name: 'iPhone Duo', runtime: '27.2', twoDisplays: true }],
@@ -66,7 +66,7 @@ test('each scheme says what it does, and a two-display simulator says screenshot
   await runCommand($, 'xcrew', 'setup')
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const schemes = (await ui.find({ type: 'Select', key: 'app-scheme' }))?.props as { options: { value: string; label?: string }[] }
-  expect(schemes.options.map(option => option.label)).toEqual(['App · builds the app, runs unit tests, runs UI tests', 'Core · runs unit tests'])
+  expect(schemes.options.map(option => option.label)).toEqual(['App · builds the app, runs 1 unit-test target, runs 1 UI-test target', 'Core · runs 2 unit-test targets'])
   const simulators = (await ui.find({ type: 'Select', key: 'test-simulator' }))?.props as { options: { value: string; label?: string }[] }
   expect(simulators.options.map(option => option.value)).toEqual(['iPhone 18', 'iPhone Duo'])
   expect(simulators.options[1]?.label).toContain('two displays')
@@ -96,6 +96,19 @@ test('a pick of none is passed as an empty option, so setup drops that profile',
   await ui.press({ key: 'write' })
   const write = calls.find(call => call.args[0] === 'setup' && !call.args.includes('--choices'))
   expect(write?.args).toEqual(['setup', '--container', 'Field.xcworkspace', '--app-scheme', 'App', '--bundle-id', '', '--ui-scheme', '', '--test-scheme', 'App', '--test-simulator', 'iPhone 18', '--app-simulator', '', '--debugger-backend', 'dap'])
+  await ui.unmount()
+})
+
+/** The bundle ID is the app scheme's: picking another app scheme drops it, and the person can type the new one. */
+test('another app scheme drops the bundle ID the form started with', async ($, on) => {
+  const { calls } = await session($, on)
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.select({ key: 'app-scheme', value: 'Core' })
+  expect((await ui.find({ type: 'Input', key: 'bundle-id' }))?.props).toMatchObject({ value: '' })
+  await ui.press({ key: 'write' })
+  const write = calls.find(call => call.args[0] === 'setup' && !call.args.includes('--choices'))
+  expect(write?.args.slice(write.args.indexOf('--bundle-id'), write.args.indexOf('--bundle-id') + 2)).toEqual(['--bundle-id', ''])
   await ui.unmount()
 })
 
@@ -171,11 +184,12 @@ test('where nothing draws pickers, /xcrew setup names the skill and opens nothin
 })
 
 test('a scheme the workspace and its project both share is offered once', async ($, on) => {
-  await session($, on, { ...CHOICES, schemes: [...CHOICES.schemes, { name: 'App', container: 'Field.xcworkspace', roles: ['app'], app: 'App' }] })
+  await session($, on, { ...CHOICES, schemes: [...CHOICES.schemes, { name: 'App', container: 'Field.xcworkspace', roles: ['app', 'unit-tests'], app: 'App', unitTestTargets: 3 }] })
   await runCommand($, 'xcrew', 'setup')
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const schemes = (await ui.find({ type: 'Select', key: 'app-scheme' }))?.props as { options: { value: string }[] }
+  const schemes = (await ui.find({ type: 'Select', key: 'app-scheme' }))?.props as { options: { value: string; label?: string }[] }
   expect(schemes.options.map(option => option.value)).toEqual(['App', 'Core'])
+  expect(schemes.options[0]?.label).toBe('App · builds the app, runs 3 unit-test targets, runs 1 UI-test target')
   await ui.unmount()
 })
 
@@ -202,5 +216,13 @@ test('after a write the form reads the config it now has', async ($, on) => {
   await ui.press({ key: 'write' })
   expect(await ui.find({ type: 'Text', text: /xcrew wrote the config; it builds App/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /wrote \.mobilebuildmcp\/config\.yaml/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a form whose choices the CLI couldn\'t give says why', async ($, on) => {
+  await session($, on, new Error('spawn ENOENT'))
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^xcrew setup --choices couldn't run: ./ })).toBeDefined()
   await ui.unmount()
 })

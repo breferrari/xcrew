@@ -9,7 +9,7 @@ import XcrewTestSupport
     /// Runs git with nothing from this Mac's own config that could stop it: no signing, no hooks.
     static func git(_ arguments: [String], in folder: URL) async -> Bool {
         let hermetic = ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "user.name=t", "-c", "user.email=t@t"]
-        return await SystemCommandRunner().run(["git", "-C", folder.path] + hermetic + arguments, stdin: nil, timeout: .seconds(30)).succeeded
+        return await SystemCommandRunner().run(["git", "-C", folder.path] + hermetic + arguments, stdin: nil).succeeded
     }
 
     /// A temporary folder holding a real repository, `main`, with one commit and an `ios` subfolder, and a linked

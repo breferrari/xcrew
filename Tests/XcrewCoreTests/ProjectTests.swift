@@ -154,6 +154,13 @@ import XcrewTestSupport
         #expect(project.layout(.anywhereButHome).generator?.generator == .tuist)
     }
 
+    /// A manifest's import is read wherever the file has it: a long header before it doesn't hide it.
+    @Test func aManifestWhoseImportFollowsALongHeaderIsGenerated() {
+        let project = Project.temporary(containing: [".git"])
+        project.write(String(repeating: "// A licence header line, kept as it was written.\n", count: 400) + "import ProjectDescription\n\nlet workspace = Workspace(name: \"App\", projects: [\"Projects/*\"])\n", to: "ios/Workspace.swift")
+        #expect(project.layout(.anywhereButHome).generator?.generator == .tuist)
+    }
+
     @Test func aProjectSwiftThatOnlyMentionsProjectDescriptionDoesntCount() {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         project.write("// Unlike ProjectDescription's Project, this one is ours.\nlet note = \"import ProjectDescription\"\nstruct Project {}\n", to: "App/Project.swift")

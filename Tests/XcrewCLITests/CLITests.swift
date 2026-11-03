@@ -13,6 +13,15 @@ import XcrewTestSupport
         }
     }
 
+    /// Every option a command's usage names is one it takes: following the usage never gives an unknown-option error.
+    @Test func everyOptionAUsageNamesIsTaken() {
+        for command in CLI.commands {
+            for option in command.usage.joined(separator: " ").matches(of: /--([a-z][a-z-]*)/).map({ String($0.1) }) where option != "help" {
+                #expect(command.valuedOptions.contains(option) || command.flags.contains(option), "xcrew \(command.name)'s usage names --\(option), which it doesn't take")
+            }
+        }
+    }
+
     @Test func unknownCommandIsAUsageError() async {
         let run = await Run("frobnicate")
         #expect(run.status == 64)
@@ -77,7 +86,7 @@ import XcrewTestSupport
         var runner = simulators
         runner.responses["defaults read com.apple.dt.Xcode IDEAllowUnauthenticatedAgents"] = .init(status: 0, stdout: value)
         let run = await Run("setup", "--app-scheme", "App", context: .fake(runner, project: project))
-        #expect(run.output.contains("xcrew: Xcode accepts unsigned agents, so any unsigned process on this Mac may drive Xcode's tools: defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO") == says, "\(run.output)")
+        #expect(run.output.contains("xcrew: Xcode accepts unsigned agents, so any unsigned process on this Mac may drive Xcode's tools. Turning that off changes an Xcode setting the person may have chosen, so it's the person's to agree to: defaults write com.apple.dt.Xcode IDEAllowUnauthenticatedAgents -bool NO") == says, "\(run.output)")
     }
 
     @Test func detectsTheWorkspaceAndTheNewestIPhone() async {
@@ -286,6 +295,17 @@ import XcrewTestSupport
         #expect(config(project) == chosen)
     }
 
+    /// The same container by a full path with a trailing slash, as a shell completes a bundle, through `..`, or with a
+    /// doubled slash, is the same container: its choices stay.
+    @Test(arguments: ["App.xcworkspace/", "x/../App.xcworkspace", "x//../App.xcworkspace"])
+    func theSameContainerSpelledAnotherWayKeepsTheChoices(_ spelling: String) async {
+        let project = Project.temporary(containing: ["App.xcworkspace", "x"])
+        await setUpWithThePane(project)
+        let chosen = config(project)
+        _ = await Run("setup", "--container", project.root.appending(path: spelling).path + (spelling.hasSuffix("/") ? "/" : ""), context: .fake(simulators, project: project))
+        #expect(config(project) == chosen)
+    }
+
     /// A container the config names from the home folder is written as the folder it is when setup writes it again.
     @Test func aContainerFromTheHomeFolderIsWrittenWhole() async {
         let project = Project.temporary(containing: ["App.xcworkspace"])
@@ -450,7 +470,7 @@ import XcrewTestSupport
     @Test func severalTestSchemesAreListedForThePersonToChoose() async {
         let project = appProject(schemes: ["Core": ["CoreTests"], "Kit": ["KitTests"]], targets: ["CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test"])
         let run = await Run("setup", "--app-scheme", "App", context: .fake(simulators, project: project))
-        #expect(run.text.contains("xcrew: several schemes run unit tests (Core, Kit): pass --test-scheme <name> to add the unit profile"))
+        #expect(run.text.contains("xcrew: several schemes tie for the most unit-test targets (Core, Kit): pass --test-scheme <name> to add the unit profile"))
         #expect(!config(project).contains("  unit:"))
     }
 
@@ -553,6 +573,19 @@ import XcrewTestSupport
         let project = Project.temporary(containing: [".git", "apps/ios/App.xcodeproj"])
         let run = await Run("doctor", "--problems", context: .fake(project: project))
         #expect(run.output.contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
+    }
+
+    /// The report and the band's problems from one run of the checks, for `/xcrew doctor`: with no MobileBuildMCP, its
+    /// version check fails in both, every check is in the report, and only failures and warnings are on the band.
+    @Test func theReportAndTheProblemsComeFromOneRun() async throws {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        let both = try #require(try JSONSerialization.jsonObject(with: Data(await Run("doctor", "--text-and-problems", context: .fake(project: project)).text.utf8)) as? [String: Any])
+        let text = try #require(both["text"] as? String)
+        let problems = try #require(both["problems"] as? [[String: String]])
+        #expect(text.split(separator: "\n").contains { $0.hasPrefix("FAIL  mobilebuildmcp/version") })
+        #expect(text.split(separator: "\n").count == Doctor.checks.count)
+        #expect(problems.contains { $0["id"] == "mobilebuildmcp/version" && $0["status"] == "fail" })
+        #expect(problems.allSatisfy { $0["status"] == "fail" || $0["status"] == "warn" })
     }
 
     @Test func problemsAsJSONGiveEachChecksStatusIdAndMessage() async throws {
@@ -704,13 +737,25 @@ import XcrewTestSupport
         #expect(answer["quiet"] == nil, "\(answer)")
     }
 
+    /// A build and run's log ends on its build's verdict, before the app is installed and launched: a failed build ends
+    /// the run, a successful one doesn't, and its notification says how it ended. The mod says the call launches.
+    @Test(arguments: [("** BUILD SUCCEEDED **", nil), ("** BUILD FAILED **", false)] as [(String, Bool?)])
+    func aBuildAndRunsLogEndsItOnlyOnAFailedBuild(verdict: String, outcome: Bool?) async throws {
+        let project = Project.temporary()
+        project.write("CompileSwift normal arm64 /w/A.swift (in target 'App' from project 'App')\n\(verdict)\n", to: "build_run_sim_1.log")
+        let log = project.root.appending(path: "build_run_sim_1.log").path
+        let answer = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "build_run_sim", "--launches", "--since", "0", "--log", log).text.utf8)) as? [String: Any])
+        #expect(answer["outcome"] as? Bool == outcome, "\(answer)")
+    }
+
     /// A log unwritten for as long as another worktree's run counts as going has stopped: a run whose server was killed.
     @Test func aLogUnwrittenThatLongIsQuiet() async throws {
         let project = Project.temporary()
         project.write("SwiftCompile normal arm64 /w/A.swift (in target 'Payments' from project 'App')\n", to: "test_sim_1.log")
         let log = project.root.appending(path: "test_sim_1.log").path
-        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -OtherRuns.quietFor - 5)], ofItemAtPath: log)
-        let answer = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "test_sim", "--since", "0", "--log", log).text.utf8)) as? [String: Any])
+        let written = try #require(try URL(fileURLWithPath: log).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        let context = CheckContext.fake(project: project, now: written.addingTimeInterval(95))
+        let answer = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "test_sim", "--since", "0", "--log", log, context: context).text.utf8)) as? [String: Any])
         #expect(answer["quiet"] as? Bool == true, "\(answer)")
         #expect(answer["outcome"] == nil, "\(answer)")
     }
@@ -718,15 +763,17 @@ import XcrewTestSupport
     /// A call whose log hasn't appeared by as long as a log may stay quiet is quiet too: its run never wrote one, so a
     /// backgrounded call's ticker stops. Sooner than that, it's just not there yet.
     @Test func noLogPastTheQuietTimeIsQuiet() async throws {
-        let long = Date().addingTimeInterval(-OtherRuns.quietFor - 5).timeIntervalSince1970 * 1000
-        let quiet = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "test_sim", "--since", String(Int(long))).text.utf8)) as? [String: Any])
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
+        let context = CheckContext.fake(now: now)
+        let long = now.addingTimeInterval(-OtherRuns.quietFor - 5).timeIntervalSince1970 * 1000
+        let quiet = try #require(try JSONSerialization.jsonObject(with: Data(await Run("phase", "--tool", "test_sim", "--since", String(Int(long)), context: context).text.utf8)) as? [String: Any])
         #expect(quiet["quiet"] as? Bool == true, "\(quiet)")
-        let now = Date().timeIntervalSince1970 * 1000
-        #expect(await Run("phase", "--tool", "test_sim", "--since", String(Int(now))).text == "{}")
+        #expect(await Run("phase", "--tool", "test_sim", "--since", String(Int(now.timeIntervalSince1970 * 1000)), context: context).text == "{}")
     }
 
     @Test func beforeTheLogAppearsThereIsNeitherLogNorPhase() async {
-        #expect(await Run("phase", "--tool", "test_sim", "--since", String(Int(Date().timeIntervalSince1970 * 1000))).text == "{}")
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
+        #expect(await Run("phase", "--tool", "test_sim", "--since", String(Int(now.timeIntervalSince1970 * 1000)), context: .fake(now: now)).text == "{}")
     }
 
     /// Two sessions in one checkout share MobileBuildMCP's workspace; each follows the log its own server writes.
@@ -753,16 +800,17 @@ import XcrewTestSupport
     /// The mod sends the card it built as JSON; the folder is kept as the file system spells it, as the hook reads it.
     @Test func saveKeepsTheCardTheModSends() async {
         let project = Project.temporary()
-        let context = CheckContext.fake(project: project)
-        let updated = Date().timeIntervalSince1970 * 1000 - 3 * 3_600_000
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
+        let context = CheckContext.fake(project: project, now: now)
+        let updated = now.timeIntervalSince1970 * 1000 - 3 * 3_600_000
         let json = #"{"version":1,"folder":"\#(project.root.path)","branch":"main","updated":\#(updated),"text":"Notes:\n- a"}"#
         let run = await Run("card", "--save", context: context, stdin: json)
         #expect(run.status == 0)
-        #expect(ProjectCard.text(folder: project.canonicalRoot, branch: "main", now: Date(), on: context.machine) == "Notes, as of the run 3 h ago:\n- a")
+        #expect(ProjectCard.text(folder: project.canonicalRoot, branch: "main", on: context.machine) == "Notes, as of the run 3 h ago:\n- a")
     }
 }
 
-/// The mod sends the ledger and run times it holds; the CLI answers with the block, then the images to attach.
+/// The mod sends the ledger it holds; the CLI answers with the block, then the images to attach.
 @Suite struct EvidenceCommandTests {
     @Test func evidencePrintsTheBlockForTheLedgerTheModSends() async {
         let json = #"{"ledger":[{"test":"Suite/testA","red":{"scope":"test_sim · App","at":1793370240000,"message":"failed"},"failing":"test_sim · App","last":1793370240000}],"times":[]}"#
@@ -991,7 +1039,7 @@ import XcrewTestSupport
 /// is detached.
 @Suite struct ProjectBranchTests {
     func realPath(_ project: Project) async -> String {
-        await SystemCommandRunner().run(["/bin/realpath", project.root.path], stdin: nil, timeout: .seconds(10)).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        await SystemCommandRunner().run(["/bin/realpath", project.root.path], stdin: nil).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @Test func aBranchIsNamedWithTheRealRoot() async {
@@ -1246,7 +1294,7 @@ import XcrewTestSupport
     /// The mod's read names its session: the mod is stamped before any check runs, and the checks read that session.
     @Test func theModsDoctorReadStampsTheModFirst() async {
         let context = CheckContext.fake(project: .temporary(containing: ["App.xcodeproj"]))
-        SessionStamp.record(Self.session, on: context.machine) { $0.briefing = "0.11.0" }
+        SessionStamp.record(Self.session, on: context.machine, .briefing, version: "0.11.0")
         let run = await Run("doctor", "--problems", "--json", "--session", Self.session, context: context)
         #expect(SessionStamp.read(Self.session, on: context.machine)?.mod == XcrewVersion.current)
         #expect(run.text.contains("xcrew/briefing-current"), "\(run.text)")

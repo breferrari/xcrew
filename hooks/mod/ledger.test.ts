@@ -11,13 +11,15 @@ const BUILD_FAILED: Partial<Report> = { ok: false, failures: [{ title: 'Greeting
 const PASSED: Partial<Report> = { ok: true, detail: '12 passed', passed: [{ test: TEST }] }
 /** A pass whose results don't hold the test. */
 const PASSED_OTHERS: Partial<Report> = { ok: true, detail: '11 passed', passed: [{ test: 'GreetingTests/testBye' }] }
+/** A run whose result bundle lists its passed tests whole, and not `TEST`. */
+const LEFT_OUT: Partial<Report> = { ...PASSED_OTHERS, bundle: '/runs/later.xcresult' }
 const DAY_MS = 24 * 60 * 60_000
 
 /**
  * A project on `branch` (the CLI names it and the project's root), whose test runs report the next of `reports`. The
  * store starts with `stored`; registered tools are collected in `registered`.
  */
-function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; readsStore?: boolean; reportFails?: () => boolean; holdFirst?: Promise<void>; flaky?: unknown[] } = {}) {
+function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; readsStore?: boolean; reportFails?: () => boolean; holdFirst?: Promise<void>; flaky?: unknown[] | ((stdin: string | undefined) => unknown); beforeBranch?: () => Promise<void> } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 9, 30, 12, 0) })
   // A test that reads what the mod kept gets the store as a plain map.
   const store = options.readsStore ? mapStore(on) : (mock.store(on, options.stored ?? {}), undefined)
@@ -36,10 +38,12 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
   const calls = stubCli(on, {
     reports,
     ...(options.reportFails ? { reportFails: options.reportFails } : {}),
-    // `xcrew flaky`'s answers, one per repeated run, in order: the CLI works out the marks, the mod keeps them.
-    ...(options.flaky ? { flaky: () => options.flaky?.shift() ?? null } : {}),
-    project: args => {
+    // `xcrew flaky`'s answers, one per repeated run, in order, or worked out from what it's sent: the CLI works out the
+    // marks, the mod keeps them.
+    ...(options.flaky ? { flaky: (stdin: string | undefined) => { const flaky = options.flaky; return typeof flaky === 'function' ? flaky(stdin) : (flaky?.shift() ?? null) } } : {}),
+    project: async args => {
       if (!args.includes('--branch')) return { isGenerated: false }
+      await options.beforeBranch?.()
       const branch = options.branch?.() ?? 'feat/ledger'
       // A CLI that can't answer: the stand-in fails as a process that timed out would.
       if (branch instanceof Error) throw branch
@@ -59,6 +63,8 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
 
 const LEDGER = 'mcp__xcrew__ledger'
 const run = (tool: Engine, selection?: string) => callTool(tool, 'mcp__MobileBuildMCP__test_sim', selection ? { extraArgs: [`-only-testing:${selection}`] } : {})
+/** A run of the `App` scheme, of `selection` or its whole suite, with `args` besides. */
+const runApp = (tool: Engine, selection?: string, args: string[] = []) => callTool(tool, 'mcp__MobileBuildMCP__test_sim', { scheme: 'App', extraArgs: [...(selection ? [`-only-testing:${selection}`] : []), ...args] })
 const ledgerText = async (tool: Engine) => String((await callTool(tool, LEDGER)).result ?? '')
 
 test('a test that fails and then passes in the same scope is listed red, then green, with both runs', async ($, on) => {
@@ -99,6 +105,84 @@ test('a run that a red was written during asks for its passed tests, and turns t
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
+/** A run that left some of its scope's tests out on purpose, by a test plan or a skip, says nothing of a red it left out. */
+test('a narrowed run says nothing of a red it left out', async ($, on) => {
+  project(on, [FAILED, LEFT_OUT, LEFT_OUT])
+  await runApp($)
+  await runApp($, undefined, ['-testPlan', 'UnitOnly'])
+  await runApp($, undefined, ['-skip-testing:AppTests/GreetingTests'])
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+})
+
+/** Runs whose scheme was never learned may be of different schemes: one says nothing of another's red. */
+test('a run of an unknown scheme says nothing of a red it left out', async ($, on) => {
+  project(on, [FAILED, LEFT_OUT])
+  await run($)
+  await run($)
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+})
+
+/** A red test the newest run in its scope didn't run, as one deleted since it failed, says so until it runs again. */
+test('a red test the newest run in its scope left out says so, until a run lists it', async ($, on) => {
+  project(on, [FAILED, LEFT_OUT, FAILED])
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
+  expect(await ledgerText($)).toMatch(new RegExp(`- ${TEST}: red .*: XCTAssertEqual failed: .*; not in the newest run of its scope, \\w{3} \\d+ \\d\\d:\\d\\d$`, 'm'))
+  await runApp($, 'AppTests/GreetingTests')
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+})
+
+/** The whole suite left out a red from a selection of it: as clear a sign as any that the test is gone. */
+test('a whole-suite run that leaves out a red from a selection says so', async ($, on) => {
+  project(on, [FAILED, LEFT_OUT])
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($)
+  expect(await ledgerText($)).toContain('not in the newest run of its scope')
+})
+
+/** A run that selected other tests says nothing of a red it never selected. */
+test('a run of another selection says nothing of a red it never selected', async ($, on) => {
+  project(on, [FAILED, LEFT_OUT])
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/FarewellTests')
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+})
+
+/** A run whose passed tests may be cut short, as the Xcode MCP's are past 100 results, or that passed none, as a failed
+ * build's, is no sign a red is gone: only a whole list, from a result bundle, is. */
+test('a run without a whole list of its passed tests says nothing of a red it left out', async ($, on) => {
+  project(on, [FAILED, PASSED_OTHERS, { ok: false, passed: [], bundle: '/runs/build.xcresult' }])
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+  await runApp($, 'AppTests/GreetingTests')
+  expect(await ledgerText($)).not.toContain('not in the newest run')
+})
+
+/** A later run that lists the red as passed ran it, though one pass doesn't turn a flaky test green: the note goes. */
+test('a run that passes a flaky red without greening it ends the note', async ($, on) => {
+  project(on, [FAILED, MIXED, LEFT_OUT, PASSED], { flaky: [MARKED(0)] })
+  await runApp($, 'AppTests/GreetingTests/testHello')
+  await runApp($, 'AppTests/GreetingTests/testHello', ['-test-iterations', '5', '-test-repetition-relaunch-enabled', 'YES'])
+  await runApp($, 'AppTests/GreetingTests/testHello')
+  expect(await ledgerText($)).toContain('not in the newest run')
+  await runApp($, 'AppTests/GreetingTests/testHello')
+  const text = await ledgerText($)
+  expect(text).toContain(`Still red (1):\n- ${TEST} (flaky`)
+  expect(text).not.toContain('not in the newest run')
+})
+
+/** A red test left out of a run and then passed is green, with nothing said of the run that left it out. */
+test('a red test a run left out and a later run passes reads only as green', async ($, on) => {
+  project(on, [FAILED, LEFT_OUT, PASSED])
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
+  await runApp($, 'AppTests/GreetingTests')
+  const text = await ledgerText($)
+  expect(text).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
+  expect(text).not.toContain('not in the newest run')
+})
+
 test('a red turns green from another tool of the same scheme whose results list it as passed', async ($, on) => {
   project(on, [FAILED, PASSED])
   await callTool($, 'mcp__xcode__RunAllTests')
@@ -106,11 +190,32 @@ test('a red turns green from another tool of the same scheme whose results list 
   expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST}: red`)
 })
 
-test('a green an older xcrew inferred from a run\'s selection is read as still red', async ($, on) => {
+/** A green an older xcrew inferred from a run's selection can't be trusted, and its red is long over: the entry goes. */
+test('a green an older xcrew inferred from a run\'s selection is left out, and its red with it', async ($, on) => {
   const at = Date.UTC(2026, 9, 30, 11, 0)
-  const entry = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', green: { scope: 'test_sim › AppTests', at }, last: at }
-  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [entry], updated: at } } })
-  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST}: red`)
+  const inferred = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', green: { scope: 'test_sim › AppTests', at }, last: at }
+  const red = { test: 'GreetingTests/testBye', red: { scope: 'test_sim', at, message: 'still failing' }, failing: 'test_sim', last: at }
+  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [inferred, red], updated: at } } })
+  const text = await ledgerText($)
+  expect(text).toContain('Still red (1):\n- GreetingTests/testBye: red')
+  expect(text).not.toContain(TEST)
+})
+
+/** A flaky test an older xcrew turned green after one clean repeated run still needs its passes: it stays, red, marked. */
+test('a flaky test an older xcrew turned green is kept red with its mark', async ($, on) => {
+  const at = Date.UTC(2026, 9, 30, 11, 0)
+  const inferred = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', flaky: { failed: 2, runs: 5 }, green: { scope: 'test_sim › AppTests', at }, last: at }
+  project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [inferred], updated: at } } })
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs): red`)
+})
+
+/** With only inferred greens left, no red waits for a run's passed tests, so none are asked for. */
+test('a ledger whose only entries an older xcrew turned green asks a test run for no passed tests', async ($, on) => {
+  const at = Date.UTC(2026, 9, 30, 11, 0)
+  const inferred = { test: TEST, red: { scope: 'test_sim', at, message: 'gone' }, failing: 'test_sim', green: { scope: 'test_sim › AppTests', at }, last: at }
+  const { calls } = project(on, [PASSED], { stored: { 'ledger./work/App @ feat/ledger': { entries: [inferred], updated: at } } })
+  await run($, 'AppTests')
+  expect(calls.filter(call => call.args[0] === 'report' && call.args.includes('--passed'))).toEqual([])
 })
 
 test('a pass in a scheme that shares the red scheme\'s first part leaves the red red', async ($, on) => {
@@ -434,7 +539,7 @@ test('a flaky test stays red, marked flaky, and a later pass of one run doesn\'t
   await repeat($)
   await run($, 'AppTests/GreetingTests/testHello')
   const text = await ledgerText($)
-  expect(text).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed since)`)
+  expect(text).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
   expect(text).not.toContain('Red, then green')
 })
 
@@ -443,9 +548,9 @@ test('a flaky test that passes every run of a repeated run stays red until it ha
   await run($, 'AppTests/GreetingTests/testHello')
   await repeat($)
   await repeat($)
-  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 5 of the 6 needed since)`)
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 5 of the 6 needed in repeated runs since)`)
   await repeat($)
-  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 10 in a row since, of 6 needed)`)
+  expect(await ledgerText($)).toContain(`Red, then green, on feat/ledger (1 test):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 10 in a row in repeated runs since, of 6 needed)`)
 })
 
 test('the mod sends the CLI the marks it keeps and the run\'s repeated tests', async ($, on) => {
@@ -460,6 +565,54 @@ test('the mod sends the CLI the marks it keeps and the run\'s repeated tests', a
     { marks: [], repeated: MIXED.repeated },
     { marks: [{ test: TEST, failed: 2, runs: 5, passes: 0 }], repeated: CLEAN.repeated },
   ])
+})
+
+/**
+ * The CLI's marks as the stand-in works them out: each clean repeated run adds its 5 passes to the mark it's sent, the
+ * first run marks the test, and 6 passes settle it.
+ */
+const addsPasses = (stdin: string | undefined) => {
+  const sent = JSON.parse(stdin ?? '{}') as { marks: { passes: number }[] }
+  const passes = (sent.marks[0]?.passes ?? -5) + 5
+  return MARKED(passes, passes >= 6)
+}
+
+test('two repeated runs ending together each count their passes', async ($, on) => {
+  project(on, [FAILED, MIXED, CLEAN, CLEAN], { flaky: addsPasses })
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await Promise.all([repeat($), repeat($)])
+  expect(await ledgerText($)).toContain(`${TEST} (flaky: failed 2 of 5 runs; passed 10 in a row in repeated runs since, of 6 needed)`)
+})
+
+test('a plain run that fails a flaky test starts its passes over, and asks the CLI nothing', async ($, on) => {
+  const { calls } = project(on, [FAILED, MIXED, CLEAN, FAILED], { flaky: [MARKED(0), MARKED(5)] })
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await repeat($)
+  await run($, 'AppTests/GreetingTests/testHello')
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
+  expect(calls.filter(call => call.args[0] === 'flaky')).toHaveLength(2)
+})
+
+test('a flaky test turned green by its passes goes red again on a plain failure, its passes started over', async ($, on) => {
+  project(on, [FAILED, MIXED, CLEAN, CLEAN, FAILED], { flaky: [MARKED(0), MARKED(5), MARKED(10, true)] })
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await repeat($)
+  await repeat($)
+  await run($, 'AppTests/GreetingTests/testHello')
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
+})
+
+test('a repeated run whose verdicts leave out a flaky test it failed starts that test\'s passes over', async ($, on) => {
+  const leftOut: Partial<Report> = { ...FAILED, repeated: [{ test: 'Other/testOther', failed: 0, passed: 5, runs: 5, verdict: 'passed' }] }
+  project(on, [FAILED, MIXED, CLEAN, leftOut], { flaky: [MARKED(0), MARKED(5), []] })
+  await run($, 'AppTests/GreetingTests/testHello')
+  await repeat($)
+  await repeat($)
+  await repeat($)
+  expect(await ledgerText($)).toContain(`- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
 })
 
 test('when the CLI can\'t work out the marks, a flaky run still marks its test, and no repeated run greens it', async ($, on) => {
@@ -484,7 +637,7 @@ test('a mixed result is flaky even when the failures leave the test out', async 
   project(on, [FAILED, { ok: true, repeated: [{ test: TEST, failed: 2, passed: 3, runs: 5, verdict: 'flaky' }] }], { flaky: [MARKED(0)] })
   await run($, 'AppTests/GreetingTests/testHello')
   await repeat($)
-  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed since)`)
+  expect(await ledgerText($)).toContain(`Still red (1):\n- ${TEST} (flaky: failed 2 of 5 runs; passed 0 of the 6 needed in repeated runs since)`)
 })
 
 test('a test that failed every repeated run, with no failure of its own listed, reads as the verdict says', async ($, on) => {
@@ -502,7 +655,7 @@ test('a flaky test\'s counts are said once, in its label, as each run updates th
   await repeat($)
   await repeat($)
   const text = await ledgerText($)
-  expect(text).toContain(`- ${TEST} (flaky: failed 5 of 10 runs; passed 0 of the 5 needed since): red`)
+  expect(text).toContain(`- ${TEST} (flaky: failed 5 of 10 runs; passed 0 of the 5 needed in repeated runs since): red`)
   expect(text).not.toContain('2 of 5')
 })
 
@@ -530,7 +683,7 @@ test('/xcrew flaky lists the tests marked flaky on this branch, and no other red
   await run($, 'AppTests/GreetingTests/testWave')
   await run($, 'AppTests/GreetingTests/testHello')
   await repeat($)
-  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(`Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 0 of the 6 needed since\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`)
+  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(`Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 0 of the 6 needed in repeated runs since\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`)
 })
 
 test('/xcrew flaky names the repeated run that found it flaky, not a later plain run that failed it', async ($, on) => {
@@ -548,7 +701,7 @@ test('/xcrew flaky lists the test found flaky last first, whatever touched the o
   await clock.advance(60_000)
   await run($)
   expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(
-    `Flaky on feat/ledger (2 tests):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 0 of the 6 needed since\n- ${OTHER}: failed 1 of 5 runs, in test_sim › AppTests/GreetingTests/testWave; passed 0 of the 14 needed since\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`,
+    `Flaky on feat/ledger (2 tests):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 0 of the 6 needed in repeated runs since\n- ${OTHER}: failed 1 of 5 runs, in test_sim › AppTests/GreetingTests/testWave; passed 0 of the 14 needed in repeated runs since\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`,
   )
 })
 
@@ -558,7 +711,7 @@ test('/xcrew flaky says when a flaky test has since passed the runs needed', asy
   await repeat($)
   await repeat($)
   expect((await runCommand($, 'xcrew', 'flaky')).text).toBe(
-    `Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 10 in a row since, of 6 needed, the last in test_sim › AppTests/GreetingTests/testHello\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`,
+    `Flaky on feat/ledger (1 test):\n- ${TEST}: failed 2 of 5 runs, in test_sim › AppTests/GreetingTests/testHello; passed 10 in a row in repeated runs since, of 6 needed, the last in test_sim › AppTests/GreetingTests/testHello\nPasses needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.`,
   )
 })
 
@@ -569,5 +722,17 @@ test('/xcrew flaky with none marked says so, and without a branch says why', asy
   expect((await runCommand($, 'xcrew', 'flaky')).text).toBe('No test is marked flaky on feat/ledger.')
   branch = new Error('timed out')
   await clock.advance(BRANCH_FRESH_MS)
-  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe("The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out. Run `/xcrew doctor`.")
+  // The read that failed is said after it.
+  expect(String((await runCommand($, 'xcrew', 'flaky')).text)).toMatch(/^The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out\. Run `\/xcrew doctor`\.\nxcrew project --branch couldn't run: ./)
+})
+
+test('a red is kept with its whole message, and shown by its first line', async ($, on) => {
+  const message = `XCTAssertEqual failed: ${'a long expected value '.repeat(10)}\nwith a second line`
+  const { store } = project(on, [{ ok: false, failures: [{ title: TEST, message, where: 'GreetingTests.swift:9', isTest: true }] }], { readsStore: true })
+  await run($)
+  const ledger = [...(store?.entries() ?? [])].find(([key]) => key.startsWith('ledger.'))?.[1] as { entries: { test: string; red: { message?: string } }[] } | undefined
+  expect(ledger?.entries.find(entry => entry.test === TEST)?.red.message).toBe(message)
+  const text = await ledgerText($)
+  expect(text).not.toContain('with a second line')
+  expect(text).toContain('XCTAssertEqual failed: a long expected value')
 })

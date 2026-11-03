@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import XcrewTestSupport
 
 /// Runs the real `bin/xcrew` against a copy of the repository's layout, with a fake `swift` that
 /// records each build and produces a stand-in binary.
@@ -26,6 +27,8 @@ import Testing
         #!/bin/sh
         echo build >> "\(log.path)"
         [ -n "${BUILD_SECONDS:-}" ] && sleep "$BUILD_SECONDS"
+        # Held until the test writes a line to this FIFO: the build is still going when the test says.
+        [ -n "${HOLD_BUILD:-}" ] && read -r _ < "$HOLD_BUILD"
         [ -n "${FAIL_BUILD:-}" ] && { echo "compile error" >&2; exit 1; }
         while [ $# -gt 0 ]; do [ "$1" = --scratch-path ] && scratch="$2"; shift; done
         mkdir -p "$scratch/release"
@@ -38,7 +41,14 @@ import Testing
         #!/bin/sh
         echo hash >> "\(hashLog.path)"
         # Stands for an edit saved while the sources are being hashed.
-        if [ -n "${EDIT_DURING_HASH:-}" ]; then sleep 1; echo "// edited" >> "\(root.appending(path: "Sources/xcrew/main.swift").path)"; fi
+        # The sources are read in whole first, so the hash is of them as they were; then the edit lands, a second on, as
+        # one saved after hashing began would. In that order every time: no wait decides it.
+        if [ -n "${EDIT_DURING_HASH:-}" ]; then
+          read_in=$(mktemp)
+          cat > "$read_in"
+          edited="\(root.appending(path: "Sources/xcrew/main.swift").path)"; echo "// edited" >> "$edited"; touch -A 01 "$edited"
+          exec /usr/bin/shasum "$@" < "$read_in"
+        fi
         exec /usr/bin/shasum "$@"
         """, to: "fakebin/shasum", executable: true)
     }
@@ -50,8 +60,14 @@ import Testing
         if executable { try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path) }
     }
 
-    func shim(_ arguments: String..., environment: [String: String] = [:]) async throws -> (status: Int32, output: String, errors: String) {
+    func shim(_ arguments: String..., environment: [String: String] = [:], input: String? = nil) async throws -> (status: Int32, output: String, errors: String) {
         let process = Process()
+        if let input {
+            let pipe = Pipe()
+            process.standardInput = pipe
+            try pipe.fileHandleForWriting.write(contentsOf: Data(input.utf8))
+            try pipe.fileHandleForWriting.close()
+        }
         process.executableURL = root.appending(path: "bin/xcrew")
         process.arguments = arguments
         process.environment = [
@@ -179,13 +195,13 @@ extension ShimTests {
     /// clone don't rebuild in turn; one unused for two weeks goes.
     @Test func aRebuildKeepsRecentBuildsAndRemovesStaleOnes() async throws {
         _ = try await shim("help")
-        let first = try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { !["build", "roots"].contains($0) }
+        let first = try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { !["build", "roots", ".build.lock"].contains($0) }
         let stale = cache.appending(path: "0000000000000000")
         try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -15 * 86_400)], ofItemAtPath: stale.path)
         try write("print(3)\n", to: "Sources/xcrew/main.swift")
         _ = try await shim("help")
-        let second = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { !["build", "roots"].contains($0) })
+        let second = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { !["build", "roots", ".build.lock"].contains($0) })
         #expect(first.count == 1)
         #expect(second.count == 2)
         #expect(second.isSuperset(of: first))
@@ -194,29 +210,161 @@ extension ShimTests {
 }
 
 extension ShimTests {
-    /// At session start the session hook and the mod both start the shim; after an update only one may build.
-    @Test func twoFirstRunsAtOnceBuildOnce() async throws {
-        async let first = shim("help", environment: ["BUILD_SECONDS": "1"])
-        async let second = shim("help", environment: ["BUILD_SECONDS": "1"])
-        let runs = try await [first, second]
-        #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
-        #expect(builds == 1)
+    /// The cleanup removes builds alone: xcrew's own folders beside them, as `sessions/` and `images/`, prune their own
+    /// entries, and a folder's date moves only when an entry is added or removed, so an old one may still hold what's in use.
+    @Test func aRebuildRemovesOnlyOldBuildsNotXcrewsOtherFolders() async throws {
+        _ = try await shim("help")
+        let old = Date(timeIntervalSinceNow: -15 * 86_400)
+        let stale = cache.appending(path: "0123456789abcdef")
+        let others = ["sessions", "images", "cards", "phases"].map { cache.appending(path: $0) }
+        for folder in [stale] + others {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: folder.path)
+        }
+        try write("print(4)\n", to: "Sources/xcrew/main.swift")
+        _ = try await shim("help")
+        let left = Set(try FileManager.default.contentsOfDirectory(atPath: cache.path))
+        #expect(!left.contains(stale.lastPathComponent))
+        for folder in others { #expect(left.contains(folder.lastPathComponent), "\(folder.lastPathComponent) went with the old builds") }
     }
 }
 
 extension ShimTests {
-    /// A build killed outright (SIGKILL runs no trap) leaves its lock behind; the next run clears it
-    /// at once rather than waiting out the ten-minute backstop.
-    @Test func aLockLeftByAKilledBuildIsCleared() async throws {
-        let lock = cache.appending(path: ".lock")
-        try FileManager.default.createDirectory(at: lock, withIntermediateDirectories: true)
-        try "999999".write(to: lock.appending(path: "pid"), atomically: true, encoding: .utf8)
-        let started = Date()
+    /// The lockf processes waiting on or holding the build's lock, by the command line the shim gives them.
+    func onTheLock() async throws -> Int {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-f", "lockf -k \(cache.appending(path: ".build.lock").path) "]
+        let output = Pipe()
+        process.standardOutput = output
+        try await Self.runToEnd(process)
+        return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").count
+    }
+
+    /// A FIFO a stand-in reads before it goes on, released by `release`.
+    func fifo(_ name: String) async throws -> URL {
+        let path = cache.deletingLastPathComponent().appending(path: name)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mkfifo")
+        process.arguments = [path.path]
+        try await Self.runToEnd(process)
+        return path
+    }
+
+    func release(_ fifo: URL) throws {
+        let writer = try FileHandle(forWritingTo: fifo)
+        try writer.write(contentsOf: Data("go\n".utf8))
+        try writer.close()
+    }
+
+    /// At session start the session hook and the mod both start the shim; after an update only one may build.
+    @Test func twoFirstRunsAtOnceBuildOnce() async throws {
+        let hold = try await fifo("hold")
+        // The first run's build is held; the second starts only once it is, and the build is let go only once the second
+        // waits on the lock, so the two always overlap.
+        async let first = shim("help", environment: ["HOLD_BUILD": hold.path])
+        try await until { builds == 1 }
+        let secondDone = Flag()
+        let second = Task {
+            let run = try await shim("help")
+            secondDone.set()
+            return run
+        }
+        // The second waits on the lock, or, with no lock, builds and finishes: either ends the wait, and the build is let go.
+        try await until { await ((try? onTheLock()) ?? 0) > 1 || secondDone.isSet }
+        try release(hold)
+        let runs = try await [first, second.value]
+        #expect(runs[1].errors.contains("waiting for the CLI's build another run started"), "the second run didn't wait on the first's build")
+        #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
+        #expect(builds == 1)
+    }
+
+    /// A build that fails while other runs wait on it fails them too, with its reason: they don't each build again in turn.
+    @Test func aBuildThatFailsWhileOthersWaitFailsThemWithoutBuildingAgain() async throws {
+        let hold = try await fifo("hold")
+        async let first = shim("help", environment: ["HOLD_BUILD": hold.path, "FAIL_BUILD": "1"])
+        try await until { builds == 1 }
+        let secondDone = Flag()
+        let second = Task {
+            let run = try await shim("help")
+            secondDone.set()
+            return run
+        }
+        try await until { await ((try? onTheLock()) ?? 0) > 1 || secondDone.isSet }
+        try release(hold)
+        let runs = try await [first, second.value]
+        #expect(runs.allSatisfy { $0.status != 0 && $0.errors.contains("compile error") })
+        #expect(builds == 1, "a waiting run built again")
+    }
+
+    /// A build's holder is told apart by the kernel, not by how a clock prints: one started under another language
+    /// keeps its lock while it builds.
+    @Test func aLiveBuildUnderAnotherLanguageKeepsItsLock() async throws {
+        let hold = try await fifo("hold")
+        async let first = shim("help", environment: ["HOLD_BUILD": hold.path, "LC_ALL": "de_DE.UTF-8"])
+        try await until { builds == 1 }
+        let secondDone = Flag()
+        let second = Task {
+            let run = try await shim("help", environment: ["LC_ALL": "C"])
+            secondDone.set()
+            return run
+        }
+        try await until { await ((try? onTheLock()) ?? 0) > 1 || builds > 1 || secondDone.isSet }
+        try release(hold)
+        let runs = try await [first, second.value]
+        #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
+        #expect(builds == 1, "a second build started beside the live one")
+    }
+
+    /// A build killed outright (SIGKILL runs no trap) holds nothing: the next run builds at once.
+    @Test func aBuildKilledOutrightHoldsNoLock() async throws {
+        let hold = try await fifo("hold")
+        let first = Task { try await shim("help", environment: ["HOLD_BUILD": hold.path]) }
+        try await until { builds == 1 }
+        let kill = Process()
+        kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        kill.arguments = ["-9", "-f", root.path]
+        try await Self.runToEnd(kill)
+        _ = try await first.value
         let run = try await shim("help")
         #expect(run.status == 0 && run.output.hasPrefix("ran help"))
-        // The failure is a ten-minute wait; a minute is far from it and safe when the suite runs in parallel.
-        #expect(Date().timeIntervalSince(started) < 60)
-        #expect(!FileManager.default.fileExists(atPath: lock.path))
+        #expect(builds == 2)
+    }
+
+    /// Two runs that find a dead build's lock build once between them: neither takes the lock from the other.
+    @Test func twoRunsOnADeadBuildsLockBuildOnce() async throws {
+        let holdRemove = try await fifo("hold-remove"), holdBuild = try await fifo("hold-build")
+        let removals = cache.deletingLastPathComponent().appending(path: "removals.log")
+        // Stops the first run just before it first removes a lock, so the second can take it in between.
+        try write("""
+        #!/bin/sh
+        for last; do :; done
+        if [ -n "${HOLD_RM:-}" ] && [ "${last##*/}" = .lock ] && [ ! -e "\(removals.path)" ]; then echo held >> "\(removals.path)"; read -r _ < "$HOLD_RM"; fi
+        exec /bin/rm "$@"
+        """, to: "fakebin/rm", executable: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        // A dead build's lock, as this version and the one before it leave one.
+        try FileManager.default.createSymbolicLink(atPath: cache.appending(path: ".lock").path, withDestinationPath: "999999 Mon Jan 1 00:00:00 2024")
+        FileManager.default.createFile(atPath: cache.appending(path: ".build.lock").path, contents: nil)
+        let firstDone = Flag(), secondDone = Flag()
+        let first = Task {
+            let run = try await shim("help", environment: ["HOLD_RM": holdRemove.path])
+            firstDone.set()
+            return run
+        }
+        try await until { lines(in: removals) > 0 || firstDone.isSet }
+        let second = Task {
+            let run = try await shim("help", environment: ["HOLD_BUILD": holdBuild.path])
+            secondDone.set()
+            return run
+        }
+        try await until { builds > 0 && !firstDone.isSet || secondDone.isSet }
+        if lines(in: removals) > 0 { try release(holdRemove) }
+        try await until { firstDone.isSet || builds > 1 }
+        if !secondDone.isSet { try release(holdBuild) }
+        let runs = try await [first.value, second.value]
+        #expect(runs.allSatisfy { $0.status == 0 && $0.output.hasPrefix("ran help") })
+        #expect(builds == 1, "two builds ran at once")
     }
 }
 
@@ -298,5 +446,146 @@ extension ShimTests {
         #expect(!FileManager.default.fileExists(atPath: stale.path))
         let current = cache.appending(path: "roots" + (try await Self.physicalPath(root)) + ".key")
         #expect(FileManager.default.fileExists(atPath: current.path))
+    }
+}
+
+/// The session hooks: Claude Code gives SessionEnd hooks 1.5 s in all, which a plugin's own `timeout` doesn't raise, and the
+/// first answer waits on SessionStart's, so neither builds the CLI (docs/findings.md, *The session hooks*).
+extension ShimTests {
+    static let session = "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"
+    static func event(_ name: String) -> String { #"{"hook_event_name":"\#(name)","session_id":"\#(session)","source":"startup"}"# }
+    var stamp: URL { cache.appending(path: "sessions/\(Self.session)") }
+
+    @Test func aSessionsEndWithNoBuildBuildsNothingAndHashesNothing() async throws {
+        try FileManager.default.createDirectory(at: stamp, withIntermediateDirectories: true)
+        try "0.14.1".write(to: stamp.appending(path: "briefing"), atomically: true, encoding: .utf8)
+        let run = try await shim("hook", "session-end", input: Self.event("SessionEnd"))
+        #expect(run.status == 0 && run.output.isEmpty)
+        #expect(builds == 0 && hashes == 0)
+        #expect(!FileManager.default.fileExists(atPath: stamp.path))
+        // The stamp went aside whole and then went; nothing of it is left beside the others.
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: stamp.deletingLastPathComponent().path)) ?? []).isEmpty)
+    }
+
+    @Test func aSessionsStartWithNoBuildAnswersAtOnceAndBuildsNothing() async throws {
+        let run = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(run.status == 0)
+        #expect(builds == 0)
+        #expect(run.output.contains("being built"))
+    }
+
+    @Test func theLateStartBuildsAndBriefsWhenTheStartCouldnt() async throws {
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        #expect(late.status == 0)
+        #expect(builds == 1)
+        #expect(late.output == "ran hook session-start root=\(try await Self.physicalPath(root))\n")
+    }
+
+    @Test func withABuildTheStartBriefsAndTheLateStartSaysNothing() async throws {
+        _ = try await shim("help")
+        let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        #expect(start.output == "ran hook session-start root=\(try await Self.physicalPath(root))\n")
+        #expect(late.status == 0 && late.output.isEmpty)
+    }
+
+    @Test func aLateStartThatRunsFirstLeavesTheBriefingToTheStart() async throws {
+        _ = try await shim("help")
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(late.output.isEmpty)
+        #expect(start.output.hasPrefix("ran hook session-start"))
+    }
+
+    /// With a build there, the start briefs and leaves nothing a late start could take, whichever runs first.
+    @Test func withABuildTheStartLeavesNothingDue() async throws {
+        _ = try await shim("help")
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: cache.appending(path: "briefings").path)) ?? []).isEmpty)
+    }
+
+    /// A build that fails says so with the next turn, rather than the briefing the start promised, and leaves nothing due.
+    @Test func aLateStartWhoseBuildFailsSaysSo() async throws {
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let late = try await shim("hook", "session-start", "--late", environment: ["FAIL_BUILD": "1"], input: Self.event("SessionStart"))
+        #expect(late.status == 0)
+        // An async hook's words reach Claude as its JSON's additionalContext.
+        #expect(late.output.contains("couldn't be built") && late.output.contains(#""additionalContext""#))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: cache.appending(path: "briefings").path)) ?? []).isEmpty)
+    }
+
+    /// A build that fails before the start has even left its briefing due is still said.
+    @Test func aLateStartWhoseBuildFailsFirstStillSaysSo() async throws {
+        let late = try await shim("hook", "session-start", "--late", environment: ["FAIL_BUILD": "1"], input: Self.event("SessionStart"))
+        #expect(late.output.contains("couldn't be built"))
+    }
+
+    /// A briefing left due by a session that ended without its end hook, then resumed with a build there, isn't given
+    /// twice: the start that briefs takes it.
+    @Test func aBriefingLeftDueIsntGivenTwice() async throws {
+        _ = try await shim("help")
+        let briefings = cache.appending(path: "briefings")
+        try FileManager.default.createDirectory(at: briefings, withIntermediateDirectories: true)
+        try "".write(to: briefings.appending(path: "\(Self.session).due"), atomically: true, encoding: .utf8)
+        let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        #expect(start.output.hasPrefix("ran hook session-start"))
+        #expect(late.output.isEmpty)
+    }
+
+    /// A briefing left due by a Claude Code that's gone, as one that crashed while the CLI built, is no start's of
+    /// this one: a late start that runs first doesn't take it, and the start that briefs clears it.
+    @Test func aBriefingAnEndedClaudeCodeLeftDueIsntGivenWhicheverStartRunsFirst() async throws {
+        _ = try await shim("help")
+        let briefings = cache.appending(path: "briefings")
+        try FileManager.default.createDirectory(at: briefings, withIntermediateDirectories: true)
+        for name in ["\(Self.session).due", "\(Self.session).due.4242"] {
+            try "999999 Mon Jan 1 00:00:00 2024\n".write(to: briefings.appending(path: name), atomically: true, encoding: .utf8)
+        }
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(late.output.isEmpty)
+        #expect(start.output.hasPrefix("ran hook session-start"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: briefings.path)) ?? []).isEmpty)
+    }
+
+    /// Two starts while the CLI builds, as a compaction during the first build, each leave their briefing due, and each
+    /// late start gives one.
+    @Test func twoStartsWhileTheCLIBuildsAreEachBriefed() async throws {
+        let first = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let second = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(first.output.contains("being built") && second.output.contains("being built"))
+        let lates = [try await shim("hook", "session-start", "--late", input: Self.event("SessionStart")), try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))]
+        #expect(lates.filter { $0.output.hasPrefix("ran hook session-start") }.count == 2)
+    }
+
+    /// A briefing its start left due is given, even when the build its start waited for landed before the late start
+    /// began: the start said the briefing follows, so it does.
+    @Test func aBriefingLeftDueIsGivenThoughTheBuildLandedFirst() async throws {
+        let briefings = cache.appending(path: "briefings")
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: briefings.path)) ?? []).contains { $0.hasPrefix("\(Self.session).due") })
+        _ = try await shim("help")
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        #expect(late.output.hasPrefix("ran hook session-start"))
+    }
+
+    /// A session's end takes a briefing still due with its stamp.
+    @Test func aSessionsEndTakesABriefingStillDue() async throws {
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        _ = try await shim("hook", "session-end", input: Self.event("SessionEnd"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: cache.appending(path: "briefings").path)) ?? []).isEmpty)
+    }
+
+    /// A resume, a `/clear` or a compaction is a start of its own, briefed once again.
+    @Test func eachStartIsBriefedOnce() async throws {
+        var briefings = 0
+        for _ in 0..<2 {
+            let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+            let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+            briefings += [start, late].filter { $0.output.hasPrefix("ran hook session-start") }.count
+        }
+        #expect(briefings == 2)
     }
 }

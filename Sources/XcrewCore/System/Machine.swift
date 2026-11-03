@@ -1,7 +1,7 @@
 import Foundation
 
-/// What xcrew may read from the machine: environment variables, the home folder, and the
-/// programs it runs. Passed in rather than read globally, so every behaviour is testable.
+/// What xcrew may read from the machine: environment variables, the home folder, the
+/// programs it runs, and the time. Passed in rather than read globally, so every behaviour is testable.
 public struct Machine: Sendable {
     public let environment: [String: String]
     public let home: URL
@@ -10,13 +10,16 @@ public struct Machine: Sendable {
     public let processID: Int32
     /// Where apps are installed, Xcode among them.
     public let applications: URL
+    /// The time now: the wall clock, or a test's own.
+    public let now: @Sendable () -> Date
 
-    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications")) {
+    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications"), now: @escaping @Sendable () -> Date = { Date() }) {
         self.environment = environment
         self.home = home
         self.runner = runner
         self.processID = processID
         self.applications = applications
+        self.now = now
     }
 
     public static let live = Machine(
@@ -35,7 +38,12 @@ public struct Machine: Sendable {
 
     /// This machine with `name` set to `value` in its environment.
     public func setting(_ name: String, to value: String) -> Machine {
-        Machine(environment: environment.merging([name: value]) { $1 }, home: home, runner: runner, processID: processID, applications: applications)
+        Machine(environment: environment.merging([name: value]) { $1 }, home: home, runner: runner, processID: processID, applications: applications, now: now)
+    }
+
+    /// This machine with its commands run by `runner`.
+    public func running(_ runner: any CommandRunning) -> Machine {
+        Machine(environment: environment, home: home, runner: runner, processID: processID, applications: applications, now: now)
     }
 
     /// A variable's value, treating an empty one as unset.

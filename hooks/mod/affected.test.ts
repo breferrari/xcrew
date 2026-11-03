@@ -78,6 +78,11 @@ test('when the CLI can\'t answer, the answer is the whole suite', async ($, on) 
   expect(await ask($)).toStartWith("xcrew couldn't say which tests the changes can break; the whole suite covers them.")
 })
 
+test('when the CLI can\'t answer, the answer says why', async ($, on) => {
+  session(on, new Error('timed out'))
+  expect(await ask($)).toMatch(/the whole suite covers them\. xcrew affected couldn't run: ./)
+})
+
 test('a base Claude names is passed to the CLI', async ($, on) => {
   const seen = session(on, { base: 'release/2.0, from fedcba987654', changed: [], selections: [] })
   await ask($, { base: 'release/2.0' })
@@ -94,12 +99,6 @@ test('changed files no test target covers are said to be changed, not missing', 
 test('without a base the answer names none', async ($, on) => {
   session(on, { runAll: "this isn't a git repository, so the change can't be told apart" })
   expect(await ask($)).not.toContain('Compared with')
-})
-
-test('the CLI gets the time a first build needs', async ($, on) => {
-  const seen = session(on, { base: 'b', changed: [], selections: [] })
-  await ask($)
-  expect(seen.calls.find(call => call.args[0] === 'affected')?.timeoutMs).toBe(120_000)
 })
 
 test('session start registers exactly the ledger, affected, look and evidence tools, once each', async ($, on) => {
@@ -136,22 +135,22 @@ test('past 20 targets of a kind, no arguments are given', async ($, on) => {
 test('a scheme of many targets is counted rather than listed', async ($, on) => {
   const unit = named('U', 30)
   session(on, { changed: ['Core/Store.swift'], selections: unit, schemes: [{ name: 'Feature', container: 'App.xcworkspace', targets: unit.slice(0, 15) }] })
-  expect(await ask($)).toContain(' Schemes that test only selected targets: `Feature` (15 targets). No shared scheme tests 15 of the selected targets.')
+  expect(await ask($)).toContain(` Schemes that test only selected targets: \`Feature\` (15 targets; ${ALL}). No shared scheme tests 15 of the selected targets; ${ALL}.`)
 })
 
 /** Most of the suite: the CLI names the scheme that tests all of it, and no other is listed. */
 test('when the changes reach most of the suite, the scheme that tests all of it is named alone', async ($, on) => {
   const all = ['AppTests', 'AppUITests', 'CoreTests', 'DataTests', 'FeatureTests']
-  session(on, { changed: ['Core.swift'], selections: all, whole: { name: 'Everything', container: 'Field.xcworkspace', tests: all, more: 0 } })
+  session(on, { changed: ['Core.swift'], selections: all, whole: { name: 'Everything', container: 'Field.xcworkspace', tests: all, others: [] } })
   const text = await ask($)
   expect(text).toEndWith(' The changes reach most of the suite: `Everything` tests every selected target.')
   expect(text).not.toContain('Schemes that test')
 })
 
-test('the scheme that tests most of the suite says how many targets it tests beyond it', async ($, on) => {
+test('the scheme that tests most of the suite names the targets it tests beyond it', async ($, on) => {
   const all = ['AppTests', 'CoreTests', 'FeatureTests']
-  session(on, { changed: ['Core.swift'], selections: all, whole: { name: 'App-Workspace', container: 'App.xcworkspace', tests: all, more: 2 } })
-  expect(await ask($)).toEndWith(' The changes reach most of the suite: `App-Workspace` tests every selected target and 2 more.')
+  session(on, { changed: ['Core.swift'], selections: all, whole: { name: 'App-Workspace', container: 'App.xcworkspace', tests: all, others: ['DataTests', 'UITests'] } })
+  expect(await ask($)).toEndWith(' The changes reach most of the suite: `App-Workspace` tests every selected target, and DataTests and UITests besides.')
 })
 
 /** A target no listed scheme tests is named with the scheme that tests it with the fewest more, as the CLI chose it. */
@@ -160,9 +159,9 @@ test('a selected target no listed scheme tests is named with the scheme that tes
     changed: ['Feature.swift'],
     selections: ['AppUITests', 'FeatureTests'],
     schemes: [{ name: 'Feature', container: 'Modules/Feature/Feature.xcodeproj', targets: ['FeatureTests'] }],
-    nearest: [{ name: 'Mixed', container: 'Field.xcworkspace', tests: ['AppUITests'], more: 1 }],
+    nearest: [{ name: 'Mixed', container: 'Field.xcworkspace', tests: ['AppUITests'], others: ['AppTests'] }],
   })
-  expect(await ask($)).toEndWith(' Schemes that test only selected targets: `Feature` (FeatureTests). `Mixed` tests AppUITests with 1 more.')
+  expect(await ask($)).toEndWith(' Schemes that test only selected targets: `Feature` (FeatureTests). `Mixed` tests AppUITests, and AppTests besides.')
 })
 
 /** Many schemes are capped as many targets are: the first named, the rest counted, and where they all are. */

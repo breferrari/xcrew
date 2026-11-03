@@ -16,9 +16,12 @@ export function afterRead(held: ElsewhereRuns | null, read: ElsewhereRun[] | und
   return held && now - held.at < ELSEWHERE_KEPT_MS ? held : null
 }
 
-/** `elsewhere: feature · test_sim · testing 120 of 959`: a fact, the first runs named and the rest counted. */
-export function elsewhereText(runs: ElsewhereRun[]): string {
+/** The line's label, drawn faint before the runs, which read in the theme's own text colour. */
+export const ELSEWHERE_LABEL = 'elsewhere: '
+
+/** `feature · test_sim · testing 120 of 959`: a fact, the first runs named and the rest counted. */
+export function elsewhereRuns(runs: ElsewhereRun[]): string {
   const named = runs.slice(0, NAMED).map(run => [run.worktree, run.tool, ...(run.phase ? [run.phase] : [])].join(' · '))
-  const more = runs.length > NAMED ? [`+${runs.length - NAMED} more`] : []
-  return `elsewhere: ${[...named, ...more].join('; ')}`
+  const more = runs.length > NAMED ? [`+${runs.length - NAMED} more; \`xcrew runs\` lists them all`] : []
+  return [...named, ...more].join('; ')
 }

@@ -1,3 +1,4 @@
+import Synchronization
 import Foundation
 import Testing
 @testable import XcrewCore
@@ -7,6 +8,7 @@ import XcrewTestSupport
 @Suite struct XcodeChecksTests {
     /// A project on a Mac with Xcode 26.4 and Xcode 27.2 beta 3, 27.2 selected; this session's MobileBuildMCP serving it,
     /// started `server` ago (`ps`'s `etime`) unless nil; and what the launcher recorded, `launch`, `recorded` seconds ago.
+    /// The record's date and the machine's clock are one moment, so how long the test takes to run moves neither.
     func context(pin: String? = nil, workflow: String? = nil, running: String? = nil, launch: String? = nil, recorded: TimeInterval = 5, server: String? = "00:30", onlyOne: Bool = false, xcodesTool: Bool = false, mcpStatus: String? = nil) -> CheckContext {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let apps = project.root.appending(path: "Applications")
@@ -16,12 +18,13 @@ import XcrewTestSupport
         var responses = FakeSession.responses(serving: server == nil ? nil : project, age: server ?? "", programs: running.map { [202: "\(apps.path)/\($0)/Contents/MacOS/Xcode"] } ?? [:])
         responses["xcode-select -p"] = .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n")
         if let mcpStatus { responses["xcrun mcp-server status"] = .init(status: 0, stdout: mcpStatus) }
-        let context = CheckContext.fake(FakeRunner(installed: xcodesTool ? ["xcodes"] : [], responses: responses), project: project, processID: FakeSession.doctor, applications: apps)
+        let now = Date()
+        let context = CheckContext.fake(FakeRunner(installed: xcodesTool ? ["xcodes"] : [], responses: responses), project: project, processID: FakeSession.doctor, applications: apps, now: now)
         if let launch {
             let record = Xcodes.launchRecord(of: project, on: context.machine)
             try! FileManager.default.createDirectory(at: record.deletingLastPathComponent(), withIntermediateDirectories: true)
             try! launch.replacingOccurrences(of: "APPS", with: apps.path).write(to: record, atomically: true, encoding: .utf8)
-            try! FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -recorded)], ofItemAtPath: record.path)
+            try! FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-recorded)], ofItemAtPath: record.path)
         }
         return context
     }
@@ -90,10 +93,10 @@ import XcrewTestSupport
     }
 
     /// A failed MobileBuildMCP build or test in a project whose pin isn't the Xcode building says it may be the cause,
-    /// in the check's own words and with its fix; a failure built with the pinned Xcode says nothing.
+    /// with what fixes it; a failure built with the pinned Xcode says nothing.
     @Test func aFailureWithAnotherXcodeThanThePinSaysItMayBeTheCause() async throws {
         let mismatched = context(pin: "25.0\n")
-        #expect(try await pinNote(mismatched) == "xcrew: builds use Xcode 27.2 while the project pins Xcode 25.0 (.xcode-version): a different SDK may be the cause. To build with the pin, install Xcode 25.0 from https://developer.apple.com/download/all/")
+        #expect(try await pinNote(mismatched) == "xcrew: builds use Xcode 27.2 while the project pins Xcode 25.0 (.xcode-version): a different SDK may be the cause. The pin's Xcode 25.0 downloads from https://developer.apple.com/download/all/")
         #expect(try await pinNote(context(pin: "27.2\n", server: nil)) == nil)
     }
 
@@ -187,9 +190,9 @@ import XcrewTestSupport
     }
 
     /// The pin is installed but MobileBuildMCP started without it: the note says so, and the fix is a restart.
-    @Test func aServerStartedWithoutThePinSaysToRestart() async throws {
+    @Test func aServerStartedWithoutThePinSaysARestartAppliesIt() async throws {
         let note = try await pinNote(context(pin: "26.4\n", launch: "timed out 30\n"))
-        #expect(note == "xcrew: MobileBuildMCP started without the project's pin, Xcode 26.4 (.xcode-version), so it builds with Xcode 27.2: a different SDK may be the cause. Restart Claude Code to build with the pin.")
+        #expect(note == "xcrew: MobileBuildMCP started without the project's pin, Xcode 26.4 (.xcode-version), so it builds with Xcode 27.2: a different SDK may be the cause. The pin takes effect once Claude Code restarts.")
     }
 
     /// Which Xcode builds is the person's choice: a pin no installed Xcode matches stays off the line above the prompt,
@@ -226,11 +229,11 @@ import XcrewTestSupport
         #expect(result.message.contains("26.4"))
     }
 
-    /// The launcher says why it didn't apply the pin: the CLI wasn't built yet, or answered too late.
+    /// The launcher says why it didn't apply the pin: the CLI wasn't built yet, or failed.
     @Test func aPinTheServerStartedWithoutWarnsWhy() async {
-        let result = await XcodePinCheck().run(context(pin: "26.4\n", launch: "timed out 2\n"))
+        let result = await XcodePinCheck().run(context(pin: "26.4\n", launch: "failed 1\n"))
         #expect(result.status == .warn)
-        #expect(result.message == "the project pins Xcode 26.4 (.xcode-version), but MobileBuildMCP started without it (the xcrew CLI took longer than 2 s), so it builds with Xcode 27.2: restart Claude Code")
+        #expect(result.message == "the project pins Xcode 26.4 (.xcode-version), but MobileBuildMCP started without it (the xcrew CLI failed, with status 1), so it builds with Xcode 27.2: restart Claude Code")
     }
 
     /// A server started before the pin, or before xcrew applied pins, left no record of it.
@@ -267,6 +270,20 @@ import XcrewTestSupport
         #expect(await XcodeMCPHandshakeCheck().run(context(.init(status: 1, stdout: ""))) == .fail("a new Xcode MCP bridge (xcrun mcpbridge) didn't answer MCP's initialize: xcrun mcp-server status says whether the server is on, and /mcp → Reconnect restarts this session's"))
     }
 
+    /// A bridge that hasn't answered is waited on however long it takes, and the doctor says what it waits on while it
+    /// does: Xcode may be asking to allow the agent. A cancel ends the wait.
+    @Test func whileTheBridgeHasntAnsweredTheDoctorSaysWhatItWaitsOn() async throws {
+        let said = Lines()
+        let runner = BridgeNeverAnswers(FakeRunner(responses: FakeSession.responses(serving: nil)), bridge: Self.command)
+        let base = CheckContext.fake(processID: FakeSession.doctor)
+        let context = CheckContext(project: base.project, machine: base.machine.running(runner), progress: { said.append($0) })
+        let check = Task { await XcodeMCPHandshakeCheck().run(context) }
+        try await until { !said.all.isEmpty }
+        #expect(said.all == ["waiting for a new Xcode MCP bridge to answer (xcrun mcpbridge): if Xcode asks whether to allow an agent, answer it there"])
+        check.cancel()
+        #expect(await check.value.status == .fail)
+    }
+
     /// From a terminal the bridge's first call may ask Xcode to approve a new agent: the doctor never raises that dialog.
     @Test func outsideASessionItSkips() async {
         #expect(await XcodeMCPHandshakeCheck().run(context(nil, inSession: false)) == .skip("runs only from a Claude Code session, whose agent Xcode already permits"))
@@ -276,4 +293,49 @@ import XcrewTestSupport
     @Test func onlyTheFullDoctorRunsIt() {
         #expect(Doctor.checks.filter(\.startsAServer).map(\.id) == ["xcode-mcp/handshake"])
     }
+
+    /// A bridge that ends without answering, as with the Xcode MCP off, ends the check then, not at its call's deadline:
+    /// the command, run for real against an `xcrun` that exits at once, answers within the test's minute.
+    @Test func aBridgeThatEndsWithoutAnsweringEndsTheWait() async throws {
+        #expect(try await Self.handshake(bridge: "exit 1").isEmpty)
+    }
+
+    /// A bridge that answers is read, the command run for real against an `xcrun` that answers the line it reads.
+    @Test func aBridgeThatAnswersIsRead() async throws {
+        #expect(try await Self.handshake(bridge: "read line; printf '%s\\n' '\(Self.answer)'") == Self.answer + "\n")
+    }
+
+    /// The handshake's command's output, run for real with `xcrun` a script whose body is `bridge`.
+    static func handshake(bridge: String) async throws -> String {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-handshake-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let xcrun = folder.appending(path: "xcrun")
+        try "#!/bin/sh\n\(bridge)\n".write(to: xcrun, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: xcrun.path)
+        return await SystemCommandRunner().run(["/usr/bin/env", "PATH=\(folder.path):/usr/bin:/bin"] + XcodeMCPHandshakeCheck.command, stdin: Data(XcodeMCPHandshakeCheck.initialize.utf8)).stdout
+    }
+}
+
+/// Lines said as a check runs, from any task.
+final class Lines: Sendable {
+    private let lines = Mutex<[String]>([])
+    func append(_ line: String) { lines.withLock { $0.append(line) } }
+    var all: [String] { lines.withLock { $0 } }
+}
+
+/// A runner whose bridge never answers: its run ends only when its task is cancelled, as a real one's does.
+struct BridgeNeverAnswers: CommandRunning {
+    let base: FakeRunner
+    let bridge: String
+    init(_ base: FakeRunner, bridge: String) { (self.base, self.bridge) = (base, bridge) }
+
+    func run(_ argv: [String], stdin: Data?) async -> CommandResult {
+        guard argv.joined(separator: " ") == bridge else { return await base.run(argv, stdin: stdin) }
+        let (ended, end) = AsyncStream<Void>.makeStream()
+        await withTaskCancellationHandler { for await _ in ended {} } onCancel: { end.finish() }
+        return .cancelled
+    }
+
+    func which(_ name: String) -> String? { base.which(name) }
 }

@@ -4,6 +4,12 @@ struct ProjectConfigCheck: Check {
     let id = "mobilebuildmcp/project-config"
     let title = "MobileBuildMCP project config"
 
+    /// What the doctor says of the config folder XcodeBuildMCP kept before the rename, at `folder`: it's in the person's
+    /// project, maybe tracked in git, so removing it is theirs to agree to, said before the command that ends the text.
+    static func legacyFolder(_ folder: String) -> String {
+        ".xcodebuildmcp/ predates MobileBuildMCP 2.7.1 and is no longer read. It may be tracked in git, so it's the person's to agree to: rm -r \(ShellWord.quoted(folder))"
+    }
+
     func run(_ context: CheckContext) async -> CheckResult {
         let project = context.project
         guard project.hasMobileBuildMCPConfig, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else {
@@ -29,7 +35,7 @@ struct ProjectConfigCheck: Check {
             return .warn("the config enables xcode-ide, MobileBuildMCP's second route to the Xcode MCP, whose answers Xcrew can't read: /xcrew:setup rewrites it" + force)
         }
         if FileManager.default.fileExists(atPath: project.legacyConfigFolder.path) {
-            return .warn(".xcodebuildmcp/ predates MobileBuildMCP 2.7.1 and is no longer read: delete it")
+            return .warn(Self.legacyFolder(project.legacyConfigFolder.path))
         }
         let missing = ConfigRenderer.containerPaths(in: yaml, root: project.root, home: context.machine.home).filter { !FileManager.default.fileExists(atPath: $0) }
         if !missing.isEmpty {

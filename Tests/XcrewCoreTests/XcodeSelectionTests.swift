@@ -39,13 +39,16 @@ import XcrewTestSupport
         #expect(BinaryPropertyList.read(BinaryPropertyList.array([.string("a"), .uid(3), .integer(300)]).encoded) == .array([.string("a"), .uid(3), .integer(300)]))
     }
 
-    /// A trailer claiming more objects than fit, or references shared so often the walk would never end, read as
-    /// nothing.
+    /// A trailer claiming more objects than fit reads as nothing.
     @Test func aHostileStateReadsAsNothing() {
         let trailer: [UInt8] = [0, 0, 0, 0, 0, 0, 8, 1, 0x20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8]
         let overflowing: [UInt8] = Array("bplist00".utf8) + [UInt8](repeating: 0, count: 32) + trailer
         #expect(BinaryPropertyList.read(Data(overflowing)) == nil)
-        // Object n is an array holding object n + 1 twice, 40 deep: 2^40 visits without a budget.
+    }
+
+    /// References shared however often are read whole, each object once: a well-formed file is never cut short. Object
+    /// n is an array holding object n + 1 twice, 40 deep: 2^40 visits if each reference were read again.
+    @Test func referencesSharedOftenAreReadWhole() {
         let depth = 40
         var objects: [[UInt8]] = (0..<depth).map { [0xA2, UInt8($0 + 1), UInt8($0 + 1)] }
         objects.append([0x51, 0x61])
@@ -61,7 +64,12 @@ import XcrewTestSupport
         let tableAt: [UInt8] = [0, 0, 0, 0, 0, 0, 0, UInt8(table)]
         bytes += offsets
         bytes += sizes + count + top + tableAt
-        #expect(BinaryPropertyList.read(Data(bytes)) == nil)
+        var level = BinaryPropertyList.read(Data(bytes))
+        for _ in 0..<depth {
+            guard case let .array(items)? = level, items.count == 2 else { break }
+            level = items[1]
+        }
+        #expect(level == .string("a"))
     }
 
     /// `findXcodeStateFile`: the configured container's file first, when it's there.

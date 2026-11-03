@@ -9,36 +9,37 @@ public enum RunLog {
         phase(in: Data(log.utf8), expectedTests: expectedTests)
     }
 
-    /// The phase of the log at `url`. With `folder`, read on from the reading kept there for it, and that reading kept
-    /// again: a clean build's log runs to tens of megabytes, and the band asks once a second.
-    public static func phase(ofLogAt url: URL, expectedTests: Int?, keptIn folder: URL? = nil) -> String? {
-        let kept = folder.map { $0.appending(path: SHA256.hash(data: Data(url.path.utf8)).hex + ".json") }
-        let before = kept.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(LogReading.self, from: $0) }
+    /// The phase of the log at `url`. With `readings`, read on from the reading kept in its folder for it, and that reading
+    /// kept again, the readings unread for a day before its `now` removed: a clean build's log runs to tens of megabytes,
+    /// and the band asks once a second.
+    public static func phase(ofLogAt url: URL, expectedTests: Int?, keptIn readings: (folder: URL, now: Date)? = nil) -> String? {
+        follow(logAt: url, expectedTests: expectedTests, kind: .build, keptIn: readings)?.phase
+    }
+
+    /// What a tick of the band reads of a running log, from its kept reading alone: the phase, the scheme its invocation
+    /// names and its latest verdict as `kind`'s outcome, with nothing read again from the log's start or end.
+    public static func follow(logAt url: URL, expectedTests: Int?, kind: Report.Kind, keptIn readings: (folder: URL, now: Date)? = nil) -> (phase: String?, scheme: String?, outcome: Bool?)? {
+        let file = readings.map { $0.folder.appending(path: SHA256.hash(data: Data(url.path.utf8)).hex + ".json") }
+        let before = file.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(LogReading.self, from: $0) }
         guard let reading = LogReading.reading(url, after: before) else { return nil }
-        if let kept, reading != before, let encoded = try? JSONEncoder().encode(reading) {
-            if before == nil { pruneReadings(in: kept.deletingLastPathComponent()) }
-            try? FileManager.default.createDirectory(at: kept.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? encoded.write(to: kept, options: .atomic)
+        if let file, reading != before, let encoded = try? JSONEncoder().encode(reading) {
+            if before == nil, let readings { pruneReadings(in: readings.folder, now: readings.now) }
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? encoded.write(to: file, options: .atomic)
         }
-        return reading.phase(expectedTests: expectedTests)
+        return (reading.phase(expectedTests: expectedTests), reading.scheme, reading.verdict.flatMap { outcome(ofVerdict: $0, kind: kind) })
     }
 
-    /// Removes the readings no one has kept for a day: a run's log is followed only while it runs.
-    static func pruneReadings(in folder: URL) {
-        let oldest = Date.now.addingTimeInterval(-24 * 3600)
-        for entry in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        where ((try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now) < oldest {
-            try? FileManager.default.removeItem(at: entry)
-        }
+    /// Removes the readings no one has kept for a day before `now`: a run's log is followed only while it runs.
+    static func pruneReadings(in folder: URL, now: Date) {
+        AgedEntries.removing(olderThan: 24 * 3600, in: folder, now: now)
     }
 
-    /// Where a log's reading is kept between the band's asks, one file a log.
-    public static func readings(on machine: Machine) -> URL {
-        machine.cacheFolder.appending(path: "phases")
+    /// Where a log's reading is kept between the band's asks, one file a log, with the machine's time now, before which
+    /// readings unread for a day are removed.
+    public static func readingsKept(on machine: Machine) -> (folder: URL, now: Date) {
+        (machine.cacheFolder.appending(path: "phases"), machine.now())
     }
-
-    /// How much of a log's end holds its latest lines, nearly always.
-    static let tailBytes = 64 * 1024
 
     /// A short phase for the band, or nil before the first task. `expectedTests` is the last run's total. From the
     /// end of the tests' build until testing starts, the phase is testing, with no count (docs/findings.md, *Test progress
@@ -136,6 +137,27 @@ public enum RunLog {
         await find(since: since, project: project, machine: machine) { $0.hasPrefix("\(tool)_") }
     }
 
+    /// The log of the run a call started at `since`, in milliseconds since 1970, read once the run has ended: the first
+    /// `tool` log opened at or after `since`, by the time MobileBuildMCP names it with (docs/findings.md, *Which log is the
+    /// run's*). A later call's log, written since, is another run's. Only this session's servers' logs count, as for
+    /// `find`.
+    public static func first(tool: String, since: Int, project: URL, machine: Machine) async -> URL? {
+        let opened = candidates(project: project, home: machine.home) { openedAt($0, tool: tool).map { $0 >= since } ?? false }
+        let mine = opened.isEmpty ? [] : await ofSession(opened, on: machine)
+        return mine.compactMap { log in openedAt(log.lastPathComponent, tool: tool).map { (log, $0) } }.min { $0.1 < $1.1 }?.0
+    }
+
+    /// When MobileBuildMCP opened a `tool` log, in whole milliseconds since 1970, from its name:
+    /// `<tool>_<ISO 8601 time in UTC, ':' and '.' as '-'>_pid…` (`utils/log-naming.js`). Nothing for another tool's log.
+    static func openedAt(_ name: String, tool: String) -> Int? {
+        guard name.hasPrefix("\(tool)_"),
+              let stamp = name.dropFirst(tool.count + 1).prefixMatch(of: /(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_pid/),
+              let second = try? Date.ISO8601FormatStyle().parse("\(stamp.1)T\(stamp.2):\(stamp.3):\(stamp.4)Z"),
+              let milliseconds = Int(stamp.5)
+        else { return nil }
+        return Int(second.timeIntervalSince1970) * 1000 + milliseconds
+    }
+
     /// The newest log MobileBuildMCP wrote for a build or test of this project, whichever tool ran it (`build_sim_…`,
     /// `test_sim_…`, `build_run_sim_…`) and whichever server: an earlier failure's may be a server since restarted, or
     /// another session's.
@@ -144,9 +166,17 @@ public enum RunLog {
     }
 
     static func find(in folder: String = "logs", since: Date, project: URL, machine: Machine, named matches: (String) -> Bool) async -> URL? {
-        guard find(in: folder, since: since, project: project, home: machine.home, named: matches) != nil else { return nil }
+        let written = newest(candidates(in: folder, project: project, home: machine.home, named: matches), since: since)
+        return written.isEmpty ? nil : newest(await ofSession(written, on: machine), since: since).first
+    }
+
+    /// The items a MobileBuildMCP server of the Claude Code session above this process wrote (`_pid<server>_`): two
+    /// sessions in one checkout share the workspace folder. All of them when there's no session, or none of its servers
+    /// is recognised. The processes are read only once there are items to choose among.
+    static func ofSession(_ items: [URL], on machine: Machine) async -> [URL] {
         let (session, servers) = await ProcessList.load(using: machine.runner).mobileBuildMCPServers(forSessionOf: machine.processID)
-        return find(in: folder, since: since, project: project, home: machine.home, servers: session == nil ? nil : Set(servers.map(\.id)), named: matches)
+        guard session != nil, !servers.isEmpty else { return items }
+        return items.filter { item in servers.contains { item.lastPathComponent.contains("_pid\($0.id)_") } }
     }
 
     /// The log of the MobileBuildMCP run that started at `since`: the newest `<tool>_…log` written since then, in this
@@ -161,68 +191,86 @@ public enum RunLog {
     /// The newest log `matches` names, as `find(tool:…)` picks it; or, with `folder`, the newest item of another of the
     /// workspace's folders, such as `result-bundles`.
     static func find(in folder: String = "logs", since: Date, project: URL, home: URL, servers: Set<Int32>? = nil, named matches: (String) -> Bool) -> URL? {
-        let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
+        let candidates = candidates(in: folder, project: project, home: home, named: matches)
         let servers = servers.flatMap { $0.isEmpty ? nil : $0 }
-        let roots = [project.path, ProjectLayout.canonical(project)]
-        let manager = FileManager.default
-        var newest: (url: URL, modified: Date)?
-        for key in Set(roots.map(workspaceKey(root:))) {
-            let logs = workspaces.appending(path: key).appending(path: folder)
-            for name in (try? manager.contentsOfDirectory(atPath: logs.path)) ?? [] where !name.contains("parser-debug") && matches(name) {
-                if let servers, !servers.contains(where: { name.contains("_pid\($0)_") }) { continue }
-                let url = logs.appending(path: name)
-                guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-                      modified >= since, modified > (newest?.modified ?? .distantPast)
-                else { continue }
-                newest = (url, modified)
+        let theirs = servers.map { servers in candidates.filter { item in servers.contains { item.lastPathComponent.contains("_pid\($0)_") } } } ?? candidates
+        return newest(theirs, since: since).first
+    }
+
+    /// The items written at or after `since`, newest first.
+    static func newest(_ items: [URL], since: Date) -> [URL] {
+        items.compactMap { item in (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate.map { (item, $0) } }
+            .filter { $0.1 >= since }.sorted { $0.1 > $1.1 }.map(\.0)
+    }
+
+    /// The logs in the project's own workspace folder, each by its folder and name, with when it was last written, read
+    /// with the listing: a caller that keeps few of many builds the URLs of those alone.
+    static func dated(in folder: String = "logs", project: URL, home: URL) -> [(folder: URL, name: String, modified: Date)] {
+        listed(in: folder, project: project, home: home, dated: true).compactMap { item in item.modified.map { (item.folder, item.name, $0) } }
+    }
+
+    /// The items of the project's own workspace folder that `matches` names.
+    static func candidates(in folder: String = "logs", project: URL, home: URL, named matches: (String) -> Bool) -> [URL] {
+        listed(in: folder, project: project, home: home, dated: false).filter { matches($0.name) }.map { $0.folder.appending(path: $0.name) }
+    }
+
+    /// The items of the project's own workspace folder, a parser's debug logs left out, each by the folder as given and its
+    /// name, with when it was last written when `dated`, read with the listing. MobileBuildMCP keys the folder by the root
+    /// as it found its config, or by its real path without one, so both are listed.
+    static func listed(in folder: String, project: URL, home: URL, dated: Bool) -> [(folder: URL, name: String, modified: Date?)] {
+        let workspaces = home.appending(path: "Library/Developer/MobileBuildMCP/workspaces")
+        return Set([project.path, ProjectLayout.canonical(project)].map(workspaceKey(root:))).flatMap { key in
+            let items = workspaces.appending(path: key).appending(path: folder)
+            let keys: [URLResourceKey] = dated ? [.contentModificationDateKey] : []
+            return ((try? FileManager.default.contentsOfDirectory(at: items, includingPropertiesForKeys: keys)) ?? []).filter { !$0.lastPathComponent.contains("parser-debug") }.map { item in
+                (items, item.lastPathComponent, dated ? (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate : nil)
             }
         }
-        return newest?.url
     }
 }
 
 extension RunLog {
-    /// Whether the log's run succeeded, by the last verdict xcodebuild printed (`** BUILD SUCCEEDED **`,
-    /// `** TEST EXECUTE FAILED **`); nil before it printed one, when that verdict is neither, as for a run interrupted,
-    /// and for a test run when it isn't its tests' own, as after building for testing.
     /// The scheme the run built, from the `Command line invocation:` MobileBuildMCP's log opens with: the line after it is
     /// xcodebuild's command, `-scheme Feature` or `-scheme "My App"`.
     public static func scheme(in log: String) -> String? {
-        let lines = log.split(separator: "\n", maxSplits: 64, omittingEmptySubsequences: false)
+        let lines = log.split(separator: "\n", omittingEmptySubsequences: false)
         guard let heading = lines.firstIndex(where: { $0.hasPrefix("Command line invocation:") }), heading + 1 < lines.count else { return nil }
-        guard let match = lines[heading + 1].firstMatch(of: /\s-scheme\s+(?:"([^"]+)"|(\S+))/) else { return nil }
+        return scheme(inInvocation: lines[heading + 1])
+    }
+
+    /// The scheme xcodebuild's command line names: `-scheme Feature` or `-scheme "My App"`.
+    static func scheme(inInvocation line: some StringProtocol) -> String? {
+        guard let match = String(line).firstMatch(of: /\s-scheme\s+(?:"([^"]+)"|(\S+))/) else { return nil }
         return String(match.1 ?? match.2 ?? "")
     }
 
-    /// The scheme a log names, read from its first part only: the invocation is at its top.
+    /// The scheme a log's first invocation names, read up to it, wherever that is: usually at its top (docs/findings.md,
+    /// *How much of the log is read for the scheme*).
     public static func scheme(ofLogAt url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let head = try? handle.read(upToCount: 65_536) else { return nil }
-        return scheme(in: String(decoding: head, as: UTF8.self))
+        let invocation: String?? = TextFile.firstLine(in: url) { line, previous in previous?.hasPrefix("Command line invocation:") == true ? .some(scheme(inInvocation: line)) : nil }
+        return invocation ?? nil
     }
 
+    /// Whether the log's run succeeded, by the last verdict xcodebuild printed; nil before it printed one, and for a verdict
+    /// that isn't the run's: a test run's that isn't its tests', or a build and run's success, which is its build's alone
+    /// and comes before the app is installed and launched.
     public static func outcome(of log: String, kind: Report.Kind) -> Bool? {
         guard let verdict = log.split(separator: "\n").reversed().lazy.map({ $0.trimmingCharacters(in: .whitespaces) }).first(where: { $0.hasPrefix("** ") && $0.hasSuffix(" **") }) else { return nil }
+        return outcome(ofVerdict: verdict, kind: kind)
+    }
+
+    /// Whether a verdict, `** TEST EXECUTE FAILED **`, says `kind`'s run succeeded, by `outcome(of:kind:)`'s rule.
+    static func outcome(ofVerdict verdict: String, kind: Report.Kind) -> Bool? {
         if kind == .test, !verdict.hasPrefix("** TEST ") || verdict.hasPrefix("** TEST BUILD ") { return nil }
+        if kind == .run { return verdict.hasSuffix(" FAILED **") ? false : nil }
         return verdict.hasSuffix(" SUCCEEDED **") ? true : verdict.hasSuffix(" FAILED **") ? false : nil
     }
 
-    /// The last `tailBytes` of the log at `url`, where a running log's latest lines are; empty when it can't be read.
-    public static func tail(ofLogAt url: URL) -> String {
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return "" }
-        return String(decoding: data.suffix(tailBytes), as: UTF8.self)
-    }
-
-    /// How much of a finished log's end holds its verdict and the result bundle it names, with a long list of failing
-    /// tests between them.
-    static let endBytes = 1024 * 1024
-
-    /// The end of the log at `path`, where a finished run's verdict and result bundle are: a clean build's log runs to
-    /// tens of megabytes. Empty when it can't be read.
-    public static func end(ofLogAt path: String) -> String {
+    /// The log at `path`, whole, where a finished run's verdict and result bundle are, however much follows them: a
+    /// clean build's log runs to tens of megabytes. Empty when it can't be read.
+    public static func text(ofLogAt path: String) -> String {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) else { return "" }
-        return String(decoding: data.suffix(endBytes), as: UTF8.self)
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// The result bundle a test run's log names, on the line after xcodebuild's `Test session results`.

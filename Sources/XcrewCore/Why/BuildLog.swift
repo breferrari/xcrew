@@ -27,15 +27,12 @@ public enum BuildLog {
         }.filter { seen.insert($0).inserted }
     }
 
-    /// The log's start, which holds xcodebuild's command line: a clean build's log runs to tens of megabytes.
-    static let head = 64 * 1024
-
-    /// The DerivedData folder xcodebuild was given, from its `-derivedDataPath`.
+    /// The DerivedData folder xcodebuild was given, from its `-derivedDataPath`, read up to the line that names it: usually
+    /// the command line at the log's start.
     public static func derivedData(ofLogAt path: String) -> String? {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
-        defer { try? handle.close() }
-        let start = String(decoding: (try? handle.read(upToCount: head)) ?? Data(), as: UTF8.self)
-        guard let path = start.firstMatch(of: #/-derivedDataPath (?:"([^"]+)"|((?:\\ |[^\s])+))/#) else { return nil }
-        return path.1.map(String.init) ?? path.2.map { $0.replacingOccurrences(of: #"\ "#, with: " ") }
+        TextFile.firstLine(in: URL(fileURLWithPath: path)) { line, _ in
+            guard let path = line.firstMatch(of: #/-derivedDataPath (?:"([^"]+)"|((?:\\ |[^\s])+))/#) else { return nil }
+            return path.1.map(String.init) ?? path.2.map { $0.replacingOccurrences(of: #"\ "#, with: " ") }
+        }
     }
 }

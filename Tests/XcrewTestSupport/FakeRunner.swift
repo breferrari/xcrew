@@ -13,7 +13,7 @@ public struct FakeRunner: CommandRunning {
         self.responses = responses
     }
 
-    public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+    public func run(_ argv: [String], stdin: Data?) async -> CommandResult {
         responses[argv.joined(separator: " ")] ?? .notFound
     }
 
@@ -36,7 +36,7 @@ public struct FakeRunner: CommandRunning {
 
 extension CheckContext {
     /// Apps live in the project's `Applications` folder unless `applications` names another, never the Mac's own.
-    public static func fake(_ runner: FakeRunner = FakeRunner(), project: Project = .temporary(), environment: [String: String] = [:], processID: Int32 = 1, applications: URL? = nil) -> CheckContext {
-        CheckContext(project: project, machine: Machine(environment: environment, home: project.root.appending(path: "home"), runner: runner, processID: processID, applications: applications ?? project.root.appending(path: "Applications")))
+    public static func fake(_ runner: FakeRunner = FakeRunner(), project: Project = .temporary(), environment: [String: String] = [:], processID: Int32 = 1, applications: URL? = nil, now: Date? = nil) -> CheckContext {
+        CheckContext(project: project, machine: Machine(environment: environment, home: project.root.appending(path: "home"), runner: runner, processID: processID, applications: applications ?? project.root.appending(path: "Applications"), now: { now ?? Date() }))
     }
 }

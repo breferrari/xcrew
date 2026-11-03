@@ -37,6 +37,47 @@ import XcrewTestSupport
         #expect(choose(preferring: "App") == .scheme("App"))
     }
 
+    /// A modular app's own scheme may test one target of hundreds, a workspace scheme every one: the widest wins.
+    @Test func theSchemeThatTestsTheMostUnitTestTargetsWins() {
+        project.writePBXProj(["App": "application", "AppTests": "bundle.unit-test", "CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test"])
+        project.writeScheme("App", testing: ["AppTests"])
+        project.writeScheme("All", testing: ["AppTests", "CoreTests", "KitTests"])
+        #expect(choose(preferring: "App") == .scheme("All"))
+    }
+
+    /// Only those that test the most are offered; the narrower ones aren't the choice.
+    @Test func aTieForTheMostOffersTheTiedOnes() {
+        project.writePBXProj(["AppTests": "bundle.unit-test", "CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test"])
+        project.writeScheme("App", testing: ["AppTests"])
+        project.writeScheme("Core", testing: ["CoreTests", "AppTests"])
+        project.writeScheme("Kit", testing: ["KitTests", "AppTests"])
+        #expect(choose() == .several(["Core", "Kit"]))
+    }
+
+    /// A scheme runs its default test plan when none is named (Apple's "Organizing tests to improve feedback"), so only
+    /// that plan's targets count, and a target listed twice counts once.
+    @Test func onlyTheDefaultPlansTargetsCountEachOnce() {
+        project.writePBXProj(["AppTests": "bundle.unit-test", "CoreTests": "bundle.unit-test", "KitTests": "bundle.unit-test", "DataTests": "bundle.unit-test"])
+        let plan = { (name: String, targets: [String]) in
+            project.write(#"{"testTargets":["# + targets.map { #"{"target":{"containerPath":"container:App.xcodeproj","name":"\#($0)"}}"# }.joined(separator: ",") + #"],"version":1}"#, to: "\(name).xctestplan")
+        }
+        plan("Smoke", ["AppTests"])
+        plan("Full", ["AppTests", "CoreTests", "KitTests", "DataTests"])
+        let plans = #"<TestPlans><TestPlanReference reference = "container:Full.xctestplan"></TestPlanReference><TestPlanReference default = "YES" reference = "container:Smoke.xctestplan"></TestPlanReference></TestPlans>"#
+        project.write(#"<?xml version="1.0" encoding="UTF-8"?><Scheme><TestAction>"# + plans + "</TestAction></Scheme>", to: "App.xcodeproj/xcshareddata/xcschemes/App.xcscheme")
+        project.writeScheme("Twice", testing: ["AppTests", "AppTests"])
+        project.writeScheme("Unit", testing: ["CoreTests", "KitTests"])
+        #expect(choose(preferring: "App") == .scheme("Unit"))
+    }
+
+    /// UI-test targets don't count toward the unit profile's scheme.
+    @Test func onlyUnitTestTargetsCount() {
+        project.writePBXProj(["App": "application", "AppTests": "bundle.unit-test", "AppUITests": "bundle.ui-testing", "FlowUITests": "bundle.ui-testing"])
+        project.writeScheme("App", testing: ["AppTests"])
+        project.writeScheme("Flows", testing: ["AppTests", "AppUITests", "FlowUITests"])
+        #expect(choose(preferring: "App") == .scheme("App"))
+    }
+
     @Test func aSkippedTestableDoesntRun() {
         project.writePBXProj(["AppTests": "bundle.unit-test"])
         project.writeScheme("App", testing: ["AppTests"], skipped: true)

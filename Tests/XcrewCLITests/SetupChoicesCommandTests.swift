@@ -65,6 +65,27 @@ import XcrewTestSupport
         #expect(choices.container == "App.xcworkspace")
     }
 
+    /// The config's choices are its container's: the form for another container starts from setup's own picks.
+    @Test func anotherContainersFormDoesntStartFromTheConfigsChoices() async throws {
+        let project = Project.temporary(containing: ["App.xcworkspace", "Other.xcworkspace"])
+        _ = await Run("setup", "--container", "App.xcworkspace", "--test-scheme", "AppTests", "--app-scheme", "App", "--bundle-id", "com.example.App", "--test-simulator", "iPhone 18", context: .fake(.simulators(["iPhone 18"]), project: project))
+        let run = await Run("setup", "--choices", "--container", "Other.xcworkspace", context: .fake(.simulators(["iPhone 18"]), project: project))
+        let choices = try JSONDecoder().decode(SetupChoices.self, from: Data(run.text.utf8))
+        #expect([choices.picks.appScheme, choices.picks.testScheme, choices.picks.bundleID] == [nil, nil, nil])
+    }
+
+    /// A container the config names from the home folder, outside the project, is read where it is.
+    @Test func aContainerOutsideTheProjectIsReadWhereItIs() async throws {
+        let home = Project.temporary(containing: ["App.xcworkspace"])
+        home.writeScheme("App", folder: "App.xcworkspace/xcshareddata")
+        let project = Project.temporary(containing: [])
+        project.write("schemaVersion: 1\nsessionDefaults:\n  workspacePath: ~/App.xcworkspace\n  simulatorName: 'iPhone 18'\n", to: ".mobilebuildmcp/config.yaml")
+        let machine = Machine(environment: [:], home: home.root, runner: FakeRunner.simulators(["iPhone 18"]), processID: 1, applications: project.root.appending(path: "Applications"))
+        let run = await Run("setup", "--choices", context: CheckContext(project: project, machine: machine))
+        let choices = try JSONDecoder().decode(SetupChoices.self, from: Data(run.text.utf8))
+        #expect(choices.schemes.map(\.name) == ["App"])
+    }
+
     /// A config of session defaults alone holds no scheme: the form starts from setup's own scheme picks and mcs's
     /// answers, with the config's simulator.
     @Test func sessionDefaultsAloneLeaveTheSchemesToSetupAndMCS() async throws {

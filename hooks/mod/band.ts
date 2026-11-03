@@ -1,6 +1,6 @@
 import type { ElementConstructor, RenderElement } from 'claude-code'
 import type { BandProblems, BandRun, ElsewhereRun, ResultRow } from '../../types'
-import { elsewhereText } from './elsewhere'
+import { ELSEWHERE_LABEL, elsewhereRuns } from './elsewhere'
 import { estimate, stopwatch } from './format'
 
 /** How long a finished run stays on the band: a pass asks for nothing, a failure asks to be looked at. */
@@ -132,9 +132,9 @@ function line({ Box, Text }: Elements, parts: Segment[]): RenderElement {
   return Box({ flexDirection: 'row', children })
 }
 
-/** The other worktrees' runs, dim, under what the band shows first. */
+/** The other worktrees' runs under what the band shows first, behind a dim label. */
 export function elsewhereTree({ Text }: Elements, runs: ElsewhereRun[]): RenderElement {
-  return Text({ color: 'subtle', wrap: 'truncate-end', children: [elsewhereText(runs)] })
+  return Text({ wrap: 'truncate-end', children: [Text({ color: 'subtle', children: [ELSEWHERE_LABEL] }), Text({ children: [elsewhereRuns(runs)] })] })
 }
 
 /** The run above the prompt. */
@@ -146,7 +146,7 @@ export function runTree(elements: Elements, run: BandRun, now: number): RenderEl
  * No `/xcrew failures` here: the pane holds the latest failing run's, and a row stays in the transcript after the next. */
 export function resultTree(elements: Elements, tool: string, row: ResultRow): RenderElement {
   const failures = row.failures.map(failure => line(elements, [segment('✗', 'error'), segment(' '), segment(failure.title), ...(failure.where ? piece(failure.where) : [])]))
-  const more = row.more > 0 ? [line(elements, [segment(`${row.more} more`, 'subtle')])] : []
+  const more = row.more > 0 ? [line(elements, [segment(`${row.more} more · ctrl+o shows them all`, 'subtle')])] : []
   return elements.Box({ flexDirection: 'column', children: [line(elements, [...endedSegments(tool, row.ended), ...by(row.by)]), ...failures, ...more] })
 }
 

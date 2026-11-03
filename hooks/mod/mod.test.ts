@@ -74,7 +74,7 @@ test('other tools forwarded through MobileBuildMCP run, and its call tool keeps 
 })
 
 test('when the CLI can\'t say, XcodeWrite is let through: refusing it would block a classic project', async ($, on) => {
-  on('process.run', () => {
+  on('process.spawn', async function* () {
     throw new Error('xcrew not built')
   })
   on('tool.call', () => ({ result: { ok: true } }))
@@ -116,7 +116,7 @@ test('a finished run hands the server\'s text to the CLI, saying which server an
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  expect(seen.cli.filter(call => call.args[0] !== '--binary-path' && call.args[0] !== 'project').map(({ args, stdin, program }) => ({ args, stdin, program }))).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED, program: BUILT_BINARY }])
+  expect(seen.cli.filter(call => call.args[0] !== '--binary-path' && call.args[0] !== 'project' && call.args[0] !== 'runs').map(({ args, stdin, program }) => ({ args, stdin, program }))).toEqual([{ args: ['report', '--server', 'xcode', '--kind', 'build', '--error'], stdin: MALFORMED, program: BUILT_BINARY }])
 })
 
 test('a build failing on a killed macro plugin reaches Claude as the server reported it, with nothing retried', async ($, on) => {
@@ -169,7 +169,7 @@ test('without the CLI, the outcome is whether the server reported an error', asy
     return { value: undefined }
   })
   on('ui.status', () => ({ value: undefined }))
-  on('process.run', () => {
+  on('process.spawn', async function* () {
     throw new Error('xcrew not built')
   })
   on('tool.call', () => ({ result: {}, isError: true, text: 'failed' }))
@@ -217,6 +217,7 @@ test('later runs compare with the average of earlier ones', async ($, on) => {
 
   for (let run = 0; run < 3; run += 1) {
     await callTool($, 'mcp__xcode__BuildProject')
+    await clock.settle()
   }
 
   expect(seen.toasts).toEqual(['✓ BuildProject · 1:00', '✓ BuildProject · 1:20 (avg 1:00)', '✓ BuildProject · 1:30 (avg 1:10)'])
@@ -231,6 +232,7 @@ test('a run far slower than usual says how much slower', async ($, on) => {
   })
 
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ build_sim · 0:22 (2× its usual 0:11)'])
 })
@@ -244,6 +246,7 @@ test('slowness is only called out once there are five earlier runs to judge by',
   })
 
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ BuildProject · 0:30 (avg 0:10)'])
 })
@@ -257,7 +260,9 @@ test('a run is timed by what the server reports, so a pre-build hook or a permis
   })
 
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await clock.settle()
   await callTool($, 'mcp__MobileBuildMCP__test_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ test_sim · 0:15 · 3 passed', '✓ test_sim · 0:15 (avg 0:15) · 3 passed'])
 })
@@ -350,8 +355,9 @@ test('Xcode MCP runs ask for no phase: that server writes no log to follow', asy
   })
 
   await callTool($, 'mcp__xcode__BuildProject')
+  await clock.settle()
 
-  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path' && command !== 'project')).toEqual(['report'])
+  expect(seen.cli.map(call => call.args[0]).filter(command => command !== '--binary-path' && command !== 'project')).toEqual(['report', 'runs'])
 })
 
 test('where no band draws, the status line carries the gauge against the usual time', async ($, on) => {
@@ -453,6 +459,7 @@ test('a run of a minute or more sends a notification with its outcome', async ($
   stubCli(on, { reports: [{ ok: true, detail: '5 passed' }] })
 
   await callTool($, 'mcp__xcode__RunAllTests')
+  await clock.settle()
 
   expect(notifications).toEqual(['✓ RunAllTests · 1:01 · 5 passed'])
 })
@@ -685,8 +692,10 @@ test('a call the person denies leaves no trace: no time in the history, no outco
   })
 
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
   // The next run is still measured against the usual 1:30, not an average the denied 0:02 pulled down.
   await callTool($, 'mcp__MobileBuildMCP__build_sim')
+  await clock.settle()
 
   expect(seen.toasts).toEqual(['✓ build_sim · 1:30 (avg 1:30)'])
   expect(notifications).toEqual(['✓ build_sim · 1:30 (avg 1:30)'])
@@ -740,25 +749,16 @@ test('the build is asked for again after 30 s, so a development checkout\'s rebu
   expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(3)
 })
 
-test('when the shim names no build, the CLI runs through the shim', async ($, on) => {
+/** A failed build is the call's answer: the shim isn't asked to run the command, which would build again. */
+test('when the build fails, a call says why and runs nothing through the shim', async ($, on) => {
   mock.clock(on)
   const seen = watch(on, {}, { noBuild: true })
   on('tool.call', () => ({ result: {}, text: 'ok' }))
 
   await callTool($, 'mcp__xcode__BuildProject')
 
-  const report = seen.cli.find(call => call.args[0] === 'report')
-  expect(report?.program).toBeUndefined()
-})
-
-test('a command that runs past its time is not run a second time through the shim', async ($, on) => {
-  const clock = mock.clock(on)
-  const seen = watch(on, {}, { build: { fails: 'by timing out', clock } })
-  on('tool.call', () => ({ result: {}, text: 'ok' }))
-
-  await callTool($, 'mcp__xcode__BuildProject')
-
-  expect(seen.cli.filter(call => call.args[0] === 'report')).toHaveLength(1)
+  expect(seen.cli.filter(call => call.args[0] === 'report')).toEqual([])
+  expect(seen.cli.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
 })
 
 test('a build that can\'t be started falls back to the shim', async ($, on) => {
@@ -772,29 +772,20 @@ test('a build that can\'t be started falls back to the shim', async ($, on) => {
   expect(reports.map(call => call.program)).toEqual([BUILT_BINARY, undefined])
 })
 
-test('asking which build to run takes no longer than the caller allows', async ($, on) => {
-  mock.clock(on)
-  mock.store(on)
-  const seen = projectThatIs(on, 'classic')
-  on('tool.call', () => ({ result: { ok: true } }))
-
-  await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })
-
-  expect(seen.find(call => call.args[0] === '--binary-path')?.timeoutMs).toBe(10_000)
-})
-
-test('callers at once share one question to the shim, and a build it can\'t name is remembered too', async ($, on) => {
+test('a build that failed is remembered, so later calls ask the shim no more', async ($, on) => {
   mock.clock(on)
   mock.store(on)
   on('tool.describe', (_, e) => ({ description: e.description }))
   const seen = stubCli(on, { noBuild: true })
   on('tool.call', () => ({ result: { ok: true } }))
 
-  await Promise.all([1, 2, 3].map(() => callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })))
+  await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'a', content: '' })
+  const asked = seen.filter(call => call.args[0] === '--binary-path').length
   await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'b', content: '' })
 
+  expect(asked).toBe(1)
   expect(seen.filter(call => call.args[0] === '--binary-path')).toHaveLength(1)
-  expect(seen.filter(call => call.args[0] === 'project')).toHaveLength(4)
+  expect(seen.filter(call => call.args[0] === 'project')).toHaveLength(0)
 })
 
 test('a test run repeated with -test-iterations asks the CLI to read each test\'s runs', async ($, on) => {

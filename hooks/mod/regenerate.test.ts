@@ -211,7 +211,7 @@ test('an edit that failed marks nothing', async ($, on) => {
 
 test('when the CLI can\'t answer, an edit marks nothing and builds run', async ($, on) => {
   mock.store(on)
-  on('process.run', () => {
+  on('process.spawn', async function* () {
     throw new Error('xcrew not built')
   })
   on('tool.call', () => ({ result: {} }))

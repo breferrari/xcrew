@@ -3,7 +3,9 @@ import Foundation
 
 public enum ConfigWriter {
     public enum Outcome: Equatable, Sendable {
-        case written(backup: URL?)
+        /// Written, or already as it would be, with the old one's backup when `force` replaced it, and whether the part
+        /// of the config only a restart loads changed: on the first write, and when that part did.
+        case written(backup: URL?, serverChanged: Bool)
         /// A config xcrew didn't write was found and left as it was.
         case keptUnmanaged
         /// xcrew wrote it, but someone has edited it since; left as it was.
@@ -18,14 +20,14 @@ public enum ConfigWriter {
         simulatorIDs: [String: String] = [:],
         carried: CarriedDefaults = .init(),
         force: Bool = false,
-        now: Date = Date()
+        now: Date
     ) throws -> Outcome {
         try write(ConfigRenderer.render(answers, root: project.root, simulatorIDs: simulatorIDs, carried: carried), to: project, force: force, now: now)
     }
 
     /// Writes `yaml` as the config, under the same rules: a config xcrew didn't write, or one edited since, is kept
     /// unless `force`, with a backup when replaced.
-    public static func write(_ yaml: String, to project: Project, force: Bool = false, now: Date = Date()) throws -> Outcome {
+    public static func write(_ yaml: String, to project: Project, force: Bool = false, now: Date) throws -> Outcome {
         let fileManager = FileManager.default
         let config = project.mobileBuildMCPConfig
         let existing = try? Data(contentsOf: config)
@@ -41,13 +43,14 @@ public enum ConfigWriter {
         }
         let content = Data(yaml.utf8)
         // The doctor asks for a restart when the marker is newer than MobileBuildMCP, so the same config isn't written again.
-        if existing == content, marker == Self.fingerprint(content) { return .written(backup: nil) }
+        if existing == content, marker == Self.fingerprint(content) { return .written(backup: nil, serverChanged: false) }
         try fileManager.createDirectory(at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
         try content.write(to: config, options: .atomic)
         try Self.fingerprint(content).write(to: project.managedMarker, options: .atomic)
         let server = Self.fingerprint(Data(ConfigRenderer.serverPart(of: yaml).utf8))
-        if (try? Data(contentsOf: project.serverMarker)) != server { try server.write(to: project.serverMarker, options: .atomic) }
-        return .written(backup: backup)
+        let serverChanged = (try? Data(contentsOf: project.serverMarker)) != server
+        if serverChanged { try server.write(to: project.serverMarker, options: .atomic) }
+        return .written(backup: backup, serverChanged: serverChanged)
     }
 
     /// What setup does with the project's config without `force`: keeps one xcrew didn't write or one edited since, or

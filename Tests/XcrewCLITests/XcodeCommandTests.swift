@@ -35,6 +35,14 @@ import XcrewTestSupport
         #expect(unmatched.output == [])
     }
 
+    /// The pin is found however little time its caller says there is: no deadline cuts its read.
+    @Test func aPinIsFoundWhateverTimeItsCallerNames() async {
+        let (context, apps) = context(pin: "26.4\n")
+        let run = await Run("xcode", "--developer-dir", context: CheckContext(project: context.project, machine: context.machine.setting("XCREW_WITHIN_MS", to: "1")))
+        #expect(run.status == 0)
+        #expect(run.output == ["\(apps.path)/Xcode-26.4.app/Contents/Developer"])
+    }
+
     /// A server started with another Xcode than the pin's, the pin changed since, didn't start with the pin: the command
     /// says so as `xcode/pin` does.
     @Test func aServerStartedWithAnotherXcodeIsNotThePins() async throws {

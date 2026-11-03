@@ -1,8 +1,9 @@
 import Foundation
 import Testing
+import XcrewTestSupport
 
 /// The MobileBuildMCP launcher with a project that pins its Xcode: it asks the xcrew CLI for the pinned developer folder,
-/// never longer than `PIN_SECONDS` and never building it, and records what it did for the doctor.
+/// waiting for its answer however long it takes and never building it, and records what it did for the doctor.
 @Suite struct LauncherTests {
     let base = FileManager.default.temporaryDirectory.appending(path: "xcrew-launcher-\(UUID().uuidString)")
     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -32,9 +33,8 @@ import Testing
         try "26.4\n".write(to: project.appending(path: ".xcode-version"), atomically: true, encoding: .utf8)
     }
 
-    /// What the fake server printed, how long the launcher took to start it, and what the launcher printed to standard
-    /// error, which Claude Code logs for a server.
-    func start(in folder: URL? = nil) async throws -> (output: String, seconds: Double, errors: String) {
+    /// What the fake server printed, and what the launcher printed to standard error, which Claude Code logs for a server.
+    func start(in folder: URL? = nil) async throws -> (output: String, errors: String) {
         let process = Process()
         process.executableURL = plugin.appending(path: "libexec/mobilebuildmcp-server")
         process.arguments = [(folder ?? project).path]
@@ -43,11 +43,9 @@ import Testing
         let output = Pipe(), errors = Pipe()
         process.standardOutput = output
         process.standardError = errors
-        let started = ContinuousClock.now
         try await ShimTests.runToEnd(process)
-        let elapsed = ContinuousClock.now - started
         let read = { (pipe: Pipe) in String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) }
-        return (read(output), Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18, read(errors))
+        return (read(output), read(errors))
     }
 
     /// The project's real path, as the launcher's `pwd -P` prints it.
@@ -74,17 +72,26 @@ import Testing
         #expect(started.errors == "")
     }
 
-    /// The CLI's first build takes seconds: the launcher never starts one, and waits for an answer no longer than its limit.
-    @Test func aCLINotYetBuiltOrTooSlowLeavesTheServerAsWithoutAPin() async throws {
+    /// The CLI's first build takes seconds: the launcher never starts one, and says so.
+    @Test func aCLINotYetBuiltLeavesTheServerAsWithoutAPinAndSaysWhy() async throws {
         try pin()
         try xcrew("exit 75")
         #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
         #expect(try await record() == "not built\n")
-        try xcrew("sleep 30; echo /Apps/Xcode-26.4.app/Contents/Developer")
-        let slow = try await start()
-        #expect(slow.output == "cwd=\(try await real()) developer=none\n")
-        #expect(slow.seconds < 5)
-        #expect(try await record() == "timed out 2\n")
+    }
+
+    /// The launcher waits for the pin's answer however long it takes: here the CLI answers only once the test lets it, and
+    /// any `sleep` returns at once, so a timer of the launcher's own would have stopped it first.
+    @Test func thePinIsAppliedHoweverLongItsReadTakes() async throws {
+        try pin()
+        let started = base.appending(path: "started"), release = base.appending(path: "release")
+        try write("#!/bin/sh\nexit 0\n", to: base.appending(path: "fakemcp/sleep"))
+        try xcrew("touch \"\(started.path)\"; while [ ! -e \"\(release.path)\" ]; do /bin/sleep 0.01; done; echo /Apps/Xcode-26.4.app/Contents/Developer")
+        let launcher = Task { try await start() }
+        try await until { FileManager.default.fileExists(atPath: started.path) }
+        FileManager.default.createFile(atPath: release.path, contents: nil)
+        #expect(try await launcher.value.output == "cwd=\(try await real()) developer=/Apps/Xcode-26.4.app/Contents/Developer\n")
+        #expect(try await record() == "applied /Apps/Xcode-26.4.app/Contents/Developer\n")
     }
 
     @Test func aPinNoInstalledXcodeMatchesIsRecorded() async throws {

@@ -76,17 +76,17 @@ import XcrewTestSupport
     @Test func aCorruptCachedModuleNamesTheFoldersToRemove() async throws {
         let log = "/usr/bin/xcrun xcodebuild -project App.xcodeproj -scheme App -derivedDataPath /testbed/DerivedData -destination id=A build\n"
         let home = try home(withLog: log, named: "build_sim_2026-10-30T07-31-02-114Z_pid18611_8a4c3d1e.log")
-        #expect(await note(Self.malformed, home: home) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Remove the cached modules, then build again: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'")
+        #expect(await note(Self.malformed, home: home) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing the cached modules lets the next build rebuild them. That deletes part of DerivedData, so it's the person's to agree to: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'")
     }
 
     /// Without the log, the fix names the folders inside the DerivedData the build used.
     @Test func withoutTheLogTheFoldersAreNamedInTheBuildsDerivedData() async {
-        #expect(await note(Self.malformed) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Remove ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used, then build again")
+        #expect(await note(Self.malformed) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used lets the next build rebuild them. That deletes part of DerivedData, so it's the person's to agree to.")
     }
 
     /// The module the error names sits in the DerivedData, which says where it is.
     @Test func anInvalidPrecompiledModuleNamesItsDerivedData() async {
-        #expect(await note(Self.invalid) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"SwiftShims-44J58ATYTB5F8RWZHD1OXEBAB.pcm is not a valid module file\"). Remove the cached modules, then build again: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'")
+        #expect(await note(Self.invalid) == "xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt (\"SwiftShims-44J58ATYTB5F8RWZHD1OXEBAB.pcm is not a valid module file\"). Removing the cached modules lets the next build rebuild them. That deletes part of DerivedData, so it's the person's to agree to: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'")
     }
 
     @Test func aSimulatorNoneHasNamesSetup() async {
@@ -136,7 +136,7 @@ import XcrewTestSupport
     }
 
     @Test func aFolderWithAQuoteIsQuotedForTheShell() {
-        #expect(CorruptModuleCache.fix(derivedData: "/Users/dev/Bob's DD") == #"Remove the cached modules, then build again: rm -rf '/Users/dev/Bob'\''s DD/ModuleCache.noindex' '/Users/dev/Bob'\''s DD/SDKExplicitPrecompiledModules'"#)
+        #expect(CorruptModuleCache.fix(derivedData: "/Volumes/Work/Team's DD") == #"Removing the cached modules lets the next build rebuild them. That deletes part of DerivedData, so it's the person's to agree to: rm -rf '/Volumes/Work/Team'\''s DD/ModuleCache.noindex' '/Volumes/Work/Team'\''s DD/SDKExplicitPrecompiledModules'"#)
     }
 
     // MARK: The code's own errors, in the same words
@@ -235,7 +235,7 @@ import XcrewTestSupport
 
     static let database = "\(derivedData)/Build/Intermediates.noindex/XCBuildData/build.db"
     static let because = "xcrew: this build failed because of the Mac, not the code: "
-    static let free = because + "its build database is locked (\"database is locked\") by another build, and no process holds it now. Build again."
+    static let free = because + "its build database is locked (\"database is locked\") by another build, and no process holds it now, so a build started now can take it."
 
     /// One process, as the two `ps` calls and `lsof` see it.
     struct Running {
@@ -262,7 +262,7 @@ import XcrewTestSupport
     }
 
     @Test func anXcodebuildBuildingIntoItIsNamedWithHowToStopIt() async {
-        #expect(await Self.note([Running()]) == Self.because + "an xcodebuild holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A call stopped partway leaves its xcodebuild running; stopping it frees the database: kill 4242")
+        #expect(await Self.note([Running()]) == Self.because + "an xcodebuild holds its build database (\"database is locked\"): pid 4242, for platform=iOS Simulator,name=iPhone 17, running 12 min. A call stopped partway leaves its xcodebuild running; stopping it frees the database. It may be a build of the person's own, so it's the person's to agree to: kill 4242")
     }
 
     /// Of the processes holding it, an xcodebuild is the one named; Xcode's build service is never the one to stop.
@@ -312,5 +312,12 @@ import XcrewTestSupport
     /// A destination with a dash in its name is read to the next option.
     @Test func aDestinationWithADashIsReadWhole() async {
         #expect(await Self.note([Running(arguments: "build -destination platform=iOS Simulator,name=Test - iPhone 17 -derivedDataPath \(Self.derivedData)")])?.contains("for platform=iOS Simulator,name=Test - iPhone 17,") == true)
+    }
+
+    /// The DerivedData folder is read wherever the log names it.
+    @Test func theDerivedDataIsReadPastTheLogsStart() throws {
+        let log = FileManager.default.temporaryDirectory.appending(path: "xcrew-why-\(UUID().uuidString).log")
+        try (String(repeating: "note: preparing\n", count: 6_000) + "/usr/bin/xcrun xcodebuild -scheme App -derivedDataPath /dd/Late build\n").write(to: log, atomically: true, encoding: .utf8)
+        #expect(BuildLog.derivedData(ofLogAt: log.path) == "/dd/Late")
     }
 }

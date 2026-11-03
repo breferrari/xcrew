@@ -51,8 +51,8 @@ export type ElsewhereRuns = { runs: ElsewhereRun[]; at: number }
 /** The most serious problem the band shows from `xcrew doctor`, and how many more there are. */
 export type BandProblems = { isFailure: boolean; message: string; more: number; isRestart?: boolean }
 
-/** The CLI build the shim named, and when it was asked: `path` is null when it named none. */
-export type CliBuild = { path: string | null; at: number }
+/** The CLI build the shim named, and when it was asked: `path` is null when it named none, `failed` then why. */
+export type CliBuild = { path: string | null; at: number; failed?: string }
 
 /** Manifest edits the project hasn't been generated since: one mark per app they changed, with the path the CLI gives the
  * app and the command that generates it, and whether a build was refused for them. */
@@ -70,7 +70,7 @@ export type SetupChoices = {
   container?: string
   containers: string[]
   containerProblem?: string
-  schemes: { name: string; container: string; roles: ('app' | 'unit-tests' | 'ui-tests')[]; app?: string }[]
+  schemes: { name: string; container: string; roles: ('app' | 'unit-tests' | 'ui-tests')[]; app?: string; unitTestTargets?: number; uiTestTargets?: number }[]
   picks: { appScheme?: string; uiScheme?: string; testScheme?: string; bundleID?: string; testSimulator?: string; appSimulator?: string }
   simulators: { name: string; runtime: string; twoDisplays?: boolean }[]
   config?: { owner: 'xcrew' | 'edited' | 'other'; scheme?: string; debuggerBackend?: string }

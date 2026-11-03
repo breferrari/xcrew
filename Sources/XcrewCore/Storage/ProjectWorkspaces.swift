@@ -24,7 +24,7 @@ public enum ProjectWorkspaces {
     /// prunable one, at the project's folder in it, with its key as written and as the file system spells it. Outside
     /// git, the project alone.
     static func live(of project: Project, using runner: any CommandRunning) async -> [Checkout] {
-        let git = { (arguments: String...) in await runner.run(["git", "-C", project.root.path] + arguments, stdin: nil, timeout: .seconds(10)) }
+        let git = { (arguments: String...) in await runner.run(["git", "-C", project.root.path] + arguments, stdin: nil) }
         async let prefixed = git("rev-parse", "--show-prefix")
         let listed = await git("worktree", "list", "--porcelain")
         let prefix = await prefixed.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -86,21 +86,19 @@ public enum ProjectWorkspaces {
         }
     }
 
-    /// How much of each of a workspace's newest logs is read for its root: the command naming the container comes first.
-    static let logsRead = 3
-    static let logBytes = 64 * 1024
-
-    /// The root a workspace served, from the container its newest build logs name: the container's folder, or one a few
-    /// above it, whose key is the workspace's. None when no log names one, or none of its folders has the key.
+    /// The root a workspace served, from the container its build logs name, newest first, each read up to the line that
+    /// names it: the container's folder, or one above it, whose key is the workspace's. None when no log names one, or
+    /// none of its folders has the key.
     static func root(ofWorkspace folder: URL) -> String? {
         let key = folder.lastPathComponent
         let logs = (try? FileManager.default.contentsOfDirectory(at: folder.appending(path: "logs"), includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        for log in logs.sorted(by: { EvidencePack.modified($0) > EvidencePack.modified($1) }).prefix(logsRead) {
-            guard let handle = try? FileHandle(forReadingFrom: log), let data = try? handle.read(upToCount: logBytes) else { continue }
-            let text = String(decoding: data, as: UTF8.self)
-            guard let named = text.firstMatch(of: /-(?:workspace|project) (?:'([^']+)'|"([^"]+)"|(\S+\.xc(?:workspace|odeproj)))/) else { continue }
-            var candidate = URL(fileURLWithPath: String(named.1 ?? named.2 ?? named.3 ?? "")).deletingLastPathComponent()
-            for _ in 0..<4 {
+        for log in logs.sorted(by: { EvidencePack.modified($0) > EvidencePack.modified($1) }) {
+            let named = TextFile.firstLine(in: log) { line, _ in
+                line.firstMatch(of: /-(?:workspace|project) (?:'([^']+)'|"([^"]+)"|(\S+\.xc(?:workspace|odeproj)))/).map { String($0.1 ?? $0.2 ?? $0.3 ?? "") }
+            }
+            guard let named else { continue }
+            var candidate = URL(fileURLWithPath: named).standardized.deletingLastPathComponent()
+            while candidate.path != "/" {
                 if RunLog.workspaceKey(root: candidate.path) == key { return candidate.path }
                 candidate.deleteLastPathComponent()
             }
