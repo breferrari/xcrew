@@ -32,11 +32,7 @@ public enum RunLog {
 
     /// Removes the readings no one has kept for a day before `now`: a run's log is followed only while it runs.
     static func pruneReadings(in folder: URL, now: Date) {
-        let oldest = now.addingTimeInterval(-24 * 3600)
-        for entry in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        where ((try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? now) < oldest {
-            try? FileManager.default.removeItem(at: entry)
-        }
+        AgedEntries.removing(olderThan: 24 * 3600, in: folder, now: now)
     }
 
     /// Where a log's reading is kept between the band's asks, one file a log, with the machine's time now, before which

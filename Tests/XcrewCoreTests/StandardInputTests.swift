@@ -21,11 +21,6 @@ import XcrewTestSupport
         return pipe.fileHandleForReading
     }
 
-    /// Waits for `condition`, which another thread makes true, checking it often; a hang guard ends the wait.
-    func until(_ condition: () -> Bool) async throws {
-        for _ in 0..<20_000 where !condition() { try await Task.sleep(for: .milliseconds(1)) }
-        try #require(condition(), "never came true")
-    }
 
     /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives in the idle time,
     /// on a clock the test moves, so no wait on real time decides it.
