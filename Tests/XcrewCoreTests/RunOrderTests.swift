@@ -1,6 +1,5 @@
 import Testing
 @testable import XcrewCore
-import XcrewTestSupport
 
 /// A failing run's failed tests from its result bundle, in the order its text lists them, with the text's message and
 /// place where the bundle gives none; and the images the notes kept for each.
@@ -241,15 +240,6 @@ struct RunOrderTests {
         let repeated = [ResultBundle.Repeated(test: "Outer/Inner/flaky", failed: 1, passed: 1, runs: 2, verdict: .flaky)]
         let listed = text.listingRunsOnce(repeated) { $0 == TestID(suite: "Inner", name: "flaky") ? TestID(xcresultID: "Outer/Inner/flaky()") : $0 }
         #expect(listed?.text.contains("❌ Inner/flaky(): failed 1 of 2 runs") == true, "\(listed?.text ?? "")")
-    }
-
-    /// The label on a line the bundle's list adds comes right under its place, before the notes looked up for it.
-    @Test func theLabelOnAnAddedLineComesBeforeItsNotes() async {
-        let text = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ Suite / test(): it failed\n    /work/Tests/Suite.swift:4\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
-        let repeated = [ResultBundle.Repeated(test: "Suite/test", failed: 2, passed: 1, runs: 3, verdict: .flaky)]
-        let added = await FailureNotes.adding(to: text, from: ResultBundle(path: "/b.xcresult", runner: FakeRunner()), repetitions: repeated,
-                                              labels: [TestID(suite: "Suite", name: "test"): "the result bundle's; MobileBuildMCP's text lists it as passed"])
-        #expect(added?.text.text.contains("  ✗ Suite / test(): it failed\n    /work/Tests/Suite.swift:4\n      the result bundle's; MobileBuildMCP's text lists it as passed\n      failed 2 of 3 runs\n") == true, "\(added?.text.text ?? "")")
     }
 
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure

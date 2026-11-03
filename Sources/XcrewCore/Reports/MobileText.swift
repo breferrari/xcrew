@@ -295,8 +295,9 @@ struct MobileText: Sendable {
     }
 
     /// The text with a line under Test Failures for each of `failures`, failed tests the result bundle records that the
-    /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place; the section's count raised, or the section added before Test Results or the summary
-    /// when the text has none. Nil when there's nothing to add, or nowhere to add it.
+    /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place; the section's count
+    /// raised, or the section added before Test Results or the summary when the text has none. Nil when there's nothing
+    /// to add, or nowhere to add it.
     func adding(unlisted failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
         guard !failures.isEmpty else { return nil }
         let listed = failures.flatMap { failure in

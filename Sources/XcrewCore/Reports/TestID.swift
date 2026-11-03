@@ -46,7 +46,8 @@ public struct TestID: Sendable, Hashable {
     }
 
     /// This test among `ids`, the bundle's: its own id first; else a nested suite's test whose id ends with it, when
-    /// exactly one does.
+    /// exactly one does. A bundle id's suite holds no `/`, as `init(xcresultID:)` splits at the first, so a nested
+    /// suite's path is in its name.
     func resolved(among ids: Set<TestID>) -> Resolution {
         if ids.contains(self) { return .found(self) }
         let (whole, tail) = (shown, "/\(shown)")

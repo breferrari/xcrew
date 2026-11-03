@@ -249,6 +249,30 @@ struct BundleFailuresTests {
         #expect(text.contains("✗ Outer / Inner/attaches(): Expectation failed: Kit.name == \"Other\""), "\(text)")
     }
 
+    /// A repeated run's Test Results line for a nested suite's test, named from its own suite, is counted once with
+    /// its runs from the bundle, its id resolved by the report. The retried nested capture, its text given the Test
+    /// Results `showTestTiming` writes, a line for each of `flaky()`'s two runs (composed).
+    @Test func aNestedTestsRunsAreCountedInTheReportsTestResults() async throws {
+        let summary = "\n\n❌ 3 tests failed, 4 passed"
+        let captured = try Raw.text("nested-retry")
+        #expect(captured.contains(summary))
+        let timed = captured.replacingOccurrences(of: summary, with: "\n\nTest Results:\n  ❌ Inner/flaky() (0.010s)\n  ✅ Inner/flaky() (0.020s)\(summary)")
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("nested-retry")) --compact": .init(status: 0, stdout: try Raw.file("nested-retry.tests.json"))])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: timed, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner, repeated: true)
+        let text = try #require(report.result)
+        #expect(text.contains("Test Results:\n  ❌ Inner/flaky(): failed 1 of 2 runs\n"), "\(text)")
+        #expect(!text.contains("Inner/flaky() ("), "\(text)")
+    }
+
+    /// The label on a line the bundle's list adds comes right under its place, before the notes looked up for it.
+    @Test func theLabelOnAnAddedLineComesBeforeItsNotes() async {
+        let text = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ Suite / test(): it failed\n    /work/Tests/Suite.swift:4\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        let repeated = [ResultBundle.Repeated(test: "Suite/test", failed: 2, passed: 1, runs: 3, verdict: .flaky)]
+        let added = await FailureNotes.adding(to: text, from: ResultBundle(path: "/b.xcresult", runner: FakeRunner()), repetitions: repeated,
+                                              labels: [TestID(suite: "Suite", name: "test"): "the result bundle's; MobileBuildMCP's text lists it as passed"])
+        #expect(added?.text.text.contains("  ✗ Suite / test(): it failed\n    /work/Tests/Suite.swift:4\n      the result bundle's; MobileBuildMCP's text lists it as passed\n      failed 2 of 3 runs\n") == true, "\(added?.text.text ?? "")")
+    }
+
     /// A failure only the bundle records, of a test the text lists as passed, is labelled as the bundle's where its line
     /// is added: the two disagree. The timing capture, its Test Results listing `testPasses` passed, and its test list
     /// recording it failed.

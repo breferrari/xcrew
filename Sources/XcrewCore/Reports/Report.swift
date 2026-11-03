@@ -333,8 +333,10 @@ public struct Report: Sendable, Equatable, Codable {
             // A repeated run's text lists no failures, and with test timing on, each test once for each run.
             if bundle != nil, text.isTestRun, !repetitions.isEmpty {
                 if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
-                let ids = Set(ResultBundle.testCases(in: await testList().nodes).keys)
-                if let once = text.listingRunsOnce(repetitions, resolving: { ResultBundle.resolution(of: $0, among: ids, crashCases: [:]).found ?? $0 }) { (text, changed) = (once, true) }
+                let nodes = await testList().nodes
+                let ids = Set(ResultBundle.testCases(in: nodes).keys)
+                let crashes = ResultBundle.crashCases(in: nodes)
+                if let once = text.listingRunsOnce(repetitions, resolving: { ResultBundle.resolution(of: $0, among: ids, crashCases: crashes).found ?? $0 }) { (text, changed) = (once, true) }
             }
             if bundle != nil, text.isTestRun, !final.summary.ok {
                 let listing = await testList()
