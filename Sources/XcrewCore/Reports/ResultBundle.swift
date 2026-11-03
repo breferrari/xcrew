@@ -155,23 +155,24 @@ public struct ResultBundle: Sendable {
     }
 
     /// The results that make a test no failure, each with how a note says it counts, in the order one is named when a
-    /// test has several: `xcresulttool`'s others are `Failed` and `unknown` (schema 0.5.0).
+    /// test has several: `xcresulttool`'s others are `Failed` and `unknown` (docs/findings.md, *A failing run's failed
+    /// tests are its bundle's*).
     static let clearing: [(result: String, counts: String)] = [("Passed", "passed"), ("Expected Failure", "an expected failure"), ("Skipped", "skipped")]
 
     /// Each test the run's test list counts passed, as MobileBuildMCP's count does: a retried test that passed on a later
     /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
-    /// target.
+    /// target, or recorded `unknown` in, as one whose process was killed.
     static func passedTests(listing: TestList) -> Set<TestID> {
-        var passed: Set<TestID> = [], failed: Set<TestID> = []
+        var passed: Set<TestID> = [], notPassed: Set<TestID> = []
         for node in listing.nodes where node["nodeType"] as? String == "Test Case" {
             guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)) else { continue }
             switch node["result"] as? String {
             case "Passed": passed.insert(id)
-            case "Failed": failed.insert(id)
+            case "Failed", "unknown": notPassed.insert(id)
             default: break
             }
         }
-        return passed.subtracting(failed)
+        return passed.subtracting(notPassed)
     }
 
     /// Each test `passedTests` counts passed, once per test bundle it passed in, the bundle its target, as `Suite/test`; a

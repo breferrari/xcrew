@@ -172,6 +172,22 @@ struct BundleFailuresTests {
         #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ProbeTests/testFlaky, which it records as unknown. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it."))
     }
 
+    /// Every test case result the captures' test lists hold is one the report reads: a clearing one, or `Failed` or
+    /// `unknown`, the schema's others. A value xcresulttool renames shows up here, not as a skip read as a failure.
+    @Test func everyCapturedResultIsOneTheReportReads() throws {
+        let folder = Testbed.root.appending(path: "captures/raw")
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasSuffix(".tests.json") }
+        #expect(!names.isEmpty)
+        var found: Set<String> = []
+        for name in names {
+            for node in TestList(try Raw.file(name)).nodes where node["nodeType"] as? String == "Test Case" {
+                if let result = node["result"] as? String { found.insert(result) }
+            }
+        }
+        #expect(found.subtracting(ResultBundle.clearing.map(\.result) + ["Failed", "unknown"]).isEmpty, "\(found.sorted())")
+        #expect(found.isSuperset(of: ["Passed", "Failed", "Skipped", "Expected Failure"]), "\(found.sorted())")
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])

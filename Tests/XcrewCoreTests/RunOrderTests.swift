@@ -77,13 +77,19 @@ struct RunOrderTests {
     }
 
     /// A disagreeing test the bundle records neither passed, skipped nor an expected failure, as `unknown` for one its
-    /// process was killed under, or failed in a case it files under another name, stays a failure, and the note says
-    /// what the bundle records.
+    /// process was killed under, stays a failure, and the note says what the bundle records.
     @Test func theNoteKeepsATestTheBundleRecordsNeitherPassedSkippedNorExpected() {
-        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/killed()","result":"unknown"},{"nodeType":"Test Case","nodeIdentifier":"Suite/crashed()","result":"Failed"}]}"#)
-        #expect(Report.notFailedInBundleNote(["killed", "crashed"].map { TestID(suite: "Suite", name: $0) }, results: ResultBundle.results(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't list among its failures under that name: Suite/killed, which it records as unknown; Suite/crashed, which it records as failed. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/killed()","result":"unknown"}]}"#)
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "killed")], results: ResultBundle.results(in: listing.nodes))
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Suite/killed, which it records as unknown. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
         #expect(ResultBundle.cleared(in: ResultBundle.results(in: listing.nodes)).isEmpty)
+    }
+
+    /// A test the bundle records both passed and `unknown` is none of the run's passed tests either: the report never
+    /// lists one test as both failed and passed.
+    @Test func aTestRecordedPassedAndUnknownIsNotPassed() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"ModelTests/testDecode()","result":"Passed"},{"nodeType":"Test Case","nodeIdentifier":"ModelTests/testDecode()","result":"unknown"}]}"#)
+        #expect(ResultBundle.passedTests(listing: listing).isEmpty)
     }
 
     /// A test the bundle records both passed and `unknown`, as one name in two test bundles where one's run was killed,
