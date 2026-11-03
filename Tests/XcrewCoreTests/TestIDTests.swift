@@ -24,12 +24,9 @@ import Testing
     }
 
     /// A test that takes arguments is listed with them in its id, `ShapesTests/parameterised(value:)` in the test bed's
-    /// shapes captures, so it's asked for as listed, and its added line names it so.
+    /// shapes captures, so it's asked for as listed.
     @Test func aTestWithArgumentsIsAskedForAsTheBundleListsIt() {
-        let test = TestID(xcresultID: "ShapesTests/parameterised(value:)")
-        #expect(test.xcresultID == "ShapesTests/parameterised(value:)")
-        let text = MobileText("\n🧪 Test\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
-        #expect(text.adding(unlisted: [(test, "it failed", nil)])?.text.contains("  ✗ ShapesTests / parameterised(value:): it failed\n") == true)
+        #expect(TestID(xcresultID: "ShapesTests/parameterised(value:)").xcresultID == "ShapesTests/parameterised(value:)")
     }
 
     /// The line on a test several nested ids end with names five at most, and counts the rest.

@@ -273,6 +273,14 @@ struct BundleFailuresTests {
         #expect(added?.text.text.contains("  ✗ Suite / test(): it failed\n    /work/Tests/Suite.swift:4\n      the result bundle's; MobileBuildMCP's text lists it as passed\n      failed 2 of 3 runs\n") == true, "\(added?.text.text ?? "")")
     }
 
+    /// The line added for a test that takes arguments names it as the bundle lists it, with its labels and no `()`
+    /// after them: `ShapesTests/parameterised(value:)`, from the test bed's shapes captures.
+    @Test func theLineAddedForATestWithArgumentsNamesItAsTheBundleDoes() {
+        let text = MobileText("\n🧪 Test\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        let added = text.adding(unlisted: [(TestID(xcresultID: "ShapesTests/parameterised(value:)"), "it failed", nil)])
+        #expect(added?.text.contains("  ✗ ShapesTests / parameterised(value:): it failed\n") == true, "\(added?.text ?? "")")
+    }
+
     /// A failure only the bundle records, of a test the text lists as passed, is labelled as the bundle's where its line
     /// is added: the two disagree. The timing capture, its Test Results listing `testPasses` passed, and its test list
     /// recording it failed.

@@ -29,7 +29,8 @@ struct RunOrderTests {
     }
 
     /// A test in a nested suite, which the bundle names from its outermost suite and the text from its own, takes its
-    /// place in the run's order under the bundle's name, the one the bundle's passed tests give the ledger.
+    /// place in the run's order under the bundle's name, the one the bundle's passed tests give the ledger, as the
+    /// report's resolutions find it.
     @Test func aNestedSuitesTestTakesItsPlaceUnderTheBundlesName() {
         let bundled = [
             ToolOutput.Failure(title: "Later/test", message: "second", isTest: true),
@@ -39,7 +40,8 @@ struct RunOrderTests {
             ToolOutput.Failure(title: "Inner/test", message: "the text's first", isTest: true),
             ToolOutput.Failure(title: "Later/test", message: "the text's second", isTest: true),
         ]
-        #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-") | \($0.target ?? "-")" } == [
+        let resolutions: [TestID: TestLookup.Resolution] = [TestID(suite: "Inner", name: "test"): .found(TestID(xcresultID: "Outer/Inner/test()"))]
+        #expect(Report.inRunOrder(bundled, text: text, cleared: [], resolutions: resolutions).failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-") | \($0.target ?? "-")" } == [
             "Outer/Inner/test | first | Inner.swift:7 | FeatureTests",
             "Later/test | second | - | -",
         ])
@@ -58,7 +60,8 @@ struct RunOrderTests {
     @Test func aNestedSuitesTestListedTwiceNeverDisagrees() {
         let bundled = [ToolOutput.Failure(title: "Outer/Inner/test", message: "", isTest: true)]
         let text = ["Inner/test", "Inner/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
-        #expect(Report.inRunOrder(bundled, text: text, cleared: []).disagreeing.isEmpty)
+        let resolutions: [TestID: TestLookup.Resolution] = [TestID(suite: "Inner", name: "test"): .found(TestID(xcresultID: "Outer/Inner/test()"))]
+        #expect(Report.inRunOrder(bundled, text: text, cleared: [], resolutions: resolutions).disagreeing.isEmpty)
     }
 
     /// The note reads a disagreeing test by the name the text gives: one the bundle files only in a nested suite, under a
