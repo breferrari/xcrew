@@ -170,7 +170,7 @@ public struct Report: Sendable, Equatable, Codable {
         let these = named.count == 1 ? "a test its result bundle doesn't list among its failures under that name" : "tests its result bundle doesn't list among its failures under that name"
         let clearing = ResultBundle.joined(ResultBundle.clearing.map(\.counts), or: true, rest: "the rest of them")
         let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as \(clearing) is left out of the failures here." : ""
-        let kept = tests.contains { !cleared.contains($0) } ? " A test the bundle doesn't count as \(clearing) in every entry stays in the failures here, as MobileBuildMCP gives it." : ""
+        let kept = tests.contains { !cleared.contains($0) } ? " A test the bundle doesn't count as \(clearing) in every entry, test plan configuration and device stays in the failures here, as MobileBuildMCP gives it." : ""
         return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.joined(separator: "; ")).\(leftOut)\(kept)"
     }
 
