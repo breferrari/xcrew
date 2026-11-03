@@ -138,7 +138,7 @@ public enum Space {
     }
 
     static func derivedDataFolder(machine: Machine) async -> DerivedDataFolder {
-        let custom = await machine.runner.run("defaults", "read", "com.apple.dt.Xcode", "IDECustomDerivedDataLocation", timeout: DeadlineRunner.untimed)
+        let custom = await machine.runner.run("defaults", "read", "com.apple.dt.Xcode", "IDECustomDerivedDataLocation")
         let named = custom.succeeded ? custom.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : ""
         if named.isEmpty { return .folder(machine.home.appending(path: "Library/Developer/Xcode/DerivedData")) }
         return named.hasPrefix("/") ? .folder(URL(fileURLWithPath: named)) : .besideEachWorkspace(named)
@@ -209,14 +209,14 @@ public enum Space {
 
     /// An app's size from Spotlight, at once where `du` would walk it.
     static let spotlight: @Sendable (String, any CommandRunning) async -> Int? = { path, runner in
-        Int(await runner.run("mdls", "-raw", "-name", "kMDItemPhysicalSize", path, timeout: DeadlineRunner.untimed).stdout.trimmingCharacters(in: .whitespacesAndNewlines))
+        Int(await runner.run("mdls", "-raw", "-name", "kMDItemPhysicalSize", path).stdout.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     // MARK: Simulators
 
     static func runtimes(machine: Machine, now: Date) async -> SpaceReport.Part {
         let title = "Simulator runtimes"
-        let listed = await machine.runner.run("xcrun", "simctl", "runtime", "list", "-j", timeout: DeadlineRunner.untimed)
+        let listed = await machine.runner.run("xcrun", "simctl", "runtime", "list", "-j")
         guard listed.succeeded, let images = (try? JSONSerialization.jsonObject(with: Data(listed.stdout.utf8))) as? [String: [String: Any]] else {
             return SpaceReport.notRead(title, by: "xcrun simctl runtime list")
         }
@@ -232,7 +232,7 @@ public enum Space {
 
     static func devices(machine: Machine) async -> SpaceReport.Part {
         let title = "Simulator devices"
-        let listed = await machine.runner.run("xcrun", "simctl", "list", "devices", "-j", timeout: DeadlineRunner.untimed)
+        let listed = await machine.runner.run("xcrun", "simctl", "list", "devices", "-j")
         guard listed.succeeded, let object = (try? JSONSerialization.jsonObject(with: Data(listed.stdout.utf8))) as? [String: Any],
               let byRuntime = object["devices"] as? [String: [[String: Any]]]
         else { return SpaceReport.notRead(title, by: "xcrun simctl list devices") }

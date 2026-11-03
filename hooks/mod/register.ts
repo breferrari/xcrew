@@ -670,11 +670,11 @@ const STILL_BUILDING = Symbol('still building')
  * named nothing is remembered for 30 s, so calls don't each start another (docs/findings.md, *Building after a
  * reload*).
  */
-async function build($: EngineInterface, timeoutMs: number): Promise<string | undefined | typeof STILL_BUILDING> {
+async function build($: EngineInterface, timeoutMs: number, unwaited = false): Promise<string | undefined | typeof STILL_BUILDING> {
   const now = await $.clock.now()
   const known = knownBuild(await read($, buildState), now)
   if (known !== 'ask') return known
-  asking ??= start($, shimPath($.plugin.root), ['--if-built', '--binary-path'], timeoutMs)
+  asking ??= start($, shimPath($.plugin.root), ['--if-built', '--binary-path'], timeoutMs, undefined, unwaited)
     .then(ran => namedBuild(ran.stdout))
     .finally(() => {
       asking = undefined
@@ -758,7 +758,7 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number | und
     if (ms <= 0) throw new OutOfTime()
     return ms
   }
-  const binary = await build($, await left()).catch(() => undefined)
+  const binary = await build($, await left(), unwaited).catch(() => undefined)
   if (binary === STILL_BUILDING) throw new StillBuilding()
   if (binary) {
     const startedAt = await $.clock.now()

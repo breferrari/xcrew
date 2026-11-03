@@ -2,8 +2,8 @@ import Foundation
 import Synchronization
 
 /// One deadline for a whole call, passed down to each command it starts: a command's limit is what's left of the
-/// deadline when it's shorter than its own, and a command past the deadline isn't started. So no step's limit is set
-/// apart from the call's, and each uses what the steps before it left (docs/findings.md, *Deadlines inside the CLI*).
+/// deadline, as no command has one of its own, and a command past the deadline isn't started. So each uses what the
+/// steps before it left (docs/findings.md, *Deadlines inside the CLI*).
 /// The commands it cut are named, for the result to say what it left out. The deadline is on the machine's monotonic
 /// clock (`Machine.monotonic`), so a change to the wall clock, as an NTP step, moves no command's time.
 public final class DeadlineRunner: CommandRunning {
@@ -48,7 +48,7 @@ public final class DeadlineRunner: CommandRunning {
         }
         let limited = left < timeout
         let answer = await base.run(argv, stdin: stdin, timeout: limited ? left : timeout)
-        // Cut only when the deadline stopped it: one on its own limit, or that timed out with time left, was cancelled,
+        // Cut only when the deadline stopped it: one on a shorter limit it was given, or that timed out with time left, was cancelled,
         // however long its output held it after.
         if answer == .timedOut, limited, now() >= deadline { note(argv) }
         return answer

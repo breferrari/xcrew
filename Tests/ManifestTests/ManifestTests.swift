@@ -1366,7 +1366,7 @@ import Testing
         for file in files {
             let text = try text("Sources/\(file)")
             named += text.matches(of: /timeout: (?:Duration = )?(?:Duration)?\.(?:seconds|milliseconds)\(/).map { _ in "Sources/\(file): a timeout written at the call" }
-            named += text.matches(of: /static let (\w+) = Duration\./).map { String($0.1) }.filter { !kept.contains($0) }.map { "Sources/\(file): \($0)" }
+            named += text.matches(of: /static let (\w+)(?:: Duration)? = (?:Duration)?\.(?:seconds|milliseconds)\(/).map { String($0.1) }.filter { !kept.contains($0) }.map { "Sources/\(file): \($0)" }
         }
         #expect(named.isEmpty, "\(named)")
     }
@@ -1388,6 +1388,10 @@ import Testing
         }
         let launcher = try text("libexec/mobilebuildmcp-server")
         #expect(launcher.contains(#"XCREW_WITHIN_MS=$((PIN_SECONDS * 1000)) "$plugin/bin/xcrew" --if-built xcode"#))
+        // Every command runs under the call's deadline, an asked call's when none is given.
+        #expect(try text("Sources/XcrewCLI/CLI.swift").contains("context.machine.answering(by: DeadlineRunner.deadline(for: context.machine))"))
+        let unset = Machine(environment: [:], home: URL(fileURLWithPath: "/nonexistent"), runner: SystemCommandRunner(), monotonic: { .zero })
+        #expect(DeadlineRunner.deadline(for: unset) == .milliseconds(118_500))
     }
 
     // MARK: mcs techpack

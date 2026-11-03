@@ -206,9 +206,9 @@ import XcrewTestSupport
     @Test func theBootedSimulatorsAreTheOnesBootedOrBootingNow() async {
         let listed = Self.booted.replacingOccurrences(of: #""udid":"C3","state":"Booted""#, with: #""udid":"C3","state":"Booting""#)
         let runner = FakeRunner(responses: ["xcrun simctl list devices booted --json": .init(status: 0, stdout: listed)])
-        let booted = await SimulatorCatalog.booted(using: runner, timeout: .seconds(1))
+        let booted = await SimulatorCatalog.booted(using: runner)
         #expect(booted.map(\.name) == ["iPad Air 11-inch (M3)", "iPhone 17"])
-        #expect(await SimulatorCatalog.booted(using: FakeRunner(), timeout: .seconds(1)).isEmpty)
+        #expect(await SimulatorCatalog.booted(using: FakeRunner()).isEmpty)
     }
 
     @Test func briefingNamesTheBootedSimulatorsWhenThereAreAny() async {

@@ -123,9 +123,9 @@ public struct SimulatorCatalog: Sendable {
         }
     }
 
-    /// The simulators booted or booting now, or none when `simctl` doesn't answer within `timeout`. Its `booted` filter matches each
+    /// The simulators booted or booting now, or none when `simctl` doesn't answer. Its `booted` filter matches each
     /// device's description, so a device's own `state` decides.
-    public static func booted(using runner: any CommandRunning, timeout: Duration) async -> [Device] {
+    public static func booted(using runner: any CommandRunning) async -> [Device] {
         let listed = await runner.run("xcrun", "simctl", "list", "devices", "booted", "--json")
         return SimulatorCatalog(json: Data(listed.stdout.utf8)).devices.filter { ["Booted", "Booting"].contains($0.state) }
     }
@@ -135,7 +135,7 @@ public struct SimulatorCatalog: Sendable {
 
     /// The simulators booted now: none while CoreSimulator's service isn't running, since `xcrun` without one starts it,
     /// or on a Mac without the developer tools offers to install them, so `simctl` is asked only while it runs. Nil when
-    /// `simctl` doesn't answer within `timeout`.
+    /// `simctl` doesn't answer, as when the call's deadline cuts it.
     public static func bootedIfServiceRuns(using runner: any CommandRunning) async -> [Device]? {
         guard await runner.run("pgrep", "-x", coreSimulatorService).status == 0 else { return [] }
         let listed = await runner.run("xcrun", "simctl", "list", "devices", "booted", "--json")

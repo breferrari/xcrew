@@ -93,7 +93,7 @@ public final class CommandPool: CommandRunning {
     /// The Mac's performance cores (`hw.perflevel0.physicalcpu`), else its active cores (`hw.activecpu`), else one.
     public static func size(using runner: any CommandRunning) async -> Int {
         for key in ["hw.perflevel0.physicalcpu", "hw.activecpu"] {
-            let answer = await runner.run("sysctl", "-n", key, timeout: DeadlineRunner.untimed)
+            let answer = await runner.run("sysctl", "-n", key)
             if answer.succeeded, let count = Int(answer.stdout.trimmingCharacters(in: .whitespacesAndNewlines)), count > 0 { return count }
         }
         return 1

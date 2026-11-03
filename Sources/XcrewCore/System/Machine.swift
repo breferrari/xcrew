@@ -15,7 +15,7 @@ public struct Machine: Sendable {
     /// When the call this machine runs must have answered by, on the `monotonic` clock; nil outside a call, as in a
     /// test that sets none.
     public let deadline: Duration?
-    /// Time on a clock no change to the wall clock moves: how long since this process started, or a test's own.
+    /// Time on a clock no change to the wall clock moves, from `started`, or a test's own.
     public let monotonic: @Sendable () -> Duration
 
     public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications"), now: @escaping @Sendable () -> Date = { Date() }, monotonic: @escaping @Sendable () -> Duration = { Machine.started.duration(to: .now) }, deadline: Duration? = nil) {
@@ -29,7 +29,8 @@ public struct Machine: Sendable {
         self.deadline = deadline
     }
 
-    /// When this process started, on the monotonic clock.
+    /// The monotonic clock's origin for this process: set the first time it's read, which only the differences between
+    /// readings depend on.
     public static let started = ContinuousClock.now
 
     public static let live = Machine(

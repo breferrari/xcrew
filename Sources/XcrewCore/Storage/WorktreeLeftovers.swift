@@ -9,7 +9,7 @@ enum WorktreeLeftovers {
         guard let file = await WorktreeSimulatorRecord.file(for: context.project.root, using: context.runner) else { return .skip("not in git") }
         let record = WorktreeSimulatorRecord.read(file)
         guard !record.entries.isEmpty else { return .skip("setup --worktree has recorded none") }
-        let listed = await context.runner.run("xcrun", "simctl", "list", "devices", "--json", timeout: DeadlineRunner.untimed)
+        let listed = await context.runner.run("xcrun", "simctl", "list", "devices", "--json")
         let git = await context.runner.run("git", "-C", context.project.root.path, "worktree", "list", "--porcelain")
         guard listed.succeeded, git.succeeded else { return .skip("simctl or git didn't answer") }
         let devices = SimulatorCatalog(json: Data(listed.stdout.utf8), includingUnavailable: true).devices
