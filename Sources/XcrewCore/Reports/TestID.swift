@@ -45,6 +45,7 @@ public struct TestID: Sendable, Hashable {
             if case let .found(id) = self { id } else { nil }
         }
 
+        /// Whether two or more nested ids end with the name, so none is taken.
         var isAmbiguous: Bool {
             if case .ambiguous = self { true } else { false }
         }

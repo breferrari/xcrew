@@ -246,7 +246,7 @@ public enum FailureNotes {
             return found
         }
         if let imagesFolder, !images.isEmpty { FailureImages.record(bundle.runFolder(in: imagesFolder)) }
-        let textNames = Dictionary(bundleIDs.compactMap { name, resolution in resolution.found.map { ($0, name) } }) { first, _ in first }
+        let textNames = Dictionary(order.compactMap { name in bundleIDs[name]?.found.map { ($0, name) } }) { first, _ in first }
         for repeated in repetitions {
             let test = textNames[TestID(xcresultID: repeated.test)] ?? TestID(xcresultID: repeated.test)
             notes.repeated.insert(test)
