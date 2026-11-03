@@ -141,20 +141,58 @@ public struct ResultBundle: Sendable {
         }
     }
 
-    /// Each test the run's test list counts passed, as MobileBuildMCP's count does: a retried test that passed on a later
-    /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
-    /// target.
-    static func passedTests(listing: TestList) -> Set<TestID> {
-        var passed: Set<TestID> = [], failed: Set<TestID> = []
-        for node in listing.nodes where node["nodeType"] as? String == "Test Case" {
-            guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)) else { continue }
-            switch node["result"] as? String {
-            case "Passed": passed.insert(id)
-            case "Failed": failed.insert(id)
-            default: break
-            }
+    /// Each test case's results in a test list's nodes, by its id: a test filed more than once, as in several test
+    /// bundles, has each of them, and each test plan configuration and device it ran under, below its case, its own
+    /// too. A case with none has `noResult`; a configuration or device with none says nothing, as `look` reads it.
+    static func results(in nodes: [[String: Any]]) -> [TestID: Set<String>] {
+        testCases(in: nodes).mapValues { cases in
+            Set(cases.map { $0["result"] as? String ?? noResult } + nestedResults(of: cases).compactMap(\.result))
         }
-        return passed.subtracting(failed)
+    }
+
+    /// The results a test's cases hold below them, each test plan configuration's and each device's, in either nesting,
+    /// with the configuration each is under: nil for a device under none. A result a node doesn't give is nil. Nothing
+    /// below a repetition counts: a retried test's earlier failure stays in its repetitions.
+    static func nestedResults(of testCases: [[String: Any]]) -> [(configuration: String?, result: String?)] {
+        var found: [(configuration: String?, result: String?)] = []
+        func walk(_ node: [String: Any], under configuration: String?) {
+            let type = node["nodeType"] as? String
+            guard type != "Repetition" else { return }
+            let current = type == "Test Plan Configuration" ? node["name"] as? String : configuration
+            if type == "Test Plan Configuration" || type == "Device" { found.append((current, node["result"] as? String)) }
+            for child in node["children"] as? [[String: Any]] ?? [] { walk(child, under: current) }
+        }
+        for node in testCases { for child in node["children"] as? [[String: Any]] ?? [] { walk(child, under: nil) } }
+        return found
+    }
+
+    /// What `results(in:)` gives for an entry that records no result: empty, as no result `xcresulttool` writes is.
+    static let noResult = ""
+
+    /// The tests among `results` the bundle counts as passed, skipped or an expected failure in every entry, test plan
+    /// configuration and device: no failure whatever another listing says. A test of one name with another result in any, as
+    /// `unknown` for one whose process was killed in another test bundle, isn't: a pass in one is no sign of the other.
+    static func cleared(in results: [TestID: Set<String>]) -> Set<TestID> {
+        Set(results.filter { $0.value.isSubset(of: clearingResults) }.keys)
+    }
+
+    /// The results that make a test no failure, each with how a note says it counts, in the order one is named when a
+    /// test has several: `xcresulttool`'s others are `Failed` and `unknown` (docs/findings.md, *A failing run's failed
+    /// tests are its bundle's*).
+    static let clearing: [(result: String, counts: String)] = [("Passed", "passed"), ("Expected Failure", "an expected failure"), ("Skipped", "skipped")]
+
+    /// The results in `clearing`, as a set.
+    static let clearingResults = Set(clearing.map(\.result))
+
+    /// Each test the run's test list counts passed: a retried test that passed on a later try among them, as
+    /// MobileBuildMCP's count has it, its earlier failure only in its repetitions. Never one with an entry of another
+    /// result, as one of the same id failed in another target or recorded `unknown` in, as one whose process was
+    /// killed, or one the bundle lists as failed, as through a crash it files under `System Failures`: the report doesn't
+    /// list a test as both failed and passed.
+    static func passedTests(listing: TestList) -> Set<TestID> {
+        let results = Self.results(in: listing.nodes)
+        let failed = Set((failedTests(listing: listing) ?? []).map { TestID(xcresultID: $0.title) })
+        return cleared(in: results).filter { results[$0]?.contains("Passed") == true }.subtracting(failed)
     }
 
     /// Each test `passedTests` counts passed, once per test bundle it passed in, the bundle its target, as `Suite/test`; a

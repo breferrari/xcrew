@@ -96,6 +96,99 @@ struct BundleFailuresTests {
         #expect(report.failures.filter { $0.message == message }.count == 1)
     }
 
+    /// A test the text lists as failed that the bundle counts as passed, as one a retry passed, is no failure, and a
+    /// note says the two disagree; the repeated run's note says how its runs went, once.
+    @Test func aTestTheTextFailsAndTheBundlePassesIsSaidSo() async throws {
+        let notes = try await Self.report("retry", repeated: true).notes
+        #expect(notes.filter { $0.contains("ProbeTests/testFlaky") } == [
+            "xcrew: across repeated runs: ProbeTests/testFails failed every run, a real failure; ProbeTests/testFlaky is flaky, failing 1 of 2.",
+            "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ProbeTests/testFlaky, which the bundle counts as passed. A test the bundle counts as passed, an expected failure or skipped in every entry, test plan configuration and device is left out of the failures here.",
+        ])
+    }
+
+    /// A test the text lists as failed that the bundle has no entry for stays a failure, with the text's message, in the
+    /// run's order, and the note says the bundle has no entry for it: no record is no sign it passed.
+    /// Composed from the retry capture, its text naming the flaky test otherwise.
+    @Test func aTestTheTextFailsAndTheBundleDoesntListStaysAFailure() async throws {
+        let text = try Raw.text("retry")
+        #expect(text.contains("✗ ProbeTests / testFlaky:"))
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("retry")) --compact": .init(status: 0, stdout: try Raw.file("retry.tests.json"))])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: "✗ ProbeTests / testFlaky:", with: "✗ ProbeTests / testGone:"), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(report.failures.filter(\.isTest).map { "\($0.title) | \($0.message)" } == [
+            #"ProbeTests/testFails | XCTAssertEqual failed: ("Hello, Ada") is not equal to ("Hi, Ada")"#,
+            #"ProbeTests/testGone | XCTAssertEqual failed: ("1") is not equal to ("0") - run 1 is odd"#,
+        ])
+        #expect(report.notes.filter { $0.contains("MobileBuildMCP's result lists") } == [
+            "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ProbeTests/testGone, which the bundle has no entry for under that name. A test the bundle doesn't count as passed, an expected failure or skipped in every entry, test plan configuration and device stays in the failures here, as MobileBuildMCP gives it.",
+        ])
+    }
+
+    /// A run whose bundle lists no failed test has a summary that names none, though the text names one the bundle
+    /// counts as passed. Composed from the retry capture: its text listing only the test a retry passed, and its test
+    /// list with every run passing.
+    @Test func theSummaryNamesNoTestTheBundleCountsAsPassed() async throws {
+        let failing = """
+              ✗ ProbeTests / testFails: XCTAssertEqual failed: ("Hello, Ada") is not equal to ("Hi, Ada")
+                /testbed/field/Modules/Feature/Tests/ProbeTests.swift:11
+
+
+            """
+        let text = try Raw.text("retry")
+        #expect(text.contains(failing))
+        let listing = try Raw.file("retry.tests.json")
+        #expect(listing.contains(#""result":"Failed""#))
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("retry")) --compact": .init(status: 0, stdout: listing.replacingOccurrences(of: #""result":"Failed""#, with: #""result":"Passed""#))])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: failing, with: ""), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(report.detail == "1 of 4 failed")
+        #expect(report.failures.filter(\.isTest).isEmpty)
+        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ProbeTests/testFlaky, which the bundle counts as passed. A test the bundle counts as passed, an expected failure or skipped in every entry, test plan configuration and device is left out of the failures here."))
+    }
+
+    /// With no failed test in the bundle, the summary names the first the text lists that the bundle has no entry for,
+    /// never one it records as passed; the note names each with what the bundle records. Composed from the retry
+    /// capture: the failing test renamed to one that passed, the flaky one to one not listed.
+    @Test func theSummaryNamesAnUnlistedTestNeverAPassedOne() async throws {
+        let text = try Raw.text("retry")
+        #expect(text.contains("✗ ProbeTests / testFails:") && text.contains("✗ ProbeTests / testFlaky:"))
+        let listing = try Raw.file("retry.tests.json").replacingOccurrences(of: #""result":"Failed""#, with: #""result":"Passed""#)
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("retry")) --compact": .init(status: 0, stdout: listing)])
+        let output = ToolOutput(text: text.replacingOccurrences(of: "✗ ProbeTests / testFails:", with: "✗ ProbeTests / testPasses:").replacingOccurrences(of: "✗ ProbeTests / testFlaky:", with: "✗ ProbeTests / testGone:"), server: .mobileBuildMCP, isError: true)
+        let report = await Report.make(kind: .test, output: output, home: Captured.home, runner: runner)
+        #expect(report.detail == "1 of 4 failed · ProbeTests/testGone")
+        #expect(report.failures.filter(\.isTest).map(\.title) == ["ProbeTests/testGone"])
+        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't list among its failures under that name: ProbeTests/testPasses, which the bundle counts as passed; ProbeTests/testGone, which the bundle has no entry for under that name. A test the bundle counts as passed, an expected failure or skipped in every entry, test plan configuration and device is left out of the failures here. A test the bundle doesn't count as passed, an expected failure or skipped in every entry, test plan configuration and device stays in the failures here, as MobileBuildMCP gives it."))
+    }
+
+    /// A test the text lists as failed that the bundle records as `unknown`, as one whose process was killed, stays a
+    /// failure: only a pass, a skip or an expected failure clears it. Composed from the retry capture, its passed test
+    /// cases recorded `unknown`.
+    @Test func aTestTheBundleRecordsAsUnknownStaysAFailure() async throws {
+        let passed = #""nodeType":"Test Case","result":"Passed""#
+        let listing = try Raw.file("retry.tests.json")
+        #expect(listing.contains(passed))
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("retry")) --compact": .init(status: 0, stdout: listing.replacingOccurrences(of: passed, with: #""nodeType":"Test Case","result":"unknown""#))])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: try Raw.text("retry"), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(report.failures.filter(\.isTest).map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
+        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ProbeTests/testFlaky, which the bundle records as unknown. A test the bundle doesn't count as passed, an expected failure or skipped in every entry, test plan configuration and device stays in the failures here, as MobileBuildMCP gives it."))
+    }
+
+    /// Every test case, test plan configuration and device result the captures' test lists hold is one the report reads: a clearing one, or `Failed` or
+    /// `unknown`, the schema's others. A value xcresulttool renames shows up here, not as a skip read as a failure.
+    @Test func everyCapturedResultIsOneTheReportReads() throws {
+        let folder = Testbed.root.appending(path: "captures/raw")
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasSuffix(".tests.json") }
+        #expect(!names.isEmpty)
+        var found: Set<String> = []
+        for name in names {
+            for node in TestList(try Raw.file(name)).nodes where ["Test Case", "Test Plan Configuration", "Device"].contains(node["nodeType"] as? String) {
+                if let result = node["result"] as? String { found.insert(result) }
+            }
+        }
+        #expect(found.subtracting(["Passed", "Expected Failure", "Skipped", "Failed", "unknown"]).isEmpty, "\(found.sorted())")
+        #expect(ResultBundle.clearing.map(\.result) == ["Passed", "Expected Failure", "Skipped"])
+        #expect(found.isSuperset(of: ["Passed", "Failed", "Skipped", "Expected Failure"]), "\(found.sorted())")
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])

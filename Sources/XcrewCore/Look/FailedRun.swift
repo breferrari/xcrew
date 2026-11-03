@@ -52,16 +52,13 @@ struct FailedRun: Sendable, Equatable {
 
     /// The configurations the test list says a test passed under: every result recorded for one, its own and each of
     /// its devices', whether the list nests devices under configurations or configurations under devices, passed. A pass
-    /// on one device never vouches for another device's run.
+    /// on one device never vouches for another device's run. A result below a repetition doesn't count, as a retry's
+    /// earlier failure stays in its repetitions.
     static func passedConfigurations(of testCases: [[String: Any]]) -> Set<String> {
         var results: [String: [String]] = [:]
-        func walk(_ node: [String: Any], under configuration: String?) {
-            let type = node["nodeType"] as? String
-            let current = type == "Test Plan Configuration" ? node["name"] as? String : configuration
-            if let current, type == "Test Plan Configuration" || type == "Device", let result = node["result"] as? String { results[current, default: []].append(result) }
-            for child in node["children"] as? [[String: Any]] ?? [] { walk(child, under: current) }
+        for nested in ResultBundle.nestedResults(of: testCases) {
+            if let configuration = nested.configuration, let result = nested.result { results[configuration, default: []].append(result) }
         }
-        for node in testCases { walk(node, under: nil) }
         return Set(results.filter { $0.value.allSatisfy { $0 == "Passed" } }.keys)
     }
 
