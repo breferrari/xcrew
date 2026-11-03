@@ -259,6 +259,9 @@ func failingRunText(passing: Int) -> String {
         #expect(Report.naming("1 of 4 failed · ProbeTests/testAFlaky", first: "ProbeTests/testFails", insteadOf: "ProbeTests/testAFlaky") == "1 of 4 failed · ProbeTests/testFails")
         #expect(Report.naming("1 of 4 failed · ProbeTests/testFails", first: "ProbeTests/testFails", insteadOf: "ProbeTests/testFails") == "1 of 4 failed · ProbeTests/testFails")
         #expect(Report.naming("12 passed", first: nil, insteadOf: nil) == "12 passed")
+        // No failing test left, as when the bundle lists none: the test the text named goes.
+        #expect(Report.naming("1 of 4 failed · ProbeTests/testFlaky", first: nil, insteadOf: "ProbeTests/testFlaky") == "1 of 4 failed")
+        #expect(Report.naming("1 of 4 failed", first: nil, insteadOf: nil) == "1 of 4 failed")
     }
 
     @Test func anAnswerThatIsNoneOfThemGivesNothing() {

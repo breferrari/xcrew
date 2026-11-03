@@ -125,6 +125,7 @@ struct BundleFailuresTests {
         let report = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: failing, with: ""), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner, repeated: true)
         #expect(report.detail == "1 of 4 failed")
         #expect(report.failures.filter(\.isTest).isEmpty)
+        #expect(report.notes.contains("xcrew: MobileBuildMCP's text lists as failed a test the result bundle counts as passed: ProbeTests/testFlaky. The failures listed here are the bundle's."))
     }
 
     /// An expected failure is no failure, nor is a test a retry passed.

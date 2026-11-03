@@ -145,7 +145,7 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// The tests the text lists as failed that the bundle counts as passed, as one a retry passed; nil when the two
-    /// agree. A repeated run's note says how each test's runs went.
+    /// agree.
     static func passedInBundleNote(text: [ToolOutput.Failure], listing: TestList) -> String? {
         let passed = ResultBundle.passedTests(listing: listing)
         let named = text.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter(passed.contains).map(\.shown)
@@ -159,14 +159,11 @@ public struct Report: Sendable, Equatable, Codable {
     /// failures come from the text unless the bundle listed them, so it named a test the bundle doesn't count as failed.
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail else { return nil }
-        guard let first else {
-            guard let named, detail.hasSuffix(ToolOutput.Summary.beforeFirstFailing + named) else { return detail }
-            return String(detail.dropLast((ToolOutput.Summary.beforeFirstFailing + named).count))
-        }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
-        guard let named else { return detail.hasSuffix(ToolOutput.Summary.failedCounts) ? detail + ToolOutput.Summary.beforeFirstFailing + first : detail }
-        guard first != named, detail.hasSuffix(ToolOutput.Summary.beforeFirstFailing + named) else { return detail }
-        return String(detail.dropLast(named.count)) + first
+        guard let named else { return detail.hasSuffix(ToolOutput.Summary.failedCounts) ? first.map { detail + ToolOutput.Summary.beforeFirstFailing + $0 } ?? detail : detail }
+        let naming = ToolOutput.Summary.beforeFirstFailing + named
+        guard first != named, detail.hasSuffix(naming) else { return detail }
+        return String(detail.dropLast(naming.count)) + (first.map { ToolOutput.Summary.beforeFirstFailing + $0 } ?? "")
     }
 
     /// The task Claude Code named in a handle: the one after "moved to the background as task", in each of its wordings
