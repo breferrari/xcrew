@@ -95,7 +95,8 @@ public struct ResultBundle: Sendable {
     }
 
     /// The case the bundle files `test`'s crash under, `xctest (<pid>) encountered an error` in `System Failures`, when its
-    /// message names `test`, from `cases`, the test list's test cases by id; nil when there's none.
+    /// message names `test`, from `cases`, the test list's test cases by id: the first by id when several do; nil when
+    /// none does.
     static func crashCase(of test: TestID, in cases: [TestID: [[String: Any]]]) -> TestID? {
         guard cases[test] == nil else { return nil }
         return cases.filter { _, filed in
@@ -428,9 +429,8 @@ public struct ResultBundle: Sendable {
         cache.appending(path: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)
     }
 
-    /// A crash's summary, from the crash log the result bundle attached to the test, and the test's line it names: its own
-    /// frame found by `named`, the test the crash is, where `test` is the case the bundle files it under, as a crash in
-    /// `System Failures`.
+    /// A crash's summary, from the crash log the result bundle attached to `test`, and the test's line it names: the frame
+    /// of `named`, the test whose frame is sought when `test` is its `System Failures` case.
     public func crash(of test: TestID, naming named: TestID? = nil) async -> (summary: [String], location: String?)? {
         await attachments(of: test, onlyFailures: true) { Self.crashSummary(in: $0, test: named ?? test) }
     }

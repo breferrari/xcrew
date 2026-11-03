@@ -68,4 +68,13 @@ import XcrewTestSupport
         let text = await Look.report(bundle: ResultBundle(path: bundle, runner: runner), named: nil, keptIn: FileManager.default.temporaryDirectory.appending(path: "xcrew-look-\(UUID().uuidString)"), now: Date())
         #expect(text.hasPrefix("xcrew: no failed test in test_sim_1.xcresult kept a screen recording"), "\(text)")
     }
+
+    /// `look` takes the name the run's text gives a test: a nested suite's, `Inner/fails()`, means the one nested id that
+    /// ends with it, and a crash's filed under `System Failures` means the `xctest (<pid>)` case its message names.
+    @Test func lookTakesTheTextsNameForANestedTestOrACrashCase() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"Outer/Inner/fails()","result":"Failed"},{"nodeType":"Test Suite","name":"System Failures","children":[{"nodeType":"Test Case","name":"xctest (1) encountered an error","nodeIdentifier":"xctest (1) encountered an error","result":"Failed","children":[{"nodeType":"Failure Message","name":"Crash: xctest at Suite.crashes()"}]}]}]}"#)
+        let cases = ResultBundle.testCases(in: listing.nodes)
+        #expect(Look.test("Inner/fails()", among: cases) == TestID(xcresultID: "Outer/Inner/fails()"))
+        #expect(Look.test("Suite/crashes()", among: cases) == TestID(xcresultID: "xctest (1) encountered an error"))
+    }
 }

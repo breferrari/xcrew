@@ -291,7 +291,7 @@ struct BundleFailuresTests {
         let runner = RecordingRunner(FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Self.filedUnderSystemFailures(Raw.file("system-failure-crash.tests.json")))]))
         let report = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: filed, with: ""), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
         #expect((report.result ?? "").contains("✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"), "\(report.result ?? "")")
-        #expect(runner.asked.contains { $0.contains("--test-id xctest (80341) encountered an error --") }, "\(runner.asked)")
+        #expect(runner.asked.contains { $0.hasPrefix("xcrun xcresulttool export attachments") && $0.contains("--test-id xctest (80341) encountered an error --only-failures") }, "\(runner.asked)")
         #expect(!runner.asked.contains { $0.contains("--test-id AssertCrashTests/test_crash()") }, "\(runner.asked)")
     }
 
@@ -304,7 +304,7 @@ struct BundleFailuresTests {
         let text = try Raw.text("system-failure-crash").replacingOccurrences(of: filed, with: "  ✗ System Failures / xctest (80341) encountered an error: Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()")
         let runner = RecordingRunner(FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Self.filedUnderSystemFailures(Raw.file("system-failure-crash.tests.json")))]))
         _ = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
-        #expect(runner.asked.contains { $0.contains("--test-id xctest (80341) encountered an error --") }, "\(runner.asked)")
+        #expect(runner.asked.contains { $0.hasPrefix("xcrun xcresulttool export attachments") && $0.contains("--test-id xctest (80341) encountered an error --only-failures") }, "\(runner.asked)")
         #expect(!runner.asked.contains { $0.contains("--test-id AssertCrashTests/test_crash()") }, "\(runner.asked)")
     }
 

@@ -18,14 +18,18 @@ public enum Look {
     }
 
     /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,
-    /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way. When the
-    /// bundle lists neither, a name ending `()` is taken as the bundle's own and one without as `-only-testing:`'s.
+    /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way; else, as
+    /// the run's text names a test, the one nested id that ends with it, or the `System Failures` case a crash of it is
+    /// filed under. When the bundle lists none, a name ending `()` is taken as the bundle's own and one without as
+    /// `-only-testing:`'s.
     static func test(_ named: String, among cases: [TestID: [[String: Any]]]) -> TestID {
         let exact = TestID(xcresultID: named)
         let parts = named.split(separator: "/", maxSplits: 1)
         let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
         if cases[exact] != nil { return exact }
         if let withoutTarget, cases[withoutTarget] != nil { return withoutTarget }
+        if case let .found(nested) = exact.resolved(among: Set(cases.keys)) { return nested }
+        if let crash = ResultBundle.crashCase(of: exact, in: cases) { return crash }
         return named.hasSuffix("()") ? exact : withoutTarget ?? exact
     }
 
