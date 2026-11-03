@@ -30,6 +30,8 @@ import XcrewTestSupport
         # Held until the test writes a line to this FIFO: the build is still going when the test says.
         [ -n "${HOLD_BUILD:-}" ] && read -r _ < "$HOLD_BUILD"
         [ -n "${FAIL_BUILD:-}" ] && { echo "compile error" >&2; exit 1; }
+        # What a real build prints once it's done, for a test that needs the build to say something.
+        [ -n "${BUILD_SAYS:-}" ] && echo "$BUILD_SAYS"
         while [ $# -gt 0 ]; do [ "$1" = --scratch-path ] && scratch="$2"; shift; done
         mkdir -p "$scratch/release"
         printf '#!/bin/sh\\necho "ran $* root=$XCREW_ROOT"\\n' > "$scratch/release/xcrew"
@@ -255,6 +257,105 @@ extension ShimTests {
         let writer = try FileHandle(forWritingTo: fifo)
         try writer.write(contentsOf: Data("go\n".utf8))
         try writer.close()
+    }
+
+    /// The shim asked for its build, its build held until `hold` is released: the process, its pipes, and its own group,
+    /// which a closed terminal or an ending session signals.
+    /// `errors` takes its standard error in place of a pipe, and `saying` is what the build prints as it ends.
+    func startHeldBuild(_ hold: URL, errors stream: FileHandle? = nil, saying: String? = nil) throws -> (process: Process, output: Pipe, errors: Pipe) {
+        let process = Process()
+        process.executableURL = root.appending(path: "bin/xcrew")
+        process.arguments = ["--binary-path"]
+        process.environment = ["PATH": "\(root.appending(path: "fakebin").path):/usr/bin:/bin", "HOME": FileManager.default.temporaryDirectory.path, "XCREW_CACHE": cache.path, "HOLD_BUILD": hold.path]
+            .merging(saying.map { ["BUILD_SAYS": $0] } ?? [:]) { $1 }
+        let output = Pipe(), errors = Pipe()
+        process.standardOutput = output
+        process.standardError = stream ?? errors
+        try process.run()
+        return (process, output, errors)
+    }
+
+    /// A build its caller stopped waiting on, as one a session started when the session ended and its terminal closed,
+    /// still runs to its end and is put in place.
+    @Test func aBuildWhoseCallerHasGoneIsStillPutInPlace() async throws {
+        let hold = try await fifo("hold")
+        let started = try startHeldBuild(hold)
+        try await until { builds == 1 }
+        // The caller goes: its group gets the hangup a closed terminal sends, and nothing reads what the build writes.
+        #expect(kill(-started.process.processIdentifier, SIGHUP) == 0)
+        try started.output.fileHandleForReading.close()
+        try started.errors.fileHandleForReading.close()
+        try release(hold)
+        try await until { FileManager.default.isExecutableFile(atPath: (try? cachedBinary()) ?? "") }
+        let again = try await shim("help")
+        #expect(again.output.hasPrefix("ran help"))
+        #expect(builds == 1, "the build was lost and ran again")
+    }
+
+    /// A build whose caller stopped reading, as Claude Code once a session has ended, still puts its binary in place:
+    /// writing to a reader that's gone stops nothing.
+    @Test func aBuildWhoseReaderHasGoneIsStillPutInPlace() async throws {
+        let hold = try await fifo("hold"), stream = try await fifo("stderr")
+        let reader = Process()
+        reader.executableURL = URL(fileURLWithPath: "/bin/sh")
+        reader.arguments = ["-c", "exec cat '\(stream.path)' > /dev/null"]
+        try reader.run()
+        let writer = try FileHandle(forWritingTo: stream)
+        defer { try? writer.close() }
+        let process = try startHeldBuild(hold, errors: writer, saying: "Build complete!").process
+        try await until { builds == 1 }
+        reader.terminate()
+        try await until { !reader.isRunning }
+        try release(hold)
+        try await until { !process.isRunning }
+        let again = try await shim("help")
+        #expect(again.output.hasPrefix("ran help"))
+        #expect(builds == 1, "the build was lost and ran again")
+    }
+
+    /// A build stopped outright, as by a person's Ctrl-C, leaves nothing behind: no output, no binary half put in place.
+    @Test func aBuildStoppedOutrightLeavesNothingBehind() async throws {
+        let hold = try await fifo("hold")
+        let started = try startHeldBuild(hold)
+        try await until { builds == 1 }
+        #expect(kill(-started.process.processIdentifier, SIGTERM) == 0)
+        try await until { !started.process.isRunning }
+        // The build's own shim, which removes what it made as it ends, has ended too.
+        try await until { await ShimTests.pgrep("--build-under-lock", in: root) == false }
+        let left = try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { $0.contains(".output-") || $0.hasSuffix(".partial") }
+        #expect(left.isEmpty, "\(left)")
+    }
+
+    /// Whether a process whose command line holds both `text` and `folder`'s path is running.
+    static func pgrep(_ text: String, in folder: URL) async -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-f", "\(folder.path).*\(text)"]
+        process.standardOutput = FileHandle.nullDevice
+        try? await runToEnd(process)
+        return process.terminationStatus == 0
+    }
+
+    /// The build this checkout's sources name, where the shim puts it.
+    func cachedBinary() throws -> String {
+        let key = try FileManager.default.contentsOfDirectory(atPath: cache.path).first { $0.count == 16 && !$0.contains(".") } ?? ""
+        return cache.appending(path: "\(key)/xcrew").path
+    }
+
+    /// What a build that was stopped outright left behind, its output and a binary not yet put in place, goes with the
+    /// next build.
+    @Test func whatAStoppedBuildLeftGoesWithTheNextBuild() async throws {
+        _ = try await shim("help")
+        let key = try FileManager.default.contentsOfDirectory(atPath: cache.path).first { $0.count == 16 && !$0.contains(".") } ?? ""
+        try FileManager.default.removeItem(at: cache.appending(path: key))
+        for left in ["\(key).output-4242", "\(key).output-4343", "0123456789abcdef.output-77", "\(key).failed.88"] { FileManager.default.createFile(atPath: cache.appending(path: left).path, contents: Data("Build complete!\n".utf8)) }
+        try FileManager.default.createDirectory(at: cache.appending(path: key), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: cache.appending(path: "\(key)/xcrew.partial").path, contents: Data())
+        let run = try await shim("help")
+        #expect(run.output.hasPrefix("ran help"), "\(run.status) \(run.errors)")
+        let left = try FileManager.default.contentsOfDirectory(atPath: cache.path).filter { $0.contains(".output-") || $0.contains(".failed.") }
+        #expect(left.isEmpty, "\(left)")
+        #expect(!FileManager.default.fileExists(atPath: cache.appending(path: "\(key)/xcrew.partial").path))
     }
 
     /// At session start the session hook and the mod both start the shim; after an update only one may build.

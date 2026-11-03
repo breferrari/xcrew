@@ -55,27 +55,34 @@ take_own_due() {
 
 # Builds the CLI for `key`, under the lock the caller holds: a build that landed while it waited is used as it is, and
 # one that failed while it waited, its attempt not the one `seen` names, is said with its reason rather than run again.
+# What it writes goes to a caller who may have gone, so a write that fails stops nothing; the binary is put in place
+# before anything is said. Stopped outright, it removes its output and a binary not yet in place, and the next build
+# removes what one stopped harder left (docs/findings.md, *Building after a reload*).
 build_cli() {
     binary="$cache/$key/xcrew"
     [ ! -x "$binary" ] || return 0
     failed="$cache/$key.failed"
     if [ -f "$failed" ] && [ "$(sed -n 1p "$failed")" != "$seen" ]; then
-        sed 1d "$failed" >&2
+        sed 1d "$failed" >&2 || true
         return 1
     fi
-    echo "xcrew: building the CLI for this version (once, 10 to 20 s)…" >&2
+    # Under the lock no other build runs, so any build's output or failure note still being written is a stopped one's.
+    rm -f "$cache"/*.output-* "$cache"/*.failed.* "$binary.partial"
     output="$cache/$key.output-$$"
+    trap 'rm -f "$output" "$binary.partial"' EXIT
+    trap 'exit 143' TERM
+    trap 'exit 130' INT
+    echo "xcrew: building the CLI for this version (once, 10 to 20 s)…" >&2 || true
     if ! swift build -c release --product xcrew --package-path "$root" --scratch-path "$cache/build" > "$output" 2>&1; then
-        cat "$output" >&2
         { echo "$$-$(date +%s)"; cat "$output"; } > "$failed.$$" && mv "$failed.$$" "$failed"
-        rm -f "$output"
+        cat "$output" >&2 || true
         return 1
     fi
-    cat "$output" >&2
-    rm -f "$output" "$failed"
     mkdir -p "$cache/$key"
     cp "$cache/build/release/xcrew" "$binary.partial"
     mv "$binary.partial" "$binary"
+    rm -f "$failed"
+    cat "$output" >&2 || true
     # An installed plugin builds once a version, so its scratch folder speeds no later build; a git
     # checkout keeps it for the next edit's.
     [ -e "$root/.git" ] || rm -rf "$cache/build"
@@ -181,8 +188,10 @@ if [ ! -x "$binary" ]; then
     lock="$cache/.build.lock"
     # The failed attempt this run already knows of, if any, read before it can wait: a failure after it is one it waited on.
     seen=$(sed -n 1p "$cache/$key.failed" 2>/dev/null || true)
-    lockf -k -s -t 0 "$lock" true || echo "xcrew: waiting for the CLI's build another run started…" >&2
-    lockf -k "$lock" "$root/bin/xcrew" --build-under-lock "$key" "$seen"
+    lockf -k -s -t 0 "$lock" true || echo "xcrew: waiting for the CLI's build another run started…" >&2 || true
+    # A caller that goes, as a session that ends or a terminal that closes, hangs up and stops reading: the build, and
+    # the lock it holds, carry on to the end without it.
+    (trap '' HUP PIPE; exec lockf -k "$lock" "$root/bin/xcrew" --build-under-lock "$key" "$seen")
 fi
 # Marks this build as in use, for the cleanup above.
 touch "$cache/$key"

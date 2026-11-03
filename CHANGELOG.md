@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The CLI build xcrew starts as a session begins now finishes and is put in place even if that session ends first, or its terminal closes. Before, it could be lost after compiling, so the next session built again, and it left a file behind in xcrew's cache. A build stopped with Ctrl-C leaves nothing behind, and one stopped harder is cleared by the next build.
+
 ## 0.15.0 — 2026-11-03
 
 - No time limit of xcrew's own cuts its work any more. A report on a build or test result, the evidence block, a `/xcrew` command, the CLI run from a terminal or by Claude through Bash, and every command xcrew starts go to their end, however long that takes. Before, each command had a limit of its own, among them a report's 120 s, the evidence's 300 s, the doctor's Xcode MCP handshake's 10 s, the session briefing's MobileBuildMCP read's 2 s and `xcrew space`'s 30 s a folder. The only limits left are Claude Code's and GitHub's own. Stopping xcrew's CLI, or Ctrl-C, stops the programs it started too.
