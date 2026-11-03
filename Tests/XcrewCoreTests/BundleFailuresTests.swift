@@ -140,34 +140,19 @@ struct BundleFailuresTests {
         #expect(report.notes.contains("xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: ProbeTests/testFlaky, which it counts as passed. The tests listed as failed here are the bundle's."))
     }
 
-    /// A test the summary names that the bundle doesn't list at all, as one a crash kept out of it, stays named: that
-    /// is no sign it passed. Composed from the retry capture as above, the failing test it names renamed.
-    @Test func theSummaryKeepsATestTheBundleDoesntList() async throws {
-        let failing = """
-              ✗ ProbeTests / testFails: XCTAssertEqual failed: ("Hello, Ada") is not equal to ("Hi, Ada")
-                /testbed/field/Modules/Feature/Tests/ProbeTests.swift:11
-
-
-            """
-        let text = try Raw.text("retry")
-        #expect(text.contains(failing) && text.contains("✗ ProbeTests / testFlaky:"))
-        let listing = try Raw.file("retry.tests.json").replacingOccurrences(of: #""result":"Failed""#, with: #""result":"Passed""#)
-        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("retry")) --compact": .init(status: 0, stdout: listing)])
-        let output = ToolOutput(text: text.replacingOccurrences(of: failing, with: "").replacingOccurrences(of: "✗ ProbeTests / testFlaky:", with: "✗ ProbeTests / testGone:"), server: .mobileBuildMCP, isError: true)
-        let report = await Report.make(kind: .test, output: output, home: Captured.home, runner: runner)
-        #expect(report.detail == "1 of 4 failed · ProbeTests/testGone")
-    }
-
-    /// With the first test the text names counted passed by the bundle, the summary names the first it doesn't list.
-    /// Composed from the retry capture: the failing test renamed to one that passed, the flaky one to one not listed.
-    @Test func theSummaryNamesTheFirstTestTheBundleDoesntList() async throws {
+    /// With no failed test in the bundle, the summary names none, though the text names tests the bundle passed or
+    /// doesn't list at all, as one a crash kept out; the note names each with what the bundle records. Composed from the
+    /// retry capture: the failing test renamed to one that passed, the flaky one to one not listed.
+    @Test func theSummaryNamesNoTestWhenTheBundleListsNoneFailed() async throws {
         let text = try Raw.text("retry")
         #expect(text.contains("✗ ProbeTests / testFails:") && text.contains("✗ ProbeTests / testFlaky:"))
         let listing = try Raw.file("retry.tests.json").replacingOccurrences(of: #""result":"Failed""#, with: #""result":"Passed""#)
         let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("retry")) --compact": .init(status: 0, stdout: listing)])
         let output = ToolOutput(text: text.replacingOccurrences(of: "✗ ProbeTests / testFails:", with: "✗ ProbeTests / testPasses:").replacingOccurrences(of: "✗ ProbeTests / testFlaky:", with: "✗ ProbeTests / testGone:"), server: .mobileBuildMCP, isError: true)
         let report = await Report.make(kind: .test, output: output, home: Captured.home, runner: runner)
-        #expect(report.detail == "1 of 4 failed · ProbeTests/testGone")
+        #expect(report.detail == "1 of 4 failed")
+        #expect(report.failures.filter(\.isTest).isEmpty)
+        #expect(report.notes.contains("xcrew: MobileBuildMCP's text lists as failed tests its result bundle doesn't: ProbeTests/testPasses, which it counts as passed; ProbeTests/testGone, which it doesn't list under that name. The tests listed as failed here are the bundle's."))
     }
 
     /// An expected failure is no failure, nor is a test a retry passed.
