@@ -718,5 +718,6 @@ test('/xcrew flaky with none marked says so, and without a branch says why', asy
   expect((await runCommand($, 'xcrew', 'flaky')).text).toBe('No test is marked flaky on feat/ledger.')
   branch = new Error('timed out')
   await clock.advance(BRANCH_FRESH_MS)
-  expect((await runCommand($, 'xcrew', 'flaky')).text).toBe("The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out. Run `/xcrew doctor`.")
+  // The read that failed is said after it.
+  expect(String((await runCommand($, 'xcrew', 'flaky')).text)).toMatch(/^The ledger couldn't be read: xcrew's CLI didn't say which branch is checked out\. Run `\/xcrew doctor`\.\nxcrew project --branch couldn't run: ./)
 })

@@ -92,6 +92,11 @@ test('the evidence has the time anything asked of xcrew has, 120 s', async ($, o
   expect(seen.calls.find(call => call.args[0] === 'evidence')?.timeoutMs).toBe(120_000)
 })
 
+test('evidence the CLI printed nothing for says what it wrote instead', async ($, on) => {
+  session(on, { stdout: '', stderr: 'error: the ledger is unreadable' })
+  expect(await ask($)).toContain('error: the ledger is unreadable')
+})
+
 test('only what the CLI prints for the pull request reaches Claude: its warnings on stderr stay out', async ($, on) => {
   session(on, { stdout: BLOCK, stderr: 'xcrew: building the CLI for this version (once, 10 to 20 s)…\n/Users/someone/.cache/build.log' })
   expect(await ask($)).toBe(BLOCK)

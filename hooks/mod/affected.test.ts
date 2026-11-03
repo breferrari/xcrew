@@ -78,6 +78,11 @@ test('when the CLI can\'t answer, the answer is the whole suite', async ($, on) 
   expect(await ask($)).toStartWith("xcrew couldn't say which tests the changes can break; the whole suite covers them.")
 })
 
+test('when the CLI can\'t answer, the answer says why', async ($, on) => {
+  session(on, new Error('timed out'))
+  expect(await ask($)).toMatch(/the whole suite covers them\. xcrew affected couldn't run: ./)
+})
+
 test('a base Claude names is passed to the CLI', async ($, on) => {
   const seen = session(on, { base: 'release/2.0, from fedcba987654', changed: [], selections: [] })
   await ask($, { base: 'release/2.0' })

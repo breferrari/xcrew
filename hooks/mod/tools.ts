@@ -105,6 +105,12 @@ export function namesTarget(tool: XcodeTool): boolean {
 /** `mcp__<server>__<tool>`, where server is `xcode`, `MobileBuildMCP`, or either under this plugin. */
 export const MCP_TOOL = /^mcp__(?:plugin_xcrew_)?(xcode|MobileBuildMCP)__(\w+)$/
 
+/** The tools xcrew registers itself, as the ledger and the evidence. */
+const XCREW_TOOL = /^mcp__xcrew__\w+$/
+
+/** The tools whose results say the reads of the CLI that failed: either server's, xcrew's own, and the built-in edits. */
+export const SAYS_FAILED_READS = new RegExp(`${MCP_TOOL.source}|${XCREW_TOOL.source}|${FILE_EDITOR.source}`)
+
 export type ToolKind = 'build' | 'test' | 'run'
 
 /** A tool's server and name; `proxied` when MobileBuildMCP's bridge calls the Xcode MCP's tool for it. */

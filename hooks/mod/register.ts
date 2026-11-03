@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, UNWAITED_MS, OutOfTime, reportCutNote, StillBuilding, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, readKey, ASKED_MS, ON_RESULT_MS, UNWAITED_MS, OutOfTime, reportCutNote, StillBuilding, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, endedQuietly, printedOr, readLine, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -23,7 +23,7 @@ import { afterGenerate, editedNote, isUndone, isUndoneAfterRefusal, letThroughNo
 import { DURATIONS_PREFIX, drawsBand, endingOf, FAILED_PREFIX, failedKey, type Following, historyKey, HISTORY, isStale, keyParts, labelOf, LONG_RUN_MS, logsKey, phaseStep, quietly, resultFor, SCOPE_PREFIXES, scopeKey, statusLine, testsKey, updatedKey, withContext } from './timing'
 import { drawsRow, rowOf } from './rows'
 import { keptTimings, SLOW_PRECALL_MS, type Step, TIMINGS_KEY, timingsText } from './timings'
-import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, isYaml, kindOf, launchesAfterBuild, mayBeGenerated, mayBeManifest, MCP_TOOL, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
+import { buildsProject, FILE_EDITOR, forwardedTool, generatedPart, isYaml, kindOf, launchesAfterBuild, mayBeGenerated, mayBeManifest, MCP_TOOL, SAYS_FAILED_READS, parseTool, PROJECT_REWRITER, PROJECT_REWRITER_CALL, runsGenerate, runsSetup, type ToolKind } from './tools'
 
 // The mod's state, which the loader reads only from atoms declared in the hooks module itself.
 const runState = atom({ plugin: 'xcrew', key: 'run' } as const, null as BandRun | null)
@@ -58,6 +58,9 @@ const SETUP_PANE = 'xcrew-setup'
  * refuses before anything starts, so timing never counts a refused call.
  */
 export const register: Register = on => {
+  // Registered first, so it wraps the others: a read any of them made of the CLI that failed, before or after its call,
+  // goes out with that call's result, once.
+  on('tool.call', { tool: SAYS_FAILED_READS }, async ($, e, next) => withFailedReads(await next(e))).catch(async ($, e, next) => next(e))
   // The two tool.call hooks fail open, as the engine would without a handler; it's stated so validate reads it, and so
   // a later change can't turn either into a refusal by accident. Nothing below them throws today.
   on('tool.call', { tool: PROJECT_REWRITER_CALL }, async ($, e, next) => {
@@ -296,14 +299,12 @@ export const register: Register = on => {
     const repeated = kind === 'test' && isRepeatedRun(e as unknown as Record<string, unknown>)
     // A run that ended before the ticker read its log's scheme has the CLI find that log, from the tool and its start.
     const findsScheme = needsScheme && key === undefined
-    const asked = await xcrew($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, listsPassed()), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], ON_RESULT_MS, result.text ?? '').then(
-      ran => ({ reported: answerOf(ran), cut: false }),
-      (error: unknown) => ({ reported: undefined, cut: error instanceof OutOfTime }),
-    )
-    const reported = asked.reported
+    const report = await asked($, [...reportArgs(parsed.server, kind, result.isError === true, repeated, listsPassed()), ...(findsScheme ? ['--tool', name, '--since', String(started)] : [])], ON_RESULT_MS, result.text ?? '')
+    const reported = 'answer' in report ? report.answer : undefined
     const reportedOutcome = reportOf(reported, result.isError === true)
-    // A report its time cut leaves the server's result as it came, with one line saying xcrew's notes are left out.
-    if (asked.cut) reportedOutcome.notes.push(reportCutNote(ON_RESULT_MS))
+    // A report its time cut leaves the server's result as it came, with one line saying xcrew's notes are left out; one
+    // the CLI couldn't give says why.
+    if ('failed' in report) reportedOutcome.notes.push(report.thrown instanceof OutOfTime ? reportCutNote(ON_RESULT_MS) : report.failed)
     // The ticker may have read the scheme while the report was asked for; the run's notes then go to the scheme found.
     if (findsScheme && key === undefined && reportedOutcome.scheme !== undefined) ({ scope, key } = keyFor(reportedOutcome.scheme))
     const outcome = withConcurrencyOnce(withPinNamedOnce(reportedOutcome), scope)
@@ -350,9 +351,9 @@ export const register: Register = on => {
     const reading = readTask($, call, e.text)
     backgrounded.set(task, { ...call, read: reading.then(Boolean) })
     const read = await reading
-    if (!read) return next(e)
-    const context = [...(e.context ?? []), ...read.notes]
-    return next({ ...e, ...(read.result === undefined ? {} : { text: read.result }), ...(context.length > 0 ? { context } : {}) })
+    // A read that failed for it, its report's among them, is said with it.
+    const context = [...(e.context ?? []), ...(read?.notes ?? []), ...takeFailedReads()]
+    return next({ ...e, ...(read?.result === undefined ? {} : { text: read.result }), ...(context.length > 0 ? { context } : {}) })
   }).catch(async ($, e, next) => next(e))
   // The notification's row names its task: one whose result wasn't read gets its line, just after the drawing, which
   // changes nothing itself.
@@ -404,9 +405,10 @@ export const register: Register = on => {
   })
   // Claude's question before a full test run: which tests the branch's changes can break.
   on('tool.call', { tool: AFFECTED_TOOL_NAME }, async ($, e) => {
-    const ran = await xcrew($, affectedArgs(e as unknown as Record<string, unknown>), ON_RESULT_MS).catch((error: unknown) => (error instanceof Error ? error : undefined))
-    if (ran instanceof StillBuilding || ran instanceof OutOfTime) return { result: affectedText(undefined, ran.message) }
-    return { result: affectedText(answerOf(ran instanceof Error ? undefined : ran)) }
+    const read = await asked($, affectedArgs(e as unknown as Record<string, unknown>), ON_RESULT_MS)
+    if ('failed' in read && (read.thrown instanceof StillBuilding || read.thrown instanceof OutOfTime)) return { result: affectedText(undefined, read.thrown.message) }
+    // An answer the CLI couldn't give says why, after what that leaves.
+    return { result: 'failed' in read ? `${affectedText(undefined)} ${read.failed}` : affectedText(read.answer) }
   })
   // Claude's read of the ledger, for a pull request's test plan.
   on('tool.call', { tool: LEDGER_TOOL_NAME }, async $ => ({ result: await ledgerNow($) }))
@@ -421,11 +423,12 @@ export const register: Register = on => {
       const session = await quietly(() => $.session.id())
       // One run of the checks gives the report and the band's problems: a problem fixed since leaves the band.
       const args = ['doctor', '--text-and-problems', ...(session ? ['--session', session] : [])]
-      const both = textAndProblemsOf(await answer($, args, ASKED_MS))
+      const read = await asked($, args, ASKED_MS)
+      const both = 'answer' in read ? textAndProblemsOf(read.answer) : undefined
       // A doctor that couldn't run isn't run again here: the band reads it on the next prompt, as after any failed read.
       if (!both) {
         doctorOnNextPrompt = true
-        return { text: couldntRun(args, 'no answer') }
+        return { text: 'failed' in read ? read.failed : `xcrew ${args.join(' ')} gave no report xcrew could read` }
       }
       // An older read still going would land after this one: it's waited for first.
       await reading?.catch(() => undefined)
@@ -433,10 +436,11 @@ export const register: Register = on => {
       return { text: both.text }
     }
     if (subcommand === 'xcode') return { text: await cliText($, ['xcode']) }
-    if (subcommand === 'history') return { text: await history($) }
-    if (subcommand === 'ledger') return { text: await ledgerNow($) }
-    if (subcommand === 'flaky') return { text: await ledgerNow($, flakyText) }
-    if (subcommand === 'evidence') return { text: await evidenceNow($) }
+    // What reads under them failed is said after them.
+    if (subcommand === 'history') return { text: withFailedReadsText(await history($)) }
+    if (subcommand === 'ledger') return { text: withFailedReadsText(await ledgerNow($)) }
+    if (subcommand === 'flaky') return { text: withFailedReadsText(await ledgerNow($, flakyText)) }
+    if (subcommand === 'evidence') return { text: withFailedReadsText(await evidenceNow($)) }
     if (subcommand === 'failures') {
       await dismissFailedRun($)
       return { text: await openFailures($) }
@@ -558,7 +562,7 @@ async function endAfterResult($: EngineInterface, run: Ending, ok: boolean, ende
   const key = run.key
   // The run went from the call's start for `elapsed`: the server's own duration where it gives one, else until the call
   // answered, or for a call moved to the background, until its notification.
-  const overlapped = key !== undefined && overlappedOf(await answer($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)])).length > 0
+  const overlapped = key !== undefined && overlappedOf(await answerInBackground($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)])).length > 0
   await quietly(() => show(overlapped))
   if (key === undefined || overlapped) return
   // Another run of the scope may have ended while this one's check was out: the history is read again just before it's
@@ -816,15 +820,122 @@ async function leftUntil($: EngineInterface, until: number | undefined, otherwis
 }
 
 /**
- * The CLI's JSON answer, or nothing when it couldn't run or said something else; with no `timeoutMs`, a call nobody
- * waits on, under `$.process.run`'s own limit.
+ * The CLI's JSON answer, nothing when it printed nothing and ended well, as `card --save` does, or why there's none: it
+ * couldn't run (`thrown`), or gave no answer xcrew could read. With no `timeoutMs`, a call nobody waits on, under
+ * `$.process.run`'s own limit.
+ */
+async function asked($: EngineInterface, args: string[], timeoutMs?: number, stdin?: string): Promise<{ answer: unknown } | { failed: string; thrown?: Error }> {
+  const ran = await xcrew($, args, timeoutMs, stdin).then(
+    done => done,
+    (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+  )
+  if (ran instanceof Error) return { failed: couldntRun(args, ran), thrown: ran }
+  if (endedQuietly(ran)) return { answer: undefined }
+  const answered = answerOf(ran)
+  return answered === undefined ? { failed: readLine(args, ran) } : { answer: answered }
+}
+
+/**
+ * The CLI's JSON answer for a call that waits on it, or nothing. A failure is said each time, with the call's result,
+ * as the call goes without its fact; it shows on the band for as long as a warning does.
  */
 async function answer($: EngineInterface, args: string[], timeoutMs?: number, stdin?: string): Promise<unknown> {
-  return answerOf(await xcrew($, args, timeoutMs, stdin).catch(() => undefined))
+  return answerFor($, args, timeoutMs, stdin, true)
+}
+
+/**
+ * The CLI's JSON answer for a read nobody waits on, as the band's, or nothing. A failure is said once, until the read
+ * answers, with the next result of xcrew's tools; it shows on the band as any other.
+ */
+async function answerInBackground($: EngineInterface, args: string[], stdin?: string): Promise<unknown> {
+  return answerFor($, args, undefined, stdin, false)
+}
+
+async function answerFor($: EngineInterface, args: string[], timeoutMs: number | undefined, stdin: string | undefined, waited: boolean): Promise<unknown> {
+  const conversation = conversations
+  const asks = await quietly(() => $.clock.now())
+  const read = await asked($, args, timeoutMs, stdin)
+  // Recorded before the answer goes back, so the result it's for says it; one that outlived its conversation, as
+  // across a `/clear`, was that conversation's.
+  if (conversation === conversations) readWent($, args.join(' '), 'failed' in read ? read.failed : undefined, asks, waited)
+  return 'answer' in read ? read.answer : undefined
+}
+
+/** The reads whose last try failed and no result has said yet, by `readKey`: each said once. */
+const unsaidReads = new Map<string, string>()
+/**
+ * The reads nobody waits on whose failure was said, by `saidName`: the read by `readKey`, so `runs --overlapped --since
+ * … --until …` is one read across runs, and the failure's own line, so a different failure is said too. Each goes once
+ * its read answers.
+ */
+const saidReads = new Set<string>()
+/**
+ * The reads whose last try failed, by `readKey`, as the band shows them; when each first failed, by its id; and
+ * when it last did. One that hasn't failed again for a warning's time is dropped.
+ */
+const failingReads = new Map<string, Problem>()
+let readsFailedAt: Record<string, number> = {}
+const readsLastFailedAt = new Map<string, number>()
+/** Counts the conversations a `/clear` or `/resume` started over from, so a read can tell it outlived its own. */
+let conversations = 0
+
+/**
+ * Records how a read went. A failure of a read a call waits on is said each time, as that call goes without its fact; one
+ * nobody waits on, as the band's, is said once until it answers. Either shows on the band as a warning does, from when
+ * it first failed; an answer takes it back from both.
+ */
+function readWent($: EngineInterface, question: string, failed: string | undefined, at: number | undefined, waited: boolean): void {
+  const read = readKey(question)
+  const id = `xcrew/read ${read}`
+  if (failed === undefined) {
+    unsaidReads.delete(read)
+    for (const said of [...saidReads]) if (said.startsWith(`${read}\n`)) saidReads.delete(said)
+    delete readsFailedAt[id]
+    readsLastFailedAt.delete(read)
+    if (failingReads.delete(read)) void quietly(() => showVisibleProblems($))
+    return
+  }
+  const isNew = !failingReads.has(read)
+  failingReads.set(read, { status: 'warn', id, message: failed })
+  if (at !== undefined) readsLastFailedAt.set(read, at)
+  const said = saidName(question, failed)
+  if (waited || !saidReads.has(said)) unsaidReads.set(read, failed)
+  if (!waited) saidReads.add(said)
+  if (!isNew) return
+  // Without the time, its time on the band is taken as over.
+  readsFailedAt[id] = at ?? Number.NEGATIVE_INFINITY
+  void quietly(() => showVisibleProblems($))
+  // Its time on the band ends as a warning's does: one redraw then.
+  void quietly(() => $.clock.after(WARNING_FOR_MS + 1, () => void quietly(() => showVisibleProblems($))))
+}
+
+/** A command's text with the failed reads no result has said yet after it. */
+function withFailedReadsText(text: string): string {
+  return [text, ...takeFailedReads()].join('\n')
+}
+
+/** A background read's failure as it's said once: the read by `readKey`, then the failure's line. */
+function saidName(question: string, failed: string): string {
+  const read = readKey(question)
+  // The failure's line names the read: by its moments too, which are left out of it here.
+  return `${read}\n${failed.split(question).join(read)}`
+}
+
+/** The failed reads no result has said yet, taken to be said now. */
+function takeFailedReads(): string[] {
+  const lines = [...unsaidReads.values()]
+  unsaidReads.clear()
+  return lines
+}
+
+/** A result of xcrew's tools with the failed reads not said yet; a refused call leaves them to the next. */
+function withFailedReads<Result extends { deny?: unknown; context?: readonly string[] }>(result: Result): Result {
+  if (result.deny !== undefined || unsaidReads.size === 0) return result
+  return withContext(result, ...takeFailedReads())
 }
 
 function runPhase($: EngineInterface, tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined) {
-  return answer($, phaseArgs(tool, launches, since, expectedTests, log)).then(phaseOf)
+  return answerInBackground($, phaseArgs(tool, launches, since, expectedTests, log)).then(phaseOf)
 }
 
 /** Whether the project's generator reads YAML, asked once a session, again after setup or a generate, and next time when the CLI couldn't answer. */
@@ -844,7 +955,8 @@ async function isGeneratedProject($: EngineInterface): Promise<boolean> {
 
 /** A CLI command's own text, or why it couldn't run. */
 function cliText($: EngineInterface, args: string[]): Promise<string> {
-  return xcrew($, args, ASKED_MS).then(ran => `${ran.stdout}${ran.stderr}`.trimEnd(), error => couldntRun(args, error))
+  // With nothing printed and an ending that wasn't well, how it ended is the answer.
+  return xcrew($, args, ASKED_MS).then(ran => printedOr(args, ran, `${ran.stdout}${ran.stderr}`), error => couldntRun(args, error))
 }
 
 /** Opens the setup form and reads its choices behind it; where nothing draws pickers, names the skill. */
@@ -860,11 +972,13 @@ async function openForm($: EngineInterface): Promise<string> {
 
 /** Reads what setup offers, for `container` when the person picked one, and starts the picks from it. */
 async function readChoices($: EngineInterface, container?: string, written?: string[]): Promise<void> {
-  const answered = await answer($, ['setup', '--choices', ...(container ? ['--container', container] : [])], ASKED_MS)
+  // The form says it when there's no answer.
+  const read = await asked($, ['setup', '--choices', ...(container ? ['--container', container] : [])], ASKED_MS)
+  const answered = 'answer' in read ? read.answer : undefined
   const choices = answered !== null && typeof answered === 'object' && Array.isArray((answered as SetupChoices).containers) ? (answered as SetupChoices) : undefined
   await update($, formState, form => (choices
     ? { choices, picks: { ...startingPicks(choices), ...(container ? { container } : {}) }, ...(written ? { written } : {}) }
-    : { choices: null, picks: form?.picks ?? {}, unread: 'xcrew setup --choices couldn\'t answer: /xcrew:setup, the skill, sets xcrew up instead.' }))
+    : { choices: null, picks: form?.picks ?? {}, unread: `${'failed' in read ? read.failed : "xcrew setup --choices gave no choices xcrew could read"}. /xcrew:setup, the skill, sets xcrew up instead.` }))
 }
 
 async function pickInForm($: EngineInterface, key: string, value: string): Promise<void> {
@@ -926,7 +1040,7 @@ function saveCard($: EngineInterface): void {
           const card = await cardNow($)
           const saved = card && JSON.stringify(card)
           if (!saved || saved === lastSavedCard) return
-          await answer($, ['card', '--save'], undefined, saved)
+          await answerInBackground($, ['card', '--save'], saved)
           lastSavedCard = saved
         })(),
         $.clock.sleep(CARD_SAVE_MS),
@@ -966,7 +1080,8 @@ async function evidenceNow($: EngineInterface): Promise<string> {
   const { head, entries } = await branchState($)
   if (!head) return EVIDENCE_UNAVAILABLE
   // Its stdout alone: the block is pasted into a pull request as it is, and stderr is the shim's and the tools' own.
-  return xcrew($, ['evidence'], EVIDENCE_TIMEOUT_MS, evidenceInput(entries)).then(ran => ran.stdout.trimEnd(), error => couldntRun(['evidence'], error))
+  // With nothing printed, what it wrote instead, or how it ended, is the answer.
+  return xcrew($, ['evidence'], EVIDENCE_TIMEOUT_MS, evidenceInput(entries)).then(ran => printedOr(['evidence'], ran, ran.stdout), error => couldntRun(['evidence'], error))
 }
 
 /**
@@ -1095,7 +1210,7 @@ async function pruneGone($: EngineInterface): Promise<void> {
   })
   const roots = [...new Set([...scopes, ...ledgers].map(entry => entry.root))]
   if (roots.length === 0) return
-  const gone = new Set(goneOf(await answer($, ['gone', ...roots])))
+  const gone = new Set(goneOf(await answerInBackground($, ['gone', ...roots])))
   await Promise.all([
     ...scopes.filter(entry => gone.has(entry.root)).map(entry => dropScope($, entry.key)),
     ...ledgers.filter(entry => gone.has(entry.root)).map(entry => quietly(() => $.store.delete(entry.key))),
@@ -1175,6 +1290,13 @@ function startOver(): void {
   agentDescriptions.clear()
   concurrencyGiven.clear()
   seenAt = {}
+  // The conversation before's failed reads were its own.
+  unsaidReads.clear()
+  saidReads.clear()
+  failingReads.clear()
+  readsFailedAt = {}
+  readsLastFailedAt.clear()
+  conversations += 1
 }
 
 /** The doctor's last answer, and when each problem was first found: bookkeeping a reload may start over. */
@@ -1198,7 +1320,7 @@ async function readProblems($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   // Named, the session is where the CLI records the mod as loaded, before its checks run.
   const session = await quietly(() => $.session.id())
-  const answered = await answer($, ['doctor', '--problems', '--json', ...(session ? ['--session', session] : [])])
+  const answered = await answerInBackground($, ['doctor', '--problems', '--json', ...(session ? ['--session', session] : [])])
   // A doctor that couldn't run says nothing about what's fixed: the band stays as it was. Its first failure in a session
   // is tried once more on the next prompt, so the mod is still recorded as loaded.
   if (answered === undefined) {
@@ -1222,7 +1344,16 @@ async function applyProblems($: EngineInterface, problems: Problem[], at?: numbe
 
 async function showVisibleProblems($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
-  await update($, problemsState, () => mostSerious(visible(found, seenAt, now)))
+  // A failed read shows as a warning does, for its first few minutes, and goes once it answers. One kept failing stays
+  // recorded, hidden, so it isn't new again; one that hasn't failed again for that long goes, as a read whose arguments
+  // name a moment or a file may never be asked again.
+  for (const [read, problem] of failingReads) {
+    if (now - (readsLastFailedAt.get(read) ?? Number.NEGATIVE_INFINITY) < WARNING_FOR_MS) continue
+    failingReads.delete(read)
+    readsLastFailedAt.delete(read)
+    delete readsFailedAt[problem.id]
+  }
+  await update($, problemsState, () => mostSerious([...visible(found, seenAt, now), ...visible([...failingReads.values()], readsFailedAt, now)]))
 }
 
 /** Looking at the failures, or closing them, takes the failed run off the band. */
@@ -1342,7 +1473,7 @@ async function agentDescription($: EngineInterface, agentId: string | undefined)
 
 /** Reads the other worktrees' runs into the line: what the CLI answers, or what it held, until that ages out. */
 async function readElsewhere($: EngineInterface): Promise<void> {
-  const read = elsewhereOf(await answer($, ['runs']))
+  const read = elsewhereOf(await answerInBackground($, ['runs']))
   const now = await quietly(() => $.clock.now())
   if (now === undefined) return
   await quietly(() => update($, elsewhereState, held => afterRead(held, read, now)))

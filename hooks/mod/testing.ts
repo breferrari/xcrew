@@ -84,6 +84,12 @@ export function stubCli(
     problems?: Problem[]
     /** The doctor can't run: the shim is building, or it timed out. */
     doctorFails?: () => boolean
+    /** The project isn't an Apple-platform one, where `xcrew doctor --problems` prints nothing. */
+    notApplePlatform?: boolean
+    /** A command that ends with this status, printing nothing, as the shim's `--if-built` does with no build (75). */
+    exits?: (args: readonly string[]) => number | undefined
+    /** What the CLI writes to standard error as it saves the card, which prints nothing. */
+    cardStderr?: string
     /** The report can't be read: the CLI timed out, or the shim couldn't build. */
     reportFails?: () => boolean
     /** The report runs past its time limit on this clock, and is stopped there. */
@@ -138,6 +144,8 @@ export function stubCli(
       await answers.reportTimesOut.advance(timeoutMs ?? 30_000)
       throw new Error('timed out')
     }
+    const exit = answers.exits?.(args)
+    if (exit !== undefined) return { value: { exitCode: exit, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     const asksOverlap = args[0] === 'runs' && args.includes('--overlapped')
     const runs = args[0] === 'runs' && !asksOverlap ? answers.runs?.() : undefined
     if (runs instanceof Error) throw runs
@@ -146,7 +154,9 @@ export function stubCli(
     const gone = args[0] === 'gone' ? answers.gone?.(args.slice(1)) : undefined
     if (gone instanceof Error) throw gone
     // The commands that print text rather than JSON.
-    const printing = new Map<string, () => string | Error | { stdout: string; stderr: string } | undefined>([['look', () => answers.look?.(args)], ['evidence', () => answers.evidence?.(e.init?.stdin)]])
+    // `card --save` prints nothing, as does the doctor outside an Apple-platform project.
+    const printing = new Map<string, () => string | Error | { stdout: string; stderr: string } | undefined>([['look', () => answers.look?.(args)], ['evidence', () => answers.evidence?.(e.init?.stdin)], ['card', () => ({ stdout: '', stderr: answers.cardStderr ?? '' })]])
+    if (args[0] === 'doctor' && args.includes('--problems') && answers.notApplePlatform) printing.set('doctor', () => '')
     if (args[0] === 'setup' && !args.includes('--choices')) printing.set('setup', () => String(answers.setup?.(args) ?? ''))
     const answered = args[0] === undefined ? undefined : printing.has(args[0]) ? (printing.get(args[0])?.() ?? '') : undefined
     if (answered instanceof Error) throw answered
@@ -171,6 +181,8 @@ export function stubCli(
       : args[0] === 'gone' ? (gone ?? null)
       : null
     )
+    // An answer that's an Error is a CLI that couldn't run.
+    if (answer instanceof Error) throw answer
     const stdout = args[0] === '--binary-path' ? (answers.noBuild ? '' : `${BUILT_BINARY}\n`) : (printed ?? JSON.stringify(answer))
     return { value: { exitCode: 0, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false } }
   })

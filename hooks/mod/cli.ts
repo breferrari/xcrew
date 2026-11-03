@@ -69,8 +69,8 @@ export type Phase = { log?: string; phase?: string; scheme?: string; outcome?: b
 /** One line of `xcrew doctor --problems --json`. */
 export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 
-/** A finished program's output, as the hooks module hands it back. */
-export type Ran = { stdout: string; stderr: string }
+/** A finished program's output, as the hooks module hands it back, with its exit status where the engine gave one. */
+export type Ran = { stdout: string; stderr: string; exitCode?: number }
 
 /**
  * The time xcrew's work around a tool call has: each read before the call starts, and its work on the result, counted
@@ -303,4 +303,41 @@ export function generatedOf(answer: unknown): Generated | undefined {
 /** Why a CLI command couldn't run. */
 export function couldntRun(args: readonly string[], error: unknown): string {
   return `xcrew ${args.join(' ')} couldn't run: ${error instanceof Error ? error.message : String(error)}`
+}
+
+/** The shim's status when `--if-built` finds no build for this version: sysexits' EX_TEMPFAIL, try again later. */
+export const NOT_BUILT = 75
+
+/** Whether a CLI command printed nothing and ended well, as `card --save` does: an answer of nothing, not a failure. */
+export function endedQuietly(ran: Ran): boolean {
+  return ran.stdout.trim() === '' && (ran.exitCode ?? 0) === 0
+}
+
+/** What a command printed, or, with nothing printed and an ending that wasn't quiet and well, how it ended. */
+export function printedOr(args: readonly string[], ran: Ran, printed: string): string {
+  return printed.trim() === '' && (ran.stderr.trim() !== '' || (ran.exitCode ?? 0) !== 0) ? readLine(args, ran) : printed.trimEnd()
+}
+
+/**
+ * What's said of a CLI command that ran but gave no answer xcrew could read: the first line it wrote to standard error,
+ * else its exit status, else that what it printed wasn't JSON.
+ */
+export function readLine(args: readonly string[], ran: Ran): string {
+  return `xcrew ${args.join(' ')} gave no answer xcrew could read: ${unreadBecause(ran)}`
+}
+
+/** The options whose values name a moment or a run, which a read is the same read without. */
+const PER_RUN_OPTIONS = ['--since', '--until', '--log', '--expected']
+
+/** A read as one read whatever moments or run it names: its arguments without those options' values. */
+export function readKey(read: string): string {
+  return read.split(' ').filter((_, at, args) => !PER_RUN_OPTIONS.includes(args[at - 1] ?? '')).join(' ')
+}
+
+function unreadBecause(ran: Ran): string {
+  const said = ran.stderr.split('\n').map(line => line.trim()).find(line => line !== '')
+  if (said !== undefined) return said
+  if (ran.exitCode === NOT_BUILT) return "the CLI isn't built for this version yet"
+  if (ran.exitCode !== undefined && ran.exitCode !== 0) return `it exited ${ran.exitCode}${ran.stdout.trim() === '' ? ', writing nothing' : ''}`
+  return 'it printed something other than JSON'
 }

@@ -5,6 +5,7 @@
 - `mcs sync` no longer removes the app and UI-test profiles `/xcrew setup` added to `.mobilebuildmcp/config.yaml`, nor moves its container. mcs runs `xcrew setup` with only its own answers on every sync, and setup rewrote the config from those alone. Now setup keeps the container, schemes, simulators and bundle ID the config holds, and mcs's answers only add a profile the config lacks. An option you pass names another choice; an empty one drops that profile, or for `--test-scheme` lets setup pick. `--force` still replaces a config edited by hand, keeping a backup, and now keeps the profiles' choices too.
 
 - Everything 0.14.1 took back comes back: each change listed under 0.14.0 below holds again.
+- A read xcrew needed that the CLI couldn't answer says so, with why, with the next result Claude reads of a build, a test, an edit, another Xcode tool or one of xcrew's own, or with a background run's notification: each time for a read a call waits on, and once, until it answers, for one nobody waits on, as the line above the prompt's. It also shows on the line above the prompt for a couple of minutes, or until it answers. A build or test result whose report couldn't be read says so, as do the affected tests' answer, `/xcrew` commands, the setup form and the evidence block. Before, xcrew went on without it, and a note that read would have given was simply missing.
 
 ## 0.14.1 — 2026-11-03
 

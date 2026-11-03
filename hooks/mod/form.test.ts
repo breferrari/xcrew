@@ -218,3 +218,11 @@ test('after a write the form reads the config it now has', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /wrote \.mobilebuildmcp\/config\.yaml/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('a form whose choices the CLI couldn\'t give says why', async ($, on) => {
+  await session($, on, new Error('spawn ENOENT'))
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^xcrew setup --choices couldn't run: ./ })).toBeDefined()
+  await ui.unmount()
+})

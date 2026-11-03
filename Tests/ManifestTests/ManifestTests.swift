@@ -514,7 +514,7 @@ import Testing
     }
 
     /// The MobileBuildMCP launcher reads the exit statuses the CLI's `xcode --developer-dir` and the shim's `--if-built`
-    /// give, and waits no longer than its named limit.
+    /// give, and waits no longer than its named limit; the mod reads the shim's too.
     @Test func theLauncherReadsTheCLIsAndTheShimsStatuses() throws {
         let launcher = try text("libexec/mobilebuildmcp-server"), shim = try text("bin/xcrew")
         #expect(launcher.contains("\"$plugin/bin/xcrew\" --if-built xcode --developer-dir"))
@@ -522,6 +522,8 @@ import Testing
         #expect(launcher.contains("\n        \(XcodeCommand.noMatch)) outcome=\"no match\" ;;"))
         #expect(launcher.contains("\n        \(XcodeCommand.timedOut)) outcome=\"timed out $PIN_SECONDS\" ;;"))
         #expect(shim.contains("[ -x \"$binary\" ] || exit 75") && launcher.contains("\n        75) outcome=\"not built\" ;;"))
+        // The mod names it too, in what it says of a read the shim answered that way.
+        #expect(try text("hooks/mod/cli.ts").contains("\nexport const NOT_BUILT = 75\n"))
         #expect(launcher.contains("\nPIN_SECONDS=2\n"))
     }
 
