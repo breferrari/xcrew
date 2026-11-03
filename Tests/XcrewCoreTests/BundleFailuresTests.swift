@@ -511,6 +511,36 @@ struct BundleFailuresTests {
         #expect(replaced?.text.text.contains("  ✗ A / Inner/fails(): one\n\n  ⚠ Something the text reads as no failure\n") == true, "\(replaced?.text.text ?? "")")
     }
 
+    /// Two names the text gives, one the other's end, whose failed candidates are the same tests: each failed test is
+    /// listed once, under the first name it takes the place of. Composed: MobileBuildMCP names a nested test from its own
+    /// suite, so its text gives no such pair today.
+    @Test func aFailedTestTwoNamesShareIsListedOnce() async throws {
+        let home = "/testbed/user"
+        let bundle = "\(home)/Library/Developer/MobileBuildMCP/workspaces/field-0000/result-bundles/test_sim_1.xcresult"
+        let text = """
+
+            🧪 Test
+
+            Test Failures (2):
+
+              ✗ B / Inner/fails(): one
+
+              ✗ Inner / fails(): two
+
+            ❌ 2 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)
+              └ Files:
+                 └── ~/Library/Developer/MobileBuildMCP/workspaces/field-0000/
+                     └── result-bundles/test_sim_1.xcresult — Result Bundle
+
+            """
+        let nodes = ["P", "Q"].map { #"{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"\#($0)/B/Inner/fails()","result":"Failed","children":[{"nodeType":"Failure Message","name":"\#($0)"}]}"# }
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: #"{"testNodes":[\#(nodes.joined(separator: ","))]}"#)])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: home, runner: runner)
+        let result = try #require(report.result)
+        #expect(result.components(separatedBy: "✗ P / B/Inner/fails()").count == 2, "\(result)")
+        #expect(result.components(separatedBy: "✗ Q / B/Inner/fails()").count == 2, "\(result)")
+    }
+
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
     /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
     @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {
