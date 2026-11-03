@@ -65,6 +65,22 @@ import XcrewTestSupport
         #expect(DeadlineRunner.answering > SystemCommandRunner.grace)
     }
 
+    /// The wait for a call's deadline follows the machine's clock: past it already, it ends at once; moved past it
+    /// meanwhile, it ends then, not when the time left at its start would have run out.
+    @Test(.timeLimit(.minutes(1))) func theWaitForTheDeadlineFollowsTheMachinesClock() async {
+        let reads = Mutex(0)
+        let past = Machine(environment: [:], home: URL(fileURLWithPath: "/nonexistent"), runner: FakeRunner(), now: { Self.start.addingTimeInterval(1) }, deadline: Self.start)
+        await past.untilDeadline(otherwise: .seconds(3600))
+        // The clock reads the start once, then an hour on: a wait that read it only once would sleep the hour.
+        let machine = Machine(environment: [:], home: URL(fileURLWithPath: "/nonexistent"), runner: FakeRunner(), now: {
+            reads.withLock { reads in
+                defer { reads += 1 }
+                return reads == 0 ? Self.start : Self.start.addingTimeInterval(3600)
+            }
+        }, deadline: Self.start.addingTimeInterval(3600))
+        await machine.untilDeadline(otherwise: .seconds(3600))
+    }
+
     /// The CLI takes its deadline from the time the mod gives it, less what it needs to answer.
     @Test func theCLIsDeadlineIsTheTimeItIsGiven() {
         let machine = Machine(environment: ["XCREW_WITHIN_MS": "10000"], home: URL(fileURLWithPath: "/nonexistent"), runner: FakeRunner(), now: { Self.start })

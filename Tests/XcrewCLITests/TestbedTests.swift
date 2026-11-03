@@ -639,6 +639,8 @@ struct TestbedEvidenceTests {
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
         // The call has 60 s on a clock that stands still but for Xcode's reads: each moves it past the deadline and
         // answers only once the call stops waiting, so neither a slow git nor a slow Mac changes what's read.
+        // The fake runner answers no `sysctl`, so the pool runs one command at a time: the first run's summary read holds
+        // it until the cut, which is recorded before any other command starts.
         let clock = StillClock(Date())
         let slow = Machine(environment: ["XCREW_WITHIN_MS": "60000"], home: context.machine.home, runner: XcodeOutlastsTheDeadline(context.machine.runner, clock: clock, gitTakes: .milliseconds(1_100)), processID: context.machine.processID, applications: context.machine.applications, now: { clock.read() })
         let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)
