@@ -29,8 +29,8 @@ public enum Look {
         if cases[exact] != nil { return exact }
         if let withoutTarget, cases[withoutTarget] != nil { return withoutTarget }
         let crashes = ResultBundle.crashCases(in: cases)
-        for named in [exact, withoutTarget].compactMap(\.self) {
-            if case let .found(id) = ResultBundle.resolution(of: named, in: cases, crashCases: crashes) { return id }
+        for candidate in [exact, withoutTarget].compactMap(\.self) {
+            if case let .found(id) = ResultBundle.resolution(of: candidate, in: cases, crashCases: crashes) { return id }
         }
         return named.hasSuffix("()") ? exact : withoutTarget ?? exact
     }

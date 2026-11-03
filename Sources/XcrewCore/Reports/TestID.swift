@@ -33,7 +33,8 @@ public struct TestID: Sendable, Hashable {
 
     /// How a test the text names is found among the result bundle's ids.
     enum Resolution: Sendable, Equatable {
-        /// The bundle's id for it: its own, or the one nested id that ends with it.
+        /// The bundle's id for it: its own, the one nested id that ends with it, or the `System Failures` case its crash is
+        /// filed under (`ResultBundle.resolution(of:in:crashCases:)`).
         case found(TestID)
         /// Two or more nested ids end with it, so none is taken.
         case ambiguous([TestID])
