@@ -90,7 +90,7 @@ struct BranchCoverage: Sendable {
                     }
                 }
             }
-            group.addTask { try? await Task.sleep(for: machine.timeLeft(otherwise: DeadlineRunner.asked)) }
+            group.addTask { await machine.untilDeadline(otherwise: DeadlineRunner.asked) }
             await group.next()
             group.cancelAll()
         }

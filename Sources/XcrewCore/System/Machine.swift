@@ -59,6 +59,21 @@ public struct Machine: Sendable {
         deadline.map { .seconds(max(0, $0.timeIntervalSince(now()))) } ?? otherwise
     }
 
+    /// Returns once the deadline has passed by this machine's clock, read again every `deadlineStep`, or after
+    /// `otherwise` with no deadline; at once when cancelled.
+    public func untilDeadline(otherwise: Duration) async {
+        guard deadline != nil else { return (try? await Task.sleep(for: otherwise)) ?? () }
+        var left = timeLeft(otherwise: otherwise)
+        while left > .zero, !Task.isCancelled {
+            try? await Task.sleep(for: min(left, Self.deadlineStep))
+            left = timeLeft(otherwise: otherwise)
+        }
+    }
+
+    /// How late a wait may notice its deadline passed: 0.1 s, the limit within which a response feels instant (Nielsen,
+    /// *Usability Engineering*, 1993, ch. 5).
+    static let deadlineStep = Duration.milliseconds(100)
+
     /// A variable's value, treating an empty one as unset.
     public func value(_ name: String) -> String? {
         guard let value = environment[name], !value.isEmpty else { return nil }

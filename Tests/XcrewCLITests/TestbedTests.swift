@@ -632,14 +632,15 @@ struct TestbedEvidenceTests {
         #expect(run.text.hasPrefix("This call's time ran out before git"), "\(run.text)")
     }
 
-    /// The runs are read until the call's deadline: past it, none is read, and the block says how many were left out.
-    @Test func theBranchsRunsAreReadUntilTheCallsDeadline() async throws {
+    /// The runs are read until the call's deadline by the machine's clock: past it, none is read, the block says how many
+    /// were left out, and the call stops waiting then, not when its time would have run out on the wall's clock.
+    @Test(.timeLimit(.minutes(1))) func theBranchsRunsAreReadUntilTheCallsDeadline() async throws {
         let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
         defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        // The call has 2.5 s on a clock that stands still while git answers, so git's reads end in time however slow the
-        // Mac; none of Xcode's reads answers before the call's wait ends, and each moves the clock past the deadline.
+        // The call has 60 s on a clock that stands still but for Xcode's reads: each moves it past the deadline and
+        // answers only once the call stops waiting, so neither a slow git nor a slow Mac changes what's read.
         let clock = StillClock(Date())
-        let slow = Machine(environment: ["XCREW_WITHIN_MS": "2500"], home: context.machine.home, runner: XcodeOutlastsTheDeadline(context.machine.runner, clock: clock), processID: context.machine.processID, applications: context.machine.applications, now: { clock.read() })
+        let slow = Machine(environment: ["XCREW_WITHIN_MS": "60000"], home: context.machine.home, runner: XcodeOutlastsTheDeadline(context.machine.runner, clock: clock, gitTakes: .milliseconds(1_100)), processID: context.machine.processID, applications: context.machine.applications, now: { clock.read() })
         let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)
         #expect(run.text.contains("- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."), "\(run.text)")
         // What the deadline cut is said in one line, after the block's own.
@@ -1111,20 +1112,23 @@ final class StillClock: Sendable {
 }
 
 /// A runner on `clock`: every command but `xcrun` answers as `base` does, under a limit of its own, and takes none of the
-/// clock's time; `xcrun` never answers before it's cancelled, and then moves the clock an hour on and answers as timed out.
+/// clock's time, `git` after `gitTakes`; `xcrun` moves the clock an hour on, and answers as timed out once cancelled.
 final class XcodeOutlastsTheDeadline: CommandRunning {
     let base: any CommandRunning
     let clock: StillClock
+    let gitTakes: Duration
 
-    init(_ base: any CommandRunning, clock: StillClock) {
+    init(_ base: any CommandRunning, clock: StillClock, gitTakes: Duration = .zero) {
         self.base = base
         self.clock = clock
+        self.gitTakes = gitTakes
     }
 
     func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-        guard argv.first == "xcrun" else { return await base.run(argv, stdin: stdin, timeout: .seconds(60)) }
-        try? await Task.sleep(for: .seconds(600))
+        if argv.first == "git" { try? await Task.sleep(for: gitTakes) }
+        guard argv.first == "xcrun" else { return await base.run(argv, stdin: stdin, timeout: .seconds(600)) }
         clock.move(by: 3600)
+        try? await Task.sleep(for: .seconds(600))
         return .timedOut
     }
 
