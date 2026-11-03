@@ -12,7 +12,20 @@ struct RunOrderTests {
             ToolOutput.Failure(title: "Suite/retried", message: "from the text", isTest: true),
             ToolOutput.Failure(title: "App.swift:3", message: "a warning as an error", isTest: false),
         ]
-        #expect(Report.inRunOrder(bundled, text: text).failures.map(\.title) == ["App.swift:3", "Suite/test"])
+        #expect(Report.inRunOrder(bundled, text: text, recorded: [TestID(suite: "Suite", name: "retried")]).failures.map(\.title) == ["App.swift:3", "Suite/test"])
+    }
+
+    /// A test only the text lists that the bundle has no entry for stays a failure in its place, with the text's
+    /// message and place, and is returned as disagreeing.
+    @Test func anUnlistedTestStaysAFailureWithTheTextsMessage() {
+        let bundled = [ToolOutput.Failure(title: "Suite/test", message: "from the bundle", isTest: true)]
+        let text = [
+            ToolOutput.Failure(title: "Suite/gone", message: "from the text", where: "Gone.swift:2", isTest: true),
+            ToolOutput.Failure(title: "Suite/test", message: "the text's", isTest: true),
+        ]
+        let ordered = Report.inRunOrder(bundled, text: text, recorded: [])
+        #expect(ordered.failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-")" } == ["Suite/gone | from the text | Gone.swift:2", "Suite/test | from the bundle | -"])
+        #expect(ordered.disagreeing == [TestID(suite: "Suite", name: "gone")])
     }
 
     /// A test in a nested suite, which the bundle names from its outermost suite and the text from its own, takes its
@@ -26,7 +39,7 @@ struct RunOrderTests {
             ToolOutput.Failure(title: "Inner/test", message: "the text's first", isTest: true),
             ToolOutput.Failure(title: "Later/test", message: "the text's second", isTest: true),
         ]
-        #expect(Report.inRunOrder(bundled, text: text).failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-") | \($0.target ?? "-")" } == [
+        #expect(Report.inRunOrder(bundled, text: text, recorded: []).failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-") | \($0.target ?? "-")" } == [
             "Outer/Inner/test | first | Inner.swift:7 | FeatureTests",
             "Later/test | second | - | -",
         ])
@@ -37,37 +50,44 @@ struct RunOrderTests {
     @Test func aNameTwoNestedSuitesShareMatchesNeither() {
         let bundled = ["Later/test", "A/Inner/test", "B/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
         let text = ["Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
-        #expect(Report.inRunOrder(bundled, text: text).failures.map(\.title) == ["Later/test", "A/Inner/test", "B/Inner/test"])
-        #expect(Report.inRunOrder(bundled, text: text).dropped.isEmpty)
+        #expect(Report.inRunOrder(bundled, text: text, recorded: []).failures.map(\.title) == ["Later/test", "A/Inner/test", "B/Inner/test"])
+        #expect(Report.inRunOrder(bundled, text: text, recorded: []).disagreeing.isEmpty)
     }
 
     /// A nested suite's test the text lists twice is matched once and never dropped: the bundle lists it as failed.
     @Test func aNestedSuitesTestListedTwiceIsNotDropped() {
         let bundled = [ToolOutput.Failure(title: "Outer/Inner/test", message: "", isTest: true)]
         let text = ["Inner/test", "Inner/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
-        #expect(Report.inRunOrder(bundled, text: text).dropped.isEmpty)
+        #expect(Report.inRunOrder(bundled, text: text, recorded: []).disagreeing.isEmpty)
     }
 
     /// The note reads a dropped test by the name the text gives: one the bundle files only in a nested suite, under a
     /// longer name, it doesn't list under that name.
     @Test func theNoteReadsADroppedTestByTheTextsName() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Outer/Inner/testFlaky()","result":"Passed"}]}"#)
-        #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "testFlaky")], listing: listing)
-            == "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: Inner/testFlaky, which it doesn't list under that name. The tests listed as failed here are the bundle's.")
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "testFlaky")], cases: ResultBundle.testCases(in: listing.nodes))
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Inner/testFlaky, which it has no entry for under that name. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message.")
     }
 
     /// The note names several dropped tests, each with what the bundle records under its name.
     @Test func theNoteNamesSeveralDroppedTestsEachWithItsResult() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/skipped()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/expected()","result":"Expected Failure"}]}"#)
-        #expect(Report.notFailedInBundleNote(["skipped", "expected"].map { TestID(suite: "Suite", name: $0) }, listing: listing)
-            == "xcrew: MobileBuildMCP's text lists as failed tests its result bundle doesn't: Suite/skipped, which it counts as skipped; Suite/expected, which it counts as an expected failure. The tests listed as failed here are the bundle's.")
+        #expect(Report.notFailedInBundleNote(["skipped", "expected"].map { TestID(suite: "Suite", name: $0) }, cases: ResultBundle.testCases(in: listing.nodes))
+            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't: Suite/skipped, which it counts as skipped; Suite/expected, which it counts as an expected failure. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message.")
+    }
+
+    /// A dropped test the bundle records with a result the note has no words for is named with that result.
+    @Test func theNoteNamesAResultItHasNoWordsForAsTheBundleRecordsIt() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Mixed"}]}"#)
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], cases: ResultBundle.testCases(in: listing.nodes))
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Suite/test, which it records as Mixed. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message.")
     }
 
     /// A dropped test the bundle files more than once, as under two configurations, counts as passed when one passed.
     @Test func theNoteCountsATestFiledTwiceAsPassedWhenOnePassed() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed"}]}"#)
-        #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], listing: listing)
-            == "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: Suite/test, which it counts as passed. The tests listed as failed here are the bundle's.")
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], cases: ResultBundle.testCases(in: listing.nodes))
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Suite/test, which it counts as passed. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message.")
     }
 
     /// A name the text lists twice, as a parallel run's clones may, is its own test's both times: never a nested suite's
@@ -75,13 +95,17 @@ struct RunOrderTests {
     @Test func aNameListedTwiceIsItsOwnTestsBothTimes() {
         let bundled = ["Later/test", "Inner/test", "A/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
         let text = ["Inner/test", "Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
-        #expect(Report.inRunOrder(bundled, text: text).failures.map(\.title) == ["Inner/test", "Later/test", "A/Inner/test"])
+        #expect(Report.inRunOrder(bundled, text: text, recorded: []).failures.map(\.title) == ["Inner/test", "Later/test", "A/Inner/test"])
     }
 
-    /// A test only the text lists, listed twice as a parallel run's clones may, is dropped once.
-    @Test func aTestOnlyTheTextListsTwiceIsDroppedOnce() {
+    /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure
+    /// once when the bundle has no entry for it.
+    @Test func aTestOnlyTheTextListsTwiceDisagreesOnce() {
         let text = ["Suite/flaky", "Suite/flaky"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
-        #expect(Report.inRunOrder([], text: text).dropped == [TestID(suite: "Suite", name: "flaky")])
+        let flaky = TestID(suite: "Suite", name: "flaky")
+        #expect(Report.inRunOrder([], text: text, recorded: [flaky]).disagreeing == [flaky])
+        #expect(Report.inRunOrder([], text: text, recorded: [flaky]).failures.isEmpty)
+        #expect(Report.inRunOrder([], text: text, recorded: []).failures.map(\.title) == ["Suite/flaky"])
     }
 
     /// A nested suite's failed test has no images kept under the end of its name: those are a test of that name's own,
@@ -96,6 +120,6 @@ struct RunOrderTests {
     @Test func aFailedTestTheBundleGivesNoMessageKeepsTheTexts() {
         let bundled = [ToolOutput.Failure(title: "Suite/test", message: "", isTest: true)]
         let text = [ToolOutput.Failure(title: "Suite/test", message: "the text's message", where: "Suite.swift:4", isTest: true)]
-        #expect(Report.inRunOrder(bundled, text: text).failures.map { "\($0.message) | \($0.where ?? "-")" } == ["the text's message | Suite.swift:4"])
+        #expect(Report.inRunOrder(bundled, text: text, recorded: []).failures.map { "\($0.message) | \($0.where ?? "-")" } == ["the text's message | Suite.swift:4"])
     }
 }

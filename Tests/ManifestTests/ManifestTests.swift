@@ -322,7 +322,7 @@ import Testing
             Report.noTestsNote,
             Report.noTestsInBundleNote,
             Report.selectedNoneNote(discovered: 2, plan: nil),
-            try #require(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], listing: TestList(#"{"testNodes":[]}"#))),
+            try #require(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], cases: ResultBundle.testCases(in: TestList(#"{"testNodes":[]}"#).nodes))),
             FlakyMark.neededMeaning,
             FailureNotes.noCrashLog,
             FailureNotes.noCrashLogAlone,
