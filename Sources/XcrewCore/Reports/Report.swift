@@ -141,7 +141,7 @@ public struct Report: Sendable, Equatable, Codable {
             if let index {
                 let found = pending.remove(at: index).failure
                 ordered.append(ToolOutput.Failure(title: found.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
-            } else if !named.contains(test) {
+            } else if !named.contains(test), !dropped.contains(test) {
                 dropped.append(test)
             }
         }

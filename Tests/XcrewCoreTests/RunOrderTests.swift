@@ -48,6 +48,12 @@ struct RunOrderTests {
         #expect(Report.inRunOrder(bundled, text: text).failures.map(\.title) == ["Inner/test", "Later/test", "A/Inner/test"])
     }
 
+    /// A test only the text lists, listed twice as a parallel run's clones may, is dropped once.
+    @Test func aTestOnlyTheTextListsTwiceIsDroppedOnce() {
+        let text = ["Suite/flaky", "Suite/flaky"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
+        #expect(Report.inRunOrder([], text: text).dropped == [TestID(suite: "Suite", name: "flaky")])
+    }
+
     /// A nested suite's failed test has no images kept under the end of its name: those are a test of that name's own,
     /// as the notes look a test's up under the name the text gives it.
     @Test func aNestedSuitesTestHasNoImagesOfATestNamedAsItsEnd() {
