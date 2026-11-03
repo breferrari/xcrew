@@ -1,6 +1,7 @@
 import Testing
 @testable import XcrewCore
 
+/// The one rule a test the run's text names is found among the result bundle's ids by.
 @Suite struct TestLookupTests {
     /// A test's own id beats a nested suite's test whose id ends with it.
     @Test func itsOwnIDBeatsANestedOne() {
