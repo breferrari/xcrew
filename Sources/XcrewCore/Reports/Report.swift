@@ -373,7 +373,8 @@ public struct Report: Sendable, Equatable, Codable {
                 labels = Dictionary(entries.compactMap { entry in outcomes[entry.id].map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
                 var placed: Set<TestID> = []
                 for (name, ids) in reported.sorted(by: { $0.key.shown < $1.key.shown }) {
-                    let candidates = entries.filter { Set(ids).contains($0.test) && !placed.contains($0.test) }
+                    let candidateIDs = Set(ids)
+                    let candidates = entries.filter { candidateIDs.contains($0.test) && !placed.contains($0.test) }
                     for candidate in candidates { labels[candidate.test] = Self.reported(name, matching: ids) }
                     guard let swapped = text.replacing(name, with: candidates.map(listed)) else { continue }
                     (text, changed) = (swapped.text, true)

@@ -328,7 +328,8 @@ struct MobileText: Sendable {
     /// The text with `name`'s first entries under Test Failures replaced, in their places, by `failures`, one each, in
     /// MobileBuildMCP's shape; failures beyond its entries follow its last, the section's count raised by them, and its
     /// entries beyond the failures stay. Each entry is its `✗` line and the lines below it, its place and those
-    /// `entryIndent` indents, up to the blank one that ends it. With the text, how many of `name`'s entries stay; nil when the section lists none.
+    /// `entryIndent` indents, up to the blank one that ends it. With the text, how many of `name`'s entries stay; nil
+    /// when the section lists none.
     func replacing(_ name: TestID, with failures: [FailureLine]) -> (text: MobileText, left: Int)? {
         guard !failures.isEmpty, let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
         let ending = failuresEnd(after: heading)
