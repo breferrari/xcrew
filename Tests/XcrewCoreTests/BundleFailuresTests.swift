@@ -129,11 +129,12 @@ struct BundleFailuresTests {
         #expect(Report.inRunOrder(bundled, text: text).map(\.title) == ["Later/test", "A/Inner/test", "B/Inner/test"])
     }
 
-    /// A nested suite's failed test has the images the notes kept under the text's name for it.
-    @Test func aNestedSuitesTestHasTheImagesKeptUnderTheTextsName() {
+    /// A nested suite's failed test has no images kept under the end of its name: those are a test of that name's own,
+    /// as the notes look a test's up under the name the text gives it.
+    @Test func aNestedSuitesTestHasNoImagesOfATestNamedAsItsEnd() {
         let images = [TestID(suite: "Inner", name: "test"): FailureImages(paths: ["/run/Inner/test/screen.png"], folder: "/run/Inner/test")]
-        let failures = [ToolOutput.Failure(title: "Outer/Inner/test", message: "first", isTest: true)]
-        #expect(Report.attaching(images, to: failures).map(\.images) == [["/run/Inner/test/screen.png"]])
+        let failures = ["Inner/test", "Outer/Inner/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
+        #expect(Report.attaching(images, to: failures).map(\.images) == [["/run/Inner/test/screen.png"], nil])
     }
 
     /// A failed test the bundle gives no message keeps the text's, as it keeps its place when the bundle gives none.

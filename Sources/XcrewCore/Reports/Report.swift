@@ -107,16 +107,10 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest.
-    /// The notes keep a nested suite's test's under the text's name, from its own suite, where the bundle's names it from
-    /// the outermost: it has those kept under the end of its name, when no other test's name ends the same way.
     static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
         failures.map { failure in
             guard failure.isTest else { return failure }
-            let test = TestID(xcresultID: failure.title)
-            let found = images[test] ?? {
-                let nested = images.filter { $0.key.isNested(in: test) }
-                return nested.count == 1 ? nested.first?.value : nil
-            }()
+            let found = images[TestID(xcresultID: failure.title)]
             return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: found?.shown, moreImages: found?.more, target: failure.target)
         }
     }
