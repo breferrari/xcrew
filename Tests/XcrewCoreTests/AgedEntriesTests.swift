@@ -6,7 +6,7 @@ import XcrewTestSupport
 /// A folder's entries kept too long go, the rest stay: what the session stamps, the log readings and the failed tests'
 /// images each prune.
 @Suite struct AgedEntriesTests {
-    @Test func entriesOlderThanTheAgeGoAndTheRestAreReturnedWithTheirDates() throws {
+    @Test func entriesOlderThanTheAgeGoAndTheRestAreReturned() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-aged-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -17,8 +17,7 @@ import XcrewTestSupport
             try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-age)], ofItemAtPath: file.path)
         }
         let kept = AgedEntries.removing(olderThan: 2 * 86_400, in: folder, now: now)
-        #expect(kept.map(\.url.lastPathComponent) == ["new"])
-        #expect(kept.map(\.modified) == [now.addingTimeInterval(-3_600)])
+        #expect(kept.map(\.lastPathComponent) == ["new"])
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["new"])
     }
 }

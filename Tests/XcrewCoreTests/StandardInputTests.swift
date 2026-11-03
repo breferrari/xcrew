@@ -21,7 +21,6 @@ import XcrewTestSupport
         return pipe.fileHandleForReading
     }
 
-
     /// A caller that never closes stdin, as a script can be: reading stops once nothing more arrives in the idle time,
     /// on a clock the test moves, so no wait on real time decides it.
     @Test func anInputLeftOpenIsReadUntilItGoesQuiet() async throws {
@@ -31,11 +30,11 @@ import XcrewTestSupport
         let ended = Task { await drain.ended(idleFor: .milliseconds(500), clock: clock) }
         let sent = #"{"cwd":"/project"}"#
         try pipe.fileHandleForWriting.write(contentsOf: Data(sent.utf8))
-        try await until { drain.data.count == sent.utf8.count }
+        try await until(giveUpAfter: .seconds(20)) { drain.data.count == sent.utf8.count }
         let quiet = Flag()
         Task { _ = await ended.value; quiet.set() }
         while !quiet.isSet {
-            try await until { clock.sleepers == 1 || quiet.isSet }
+            try await until(giveUpAfter: .seconds(20)) { clock.sleepers == 1 || quiet.isSet }
             clock.advance(by: .milliseconds(500))
             await Task.yield()
         }
@@ -56,12 +55,12 @@ import XcrewTestSupport
         var sent = ""
         for chunk in ["one ", "two ", "three"] {
             // The idle check asleep again, or the read ended: a read cut off fails here, on that, not on a wait.
-            try await until { clock.sleepers == 1 || stopped.isSet }
+            try await until(giveUpAfter: .seconds(20)) { clock.sleepers == 1 || stopped.isSet }
             try #require(!stopped.isSet, "cut off after \(sent.utf8.count) bytes")
             try pipe.fileHandleForWriting.write(contentsOf: Data(chunk.utf8))
             sent += chunk
             let expected = sent.utf8.count
-            try await until { drain.data.count == expected }
+            try await until(giveUpAfter: .seconds(20)) { drain.data.count == expected }
             clock.advance(by: .seconds(1))
         }
         try pipe.fileHandleForWriting.close()

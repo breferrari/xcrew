@@ -1,17 +1,10 @@
 import Foundation
+import Testing
 
-/// Waits for `condition`, which another thread makes true, checking it every 10 ms: a condition that reads a file, as a
-/// shim test's does, slows the build it waits on when checked more often. Past a hang guard as long as a shim test's
-/// build may take, throws `Until.NeverCameTrue`.
-public func until(_ condition: () -> Bool) async throws {
-    for _ in 0..<50_000 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
-    guard condition() else { throw Until.NeverCameTrue() }
-}
-
-/// What `until` throws.
-public enum Until {
-    /// A condition that never came true within the hang guard.
-    public struct NeverCameTrue: Error, CustomStringConvertible {
-        public var description: String { "never came true" }
-    }
+/// Waits for `condition`, which another thread makes true, checking it every 10 ms: a condition that reads a file slows
+/// the work it waits on when checked more often. Past `limit`, a hang guard, it fails at the caller's line.
+public func until(giveUpAfter limit: Duration = .seconds(500), sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool) async throws {
+    let tries = Int(limit / .milliseconds(10))
+    for _ in 0..<tries where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+    try #require(condition(), "never came true", sourceLocation: sourceLocation)
 }

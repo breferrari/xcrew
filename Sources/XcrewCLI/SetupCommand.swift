@@ -177,7 +177,6 @@ struct SetupCommand: Command {
         }
     }
 
-
     /// The line setup prints when the config changed what MobileBuildMCP reads only when it launches; the setup form tells
     /// it by how it begins.
     static let restartLine = "xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it"

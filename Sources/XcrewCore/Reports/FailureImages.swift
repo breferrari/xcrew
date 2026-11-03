@@ -77,7 +77,7 @@ public struct FailureImages: Sendable, Equatable {
     /// `limit`; the newest run's stay whatever their size. Each run's size is read from its record, so pruning costs the
     /// same however many runs are kept; a run kept before sizes were recorded is measured once and recorded.
     static func prune(in folder: URL, keepingAtMost limit: Int = keptBytes, now: Date) {
-        let kept = AgedEntries.removing(olderThan: Double(keptDays) * 24 * 3600, in: folder, now: now).map { (run: $0.url, bytes: recordedSize(of: $0.url)) }
+        let kept = AgedEntries.removing(olderThan: Double(keptDays) * 24 * 3600, in: folder, now: now).map { (run: $0, bytes: recordedSize(of: $0)) }
         var total = kept.reduce(0) { $0 + $1.bytes }
         for (run, bytes) in kept.dropLast() where total > limit {
             try? FileManager.default.removeItem(at: run)
