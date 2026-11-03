@@ -54,40 +54,40 @@ struct RunOrderTests {
         #expect(Report.inRunOrder(bundled, text: text, recorded: []).disagreeing.isEmpty)
     }
 
-    /// A nested suite's test the text lists twice is matched once and never dropped: the bundle lists it as failed.
-    @Test func aNestedSuitesTestListedTwiceIsNotDropped() {
+    /// A nested suite's test the text lists twice is matched once and never disagrees: the bundle lists it as failed.
+    @Test func aNestedSuitesTestListedTwiceNeverDisagrees() {
         let bundled = [ToolOutput.Failure(title: "Outer/Inner/test", message: "", isTest: true)]
         let text = ["Inner/test", "Inner/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
         #expect(Report.inRunOrder(bundled, text: text, recorded: []).disagreeing.isEmpty)
     }
 
-    /// The note reads a dropped test by the name the text gives: one the bundle files only in a nested suite, under a
+    /// The note reads a disagreeing test by the name the text gives: one the bundle files only in a nested suite, under a
     /// longer name, it doesn't list under that name.
-    @Test func theNoteReadsADroppedTestByTheTextsName() {
+    @Test func theNoteReadsADisagreeingTestByTheTextsName() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Outer/Inner/testFlaky()","result":"Passed"}]}"#)
         #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "testFlaky")], cases: ResultBundle.testCases(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Inner/testFlaky, which it has no entry for under that name. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message.")
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Inner/testFlaky, which it has no entry for under that name. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place.")
     }
 
-    /// The note names several dropped tests, each with what the bundle records under its name.
-    @Test func theNoteNamesSeveralDroppedTestsEachWithItsResult() {
+    /// The note names several disagreeing tests, each with what the bundle records under its name.
+    @Test func theNoteNamesSeveralDisagreeingTestsEachWithItsResult() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/skipped()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/expected()","result":"Expected Failure"}]}"#)
         #expect(Report.notFailedInBundleNote(["skipped", "expected"].map { TestID(suite: "Suite", name: $0) }, cases: ResultBundle.testCases(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't: Suite/skipped, which it counts as skipped; Suite/expected, which it counts as an expected failure. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message.")
+            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't: Suite/skipped, which it counts as skipped; Suite/expected, which it counts as an expected failure. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place.")
     }
 
-    /// A dropped test the bundle records with a result the note has no words for is named with that result.
+    /// A disagreeing test the bundle records with a result the note has no words for is named with that result.
     @Test func theNoteNamesAResultItHasNoWordsForAsTheBundleRecordsIt() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Mixed"}]}"#)
         #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], cases: ResultBundle.testCases(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Suite/test, which it records as Mixed. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message.")
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Suite/test, which it records as Mixed. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place.")
     }
 
-    /// A dropped test the bundle files more than once, as under two configurations, counts as passed when one passed.
+    /// A disagreeing test the bundle files more than once, as under two configurations, counts as passed when one passed.
     @Test func theNoteCountsATestFiledTwiceAsPassedWhenOnePassed() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed"}]}"#)
         #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], cases: ResultBundle.testCases(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Suite/test, which it counts as passed. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message.")
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Suite/test, which it counts as passed. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place.")
     }
 
     /// A name the text lists twice, as a parallel run's clones may, is its own test's both times: never a nested suite's

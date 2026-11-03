@@ -173,7 +173,7 @@ public struct Report: Sendable, Equatable, Codable {
             return "\(test.shown), \(recorded)"
         }
         let these = named.count == 1 ? "a test its result bundle doesn't" : "tests its result bundle doesn't"
-        return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.joined(separator: "; ")). A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message."
+        return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.joined(separator: "; ")). A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place."
     }
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
@@ -372,7 +372,8 @@ public struct Report: Sendable, Equatable, Codable {
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
         let cases = bundled == nil ? [:] : ResultBundle.testCases(in: listing.nodes)
-        let ordered = bundled.map { Self.inRunOrder($0, text: final.failures, recorded: Set(cases.keys)) }
+        let recorded = Set(cases.filter { $0.value.contains { $0["result"] is String } }.keys)
+        let ordered = bundled.map { Self.inRunOrder($0, text: final.failures, recorded: recorded) }
         let failures = ordered?.failures ?? final.failures
         if let ordered, let note = Self.notFailedInBundleNote(ordered.disagreeing, cases: cases) { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
