@@ -152,6 +152,11 @@ public struct Report: Sendable, Equatable, Codable {
         return (ordered + pending.map(\.failure), disagreeing)
     }
 
+    /// The note on each failed test a name MobileBuildMCP's text gives can mean, when several can.
+    static func reported(_ name: TestID, matching candidates: [TestID]) -> String {
+        "MobileBuildMCP reported \"\(name.shown)\", which matches these \(candidates.count) tests: \(ResultBundle.joined(candidates.map(\.shown), rest: "in the result bundle's test list"))"
+    }
+
     /// The label on a failure line the bundle's list adds, where the text lists the test `outcome`, as passed.
     static func listedOtherwise(_ outcome: String) -> String {
         "the result bundle's; MobileBuildMCP's text lists it as \(outcome)"
@@ -351,6 +356,14 @@ public struct Report: Sendable, Equatable, Codable {
                 bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, lookup.resolution(of: $0)) }) { first, _ in first }
                 let named = Set(bundleIDs.values.compactMap(\.found)).union(bundleIDs.keys)
                 let unlisted = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
+                let failed = Set(unlisted.map(\.0))
+                let reported = bundleIDs.compactMapValues { resolution -> [TestID]? in
+                    if case let .ambiguous(ids) = resolution, ids.contains(where: failed.contains) { ids } else { nil }
+                }
+                if let without = text.removing(Set(reported.keys)) {
+                    (text, changed) = (without, true)
+                    for name in reported.keys { bundleIDs[name] = nil }
+                }
                 let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
                     if let test = MobileBuildMCPLine.passed(line.text) { return (test, "passed") }
                     if case let .skipped(test?) = line.kind { return (test, "skipped") }
@@ -359,6 +372,9 @@ public struct Report: Sendable, Equatable, Codable {
                 let outcomes = Dictionary(said.map { (lookup.resolution(of: $0.0).found ?? $0.0, $0.1) }) { first, _ in first }
                 let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
                 labels = Dictionary(entries.compactMap { entry in outcomes[entry.id].map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
+                for (name, ids) in reported.sorted(by: { $0.key.shown < $1.key.shown }) {
+                    for id in ids where failed.contains(id) { labels[id] = Self.reported(name, matching: ids) }
+                }
                 if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: lookup.cases)) }) {
                     (text, changed) = (added, true)
                     for entry in entries { bundleIDs[entry.test] = .found(entry.id) }

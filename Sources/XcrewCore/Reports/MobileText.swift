@@ -314,6 +314,34 @@ struct MobileText: Sendable {
         return MobileText(lines: Array(lines[..<heading]) + [Line(counted)] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
     }
 
+    /// The text without the Test Failures lines of `tests`: each one's `✗` line and the lines below it up to the blank one
+    /// that ends it, the section's count lowered. Nil when it lists none of them.
+    func removing(_ tests: Set<TestID>) -> MobileText? {
+        var kept: [Line] = []
+        var removed = 0
+        var inRemoved = false
+        for line in lines {
+            if inRemoved {
+                if line.text.isEmpty { inRemoved = false; continue }
+                if line.text.hasPrefix("    ") { continue }
+                inRemoved = false
+            }
+            if let test = line.failing?.test, tests.contains(test) {
+                removed += 1
+                inRemoved = true
+                continue
+            }
+            kept.append(line)
+        }
+        guard removed > 0 else { return nil }
+        if let heading = kept.firstIndex(where: { $0.isHeading(.testFailures) }), let count = MobileBuildMCPLine.failureCount(in: kept[heading].text) {
+            var counted = kept[heading].text
+            counted.replaceSubrange(count.range, with: "Test Failures (\(count.count - removed)):")
+            kept[heading] = Line(counted)
+        }
+        return MobileText(lines: kept)
+    }
+
     /// Where the Test Results section starts, nil when the text has none.
     var testResultsStart: Int? { lines.firstIndex(where: { $0.isHeading(.testResults) }) }
 

@@ -324,6 +324,7 @@ import Testing
             Report.selectedNoneNote(discovered: 2, plan: nil),
             Report.listedOtherwise("passed"),
             FailureNotes.severalByThatName([TestID(xcresultID: "A/Inner/test()"), TestID(xcresultID: "B/Inner/test()")]),
+            Report.reported(TestID(suite: "Inner", name: "test"), matching: [TestID(xcresultID: "A/Inner/test()"), TestID(xcresultID: "B/Inner/test()")]),
             try #require(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test"), TestID(suite: "Suite", name: "retried"), TestID(suite: "Inner", name: "shared")], results: [TestID(suite: "Suite", name: "retried"): ["Passed"]], ambiguous: [TestID(suite: "Inner", name: "shared")])),
             FlakyMark.neededMeaning,
             FailureNotes.noCrashLog,
