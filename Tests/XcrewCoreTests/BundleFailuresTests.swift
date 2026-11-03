@@ -234,6 +234,33 @@ struct BundleFailuresTests {
         #expect(report.notes.contains { $0.contains("Inner/flaky, which the bundle counts as passed") }, "\(report.notes)")
     }
 
+    /// Each failure the bundle records that the text doesn't list gets its line in the text Claude reads, under Test
+    /// Failures, as MobileBuildMCP writes one: the retried nested capture, whose text lists only the display-named
+    /// failure from the log.
+    @Test func aFailureOnlyTheBundleRecordsIsListedInTheText() async throws {
+        let bundle = try Raw.bundle("nested-retry")
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("nested-retry.tests.json"))])
+        let report = await Report.make(kind: .test, output: try Raw.output("nested-retry"), home: Captured.home, runner: runner, repeated: true)
+        let text = try #require(report.result)
+        #expect(text.contains("Test Failures (4):"), "\(text)")
+        #expect(text.contains("✗ Outer / Inner/fails(): Expectation failed: Kit.name == \"Other\""), "\(text)")
+        #expect(text.contains("✗ Outer / Inner/attaches(): Expectation failed: Kit.name == \"Other\""), "\(text)")
+    }
+
+    /// A failure only the bundle records, of a test the text lists as passed, is labelled as the bundle's where its line
+    /// is added: the two disagree. The timing capture, its Test Results listing `testPasses` passed, and its test list
+    /// recording it failed.
+    @Test func aFailureOnlyTheBundleRecordsIsLabelledWhereTheTextListsItPassed() async throws {
+        let passed = #""nodeIdentifierURL":"test://com.apple.xcode/Feature/FeatureTests/ProbeTests/testPasses","nodeType":"Test Case","result":"Passed""#
+        let listing = try Raw.file("timing.tests.json")
+        let timing = try Raw.text("timing")
+        #expect(listing.contains(passed) && timing.contains("✅ ProbeTests/testPasses (0.000s)"))
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("timing")) --compact": .init(status: 0, stdout: listing.replacingOccurrences(of: passed, with: passed.replacingOccurrences(of: #""result":"Passed""#, with: #""result":"Failed""#)))])
+        let report = await Report.make(kind: .test, output: try Raw.output("timing"), home: Captured.home, runner: runner)
+        let text = try #require(report.result)
+        #expect(text.contains("✗ ProbeTests / testPasses():  (the result bundle's; MobileBuildMCP's text lists it as passed)"), "\(text)")
+    }
+
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
     /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
     @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {

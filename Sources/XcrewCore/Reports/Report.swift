@@ -332,13 +332,26 @@ public struct Report: Sendable, Equatable, Codable {
             }
             // Each failed test the text names, under the bundle's id for it: a nested suite's test is named from its outermost
             // suite there, and xcresulttool answers to that id alone (docs/findings.md, *A failing run's failed tests are its
-            // bundle's*).
-            let bundleIDs: [TestID: TestID.Resolution] = if bundle != nil, text.isTestRun, !final.summary.ok {
-                await { () async -> [TestID: TestID.Resolution] in
-                    let ids = Set(ResultBundle.testCases(in: await testList().nodes).keys)
-                    return Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, $0.resolved(among: ids)) }) { first, _ in first }
-                }()
-            } else { [:] }
+            // bundle's*). Each failed test the bundle records that the text doesn't list gets its line, so its notes go with it.
+            var bundleIDs: [TestID: TestID.Resolution] = [:]
+            if bundle != nil, text.isTestRun, !final.summary.ok {
+                let listing = await testList()
+                let ids = Set(ResultBundle.testCases(in: listing.nodes).keys)
+                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, $0.resolved(among: ids)) }) { first, _ in first }
+                let named = Set(bundleIDs.values.compactMap { if case let .found(id) = $0 { id } else { nil } })
+                let unlisted = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
+                // One the text lists as passed or skipped is labelled the bundle's: there the two disagree.
+                let said = text.lines.compactMap { line -> (TestID, String)? in
+                    if let test = MobileBuildMCPLine.passed(line.text) { return (test, "passed") }
+                    if case let .skipped(test?) = line.kind { return (test, "skipped") }
+                    return nil
+                }
+                let saying = Dictionary(said.compactMap { test, outcome in if case let .found(id) = test.resolved(among: ids) { (id, outcome) } else { nil } }) { first, _ in first }
+                if let added = text.adding(unlisted: unlisted.map { ($0.0, $0.1.message, $0.1.where, saying[$0.0].map { "the result bundle's; MobileBuildMCP's text lists it as \($0)" }) }) {
+                    (text, changed) = (added, true)
+                    for (test, _) in unlisted { bundleIDs[test] = .found(test) }
+                }
+            }
             if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, bundleIDs: bundleIDs),
                // The skips come from the test list read above for the failed tests' ids, read once.
                let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {

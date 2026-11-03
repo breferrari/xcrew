@@ -298,6 +298,25 @@ struct MobileText: Sendable {
         return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
     }
 
+    /// The text with a line under Test Failures for each of `failures`, failed tests the result bundle records that the
+    /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place, a `label` after the
+    /// message where there is one; the section's count raised, or the section added before Test Results or the summary
+    /// when the text has none. Nil when there's nothing to add, or nowhere to add it.
+    func adding(unlisted failures: [(test: TestID, message: String, place: String?, label: String?)]) -> MobileText? {
+        guard !failures.isEmpty else { return nil }
+        let listed = failures.flatMap { failure in
+            [Line("  ✗ \(failure.test.suite) / \(failure.test.name)(): \(failure.message)\(failure.label.map { " (\($0))" } ?? "")")]
+                + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
+        }
+        guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else {
+            guard let at = lines.firstIndex(where: { $0.isHeading(.testResults) }) ?? lines.firstIndex(where: \.isSummary) else { return nil }
+            return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
+        }
+        let ending = lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
+        let counted = lines[heading].text.firstMatch(of: #/\((\d+)\)/#).flatMap { Int($0.1) } ?? 0
+        return MobileText(lines: Array(lines[..<heading]) + [Line("Test Failures (\(counted + failures.count)):")] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
+    }
+
     /// With `showTestTiming`, a repeated run's Test Results list each test once for each of its runs: this lists each test
     /// once, a repeated one with its runs counted, as `✅ Suite/test(): passed 5 of 5 runs`. Nil when nothing repeats.
     /// It shapes only the text Claude reads: the report counts the runs from the bundle itself.
