@@ -125,6 +125,8 @@ public struct Report: Sendable, Equatable, Codable {
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure]) -> (failures: [ToolOutput.Failure], dropped: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
         let named = Set(pending.map(\.test))
+        // A test the bundle lists as failed under the text's name or one ending with it is never dropped, matched or not.
+        let listed = { (test: TestID) in named.contains(test) || named.contains { test.isNested(in: $0) } }
         var ordered: [ToolOutput.Failure] = []
         var dropped: [TestID] = []
         for failure in text {
@@ -141,7 +143,7 @@ public struct Report: Sendable, Equatable, Codable {
             if let index {
                 let found = pending.remove(at: index).failure
                 ordered.append(ToolOutput.Failure(title: found.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
-            } else if !named.contains(test), !dropped.contains(test) {
+            } else if !listed(test), !dropped.contains(test) {
                 dropped.append(test)
             }
         }
@@ -151,19 +153,26 @@ public struct Report: Sendable, Equatable, Codable {
     /// The tests the text lists as failed that the bundle doesn't count as failed, as one a retry passed, each with what
     /// the bundle records for it; nil when there are none.
     static func notFailedInBundleNote(_ dropped: [TestID], listing: TestList) -> String? {
-        guard !dropped.isEmpty else { return nil }
-        let results = ResultBundle.results(listing: listing)
-        let named = dropped.map { test in
-            let recorded = switch results[test] {
+        let cases = ResultBundle.testCases(in: listing.nodes)
+        let result = { (test: TestID) -> String? in
+            let nested = cases.keys.filter { test.isNested(in: $0) }
+            let found = cases[test] ?? (nested.count == 1 ? nested.first.flatMap { cases[$0] } : nil)
+            return found?.first?["result"] as? String
+        }
+        // One the bundle records as failed is its failure under another name, as a crash it renamed, and listed already.
+        let named: [String] = dropped.compactMap { test in
+            let recorded = switch result(test) {
             case nil: "which it doesn't list"
             case "Passed": "which it counts as passed"
             case "Skipped": "which it counts as skipped"
             case "Expected Failure": "which it counts as an expected failure"
+            case "Failed": nil as String?
             case let other?: "which it records as \(other)"
             }
-            return "\(test.shown), \(recorded)"
+            return recorded.map { "\(test.shown), \($0)" }
         }
-        let tests = dropped.count == 1 ? "a test its result bundle doesn't" : "tests its result bundle doesn't"
+        guard !named.isEmpty else { return nil }
+        let tests = named.count == 1 ? "a test its result bundle doesn't" : "tests its result bundle doesn't"
         return "xcrew: MobileBuildMCP's text lists as failed \(tests): \(named.joined(separator: "; ")). The tests listed as failed here are the bundle's."
     }
 

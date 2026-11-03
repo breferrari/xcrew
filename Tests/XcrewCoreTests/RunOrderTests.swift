@@ -38,6 +38,22 @@ struct RunOrderTests {
         let bundled = ["Later/test", "A/Inner/test", "B/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
         let text = ["Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
         #expect(Report.inRunOrder(bundled, text: text).failures.map(\.title) == ["Later/test", "A/Inner/test", "B/Inner/test"])
+        #expect(Report.inRunOrder(bundled, text: text).dropped.isEmpty)
+    }
+
+    /// A nested suite's test the text lists twice is matched once and never dropped: the bundle lists it as failed.
+    @Test func aNestedSuitesTestListedTwiceIsNotDropped() {
+        let bundled = [ToolOutput.Failure(title: "Outer/Inner/test", message: "", isTest: true)]
+        let text = ["Inner/test", "Inner/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
+        #expect(Report.inRunOrder(bundled, text: text).dropped.isEmpty)
+    }
+
+    /// The note names a dropped nested suite's test with what the bundle records for it under its full name, and leaves
+    /// out a test the bundle records as failed under the name the text gives.
+    @Test func theNoteReadsANestedSuitesTestByItsFullNameAndLeavesOutAFailedOne() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Outer/Inner/testFlaky()","result":"Passed"},{"nodeType":"Test Case","nodeIdentifier":"Suite/renamed()","result":"Failed"}]}"#)
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "testFlaky"), TestID(suite: "Suite", name: "renamed")], listing: listing)
+            == "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: Inner/testFlaky, which it counts as passed. The tests listed as failed here are the bundle's.")
     }
 
     /// A name the text lists twice, as a parallel run's clones may, is its own test's both times: never a nested suite's
