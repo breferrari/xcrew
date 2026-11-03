@@ -151,6 +151,12 @@ struct RunOrderTests {
         #expect(ResultBundle.cleared(in: ResultBundle.results(in: listing.nodes)) == [TestID(suite: "Suite", name: "test")])
     }
 
+    /// A disagreeing test the text names that several of the bundle's nested ids end with is named as such, and stays.
+    @Test func theNoteNamesATestSeveralNestedIDsEndWith() {
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "fails")], results: [:], ambiguous: [TestID(suite: "Inner", name: "fails")])
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Inner/fails, which names more than one of the bundle's tests. A test the bundle doesn't count as passed, an expected failure or skipped in every entry, test plan configuration and device stays in the failures here, as MobileBuildMCP gives it.")
+    }
+
     /// A disagreeing test the bundle files more than once, as in two test bundles, skipped in one and passed in the
     /// other, counts as both.
     @Test func theNoteCountsATestSkippedInOneEntryAndPassedInAnotherAsBoth() {

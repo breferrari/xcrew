@@ -221,6 +221,19 @@ struct BundleFailuresTests {
         #expect(added?.text.text.contains("image: ") == true)
     }
 
+    /// A nested suite's test the text lists as failed that the bundle counts as passed under its full id, as one a retry
+    /// passed, is no failure, and the note says the bundle counts it as passed. The nested capture, `flaky()`'s case
+    /// recorded passed.
+    @Test func aNestedSuitesTestTheBundlePassedIsNoFailure() async throws {
+        let failed = #""nodeIdentifierURL":"test://com.apple.xcode/SwiftTesting/NestedTests/Outer/Inner/flaky()","nodeType":"Test Case","result":"Failed""#
+        let listing = try Raw.file("nested.tests.json")
+        #expect(listing.contains(failed))
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("nested")) --compact": .init(status: 0, stdout: listing.replacingOccurrences(of: failed, with: failed.replacingOccurrences(of: #""result":"Failed""#, with: #""result":"Passed""#)))])
+        let report = await Report.make(kind: .test, output: try Raw.output("nested"), home: Captured.home, runner: runner)
+        #expect(!report.failures.map(\.title).contains { $0.hasSuffix("flaky") }, "\(report.failures.map(\.title))")
+        #expect(report.notes.contains { $0.contains("Inner/flaky, which the bundle counts as passed") }, "\(report.notes)")
+    }
+
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
     /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
     @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {

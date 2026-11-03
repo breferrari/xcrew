@@ -322,7 +322,7 @@ import Testing
             Report.noTestsNote,
             Report.noTestsInBundleNote,
             Report.selectedNoneNote(discovered: 2, plan: nil),
-            try #require(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test"), TestID(suite: "Suite", name: "retried")], results: [TestID(suite: "Suite", name: "retried"): ["Passed"]])),
+            try #require(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test"), TestID(suite: "Suite", name: "retried"), TestID(suite: "Inner", name: "shared")], results: [TestID(suite: "Suite", name: "retried"): ["Passed"]], ambiguous: [TestID(suite: "Inner", name: "shared")])),
             FlakyMark.neededMeaning,
             FailureNotes.noCrashLog,
             FailureNotes.noCrashLogAlone,

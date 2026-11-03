@@ -158,11 +158,12 @@ public struct Report: Sendable, Equatable, Codable {
     /// under the name the text gives, `results` each recorded test's results: every one it records, the clearing ones
     /// first, as passed and skipped for one skipped under another configuration. It names `ResultBundle.mostNamed` at
     /// most and counts the rest, each among MobileBuildMCP's failures in the result. Nil when there are none.
-    static func notFailedInBundleNote(_ tests: [TestID], results: [TestID: Set<String>]) -> String? {
+    static func notFailedInBundleNote(_ tests: [TestID], results: [TestID: Set<String>], ambiguous: Set<TestID> = []) -> String? {
         guard !tests.isEmpty else { return nil }
         let cleared = ResultBundle.cleared(in: results)
         let shown = tests.prefix(ResultBundle.mostNamed)
         let named = shown.map { test in
+            if ambiguous.contains(test) { return "\(test.shown), which names more than one of the bundle's tests" }
             guard let found = results[test] else { return "\(test.shown), which the bundle has no entry for under that name" }
             let worded = ResultBundle.clearing.filter { found.contains($0.result) }.map(\.counts) + found.subtracting(ResultBundle.clearingResults).subtracting([ResultBundle.noResult]).map { $0.lowercased() }.sorted()
             if cleared.contains(test) { return "\(test.shown), which the bundle counts as \(ResultBundle.joined(worded, rest: "the rest of them"))" }
@@ -392,10 +393,16 @@ public struct Report: Sendable, Equatable, Codable {
         // build's and the process's, are the text's.
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
-        let results = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
+        let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
+        // Each test the text names takes the results of the bundle's id for it, as a nested suite's test has its outermost
+        // suite's; one several ids end with takes none.
+        let resolutions = Dictionary(final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.map { ($0, $0.resolved(among: Set(recorded.keys))) }) { first, _ in first }
+        let results = recorded.merging(resolutions.compactMap { test, resolution in
+            if case let .found(id) = resolution, let found = recorded[id] { (test, found) } else { nil }
+        }) { own, _ in own }
         let ordered = bundled.map { Self.inRunOrder($0, text: final.failures, cleared: ResultBundle.cleared(in: results)) }
         let failures = ordered?.failures ?? final.failures
-        if let ordered, let note = Self.notFailedInBundleNote(ordered.disagreeing, results: results) { notes.append(note) }
+        if let ordered, let note = Self.notFailedInBundleNote(ordered.disagreeing, results: results, ambiguous: Set(resolutions.compactMap { if case .ambiguous = $0.value { $0.key } else { nil } })) { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?
