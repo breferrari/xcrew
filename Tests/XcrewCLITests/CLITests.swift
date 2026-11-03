@@ -214,6 +214,146 @@ import XcrewTestSupport
         #expect(test.text.contains("xcrew: no simulator named iPhone 17 is installed (installed iPhones: iPhone 18): add it in Xcode, or rerun with --test-simulator and one of those"))
     }
 
+    /// The profiles `/xcrew setup` wrote, with options for each, as the setup pane runs it.
+    func setUpWithThePane(_ project: Project) async {
+        _ = await Run("setup", "--test-scheme", "AppTests", "--app-scheme", "App", "--bundle-id", "com.example.App", "--ui-scheme", "AppUITests", "--test-simulator", "iPhone 18", "--debugger-backend", "dap", context: .fake(simulators, project: project))
+    }
+
+    /// mcs's configure step runs plain `xcrew setup` on every sync, with only its own answers: the profiles the person
+    /// chose stay as they are, mcs's answers included.
+    @Test(arguments: [["MCS_RESOLVED_PROJECT": "./App.xcworkspace"], ["MCS_RESOLVED_PROJECT": "./App.xcworkspace", "MCS_RESOLVED_APP_SCHEME": "Other", "MCS_RESOLVED_TEST_SIMULATOR": "iPhone 9"]])
+    func anMCSSyncKeepsTheProfilesThePersonChose(environment: [String: String]) async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        await setUpWithThePane(project)
+        let chosen = config(project)
+        #expect(chosen.contains("  app:\n") && chosen.contains("  ui:\n") && chosen.contains("  unit:\n"))
+        let sync = await Run("setup", context: .fake(simulators, project: project, environment: environment))
+        #expect(sync.status == 0)
+        #expect(config(project) == chosen)
+    }
+
+    /// A profile the config doesn't have yet is added from mcs's answers; the ones it has stay as they are.
+    @Test func anMCSSyncAddsOnlyTheProfilesMissing() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        _ = await Run("setup", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        let unit = config(project).firstMatch(of: /(?m)^  unit:\n(?:    .*\n)*/).map { String($0.0) }
+        let sync = await Run("setup", context: .fake(simulators, project: project, environment: ["MCS_RESOLVED_PROJECT": "./App.xcworkspace", "MCS_RESOLVED_APP_SCHEME": "App", "MCS_RESOLVED_TEST_SIMULATOR": "iPhone 9"]))
+        #expect(sync.status == 0)
+        #expect(unit != nil && config(project).contains(unit ?? "-"))
+        #expect(config(project).contains("  app:\n    workspacePath: './App.xcworkspace'\n    scheme: 'App'\n"))
+    }
+
+    /// An option given empty names no choice for its profile, as the setup pane's "none": that profile goes, and the rest
+    /// stay as chosen.
+    @Test func anEmptyOptionDropsItsProfileAndKeepsTheRest() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        await setUpWithThePane(project)
+        let run = await Run("setup", "--ui-scheme", "", context: .fake(simulators, project: project))
+        #expect(run.status == 0)
+        #expect(!config(project).contains("  ui:\n"))
+        #expect(config(project).contains("  app:\n    workspacePath: './App.xcworkspace'\n    scheme: 'App'\n"))
+        #expect(config(project).contains("    bundleId: 'com.example.App'\n"))
+        #expect(config(project).contains("  unit:\n    workspacePath: './App.xcworkspace'\n    scheme: 'AppTests'\n"))
+    }
+
+    /// The container the config builds is the person's choice too: mcs's answer naming another doesn't move it.
+    @Test func anMCSSyncKeepsTheContainer() async {
+        let project = Project.temporary(containing: ["App.xcworkspace", "Other.xcworkspace"])
+        _ = await Run("setup", "--container", "App.xcworkspace", "--test-scheme", "AppTests", "--app-scheme", "App", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        let chosen = config(project)
+        _ = await Run("setup", context: .fake(simulators, project: project, environment: ["MCS_RESOLVED_PROJECT": "./Other.xcworkspace"]))
+        #expect(config(project) == chosen)
+    }
+
+    /// Another container named now is set up afresh: the schemes chosen for the old one aren't its.
+    @Test func anotherContainerNamedNowTakesNoneOfTheOldSchemes() async {
+        let project = Project.temporary(containing: ["App.xcworkspace", "Other.xcworkspace"])
+        await setUpWithThePane(project)
+        let run = await Run("setup", "--container", "Other.xcworkspace", context: .fake(simulators, project: project))
+        #expect(run.status == 0)
+        #expect(config(project).contains("workspacePath: './Other.xcworkspace'"))
+        #expect(!config(project).contains("  app:\n") && !config(project).contains("  ui:\n") && !config(project).contains("  unit:\n"))
+    }
+
+    /// The config's own container named by its full path, through whatever link the temporary folder's path takes, is
+    /// the same container: its choices stay.
+    @Test func theSameContainerByItsFullPathKeepsTheChoices() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        await setUpWithThePane(project)
+        let chosen = config(project)
+        let full = ProjectLayout.canonicalPath(project.root.appending(path: "App.xcworkspace").path)
+        _ = await Run("setup", "--container", full, context: .fake(simulators, project: project))
+        #expect(config(project) == chosen)
+    }
+
+    /// A container the config names from the home folder is written as the folder it is when setup writes it again.
+    @Test func aContainerFromTheHomeFolderIsWrittenWhole() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        project.write("schemaVersion: 1\nsessionDefaults:\n  workspacePath: ~/App.xcworkspace\n  simulatorName: 'iPhone 18'\n", to: ".mobilebuildmcp/config.yaml")
+        _ = await Run("setup", "--force", context: .fake(simulators, project: project))
+        #expect(!config(project).contains("./~"))
+        // The test's home folder is inside the project, so the path is written from the root.
+        #expect(config(project).contains("workspacePath: './home/App.xcworkspace'"))
+    }
+
+    /// The bundle ID is the app scheme's: another app scheme named now doesn't keep the old one's.
+    @Test func anotherAppSchemeDoesntKeepTheOldBundleID() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        await setUpWithThePane(project)
+        _ = await Run("setup", "--app-scheme", "Other", context: .fake(simulators, project: project))
+        #expect(config(project).contains("  app:\n    workspacePath: './App.xcworkspace'\n    scheme: 'Other'\n"))
+        #expect(!config(project).contains("bundleId"))
+    }
+
+    /// A UI-test profile with no app profile keeps its own simulator.
+    @Test func aUITestProfileKeepsItsSimulatorWithoutAnAppProfile() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        _ = await Run("setup", "--test-scheme", "AppTests", "--ui-scheme", "AppUITests", "--test-simulator", "iPhone 18", "--app-simulator", "iPhone 17", context: .fake(simulators, project: project))
+        let chosen = config(project)
+        #expect(chosen.contains("  ui:\n    workspacePath: './App.xcworkspace'\n    scheme: 'AppUITests'\n    simulatorName: 'iPhone 17'\n"))
+        _ = await Run("setup", context: .fake(simulators, project: project, environment: ["MCS_RESOLVED_PROJECT": "./App.xcworkspace"]))
+        #expect(config(project) == chosen)
+    }
+
+    /// `--force` replaces a config setup would keep, with a backup, and keeps the choices its profiles hold: one
+    /// MobileBuildMCP rewrote itself reads as edited, and setup names `--force` for it.
+    @Test func forceKeepsTheChoicesTheProfilesHold() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        await setUpWithThePane(project)
+        let chosen = config(project)
+        project.write(chosen + "# mine\n", to: ".mobilebuildmcp/config.yaml")
+        let forced = await Run("setup", "--force", context: .fake(simulators, project: project, environment: ["MCS_RESOLVED_PROJECT": "./App.xcworkspace"]))
+        #expect(forced.text.contains("xcrew: kept the old config as config.yaml.backup-"))
+        #expect(config(project) == chosen)
+    }
+
+    /// A config of session defaults alone, with no profile, keeps its simulator too.
+    @Test func sessionDefaultsAloneKeepTheirSimulator() async {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        _ = await Run("setup", "--test-simulator", "iPhone 17", context: .fake(simulators, project: project))
+        let chosen = config(project)
+        #expect(chosen.contains("sessionDefaults:\n  workspacePath: './App.xcworkspace'\n  simulatorName: 'iPhone 17'\n"))
+        _ = await Run("setup", context: .fake(simulators, project: project, environment: ["MCS_RESOLVED_PROJECT": "./App.xcworkspace"]))
+        #expect(config(project) == chosen)
+    }
+
+    /// A config edited by hand since setup wrote it stays as it is; `--force` replaces it, keeping a backup.
+    @Test func aConfigEditedByHandIsKeptUnlessForced() async throws {
+        let project = Project.temporary(containing: ["App.xcworkspace"])
+        await setUpWithThePane(project)
+        let edited = config(project) + "# mine\n"
+        project.write(edited, to: ".mobilebuildmcp/config.yaml")
+        let sync = await Run("setup", context: .fake(simulators, project: project, environment: ["MCS_RESOLVED_PROJECT": "./App.xcworkspace"]))
+        #expect(sync.text.contains("was edited after xcrew wrote it; left as is"))
+        #expect(config(project) == edited)
+        let forced = await Run("setup", "--force", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(simulators, project: project))
+        #expect(forced.text.contains("xcrew: kept the old config as config.yaml.backup-"))
+        #expect(!config(project).contains("# mine"))
+        let folder = project.root.appending(path: ".mobilebuildmcp")
+        let backups = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasPrefix("config.yaml.backup-") }
+        #expect(try backups.map { try String(contentsOf: folder.appending(path: $0), encoding: .utf8) } == [edited])
+    }
+
     @Test func mcsAnswersFillWhatOptionsLeaveOut() async {
         let project = Project.temporary(containing: ["App.xcworkspace", "Other.xcworkspace"])
         let environment = ["MCS_RESOLVED_PROJECT": "./Other.xcworkspace", "MCS_RESOLVED_APP_SCHEME": "App", "MCS_RESOLVED_TEST_SIMULATOR": ""]

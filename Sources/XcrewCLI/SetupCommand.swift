@@ -2,8 +2,9 @@ import Foundation
 
 import XcrewCore
 
-/// Writes `.mobilebuildmcp/config.yaml`. Each option falls back to mcs's `MCS_RESOLVED_<KEY>`,
-/// so mcs's configure step is `xcrew setup` with no arguments.
+/// Writes `.mobilebuildmcp/config.yaml`. Each option falls back to what the config there holds for the same container,
+/// then to mcs's `MCS_RESOLVED_<KEY>`, so mcs's configure step, run on every sync, is `xcrew setup` with no arguments and
+/// changes no choice the person made. An empty option names none; for `--test-scheme`, setup then picks one.
 struct SetupCommand: Command {
     /// Option name → the mcs prompt key that answers it.
     public static let mcsKeys: [String: String] = [
@@ -24,12 +25,18 @@ struct SetupCommand: Command {
         "      [--app-scheme NAME] [--bundle-id ID] [--ui-scheme NAME] [--test-scheme NAME]",
         "      [--debugger-backend dap|lldb-cli] [--force]",
         "      write .mobilebuildmcp/config.yaml; simulators default to the newest iPhone installed,",
-        "      and the test scheme to the shared scheme that runs unit tests",
+        "      and the test scheme to the shared scheme that runs unit tests; over a config for the same",
+        "      container, each profile keeps what it holds unless an option names another, or none when empty",
         "setup --choices [--container NAME]   what the setup form offers, as JSON: containers, shared schemes with what each builds and tests, installed simulators, the starting picks, and the config there is; writes nothing",
         "setup --worktree [--force] [--no-simulator | --fresh-simulator]   in a linked git worktree, write its config from the main checkout's, with simulators of its own, cloned from the main checkout's while they're shut down unless --fresh-simulator; --no-simulator shares the main checkout's",
     ]
 
-    /// The container setup builds when no option names one: mcs's answer, else the default below.
+    /// The container the config at the project builds, which setup keeps unless an option names another.
+    static func chosenContainer(_ yaml: String?, in context: CheckContext) -> String? {
+        yaml.flatMap { SetupChoices.Picks.container(in: $0, root: context.project.root, home: context.machine.home) }
+    }
+
+    /// The container setup builds when no option or config names one: mcs's answer, else the default below.
     static func container(in context: CheckContext) throws -> String {
         try mcsKeys["container"].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } ?? defaultContainer(in: context.project)
     }
@@ -62,10 +69,21 @@ struct SetupCommand: Command {
         for flag in ["no-simulator", "fresh-simulator"] where invocation.arguments.has(flag) {
             throw UsageError(description: "setup --\(flag) goes with --worktree: plain setup makes no simulator")
         }
+        let existing = try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)
+        let chosenContainer = Self.chosenContainer(existing, in: context)
+        let container = try invocation.arguments["container"] ?? chosenContainer ?? Self.container(in: context)
+        let spelled = { ConfigRenderer.relative(ConfigRenderer.resolved($0, root: context.project.root, home: context.machine.home), to: context.project.root) }
+        var chosen = chosenContainer.map(spelled) == spelled(container) ? existing.flatMap(SetupChoices.Picks.chosen(in:)) : nil
+        if let app = invocation.arguments["app-scheme"], app != chosen?.appScheme { chosen?.bundleID = nil }
+        let before: [String: String] = chosen.map { [
+            "test-simulator": $0.testSimulator, "app-simulator": $0.appSimulator, "app-scheme": $0.appScheme,
+            "bundle-id": $0.bundleID, "ui-scheme": $0.uiScheme, "test-scheme": $0.testScheme,
+        ].compactMapValues { $0 } } ?? [:]
+        func mcs(_ option: String) -> String? { Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } }
         func answer(_ option: String) -> String? {
-            invocation.arguments[option] ?? Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") }
+            if let given = invocation.arguments[option] { return given.isEmpty ? nil : given }
+            return before[option] ?? mcs(option)
         }
-        let container = try invocation.arguments["container"] ?? Self.container(in: context)
         let catalog = await SimulatorCatalog.load(using: context.runner, choosingADefault: answer("test-simulator") == nil)
         guard let testSimulator = answer("test-simulator") ?? catalog.defaultIPhone else {
             throw UsageError(description: "no iPhone simulator installed: add one in Xcode, or pass --test-simulator")
@@ -79,8 +97,7 @@ struct SetupCommand: Command {
             uiTestScheme: answer("ui-scheme"),
             testScheme: answer("test-scheme")
         )
-        answers.debuggerBackend = invocation.arguments["debugger-backend"]
-            ?? (try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)).flatMap(ConfigRenderer.debuggerBackend(in:))
+        answers.debuggerBackend = invocation.arguments["debugger-backend"] ?? existing.flatMap(ConfigRenderer.debuggerBackend(in:))
         // Said only once the config is written, since a kept config ignores them.
         var notes: [String] = []
         if answers.testScheme == nil {
@@ -112,7 +129,7 @@ struct SetupCommand: Command {
                     : "xcrew: no simulator named \(name) is installed (installed iPhones: \(installed)): \(add), or rerun with --\(option) and one of those")
             }
         }
-        let carried = (try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)).map(CarriedDefaults.init) ?? CarriedDefaults()
+        let carried = existing.map(CarriedDefaults.init) ?? CarriedDefaults()
         let carriedKeys = carried.keys(for: answers.profileNames)
         if !carriedKeys.isEmpty, ConfigWriter.keeping(context.project) != nil {
             notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into " + (answers.profileNames.isEmpty ? "the session defaults" : "each profile"))
@@ -135,7 +152,8 @@ struct SetupCommand: Command {
         guard Set(invocation.arguments.values.keys).isSubset(of: ["container"]), invocation.arguments.flags == ["choices"] else {
             throw UsageError(description: "setup --choices takes no option but --container: it writes nothing")
         }
-        var container = invocation.arguments["container"], problem: String?
+        let existing = try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)
+        var container = invocation.arguments["container"] ?? Self.chosenContainer(existing, in: context), problem: String?
         if container == nil {
             do { container = try Self.container(in: context) } catch let error as UsageError { problem = error.description }
         }
@@ -143,14 +161,14 @@ struct SetupCommand: Command {
         async let checkout = Worktree.checkout(of: context.project, using: context.runner)
         var choices = SetupChoices.read(container: container, containers: context.project.layout(.anywhereButHome).containers, containerProblem: problem, in: context.project, catalog: await catalog)
         if await checkout != nil { choices.worktree = true }
-        // mcs's answers are what setup writes with no option, unless the profiles xcrew wrote hold the person's own.
+        // mcs's answers are what setup writes with no option, unless the config's profiles hold the person's own.
         func mcs(_ option: String) -> String? { Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } }
-        if choices.config == nil {
+        if existing.map({ ConfigRenderer.profiles(in: $0).names.isEmpty }) ?? true {
             choices.picks.appScheme = mcs("app-scheme") ?? choices.picks.appScheme
             choices.picks.uiScheme = mcs("ui-scheme") ?? choices.picks.uiScheme
             choices.picks.testScheme = mcs("test-scheme") ?? choices.picks.testScheme
             choices.picks.bundleID = mcs("bundle-id") ?? choices.picks.bundleID
-            choices.picks.testSimulator = mcs("test-simulator") ?? choices.picks.testSimulator
+            if existing == nil { choices.picks.testSimulator = mcs("test-simulator") ?? choices.picks.testSimulator }
         }
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(choices), as: UTF8.self))
         return 0

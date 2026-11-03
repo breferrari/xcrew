@@ -1097,7 +1097,7 @@ import Testing
     /// The setup form builds `xcrew setup`'s options from its picks; one setup doesn't declare would be refused.
     @Test func theSetupFormPassesOnlyOptionsSetupDeclares() throws {
         let form = try text("hooks/mod/form.ts")
-        let options = Set(form.matches(of: /option\('([\w-]+)'/).map { String($0.1) } + form.matches(of: /'--([\w-]+)'/).map { String($0.1) })
+        let options = Set(form.matches(of: /(?:option|choice)\('([\w-]+)'/).map { String($0.1) } + form.matches(of: /'--([\w-]+)'/).map { String($0.1) })
         #expect(options.count >= 10, "found too few options; the pattern no longer matches how the form builds them")
         #expect(options.isSubset(of: SetupCommand().valuedOptions.union(SetupCommand().flags)), "\(options.subtracting(SetupCommand().valuedOptions.union(SetupCommand().flags)).sorted())")
     }

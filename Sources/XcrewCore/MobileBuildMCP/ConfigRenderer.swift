@@ -219,14 +219,14 @@ public enum ConfigRenderer {
     }
 
     /// A config's path as MobileBuildMCP resolves it: absolute as given, `~` for the home folder, else from the root.
-    static func resolved(_ path: String, root: URL, home: URL) -> String {
+    public static func resolved(_ path: String, root: URL, home: URL) -> String {
         if path.hasPrefix("/") { return path }
         if path == "~" || path.hasPrefix("~/") { return home.appending(path: String(path.dropFirst(2))).path }
         return root.appending(path: path).standardizedFileURL.path
     }
 
     /// A path as the config writes it: from the project root (`./App.xcworkspace`) when it's inside it, else as given.
-    static func relative(_ path: String, to root: URL) -> String {
+    public static func relative(_ path: String, to root: URL) -> String {
         guard path.hasPrefix("/") else { return path.hasPrefix("./") ? path : "./" + path }
         // As given first, then as the file system spells both: a path that doesn't exist yet can't be resolved.
         for (full, base) in [(path, root.path), (ProjectLayout.canonicalPath(path), ProjectLayout.canonicalPath(root.path))] where full.hasPrefix(base + "/") {

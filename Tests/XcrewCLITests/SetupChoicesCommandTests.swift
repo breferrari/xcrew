@@ -56,6 +56,27 @@ import XcrewTestSupport
         #expect([picks.appScheme, picks.uiScheme, picks.testScheme, picks.bundleID, picks.testSimulator] == ["Mine", "MineUI", "MineTests", "dev.mine", "iPhone 17"])
     }
 
+    /// The form starts from the container the config builds, as setup keeps it, not mcs's answer naming another.
+    @Test func theFormStartsFromTheConfigsContainer() async throws {
+        let project = Project.temporary(containing: ["App.xcworkspace", "Other.xcworkspace"])
+        _ = await Run("setup", "--container", "App.xcworkspace", "--test-scheme", "AppTests", "--test-simulator", "iPhone 18", context: .fake(.simulators(["iPhone 18"]), project: project))
+        let run = await Run("setup", "--choices", context: .fake(.simulators(["iPhone 18"]), project: project, environment: ["MCS_RESOLVED_PROJECT": "./Other.xcworkspace"]))
+        let choices = try JSONDecoder().decode(SetupChoices.self, from: Data(run.text.utf8))
+        #expect(choices.container == "App.xcworkspace")
+    }
+
+    /// A config of session defaults alone holds no scheme: the form starts from setup's own scheme picks and mcs's
+    /// answers, with the config's simulator.
+    @Test func sessionDefaultsAloneLeaveTheSchemesToSetupAndMCS() async throws {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        project.writeScheme("App", folder: "App.xcodeproj/xcshareddata")
+        project.write("schemaVersion: 1\nsessionDefaults:\n  projectPath: ./App.xcodeproj\n  simulatorName: 'iPhone 17'\n", to: ".mobilebuildmcp/config.yaml")
+        let run = await Run("setup", "--choices", context: .fake(.simulators(["iPhone 17", "iPhone 18"]), project: project, environment: ["MCS_RESOLVED_UI_TEST_SCHEME": "MineUI"]))
+        let choices = try JSONDecoder().decode(SetupChoices.self, from: Data(run.text.utf8))
+        #expect(choices.picks.testSimulator == "iPhone 17")
+        #expect(choices.picks.uiScheme == "MineUI")
+    }
+
     /// Plain setup's options keep their description, and `--choices` its own.
     @Test func theUsageKeepsEachFormsDescription() async {
         let lines = await Run("setup", "--help").output

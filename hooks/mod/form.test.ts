@@ -81,8 +81,21 @@ test('writing runs setup with exactly the picks', async ($, on) => {
   await ui.input({ key: 'bundle-id', text: 'dev.example.Other' })
   await ui.press({ key: 'write' })
   const write = calls.find(call => call.args[0] === 'setup' && !call.args.includes('--choices'))
-  expect(write?.args).toEqual(['setup', '--container', 'Field.xcworkspace', '--app-scheme', 'App', '--bundle-id', 'dev.example.Other', '--ui-scheme', 'App', '--test-scheme', 'Core', '--test-simulator', 'iPhone 18', '--debugger-backend', 'dap'])
+  expect(write?.args).toEqual(['setup', '--container', 'Field.xcworkspace', '--app-scheme', 'App', '--bundle-id', 'dev.example.Other', '--ui-scheme', 'App', '--test-scheme', 'Core', '--test-simulator', 'iPhone 18', '--app-simulator', '', '--debugger-backend', 'dap'])
   expect(await ui.find({ type: 'Text', text: /wrote \.mobilebuildmcp\/config\.yaml/ })).toBeDefined()
+  await ui.unmount()
+})
+
+/** Setup keeps the profiles a config has unless an option names a choice, so the pane names each one, "none" as empty. */
+test('a pick of none is passed as an empty option, so setup drops that profile', async ($, on) => {
+  const { calls } = await session($, on)
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.select({ key: 'ui-scheme', value: '' })
+  await ui.input({ key: 'bundle-id', text: '' })
+  await ui.press({ key: 'write' })
+  const write = calls.find(call => call.args[0] === 'setup' && !call.args.includes('--choices'))
+  expect(write?.args).toEqual(['setup', '--container', 'Field.xcworkspace', '--app-scheme', 'App', '--bundle-id', '', '--ui-scheme', '', '--test-scheme', 'App', '--test-simulator', 'iPhone 18', '--app-simulator', '', '--debugger-backend', 'dap'])
   await ui.unmount()
 })
 
