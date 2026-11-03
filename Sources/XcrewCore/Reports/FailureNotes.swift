@@ -120,11 +120,19 @@ public enum FailureNotes {
         let images: [TestID: FailureImages]
     }
 
+    /// Whether the run's skips are read from its test list: when its text counts or lists a skipped test.
+    static func readsSkips(_ text: MobileText) -> Bool {
+        text.skippedCount > 0 || text.lines.contains { line in
+            if case .skipped = line.kind { return true }
+            return false
+        }
+    }
+
     /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `images`, each failed
     /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
-    /// are removed. `testList` gives the run's test list parsed once
-    /// for the report; without it, the bundle's is parsed here.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], testList: (() async -> TestList)? = nil) async -> Added? {
+    /// are removed. `skips` are the run's skipped tests from the test list the report parsed, which it passes when
+    /// `readsSkips` says they're read; without them, the bundle's list is parsed here.
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], skips: [(test: TestID, skip: ResultBundle.Skip)]? = nil) async -> Added? {
         let imagesFolder = images?.folder
         var order: [TestID] = []
         var located: Set<TestID> = []
@@ -143,7 +151,7 @@ public enum FailureNotes {
             if case let .skipped(test) = line.kind { return test }
             return nil
         }
-        let isSkipping = text.skippedCount > 0 || !listedSkips.isEmpty
+        let isSkipping = Self.readsSkips(text)
         // A repeated run's tests, from its test list, which skips read too: how many runs each failed.
         let repetitions = repeatedTests.filter { $0.failed > 0 }
         guard !lookups.isEmpty || isSkipping || !repetitions.isEmpty else { return nil }
@@ -210,8 +218,8 @@ public enum FailureNotes {
             let listed = Set(listedSkips)
             let reason = { (skip: ResultBundle.Skip) in skip.reason.map { [MobileBuildMCPLine.skipReason($0)] } ?? [] }
             var unlisted = 0
-            let listing = if let testList { await testList() } else { TestList(await bundle.tests()) }
-            for (test, skip) in ResultBundle.skippedTests(listing: listing) {
+            let read = if let skips { skips } else { ResultBundle.skippedTests(listing: TestList(await bundle.tests())) }
+            for (test, skip) in read {
                 if listed.contains(test) {
                     notes.skipped[test] = reason(skip)
                 } else if unlisted < mostLookups {
