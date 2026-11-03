@@ -295,6 +295,19 @@ struct BundleFailuresTests {
         #expect(!runner.asked.contains { $0.contains("--test-id AssertCrashTests/test_crash()") }, "\(runner.asked)")
     }
 
+    /// A crash the bundle files under `System Failures` that the text names is looked up under the bundle's id for it, its
+    /// `xctest (<pid>)` case, the one xcresulttool knows (docs/findings.md, *A crash under System Failures*). Field shape
+    /// as above.
+    @Test func aCrashUnderSystemFailuresTheTextNamesIsLookedUpUnderItsCase() async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"
+        let text = try Raw.text("system-failure-crash").replacingOccurrences(of: filed, with: "  ✗ System Failures / xctest (80341) encountered an error: Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()")
+        let runner = RecordingRunner(FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Self.filedUnderSystemFailures(Raw.file("system-failure-crash.tests.json")))]))
+        _ = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(runner.asked.contains { $0.contains("--test-id xctest (80341) encountered an error") }, "\(runner.asked)")
+        #expect(!runner.asked.contains { $0.contains("--test-id AssertCrashTests/test_crash()") }, "\(runner.asked)")
+    }
+
     /// The label on a line the bundle's list adds comes after the place the run's details give it.
     @Test func theLabelOnAnAddedLineComesAfterItsPlace() async throws {
         let passed = #""nodeIdentifierURL":"test://com.apple.xcode/Feature/FeatureTests/ProbeTests/testPasses","nodeType":"Test Case","result":"Passed""#

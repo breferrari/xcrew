@@ -209,7 +209,7 @@ public enum FailureNotes {
                 group.addTask {
                     if case let .ambiguous(ids)? = resolution { return (test, id, ["      \(Self.severalByThatName(ids))"], nil) }
                     var added: [String] = []
-                    let crash = isCrashed ? await bundle.crash(of: id) : nil
+                    let crash = isCrashed ? await bundle.crash(of: id, naming: MobileBuildMCPLine.isProcessCrash(id.suite) ? test : id) : nil
                     // Where the bundle places the failure, or for a crash, the crash log's frame in the test's own code.
                     if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: id)) ?? crash?.location {
                         added.append("    \(location)")

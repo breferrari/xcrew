@@ -336,17 +336,20 @@ public struct Report: Sendable, Equatable, Codable {
             }
             if bundle != nil, text.isTestRun, !final.summary.ok {
                 let listing = await testList()
-                let ids = Set(ResultBundle.testCases(in: listing.nodes).keys)
-                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, $0.resolved(among: ids)) }) { first, _ in first }
+                let cases = ResultBundle.testCases(in: listing.nodes)
+                let ids = Set(cases.keys)
+                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { test in
+                    let resolved = test.resolved(among: ids)
+                    return (test, resolved == .missing ? ResultBundle.crashCase(of: test, in: cases).map { .found($0) } ?? resolved : resolved)
+                }) { first, _ in first }
                 let named = Set(bundleIDs.values.compactMap { if case let .found(id) = $0 { id } else { nil } }).union(bundleIDs.keys)
                 let unlisted = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
-                let cases = ResultBundle.testCases(in: listing.nodes)
                 let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
                     if let test = MobileBuildMCPLine.passed(line.text) { return (test, "passed") }
                     if case let .skipped(test?) = line.kind { return (test, "skipped") }
                     return nil
                 }
-                let saying = { (test: TestID) in said.first { $0.0 == test || (!ids.contains($0.0) && $0.0.isNested(in: test)) }?.1 }
+                let saying = { (test: TestID) in said.first { $0.0 == test || (!ids.contains($0.0) && $0.0.isNested(in: test) && $0.0.resolved(among: ids) == .found(test)) }?.1 }
                 let entries = unlisted.map { test, failure in (test, failure, ResultBundle.crashCase(of: test, in: cases) ?? test) }
                 if let added = text.adding(unlisted: entries.map { ($0.0, $0.1.message, ResultBundle.place(of: $0.2, in: cases) ?? $0.1.where, saying($0.0).map(Self.listedOtherwise)) }) {
                     (text, changed) = (added, true)

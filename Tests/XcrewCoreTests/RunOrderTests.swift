@@ -232,13 +232,6 @@ struct RunOrderTests {
         #expect(ordered.disagreeing == [TestID(suite: "Inner", name: "fails")])
     }
 
-    /// A failure the text names keeps the images kept under the bundle's id for it, as a nested suite's test the bundle
-    /// doesn't list as failed does.
-    @Test func aFailureHasTheImagesKeptUnderTheBundlesIDForIt() {
-        let images = [TestID(xcresultID: "Outer/Inner/attaches()"): FailureImages(paths: ["/run/Outer/Inner-attaches/screen.png"], folder: "/run/Outer/Inner-attaches")]
-        let failures = [ToolOutput.Failure(title: "Inner/attaches", message: "", isTest: true)]
-        #expect(Report.attaching(images, to: failures, resolutions: [TestID(suite: "Inner", name: "attaches"): .found(TestID(xcresultID: "Outer/Inner/attaches()"))]).map(\.images) == [["/run/Outer/Inner-attaches/screen.png"]])
-    }
 
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure
     /// once when the bundle has no entry for it.

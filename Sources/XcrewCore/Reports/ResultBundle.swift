@@ -98,7 +98,7 @@ public struct ResultBundle: Sendable {
     /// message names `test`, from `cases`, the test list's test cases by id; nil when there's none.
     static func crashCase(of test: TestID, in cases: [TestID: [[String: Any]]]) -> TestID? {
         guard cases[test] == nil else { return nil }
-        return cases.first { _, filed in
+        return cases.sorted { $0.key.shown < $1.key.shown }.first { _, filed in
             guard MobileBuildMCPLine.isProcessCrash(filed.first?["name"] as? String ?? ""), let message = firstFailureMessage(in: filed) else { return false }
             return MobileBuildMCPLine.crashedTest(message: failure(message).line) == test
         }?.key
@@ -429,9 +429,11 @@ public struct ResultBundle: Sendable {
         cache.appending(path: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)
     }
 
-    /// A crash's summary, from the crash log the result bundle attached to the test, and the test's line it names.
-    public func crash(of test: TestID) async -> (summary: [String], location: String?)? {
-        await attachments(of: test, onlyFailures: true) { Self.crashSummary(in: $0, test: test) }
+    /// A crash's summary, from the crash log the result bundle attached to the test, and the test's line it names: its own
+    /// frame found by `named`, the test the crash is, where `test` is the case the bundle files it under, as a crash in
+    /// `System Failures`.
+    public func crash(of test: TestID, naming named: TestID? = nil) async -> (summary: [String], location: String?)? {
+        await attachments(of: test, onlyFailures: true) { Self.crashSummary(in: $0, test: named ?? test) }
     }
 
     /// A crash's summary, from the crash log among a test's exported attachments, and the test's line it names.
