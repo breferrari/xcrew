@@ -24,8 +24,8 @@ public enum Look {
     /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,
     /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way; else, as
     /// the run's text names a test, the one nested id that ends with it, or the `System Failures` case a crash of it is
-    /// filed under. When the bundle lists none, a name ending `()` is taken as the bundle's own and one without as
-    /// `-only-testing:`'s.
+    /// filed under. When the bundle lists none, a name ending as an id does, `()` or its arguments' labels, is taken as
+    /// the bundle's own and one without as `-only-testing:`'s.
     static func test(_ named: String, among lookup: TestLookup) -> TestID {
         let exact = TestID(xcresultID: named)
         let parts = named.split(separator: "/", maxSplits: 1)
@@ -35,7 +35,7 @@ public enum Look {
         for candidate in [exact, withoutTarget].compactMap(\.self) {
             if let id = lookup.resolution(of: candidate).found { return id }
         }
-        return named.hasSuffix("()") ? exact : withoutTarget ?? exact
+        return named.hasSuffix(")") ? exact : withoutTarget ?? exact
     }
 
     /// `failed` is the run's failed tests, nil when its test list couldn't be read. The run's size is recorded once all its
@@ -48,14 +48,14 @@ public enum Look {
         if let test {
             let passedUnder = FailedRun.passedConfigurations(of: cases[test] ?? [])
             guard let read = FailedRun.read(activities: await bundle.activities(of: test), passedUnder: passedUnder) else {
-                return "xcrew: couldn't read \(test.shown)'s steps in \(name); xcrun xcresulttool get test-results activities --test-id \(ShellWord.word(test.xcresultID)) --path \(ShellWord.word(bundle.path)) says why"
+                return "xcrew: couldn't read \(heading(test))'s steps in \(name); `xcrun xcresulttool get test-results activities --test-id \(ShellWord.word(test.xcresultID)) --path \(ShellWord.word(bundle.path))` says why"
             }
             let looked = await look(at: test, runs: read.failed, passed: read.passed, in: bundle, named: name, keptIn: run)
             FailureImages.record(run)
-            return looked ?? "xcrew: \(test.shown) didn't fail in \(name)"
+            return looked ?? "xcrew: \(heading(test)) didn't fail in \(name)"
         }
         guard let failed else {
-            return "xcrew: couldn't read the tests in \(name); xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle.path)) says why"
+            return "xcrew: couldn't read the tests in \(name); `xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle.path))` says why"
         }
         guard !failed.isEmpty else { return "xcrew: nothing failed in \(name)" }
         // A few at a time, in the listing's order, until enough UI tests are found, every failed test if need be: a unit
@@ -94,6 +94,9 @@ public enum Look {
         return (shown + (unshown.isEmpty ? [] : [moreLine(unshown, bundle: bundle.path)])).joined(separator: "\n")
     }
 
+    /// A test as `look` heads what it says of it: `Suite/test`, and a crash's case by itself.
+    static func heading(_ test: TestID) -> String { test.name.isEmpty ? test.suite : test.shown }
+
     /// The line on a run, `name` at `bundle`, none of whose failed tests kept a screen recording.
     static func noRecording(in name: String, bundle: String) -> String {
         "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; `\(TestID.lookCommand(naming: "<Suite/test>", bundle: bundle))` shows one test's steps"
@@ -127,7 +130,7 @@ public enum Look {
         } else {
             runs.map { _ in (nil, nil) }
         }
-        var lines = ["xcrew look: \(test.shown), in \(name)"]
+        var lines = ["xcrew look: \(heading(test)), in \(name)"]
         let onScreen = elements(of: zip(runs, kept).map { failed, found in (failed.label, failed.attachments.isEmpty ? nil : hierarchyLines(found.hierarchy, query: UIQuery(failure: failed.failure, steps: failed.steps), screenshot: found.screen != nil)) })
         for ((failed, found), elements) in zip(zip(runs, kept), onScreen) {
             lines.append("  " + failed.label)

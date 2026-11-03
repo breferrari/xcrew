@@ -3,7 +3,7 @@ import XcrewCore
 
 /// What a test run kept about each failed UI test's failure: the steps before it and the screen at it, per
 /// configuration and device, from the project's newest MobileBuildMCP result bundle or one named. A test or bundle quoted
-/// as a shell word, as the failure notes give them, is read as the value it quotes, and an empty one as none: the `look`
+/// as a shell word, as the failure notes give them, is read as the value it quotes, an empty test as none: the `look`
 /// tool passes them on with no shell to take the quotes off.
 struct LookCommand: Command {
     let name = "look"
@@ -19,6 +19,7 @@ struct LookCommand: Command {
         let context = invocation.context
         guard invocation.arguments.positional.count <= 1 else { throw UsageError(description: "look takes one test at most (xcrew look --help)") }
         let named = Self.given(invocation.arguments["bundle"])
+        guard named != nil || invocation.arguments["bundle"] == nil else { throw UsageError(description: "look's --bundle names no result bundle (xcrew look --help)") }
         let newest = if named == nil { await ResultBundle.newest(project: context.project.root, machine: context.machine) } else { String?.none }
         guard let path = named ?? newest else {
             invocation.print(Self.noBundle)

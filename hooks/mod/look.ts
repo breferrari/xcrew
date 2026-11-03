@@ -7,7 +7,7 @@ export const LOOK_TOOL = {
   inputSchema: {
     type: 'object',
     properties: {
-      test: { type: 'string', description: 'One test, as Suite/test.' },
+      test: { type: 'string', description: "One test, as Suite/test, or as a failure note's look line names it: a nested suite's test as the result bundle names it, Outer/Inner/test()." },
       bundle: { type: 'string', description: 'A result bundle (.xcresult) to read instead of the newest test run, such as one the Xcode MCP made.' },
     },
   },

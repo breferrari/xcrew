@@ -88,6 +88,12 @@ import XcrewTestSupport
         #expect(TestID(xcresultID: "Suite/sizes(value:)").lookName == "Suite/sizes(value:)")
     }
 
+    /// A name the bundle doesn't list that ends as a test's id does, with `()` or with its arguments' labels, is taken as
+    /// the bundle's own, its first part kept.
+    @Test func aNameEndingAsAnIDIsTheBundlesOwnWhenItsNotListed() {
+        #expect(Look.test("Outer/Inner/sizes(value:)", among: TestLookup(cases: [:])) == TestID(xcresultID: "Outer/Inner/sizes(value:)"))
+    }
+
     /// The name `look` suggests for a test, a nested suite's, one taking arguments and a crash's case, finds that test.
     @Test(arguments: ["Outer/Inner/fails()", "Suite/sizes(value:)", "xctest (1) encountered an error"])
     func theNameLookSuggestsFindsItsTest(id: String) {
@@ -101,15 +107,21 @@ import XcrewTestSupport
         #expect(Look.moreLine(tests, bundle: "/runs/Run.xcresult") == "and 3 more failed tests: `xcrew look Suite/test --bundle /runs/Run.xcresult`, `xcrew look 'Outer/Inner/fails()' --bundle /runs/Run.xcresult` and `xcrew look 'xctest (1) encountered an error' --bundle /runs/Run.xcresult`")
     }
 
+    /// A crash's case is headed by its own name, as `look` takes it, with no `/` after it.
+    @Test func aCrashsCaseIsHeadedByItsName() async {
+        let text = await Look.report(bundle: ResultBundle(path: "/runs/Run.xcresult", runner: FakeRunner()), test: TestID(xcresultID: "xctest (1) encountered an error"), cases: [:], failed: [], keptIn: FileManager.default.temporaryDirectory.appending(path: "xcrew-look-\(UUID().uuidString)"), now: Date())
+        #expect(text.hasPrefix("xcrew: couldn't read xctest (1) encountered an error's steps in Run.xcresult;"), "\(text)")
+    }
+
     /// The line on a test list that couldn't be read names its xcresulttool command with the bundle quoted for a shell.
     @Test func theLineOnTestsNotReadQuotesItsPath() async {
         let text = await Look.report(bundle: ResultBundle(path: "/My Runs/Run.xcresult", runner: FakeRunner()), named: nil, keptIn: FileManager.default.temporaryDirectory.appending(path: "xcrew-look-\(UUID().uuidString)"), now: Date())
-        #expect(text == "xcrew: couldn't read the tests in Run.xcresult; xcrun xcresulttool get test-results tests --path '/My Runs/Run.xcresult' says why", "\(text)")
+        #expect(text == "xcrew: couldn't read the tests in Run.xcresult; `xcrun xcresulttool get test-results tests --path '/My Runs/Run.xcresult'` says why", "\(text)")
     }
 
     /// The line on a test whose steps couldn't be read names its xcresulttool command with each word quoted for a shell.
     @Test func theLineOnStepsNotReadQuotesItsCommand() async {
         let text = await Look.report(bundle: ResultBundle(path: "/My Runs/Run.xcresult", runner: FakeRunner()), test: TestID(xcresultID: "Outer/Inner/fails()"), cases: [:], failed: [], keptIn: FileManager.default.temporaryDirectory.appending(path: "xcrew-look-\(UUID().uuidString)"), now: Date())
-        #expect(text.hasSuffix("--test-id 'Outer/Inner/fails()' --path '/My Runs/Run.xcresult' says why"), "\(text)")
+        #expect(text.hasSuffix("`xcrun xcresulttool get test-results activities --test-id 'Outer/Inner/fails()' --path '/My Runs/Run.xcresult'` says why"), "\(text)")
     }
 }
