@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.2 — 2026-11-03
 
 - `mcs sync` no longer removes the app and UI-test profiles `/xcrew setup` added to `.mobilebuildmcp/config.yaml`, nor moves its container. mcs runs `xcrew setup` with only its own answers on every sync, and setup rewrote the config from those alone. Now setup keeps the container, schemes, simulators and bundle ID the config holds, and mcs's answers only add a profile the config lacks. An option you pass names another choice; an empty one drops that profile, or for `--test-scheme` lets setup pick. `--force` still replaces a config edited by hand, keeping a backup, and now keeps the profiles' choices too.
 
