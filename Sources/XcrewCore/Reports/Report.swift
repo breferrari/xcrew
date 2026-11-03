@@ -120,11 +120,13 @@ public struct Report: Sendable, Equatable, Codable {
     /// message and place where the bundle gives none. The text names a nested suite's test from its own suite, and the
     /// bundle from the outermost: it's matched by the end of the bundle's name for it, when no other's ends the same way
     /// and none is the text's whole. A test only the bundle lists comes after; the text's other failures stay where
-    /// they were. A test only the text lists, as a retry the bundle counts passed, is none of the run's failures.
-    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
+    /// they were. A test only the text lists, as a retry the bundle counts passed, is none of the run's failures, and is
+    /// returned as dropped.
+    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure]) -> (failures: [ToolOutput.Failure], dropped: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
         let named = Set(pending.map(\.test))
         var ordered: [ToolOutput.Failure] = []
+        var dropped: [TestID] = []
         for failure in text {
             guard failure.isTest else {
                 ordered.append(failure)
@@ -139,19 +141,30 @@ public struct Report: Sendable, Equatable, Codable {
             if let index {
                 let found = pending.remove(at: index).failure
                 ordered.append(ToolOutput.Failure(title: found.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
+            } else if !named.contains(test) {
+                dropped.append(test)
             }
         }
-        return ordered + pending.map(\.failure)
+        return (ordered + pending.map(\.failure), dropped)
     }
 
-    /// The tests the text lists as failed that the bundle counts as passed, as one a retry passed; nil when the two
-    /// agree.
-    static func passedInBundleNote(text: [ToolOutput.Failure], listing: TestList) -> String? {
-        let passed = ResultBundle.passedTests(listing: listing)
-        let named = text.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter(passed.contains).map(\.shown)
-        guard !named.isEmpty else { return nil }
-        let tests = named.count == 1 ? "a test the result bundle counts as passed" : "tests the result bundle counts as passed"
-        return "xcrew: MobileBuildMCP's text lists as failed \(tests): \(named.joined(separator: ", ")). The failures listed here are the bundle's."
+    /// The tests the text lists as failed that the bundle doesn't count as failed, as one a retry passed, each with what
+    /// the bundle records for it; nil when there are none.
+    static func notFailedInBundleNote(_ dropped: [TestID], listing: TestList) -> String? {
+        guard !dropped.isEmpty else { return nil }
+        let results = ResultBundle.results(listing: listing)
+        let named = dropped.map { test in
+            let recorded = switch results[test] {
+            case nil: "which it doesn't list"
+            case "Passed": "which it counts as passed"
+            case "Skipped": "which it counts as skipped"
+            case "Expected Failure": "which it counts as an expected failure"
+            case let other?: "which it records as \(other)"
+            }
+            return "\(test.shown), \(recorded)"
+        }
+        let tests = dropped.count == 1 ? "a test its result bundle doesn't" : "tests its result bundle doesn't"
+        return "xcrew: MobileBuildMCP's text lists as failed \(tests): \(named.joined(separator: "; ")). The tests listed as failed here are the bundle's."
     }
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
@@ -160,7 +173,10 @@ public struct Report: Sendable, Equatable, Codable {
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail else { return nil }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
-        guard let named else { return detail.hasSuffix(ToolOutput.Summary.failedCounts) ? first.map { detail + ToolOutput.Summary.beforeFirstFailing + $0 } ?? detail : detail }
+        guard let named else {
+            guard let first, detail.hasSuffix(ToolOutput.Summary.failedCounts) else { return detail }
+            return detail + ToolOutput.Summary.beforeFirstFailing + first
+        }
         let naming = ToolOutput.Summary.beforeFirstFailing + named
         guard first != named, detail.hasSuffix(naming) else { return detail }
         return String(detail.dropLast(naming.count)) + (first.map { ToolOutput.Summary.beforeFirstFailing + $0 } ?? "")
@@ -346,8 +362,9 @@ public struct Report: Sendable, Equatable, Codable {
         // without a test list to read. Its other failures, the build's and the process's, are the text's.
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
-        let failures = bundled.map { Self.inRunOrder($0, text: final.failures) } ?? final.failures
-        if bundled != nil, let note = Self.passedInBundleNote(text: final.failures, listing: listing) { notes.append(note) }
+        let ordered = bundled.map { Self.inRunOrder($0, text: final.failures) }
+        let failures = ordered?.failures ?? final.failures
+        if let ordered, let note = Self.notFailedInBundleNote(ordered.dropped, listing: listing) { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?

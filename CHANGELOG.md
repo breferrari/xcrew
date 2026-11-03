@@ -4,7 +4,7 @@
 
 - The CLI build xcrew starts as a session begins now finishes and is put in place even if that session ends first, or its terminal closes. Before, it could be lost after compiling, so the next session built again, and it left a file behind in xcrew's cache. A build stopped with Ctrl-C leaves nothing behind, and one stopped harder is cleared by the next build.
 - A failing test run's failed tests come from its result bundle when it has one, in the order the run reported them: a failure MobileBuildMCP's text left out or didn't place is listed with its place, and the summary names the first failing test when the text named none. A crash the bundle files under `System Failures`, which MobileBuildMCP lists as `xctest (<pid>) encountered an error`, is the failure of the test its message names, listed once.
-- A failing test run's summary no longer names a test the result bundle counts as passed, as one a retry passed: with no failed test in the bundle, it names none. When MobileBuildMCP's text lists such a test as failed, a note says the bundle counts it as passed.
+- A failing test run's summary no longer names a test the result bundle doesn't count as failed, as one a retry passed: with no failed test in the bundle, it names none. When MobileBuildMCP's text lists such a test as failed, a note names it with what the bundle records for it: passed, skipped, an expected failure, or not listed.
 
 ## 0.15.0 — 2026-11-03
 

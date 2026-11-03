@@ -141,6 +141,17 @@ public struct ResultBundle: Sendable {
         }
     }
 
+    /// Each test case's result in `xcresulttool get test-results tests` output, by its id: the first the listing gives
+    /// for a test filed more than once, as under several configurations.
+    static func results(listing: TestList) -> [TestID: String] {
+        var found: [TestID: String] = [:]
+        for node in listing.nodes where node["nodeType"] as? String == "Test Case" {
+            guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), let result = node["result"] as? String, found[id] == nil else { continue }
+            found[id] = result
+        }
+        return found
+    }
+
     /// Each test the run's test list counts passed, as MobileBuildMCP's count does: a retried test that passed on a later
     /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
     /// target.
