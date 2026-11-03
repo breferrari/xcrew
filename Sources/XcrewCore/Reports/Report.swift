@@ -120,11 +120,11 @@ public struct Report: Sendable, Equatable, Codable {
     /// message and place where the bundle gives none. The text names a nested suite's test from its own suite, and the
     /// bundle from the outermost: it's matched by the end of the bundle's name for it, when no other's ends the same way
     /// and none is the text's whole. A test only the bundle lists comes after; the text's other failures stay where
-    /// they were. A test only the text lists disagrees with the bundle, and is returned once as disagreeing: one the
-    /// bundle counts as passed, skipped or an expected failure under that name, among `cleared`, as a retry it passed,
-    /// is none of the run's failures; any other stays a failure in its place, as the text gives it, as no record, or
-    /// one of none of those, is no sign it passed,
-    /// a later listing of it, as a parallel run's clone's, filling in the message or place the first lacked.
+    /// they were. A test only the text lists disagrees with the bundle, and is returned once as disagreeing. One among
+    /// `cleared`, which the bundle counts as passed, skipped or an expected failure under that name, as a retry it
+    /// passed, is none of the run's failures. Any other stays a failure in its place as the text gives it, since no
+    /// result, or another one, is no sign it passed; a later listing of it, as a parallel run's clone's, fills in the
+    /// message or place the first lacked.
     /// Never one the bundle lists as failed under its name or a nested name ending with it.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
@@ -157,22 +157,18 @@ public struct Report: Sendable, Equatable, Codable {
         return (ordered + pending.map(\.failure), disagreeing)
     }
 
-    /// The tests the text lists as failed that the bundle doesn't count as failed, each with what the bundle records
-    /// under the name the text gives, `results` each recorded test's results: passed when any of its entries passed, as
-    /// under one of several configurations. Nil when there are none.
+    /// The tests the text lists as failed that aren't among the bundle's failures, each with what the bundle records
+    /// under the name the text gives, `results` each recorded test's results: the first of `ResultBundle.clearing` any of
+    /// its entries has, as passed under one of several configurations, else what it records. Nil when there are none.
     static func notFailedInBundleNote(_ tests: [TestID], results: [TestID: Set<String>]) -> String? {
         guard !tests.isEmpty else { return nil }
+        let wording = ["Passed": "counts as passed", "Expected Failure": "counts as an expected failure", "Skipped": "counts as skipped"]
         let named = tests.map { test in
-            let recorded = switch results[test] {
-            case nil: "which it has no entry for under that name"
-            case let found? where found.contains("Passed"): "which it counts as passed"
-            case let found? where found.contains("Expected Failure"): "which it counts as an expected failure"
-            case let found? where found.contains("Skipped"): "which it counts as skipped"
-            case let found?: "which it records as \(found.sorted().joined(separator: " and "))"
-            }
-            return "\(test.shown), \(recorded)"
+            guard let found = results[test] else { return "\(test.shown), which it records no result for under that name" }
+            let clearing = ResultBundle.clearing.first(where: found.contains)
+            return "\(test.shown), which it " + (clearing.flatMap { wording[$0] } ?? "records as \(found.sorted().joined(separator: " and "))")
         }
-        let these = named.count == 1 ? "a test its result bundle doesn't" : "tests its result bundle doesn't"
+        let these = named.count == 1 ? "a test that isn't among its result bundle's failures" : "tests that aren't among its result bundle's failures"
         let cleared = ResultBundle.cleared(in: results)
         let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as passed, skipped or an expected failure is left out of the failures here." : ""
         let kept = tests.contains { !cleared.contains($0) } ? " A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it." : ""
