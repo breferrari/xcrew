@@ -48,8 +48,6 @@ import XcrewTestSupport
         #expect(!run.text.contains("screen") && !run.text.contains("on screen"), "\(run.text)")
     }
 
-    /// A test in a nested suite is named as the result bundle names it, `()` and all, so its suite's `/` isn't taken
-    /// for a target's.
     /// A crash's case, as look's own lines name it, is headed by its name alone whether its steps show a failure or not.
     @Test func aCrashsCaseIsHeadedByItsNameAlone() async {
         let crash = "xctest (1) encountered an error"
@@ -60,6 +58,8 @@ import XcrewTestSupport
         #expect(passed.text == "xcrew: \(crash) didn't fail in Run.xcresult", "\(passed.text)")
     }
 
+    /// A test in a nested suite is named as the result bundle names it, `()` and all, so its suite's `/` isn't taken
+    /// for a target's.
     @Test func aTestNamedAsTheBundleNamesItIsFoundAsIs() async {
         let run = await Run("look", "Outer/Inner/testX()", "--bundle", "/runs/Run.xcresult", context: context([Self.steps("Outer/Inner/testX"): Self.activities(recorded: false)]))
         #expect(run.text.hasPrefix("xcrew look: Outer/Inner/testX, in Run.xcresult\n"), "\(run.text)")
