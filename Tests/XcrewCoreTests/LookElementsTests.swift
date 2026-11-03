@@ -73,11 +73,11 @@ import XcrewTestSupport
     /// ends with it, and a crash's filed under `System Failures` means the `xctest (<pid>)` case its message names.
     @Test func lookTakesTheTextsNameForANestedTestOrACrashCase() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"Outer/Inner/fails()","result":"Failed"},{"nodeType":"Test Suite","name":"System Failures","children":[{"nodeType":"Test Case","name":"xctest (1) encountered an error","nodeIdentifier":"xctest (1) encountered an error","result":"Failed","children":[{"nodeType":"Failure Message","name":"Crash: xctest at Suite.crashes()"}]}]}]}"#)
-        let cases = ResultBundle.testCases(in: listing.nodes)
-        #expect(Look.test("Inner/fails()", among: cases) == TestID(xcresultID: "Outer/Inner/fails()"))
-        #expect(Look.test("Suite/crashes()", among: cases) == TestID(xcresultID: "xctest (1) encountered an error"))
+        let lookup = TestLookup(nodes: listing.nodes)
+        #expect(Look.test("Inner/fails()", among: lookup) == TestID(xcresultID: "Outer/Inner/fails()"))
+        #expect(Look.test("Suite/crashes()", among: lookup) == TestID(xcresultID: "xctest (1) encountered an error"))
         // As MobileBuildMCP's Discovered list names them, from the target.
-        #expect(Look.test("NestedTests/Inner/fails", among: cases) == TestID(xcresultID: "Outer/Inner/fails()"))
-        #expect(Look.test("Target/Suite/crashes()", among: cases) == TestID(xcresultID: "xctest (1) encountered an error"))
+        #expect(Look.test("NestedTests/Inner/fails", among: lookup) == TestID(xcresultID: "Outer/Inner/fails()"))
+        #expect(Look.test("Target/Suite/crashes()", among: lookup) == TestID(xcresultID: "xctest (1) encountered an error"))
     }
 }

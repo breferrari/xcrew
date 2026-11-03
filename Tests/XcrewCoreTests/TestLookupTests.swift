@@ -31,3 +31,10 @@ import Testing
         #expect(lookup.resolution(of: TestID(suite: "Suite", name: "gone")) == .missing)
     }
 }
+
+extension TestLookup {
+    /// The bundle's ids alone, with no cases to read.
+    init(ids: Set<TestID>) {
+        self.init(cases: Dictionary(uniqueKeysWithValues: ids.map { ($0, []) }))
+    }
+}

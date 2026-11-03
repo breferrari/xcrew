@@ -13,8 +13,8 @@ public enum Look {
     /// before `now` are removed.
     public static func report(bundle: ResultBundle, named: String?, keptIn folder: URL, now: Date) async -> String {
         let listing = TestList(await bundle.tests())
-        let cases = ResultBundle.testCases(in: listing.nodes)
-        return await report(bundle: bundle, test: named.map { test($0, among: cases) }, cases: cases, failed: listing.json == nil ? nil : ResultBundle.failedTests(in: listing.nodes), keptIn: folder, now: now)
+        let lookup = TestLookup(nodes: listing.nodes)
+        return await report(bundle: bundle, test: named.map { test($0, among: lookup) }, cases: lookup.cases, failed: listing.json == nil ? nil : ResultBundle.failedTests(in: listing.nodes), keptIn: folder, now: now)
     }
 
     /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,
@@ -22,13 +22,12 @@ public enum Look {
     /// the run's text names a test, the one nested id that ends with it, or the `System Failures` case a crash of it is
     /// filed under. When the bundle lists none, a name ending `()` is taken as the bundle's own and one without as
     /// `-only-testing:`'s.
-    static func test(_ named: String, among cases: [TestID: [[String: Any]]]) -> TestID {
+    static func test(_ named: String, among lookup: TestLookup) -> TestID {
         let exact = TestID(xcresultID: named)
         let parts = named.split(separator: "/", maxSplits: 1)
         let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
-        if cases[exact] != nil { return exact }
-        if let withoutTarget, cases[withoutTarget] != nil { return withoutTarget }
-        let lookup = TestLookup(cases: cases, crashCases: ResultBundle.crashCases(in: cases.values.flatMap(\.self)))
+        if lookup.cases[exact] != nil { return exact }
+        if let withoutTarget, lookup.cases[withoutTarget] != nil { return withoutTarget }
         for candidate in [exact, withoutTarget].compactMap(\.self) {
             if let id = lookup.resolution(of: candidate).found { return id }
         }

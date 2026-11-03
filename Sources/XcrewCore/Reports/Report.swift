@@ -420,7 +420,7 @@ public struct Report: Sendable, Equatable, Codable {
         var resolutions = bundleIDs
         if !unresolved.isEmpty, bundled != nil {
             let lookup = await testLookup()
-            for test in unresolved where resolutions[test] == nil { resolutions[test] = lookup.resolution(of: test) }
+            for test in unresolved { resolutions[test] = lookup.resolution(of: test) }
         }
         let results = recorded.merging(resolutions.compactMap { test, resolution in
             resolution.found.flatMap { recorded[$0] }.map { (test, $0) }

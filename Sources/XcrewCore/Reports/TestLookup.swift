@@ -44,11 +44,6 @@ struct TestLookup {
         self.byEnding = byEnding.mapValues { $0.sorted { $0.shown < $1.shown } }
     }
 
-    /// Ids alone, the rule read without a test list: its `cases` hold nothing to read.
-    init(ids: Set<TestID>) {
-        self.init(cases: Dictionary(uniqueKeysWithValues: ids.map { ($0, []) }))
-    }
-
     /// The test cases and the crash cases a test list's `nodes` hold.
     init(nodes: [[String: Any]]) {
         self.init(cases: ResultBundle.testCases(in: nodes), crashCases: ResultBundle.crashCases(in: nodes))
