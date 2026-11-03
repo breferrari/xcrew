@@ -62,6 +62,11 @@ public struct ToolOutput: Sendable {
             self.detail = detail
         }
 
+        /// Whether `text` is a failed run's counts, `N of M failed`, as `failing` writes them before a test's name.
+        static func isFailedCounts(_ text: Substring) -> Bool {
+            text.hasSuffix(failedCounts) && text.dropLast(failedCounts.count).wholeMatch(of: #/\d+ of \d+/#) != nil
+        }
+
         /// A failed run's verdict: `1 of 4 failed`, then its first failing test when one is named.
         static func failing(_ failed: Int, of total: Int, first: String?) -> Summary {
             Summary(ok: false, detail: "\(failed) of \(total)\(failedCounts)\(first.map { beforeFirstFailing + $0 } ?? "")")
