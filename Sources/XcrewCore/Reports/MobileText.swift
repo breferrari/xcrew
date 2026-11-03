@@ -327,8 +327,8 @@ struct MobileText: Sendable {
 
     /// The text with `name`'s first entries under Test Failures replaced, in their places, by `failures`, one each, in
     /// MobileBuildMCP's shape; failures beyond its entries follow its last, the section's count raised by them, and its
-    /// entries beyond the failures stay. Each entry is its `✗` line and the lines below it up to the blank one that ends
-    /// it. With the text, how many of `name`'s entries stay; nil when the section lists none.
+    /// entries beyond the failures stay. Each entry is its `✗` line and the lines below it that `entryIndent` indents, up
+    /// to the blank one that ends it. With the text, how many of `name`'s entries stay; nil when the section lists none.
     func replacing(_ name: TestID, with failures: [FailureLine]) -> (text: MobileText, left: Int)? {
         guard !failures.isEmpty, let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
         let ending = failuresEnd(after: heading)
@@ -337,7 +337,7 @@ struct MobileText: Sendable {
         while index < ending {
             guard lines[index].failing?.test == name else { index += 1; continue }
             var end = index + 1
-            while end < ending, lines[end].failing == nil, !lines[end].isBlank, lines[end].text.hasPrefix("    ") { end += 1 }
+            while end < ending, lines[end].failing == nil, !lines[end].isBlank, lines[end].text.hasPrefix(Self.entryIndent) { end += 1 }
             if end < ending, lines[end].isBlank { end += 1 }
             entries.append(index..<end)
             index = end
@@ -352,10 +352,13 @@ struct MobileText: Sendable {
         return (MobileText(lines: replaced), max(entries.count - failures.count, 0))
     }
 
+    /// How MobileBuildMCP indents the lines below a failure's `✗` line, its place among them.
+    static let entryIndent = "    "
+
     /// A failure's entry under Test Failures, as MobileBuildMCP writes one: `✗ Suite / test(): message`, its place, and
     /// the blank line that ends it.
     static func entry(_ failure: FailureLine) -> [Line] {
-        [Line("  ✗ \(failure.test.suite) / \(failure.test.function): \(failure.message)")] + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
+        [Line("  ✗ \(failure.test.suite) / \(failure.test.function): \(failure.message)")] + (failure.place.map { [Line(entryIndent + $0)] } ?? []) + [Line("")]
     }
 
     /// Where the Test Results section starts, nil when the text has none.
