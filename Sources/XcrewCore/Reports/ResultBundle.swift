@@ -72,14 +72,36 @@ public struct ResultBundle: Sendable {
         guard listing.isListing else { return nil }
         let found = listing.nodes
         let cases = testCases(in: found)
-        return failedTests(in: found).map { test in
+        let targets = bundles(in: listing, result: "Failed")
+        var listed: Set<String> = []
+        return failedTests(in: found).compactMap { test in
             let first = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
-            let name = first?["name"] as? String ?? ""
-            let line = name.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? name
-            let location = first?["sourceLocation"] as? [String: Any]
-            let place = (location?["filePath"] as? String).flatMap { file in (location?["lineNumber"] as? Int).map { "\(ToolOutput.basename(file)):\($0)" } }
-            return ToolOutput.Failure(title: test.shown, message: line.replacing(#/^failed\s*-\s*/#, with: ""), where: place, isTest: true)
+            let found = first.map { Self.failure($0) }
+            let line = found?.line ?? "", location = found?.location
+            let place = location.map { "\(ToolOutput.basename($0.file)):\($0.line)" }
+            // A crash filed under `System Failures` is its test's, the one its message names, as the text's line is, with
+            // its test bundle; one naming no test is no test's, and the text's line says it (docs/findings.md, *A crash
+            // under System Failures*).
+            let caseName = cases[test]?.first?["name"] as? String ?? ""
+            var named = test
+            if caseName.wholeMatch(of: #/xctest \(\d+\) encountered an error/#) != nil {
+                guard let crashed = MobileBuildMCPLine.crashedTest(message: line) else { return nil }
+                named = crashed
+            }
+            guard listed.insert(named.shown).inserted else { return nil }
+            let target = targets[test].flatMap { $0.count == 1 ? $0.first : nil }
+            return ToolOutput.Failure(title: named.shown, message: line, where: place, isTest: true, target: target)
         }
+    }
+
+    /// A `Failure Message` node's message as MobileBuildMCP's text words it, its first line without XCTest's
+    /// `failed - `, and the file and line it names.
+    static func failure(_ message: [String: Any]) -> (line: String, location: (file: String, line: Int)?) {
+        let name = message["name"] as? String ?? ""
+        let first = name.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? name
+        let source = message["sourceLocation"] as? [String: Any]
+        let location = (source?["filePath"] as? String).flatMap { file in (source?["lineNumber"] as? Int).map { (file, $0) } }
+        return (MobileBuildMCPLine.withoutFailedPrefix(first), location)
     }
 
     /// Each failed test of a repeated run, with the first message and place below its first failed repetition, worded as
@@ -92,12 +114,11 @@ public struct ResultBundle: Sendable {
                   let test = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), !seen.contains(test) else { return nil }
             let failed = nodes(node["children"]).filter { $0["nodeType"] as? String == "Repetition" && $0["result"] as? String == "Failed" }
             guard let message = failed.lazy.compactMap({ nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }).first,
-                  let name = message["name"] as? String else { return nil }
+                  message["name"] is String else { return nil }
             seen.insert(test)
-            let location = message["sourceLocation"] as? [String: Any]
-            let place = (location?["filePath"] as? String).flatMap { file in (location?["lineNumber"] as? Int).map { "\(file):\($0)" } }
-            let firstLine = name.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? name
-            return (test, firstLine.replacing(#/^failed\s*-\s*/#, with: ""), place)
+            // The full path, as the text's own location lines write it, where these are written.
+            let (line, location) = Self.failure(message)
+            return (test, line, location.map { "\($0.file):\($0.line)" })
         }
     }
 

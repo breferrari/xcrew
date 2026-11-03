@@ -49,6 +49,9 @@ public struct ToolOutput: Sendable {
     }
 
     public struct Summary: Sendable, Equatable, Codable {
+        /// What goes between a failed run's counts and its first failing test: `1 of 4 failed · Suite/test`.
+        static let beforeFirstFailing = " · "
+
         public let ok: Bool
         public let detail: String?
 

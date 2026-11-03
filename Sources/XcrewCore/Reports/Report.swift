@@ -112,14 +112,14 @@ public struct Report: Sendable, Equatable, Codable {
         failures.map { failure in
             guard failure.isTest else { return failure }
             let test = TestID(xcresultID: failure.title)
-            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: images[test]?.shown, moreImages: images[test]?.more, target: targets[test])
+            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: images[test]?.shown, moreImages: images[test]?.more, target: targets[test] ?? failure.target)
         }
     }
 
-    /// The bundle's failed tests in the run's order, the text's, which the bundle's own, by plan, target and suite,
-    /// isn't: each in the text's place with the bundle's content, a test the text leaves out after those it lists, and
-    /// the text's other failures where they were. A failed test of the text's the bundle counts passed, as a retry that
-    /// passed, is none.
+    /// The bundle's failed tests in the order the run reported them, the text's: the bundle lists its own by plan,
+    /// target and suite. Each test the text lists takes its place there with the bundle's content; a test only the
+    /// bundle lists comes after; the text's other failures stay where they were. A test the text lists as failed but
+    /// the bundle counts passed, as a retry that passed, is dropped.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], passed: Set<TestID>) -> [ToolOutput.Failure] {
         var pending = Dictionary(bundled.map { (TestID(xcresultID: $0.title), $0) }) { first, _ in first }
         var ordered: [ToolOutput.Failure] = []
@@ -130,7 +130,7 @@ public struct Report: Sendable, Equatable, Codable {
             }
             let test = TestID(xcresultID: failure.title)
             if let found = pending.removeValue(forKey: test) {
-                ordered.append(ToolOutput.Failure(title: found.title, message: found.message, where: found.where ?? failure.where, isTest: true))
+                ordered.append(ToolOutput.Failure(title: found.title, message: found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
             } else if !passed.contains(test) {
                 ordered.append(failure)
             }
@@ -143,8 +143,8 @@ public struct Report: Sendable, Equatable, Codable {
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail, let first else { return detail }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
-        guard let named else { return detail.contains(" · ") ? detail : "\(detail) · \(first)" }
-        guard first != named, detail.hasSuffix(" · \(named)") else { return detail }
+        guard let named else { return detail.hasSuffix(" failed") ? detail + ToolOutput.Summary.beforeFirstFailing + first : detail }
+        guard first != named, detail.hasSuffix(ToolOutput.Summary.beforeFirstFailing + named) else { return detail }
         return String(detail.dropLast(named.count)) + first
     }
 
@@ -328,7 +328,8 @@ public struct Report: Sendable, Equatable, Codable {
         // without a test list to read. Its other failures, the build's and the process's, are the text's.
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let targets = ResultBundle.targets(listing: listing)
-        let failures = ResultBundle.failedTests(listing: listing).map { Self.inRunOrder($0, text: final.failures, passed: ResultBundle.passedTests(listing: listing)) } ?? final.failures
+        let passed = ResultBundle.passedTests(listing: listing)
+        let failures = ResultBundle.failedTests(listing: listing).map { Self.inRunOrder($0, text: final.failures, passed: passed) } ?? final.failures
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?

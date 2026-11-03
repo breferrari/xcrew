@@ -45,9 +45,57 @@ struct BundleFailuresTests {
         ])
     }
 
+    /// A crash the bundle files under `System Failures`, as a field run on iOS 26.5 had it, is its test's failure once:
+    /// the text names the test its message names, and so does the bundle's `xctest (<pid>) encountered an error`. Field
+    /// shape, names neutralised: the 27.2 capture's text and test list, each written as that run filed the crash.
+    @Test func aCrashFiledUnderSystemFailuresIsItsTestsFailureOnce() async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"
+        let text = try Raw.text("system-failure-crash")
+        #expect(text.contains(filed))
+        let fieldText = text.replacingOccurrences(of: filed, with: "  ✗ System Failures / xctest (80341) encountered an error: Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()")
+        let listing = try Raw.file("system-failure-crash.tests.json")
+        #expect(listing.contains(#""name":"AssertCrashTests""#) && listing.contains(#""nodeIdentifier":"AssertCrashTests/test_crash()""#))
+        let fieldListing = listing
+            .replacingOccurrences(of: #""name":"AssertCrashTests""#, with: #""name":"System Failures""#)
+            .replacingOccurrences(of: #""name":"test_crash()""#, with: #""name":"xctest (80341) encountered an error""#)
+            .replacingOccurrences(of: #""nodeIdentifier":"AssertCrashTests/test_crash()""#, with: #""nodeIdentifier":"xctest (80341) encountered an error""#)
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: fieldListing)])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: fieldText, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(Self.lines(report) == [
+            "1 of 1 failed · AssertCrashTests/test_crash",
+            "AssertCrashTests/test_crash | Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash() | -",
+        ])
+        // Its test bundle, from the case the bundle filed it as.
+        #expect(report.failures.map(\.target) == ["FeatureTests"])
+    }
+
+    /// A crash under `System Failures` whose message names its test without an `in`, as a crash in a test's own body
+    /// does, is its test's failure once; one whose message names no test is no test's, and stays the text's own line,
+    /// once, out of the ledger. Field shape as above, the message composed.
+    @Test(arguments: [
+        ("Crash: xctest at AssertCrashTests.test_crash()", ["AssertCrashTests/test_crash | Crash: xctest at AssertCrashTests.test_crash() | -"]),
+        ("Crash: xctest at Model.load(from:)", []),
+    ])
+    func aCrashUnderSystemFailuresIsATestsOnlyWhenItsMessageNamesOne(message: String, tests expected: [String]) async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"
+        let fieldText = try Raw.text("system-failure-crash").replacingOccurrences(of: filed, with: "  ✗ System Failures / xctest (80341) encountered an error: \(message)")
+        let fieldListing = try Raw.file("system-failure-crash.tests.json")
+            .replacingOccurrences(of: #""name":"AssertCrashTests""#, with: #""name":"System Failures""#)
+            .replacingOccurrences(of: #""name":"test_crash()""#, with: #""name":"xctest (80341) encountered an error""#)
+            .replacingOccurrences(of: #""nodeIdentifier":"AssertCrashTests/test_crash()""#, with: #""nodeIdentifier":"xctest (80341) encountered an error""#)
+            .replacingOccurrences(of: "Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()", with: message)
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: fieldListing)])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: fieldText, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(report.failures.filter(\.isTest).map { "\($0.title) | \($0.message) | \($0.where ?? "-")" } == expected)
+        // The crash is said once: as its test's failure, or as the text's own line when it names none.
+        #expect(report.failures.filter { $0.message == message }.count == 1)
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
-        #expect(Self.lines(try await Self.report("serial")).dropFirst().map { String($0.prefix { $0 != " " }) } == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
-        #expect(Self.lines(try await Self.report("retry", repeated: true)).dropFirst().map { String($0.prefix { $0 != " " }) } == ["ProbeTests/testFails"])
+        #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
+        #expect(try await Self.report("retry", repeated: true).failures.map(\.title) == ["ProbeTests/testFails"])
     }
 }

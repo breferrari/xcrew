@@ -239,8 +239,7 @@ struct MobileText: Sendable {
             if let failing = entry.failing {
                 // It lists a failing test twice, once with its location; the first is kept.
                 guard seen.insert(failing.test).inserted else { continue }
-                // XCTest words an XCTFail as `failed - <message>`; the message is what was written.
-                let message = failing.message.replacing(#/^failed - /#, with: "")
+                let message = MobileBuildMCPLine.withoutFailedPrefix(failing.message)
                 failures.append(ToolOutput.Failure(title: failing.test.shown, message: message, where: location, isTest: true))
             } else if let location {
                 failures.append(ToolOutput.Failure(title: location, message: entry.text))
