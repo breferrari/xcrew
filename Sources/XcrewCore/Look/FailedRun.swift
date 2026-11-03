@@ -55,13 +55,9 @@ struct FailedRun: Sendable, Equatable {
     /// on one device never vouches for another device's run.
     static func passedConfigurations(of testCases: [[String: Any]]) -> Set<String> {
         var results: [String: [String]] = [:]
-        func walk(_ node: [String: Any], under configuration: String?) {
-            let type = node["nodeType"] as? String
-            let current = type == "Test Plan Configuration" ? node["name"] as? String : configuration
-            if let current, type == "Test Plan Configuration" || type == "Device", let result = node["result"] as? String { results[current, default: []].append(result) }
-            for child in node["children"] as? [[String: Any]] ?? [] { walk(child, under: current) }
+        for nested in ResultBundle.nestedResults(of: testCases) {
+            if let configuration = nested.configuration, let result = nested.result { results[configuration, default: []].append(result) }
         }
-        for node in testCases { walk(node, under: nil) }
         return Set(results.filter { $0.value.allSatisfy { $0 == "Passed" } }.keys)
     }
 

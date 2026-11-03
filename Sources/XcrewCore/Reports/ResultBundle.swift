@@ -142,20 +142,33 @@ public struct ResultBundle: Sendable {
     }
 
     /// Each test case's results in a test list's nodes, by its id: a test filed more than once, as in several test
-    /// bundles, has each of them, and each test plan configuration it ran under, a child of its case, its own too. An
-    /// entry with none has `noResult`.
+    /// bundles, has each of them, and each test plan configuration and device it ran under, below its case, its own
+    /// too. An entry with none has `noResult`.
     static func results(in nodes: [[String: Any]]) -> [TestID: Set<String>] {
         testCases(in: nodes).mapValues { cases in
-            let entries = cases + cases.flatMap { self.nodes($0["children"]).filter { $0["nodeType"] as? String == "Test Plan Configuration" } }
-            return Set(entries.map { $0["result"] as? String ?? noResult })
+            Set(cases.map { $0["result"] as? String ?? noResult } + nestedResults(of: cases).map { $0.result ?? noResult })
         }
+    }
+
+    /// The results a test's cases hold below them, each test plan configuration's and each device's, in either nesting,
+    /// with the configuration each is under: nil for a device under none. A result a node doesn't give is nil.
+    static func nestedResults(of testCases: [[String: Any]]) -> [(configuration: String?, result: String?)] {
+        var found: [(configuration: String?, result: String?)] = []
+        func walk(_ node: [String: Any], under configuration: String?) {
+            let type = node["nodeType"] as? String
+            let current = type == "Test Plan Configuration" ? node["name"] as? String : configuration
+            if type == "Test Plan Configuration" || type == "Device" { found.append((current, node["result"] as? String)) }
+            for child in nodes(node["children"]) { walk(child, under: current) }
+        }
+        for node in testCases { for child in nodes(node["children"]) { walk(child, under: nil) } }
+        return found
     }
 
     /// What `results(in:)` gives for an entry that records no result.
     static let noResult = "no result"
 
-    /// The tests among `results` the bundle counts as passed, skipped or an expected failure in every entry and test plan
-    /// configuration: no failure whatever another listing says. A test of one name with another result in any, as
+    /// The tests among `results` the bundle counts as passed, skipped or an expected failure in every entry, test plan
+    /// configuration and device: no failure whatever another listing says. A test of one name with another result in any, as
     /// `unknown` for one whose process was killed in another test bundle, isn't: a pass in one is no sign of the other.
     static func cleared(in results: [TestID: Set<String>]) -> Set<TestID> {
         Set(results.filter { $0.value.isSubset(of: clearingResults) }.keys)
