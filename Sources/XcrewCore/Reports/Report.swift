@@ -188,10 +188,16 @@ public struct Report: Sendable, Equatable, Codable {
             guard let first, detail.hasSuffix(ToolOutput.Summary.failedCounts) else { return detail }
             return ToolOutput.shorten(detail + separator + first)
         }
-        guard first != named, let cut = detail.range(of: separator, options: .backwards) else { return detail }
-        let shown = detail[cut.upperBound...]
-        guard shown == named || (shown.hasSuffix("…") && named.hasPrefix(shown.dropLast())) else { return detail }
-        return ToolOutput.shorten(String(detail[..<cut.lowerBound]) + (first.map { separator + $0 } ?? ""))
+        guard first != named else { return detail }
+        let base: Substring
+        if detail.hasSuffix(separator + named) {
+            base = detail.dropLast((separator + named).count)
+        } else if detail.hasSuffix("…"), let cut = detail.range(of: separator, options: .backwards), named.hasPrefix(detail[cut.upperBound...].dropLast()) {
+            base = detail[..<cut.lowerBound]
+        } else {
+            return detail
+        }
+        return ToolOutput.shorten(String(base) + (first.map { separator + $0 } ?? ""))
     }
 
     /// The task Claude Code named in a handle: the one after "moved to the background as task", in each of its wordings
@@ -370,8 +376,9 @@ public struct Report: Sendable, Equatable, Codable {
         // Which Xcode builds, where it can explain the failure.
         notes += await xcodeFacts.notes
 
-        // A failing test run's failed tests are its result bundle's, each failing test's target too; the text's only
-        // without a test list to read. Its other failures, the build's and the process's, are the text's.
+        // A failing test run's failed tests are its result bundle's, each failing test's target too, and the text's that
+        // the bundle doesn't count as no failure; all the text's without a test list to read. Its other failures, the
+        // build's and the process's, are the text's.
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
         let results = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)

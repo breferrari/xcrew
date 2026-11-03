@@ -194,6 +194,7 @@ struct RunOrderTests {
         let other = "CheckoutViewModelTests/test_givenValidCard_whenUserTapsPay_thenCompletesThePurchaseAndShowsTheReceipt"
         #expect(Report.naming(shortened, first: other, insteadOf: long) == "1 of 312 failed · CheckoutViewModelTests/test_givenValidCard_whenUserTapsPay_thenCompletesThePurcha…")
         #expect(Report.naming("1 of 4 failed · Inner/test", first: other, insteadOf: "Inner/test")?.count == 100)
+        #expect(Report.naming("1 of 4 failed · Suite/`login · retries`", first: nil, insteadOf: "Suite/`login · retries`") == "1 of 4 failed")
     }
 
     /// The note names five disagreeing tests at most and says where the rest are.
