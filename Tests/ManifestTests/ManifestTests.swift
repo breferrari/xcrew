@@ -691,13 +691,19 @@ import Testing
 
     /// The Markdown files of the repository, which link to each other's headings.
     func markdownFiles() throws -> [String] {
+        try repositoryFiles { $0.hasSuffix(".md") }
+    }
+
+    /// The repository's files that `including` takes, by path from its root, none of what's built, fetched or kept for
+    /// tests to read.
+    func repositoryFiles(_ including: (String) -> Bool) throws -> [String] {
         let root = Self.repository.path + "/"
         let enumerator = try #require(FileManager.default.enumerator(atPath: root))
         var files: [String] = []
         while let path = enumerator.nextObject() as? String {
             let name = URL(fileURLWithPath: path).lastPathComponent
             if [".build", ".git", "node_modules", ".claude"].contains(name) || path.hasPrefix("Tests/XcrewCoreTests/Fixtures") { enumerator.skipDescendants(); continue }
-            if path.hasSuffix(".md") { files.append(path) }
+            if including(path) { files.append(path) }
         }
         return files.sorted()
     }
@@ -1356,19 +1362,20 @@ import Testing
     }
 
     /// No storage budget comes back: `xcrew space` sizes this project's MobileBuildMCP storage and measures it against no
-    /// number, so no code, doc or skill names a budget for it or a variable that sets one (docs/findings.md, *No budgets*).
+    /// number, so no code, doc, script, workflow or skill names a budget for it or a variable that sets one; only the
+    /// tests that say it stays gone and the changelog's history do (docs/findings.md, *No budgets*).
     @Test func noStorageBudgetComesBack() throws {
-        let root = Self.repository.path
-        let enumerator = try #require(FileManager.default.enumerator(atPath: root))
-        var named: [String] = []
-        while let path = enumerator.nextObject() as? String {
-            let name = (path as NSString).lastPathComponent
-            if [".build", ".git", "node_modules", ".claude", "Tests"].contains(name) { enumerator.skipDescendants(); continue }
-            guard [".swift", ".ts", ".md", ".yaml", ".sh"].contains(where: path.hasSuffix), path != "CHANGELOG.md" else { continue }
-            let text = try text(path)
-            named += text.matches(of: /XCREW_STORAGE_BUDGET_GB|StorageBudget|its budget of|past its budget/).map { "\(path): \($0.output)" }
+        let named = /XCREW_STORAGE_BUDGET_GB|StorageBudget|its budget of|past its budget|[Bb]udget of \d/
+        let saying: Set = ["Tests/ManifestTests/ManifestTests.swift", "Tests/XcrewCoreTests/ProjectStorageTests.swift", "CHANGELOG.md"]
+        let files = try repositoryFiles { path in
+            !saying.contains(path) && ([".swift", ".ts", ".md", ".yml", ".yaml", ".json", ".sh"].contains(where: path.hasSuffix) || path.hasPrefix("bin/") || path.hasPrefix("libexec/"))
         }
-        #expect(named.isEmpty, "\(named)")
+        var found: [String] = []
+        for path in files {
+            guard let text = try? String(contentsOf: Self.repository.appending(path: path), encoding: .utf8) else { continue }
+            found += text.matches(of: named).map { "\(path): \($0.output)" }
+        }
+        #expect(found.isEmpty, "\(found)")
     }
 
     /// No command is cut on time: no Swift call names a timeout, nothing passes a deadline in, and the only times kept

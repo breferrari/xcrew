@@ -20,37 +20,6 @@ import XcrewTestSupport
         project = Project(root: folder)
     }
 
-    static let classes = "derivedData,logs,resultBundles,stateTransients,testProducts"
-    static let goneClasses = "logs,resultBundles,stateTransients,testProducts"
-
-    /// The captured Mac's report, `purge --report --scope workspace` for one workspace: the capture's `--scope all` report
-    /// with that workspace alone in it, as MobileBuildMCP scopes one.
-    static func scoped(_ all: String, key: String) throws -> String {
-        var report = try #require(try JSONSerialization.jsonObject(with: Data(all.utf8)) as? [String: Any])
-        let workspaces = (report["workspaces"] as? [[String: Any]] ?? []).filter { $0["workspaceKey"] as? String == key }
-        report["workspaces"] = workspaces
-        report["totals"] = ["bytes": workspaces.compactMap { ($0["totals"] as? [String: Any])?["bytes"] as? Int }.reduce(0, +)]
-        return String(decoding: try JSONSerialization.data(withJSONObject: report), as: UTF8.self)
-    }
-
-    /// The captured Mac: this project's workspace and its worktree's, each answering its own workspace's report.
-    func runner(environment: [String: String] = [:], purgeAnswers: Bool = true, ps: String? = nil) throws -> FakeRunner {
-        let all = SpaceTests.purgeReport(key: RunLog.workspaceKey(root: root), renamed: ["field-05686ffe76ea": RunLog.workspaceKey(root: worktree)])
-        var responses = SpaceTests.git(root: root, worktrees: [worktree])
-        if purgeAnswers {
-            for checkout in [root, worktree] {
-                let key = RunLog.workspaceKey(root: checkout)
-                responses["mobilebuildmcp purge --report --scope workspace --workspace-key \(key) --json"] = .init(status: 0, stdout: try Self.scoped(all, key: key))
-            }
-        }
-        if let ps { responses["ps -axo pid=,ppid=,etime=,command="] = .init(status: 0, stdout: ps) }
-        return FakeRunner(installed: ["mobilebuildmcp"], responses: responses)
-    }
-
-    func context(environment: [String: String] = [:], purgeAnswers: Bool = true) throws -> CheckContext {
-        CheckContext(project: project, machine: Machine(environment: environment, home: home, runner: try runner(purgeAnswers: purgeAnswers)))
-    }
-
     /// The captured Mac's workspaces of this project, its main checkout's and its worktree's, as `xcrew space` reads them.
     func live() throws -> [(workspace: StorageReport.Workspace, checkout: ProjectWorkspaces.Checkout)] {
         let all = SpaceTests.purgeReport(key: RunLog.workspaceKey(root: root), renamed: ["field-05686ffe76ea": RunLog.workspaceKey(root: worktree)])
