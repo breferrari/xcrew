@@ -340,8 +340,10 @@ public struct Report: Sendable, Equatable, Codable {
             // A repeated run's text lists no failures, and with test timing on, each test once for each run.
             if bundle != nil, text.isTestRun, !repetitions.isEmpty {
                 if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
-                let lookup = await testLookup()
-                if let once = text.listingRunsOnce(repetitions, resolving: { lookup.resolution(of: $0).found ?? $0 }) { (text, changed) = (once, true) }
+                if text.lines.contains(where: { $0.isHeading(.testResults) }) {
+                    let lookup = await testLookup()
+                    if let once = text.listingRunsOnce(repetitions, resolving: { lookup.resolution(of: $0).found ?? $0 }) { (text, changed) = (once, true) }
+                }
             }
             if bundle != nil, text.isTestRun, !final.summary.ok {
                 let listing = await testList()

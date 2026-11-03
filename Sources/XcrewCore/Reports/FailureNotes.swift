@@ -106,10 +106,12 @@ public enum FailureNotes {
     static let lookLabel = "look:"
 
     /// The line sending Claude to `look` on this run's bundle, so a later run doesn't stand in for it. A test in a nested
-    /// suite is named as the bundle names it, `()` and all, so its suite's `/` isn't read as a target's.
+    /// suite is named as the bundle names it, `()` and all, so its suite's `/` isn't read as a target's; a name holding
+    /// parentheses is quoted, so a shell passes them on.
     static func lookLine(_ test: TestID, bundle: String) -> String {
         let named = test.shown.count(where: { $0 == "/" }) > 1 ? test.xcresultID : test.shown
-        return "      \(lookLabel) the steps leading to the failure and the screen at it, with the `look` tool or `xcrew look \(named) --bundle \(bundle)`"
+        let quoted = named.contains("(") ? "'\(named)'" : named
+        return "      \(lookLabel) the steps leading to the failure and the screen at it, with the `look` tool or `xcrew look \(quoted) --bundle \(bundle)`"
     }
 
     /// The text with its notes, and each failed test's images, for the failures pane.
