@@ -180,13 +180,19 @@ public struct Report: Sendable, Equatable, Codable {
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
     /// is no failure, and after it when the text names none. With no failing test, `first` nil, the one the text named
     /// goes. The summary is one line, shortened, which can cut the name it ends with: a cut name is matched by its start,
-    /// and what this gives is shortened again. Only a failed run's counts, `N of M failed`, are named after.
+    /// and what this gives is shortened again. Only a failed run's counts, `N of M failed`, get a test named after them.
+    /// Whether `text` is a failed run's counts, `N of M failed`, as `ToolOutput.Summary.failing` writes them.
+    static func isFailedCounts(_ text: some StringProtocol) -> Bool {
+        let text = String(text)
+        return text.hasSuffix(ToolOutput.Summary.failedCounts) && text.dropLast(ToolOutput.Summary.failedCounts.count).wholeMatch(of: #/\d+ of \d+/#) != nil
+    }
+
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail else { return nil }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
         let separator = ToolOutput.Summary.beforeFirstFailing
         guard let named else {
-            guard let first, detail.hasSuffix(ToolOutput.Summary.failedCounts) else { return detail }
+            guard let first, Self.isFailedCounts(detail) else { return detail }
             return ToolOutput.shorten(detail + separator + first)
         }
         guard first != named else { return detail }
@@ -198,7 +204,7 @@ public struct Report: Sendable, Equatable, Codable {
         } else {
             return detail
         }
-        guard base.hasSuffix(ToolOutput.Summary.failedCounts) else { return detail }
+        guard Self.isFailedCounts(base) else { return detail }
         return ToolOutput.shorten(String(base) + (first.map { separator + $0 } ?? ""))
     }
 

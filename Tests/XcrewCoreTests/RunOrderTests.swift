@@ -200,6 +200,8 @@ struct RunOrderTests {
         let buildError = ToolOutput.shorten("Foo.swift:3 error: cannot convert value of type 'String' to specified type 'Int' · " + spaced)
         #expect(buildError.hasSuffix("…"))
         #expect(Report.naming(buildError, first: "Suite/other", insteadOf: spaced) == buildError)
+        #expect(Report.naming("Command SwiftCompile failed · Suite/test", first: "Suite/other", insteadOf: "Suite/test") == "Command SwiftCompile failed · Suite/test")
+        #expect(Report.naming("Command SwiftCompile failed", first: "Suite/other", insteadOf: nil) == "Command SwiftCompile failed")
         #expect(Report.naming(ToolOutput.shorten("1 of 312 failed · " + spaced), first: nil, insteadOf: spaced) == "1 of 312 failed")
     }
 
