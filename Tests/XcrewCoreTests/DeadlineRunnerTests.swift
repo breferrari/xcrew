@@ -99,6 +99,11 @@ import XcrewTestSupport
         #expect(DeadlineRunner.deadline(for: machine) == .milliseconds(13_500))
         let unset = Machine(environment: [:], home: URL(fileURLWithPath: "/nonexistent"), runner: FakeRunner(), monotonic: { .seconds(5) })
         #expect(DeadlineRunner.deadline(for: unset) == .milliseconds(123_500))
+        // A time no duration can hold is no time given: the CLI takes an asked call's.
+        for given in ["inf", "1e30", "nan"] {
+            let odd = Machine(environment: ["XCREW_WITHIN_MS": given], home: URL(fileURLWithPath: "/nonexistent"), runner: FakeRunner(), monotonic: { .seconds(5) })
+            #expect(DeadlineRunner.deadline(for: odd) == .milliseconds(123_500), "\(given)")
+        }
     }
 }
 

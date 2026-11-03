@@ -35,7 +35,8 @@ public final class DeadlineRunner: CommandRunning {
 
     /// The deadline for a call on `machine`: the time it's given (`XCREW_WITHIN_MS`), else `asked`, less `answering`.
     public static func deadline(for machine: Machine) -> Duration {
-        let named = machine.value(variable).flatMap(Double.init).flatMap { $0 > 0 ? Duration.milliseconds($0) : nil }
+        // Only a time a duration can hold counts: `inf`, `nan` or `1e30` is none.
+        let named = machine.value(variable).flatMap(Double.init).flatMap { Int(exactly: $0.rounded()) }.flatMap { $0 > 0 ? Duration.milliseconds($0) : nil }
         return machine.monotonic() + (named ?? asked) - answering
     }
 
