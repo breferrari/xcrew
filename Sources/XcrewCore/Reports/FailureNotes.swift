@@ -105,11 +105,10 @@ public enum FailureNotes {
     /// What the line under a failed UI test sending Claude to `look` begins with.
     static let lookLabel = "look:"
 
-    /// The line sending Claude to `look` on this run's bundle, so a later run doesn't stand in for it. A test in a nested
-    /// suite is named as the bundle names it, `()` and all, so its suite's `/` isn't read as a target's.
+    /// The line sending Claude to `look` on this run's bundle, so a later run doesn't stand in for it, the test and the
+    /// bundle each one word of the command.
     static func lookLine(_ test: TestID, bundle: String) -> String {
-        let named = test.shown.count(where: { $0 == "/" }) > 1 ? test.xcresultID : test.shown
-        return "      \(lookLabel) the steps leading to the failure and the screen at it, with the `look` tool or `xcrew look \(named) --bundle \(bundle)`"
+        "      \(lookLabel) the steps leading to the failure and the screen at it, with the `look` tool or `\(test.lookCommand(bundle: bundle))`"
     }
 
     /// The text with its notes, and each failed test's images, for the failures pane.
@@ -120,9 +119,10 @@ public enum FailureNotes {
 
     /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `images`, each failed
     /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
-    /// are removed. The skips are read from the bundle's own test list, after the failures are looked up.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions: [ResultBundle.Repeated] = []) async -> Added? {
-        guard let pending = await lookingUp(text, from: bundle, keepingImagesIn: images, repetitions: repetitions) else { return nil }
+    /// are removed. The skips are read from the bundle's own test list, after the failures are looked up. `bundleIDs` and
+    /// `labels` are as `lookingUp` takes them.
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestLookup.Resolution] = [:], labels: [TestID: String] = [:]) async -> Added? {
+        guard let pending = await lookingUp(text, from: bundle, keepingImagesIn: images, repetitions: repetitions, bundleIDs: bundleIDs, labels: labels) else { return nil }
         return pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: TestList(await bundle.tests())) : [])
     }
 
@@ -155,9 +155,21 @@ public enum FailureNotes {
         }
     }
 
+    /// The line under a failed test whose name ends several of the bundle's ids, `ids`: it's looked up under none.
+    static func severalByThatName(_ ids: [TestID]) -> String {
+        "the result bundle has more than one test by that name: \(candidates(ids))"
+    }
+
+    /// The bundle's tests a name can mean, five at most and the rest counted.
+    static func candidates(_ ids: [TestID]) -> String {
+        ResultBundle.joined(ids.map(\.shown), rest: "in the result bundle's test list")
+    }
+
     /// The first step of `adding`: each failed test's lookups and its repeated runs. Nil when there's nothing to add and
-    /// no skip to read.
-    static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = []) async -> Pending? {
+    /// no skip to read. Each test is looked up under the bundle's id for it in `bundleIDs`, by the name the text gives it,
+    /// and its images are keyed by that id; one whose resolution is `.ambiguous` gets a line saying so. A test's `labels`
+    /// entry goes under its place, before its other notes.
+    static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = [], bundleIDs: [TestID: TestLookup.Resolution] = [:], labels: [TestID: String] = [:]) async -> Pending? {
         let imagesFolder = images?.folder
         var order: [TestID] = []
         var located: Set<TestID> = []
@@ -171,7 +183,8 @@ public enum FailureNotes {
         // A test the text doesn't place, or that crashed, is looked up for that; every failed test for its images too.
         let detailed = Set(order.filter { !located.contains($0) || crashed.contains($0) })
         let imaged = Set(imagesFolder == nil ? [] : order)
-        let lookups = order.filter { detailed.contains($0) || imaged.contains($0) }
+        let ambiguous = Set(order.filter { bundleIDs[$0]?.isAmbiguous == true })
+        let lookups = order.filter { detailed.contains($0) || imaged.contains($0) || ambiguous.contains($0) || labels[$0] != nil }
         let listedSkips = text.lines.compactMap { line -> TestID? in
             if case let .skipped(test) = line.kind { return test }
             return nil
@@ -189,20 +202,25 @@ public enum FailureNotes {
         var notes = Notes()
         var images: [TestID: FailureImages] = [:]
         // Each test's lookups are their own xcresulttool calls, so a few run side by side.
-        notes.failures = await withTaskGroup(of: (TestID, [String], FailureImages?).self) { group in
+        notes.failures = await withTaskGroup(of: (TestID, TestID, [String], FailureImages?).self) { group in
             var pending = lookups.makeIterator()
             var found: [TestID: [String]] = [:]
             func lookUpNext() {
                 guard let test = pending.next() else { return }
                 let isLocated = !detailed.contains(test) || located.contains(test), isCrashed = detailed.contains(test) && crashed.contains(test)
                 let keepsImages = imaged.contains(test) ? imagesFolder : nil
+                let resolution = bundleIDs[test]
+                let id = resolution?.found ?? test
+                let named = MobileBuildMCPLine.isProcessCrash(id.suite) ? test : id
                 group.addTask {
+                    if case let .ambiguous(ids)? = resolution { return (test, id, ["      \(Self.severalByThatName(ids))"], nil) }
                     var added: [String] = []
-                    let crash = isCrashed ? await bundle.crash(of: test) : nil
+                    let crash = isCrashed ? await bundle.crash(of: id, naming: named) : nil
                     // Where the bundle places the failure, or for a crash, the crash log's frame in the test's own code.
-                    if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: test)) ?? crash?.location {
+                    if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: id)) ?? crash?.location {
                         added.append("    \(location)")
                     }
+                    if let label = labels[test] { added.append("      \(label)") }
                     if isCrashed {
                         let alone = crash == nil && oneCrashed ? await ranAlone(discovered: discovered, bundle: bundle) : false
                         let summary = crash?.summary ?? [alone ? noCrashLogAlone : noCrashLog]
@@ -212,30 +230,31 @@ public enum FailureNotes {
                     }
                     // One export for both: the test's images, and whether it kept a screen recording, as a UI test does.
                     let (attached, recorded) = if let keepsImages {
-                        await bundle.attachments(of: test, onlyFailures: false) { export in
-                            (FailureImages.keep(of: test, from: export, in: bundle.runFolder(in: keepsImages)),
-                             FailureImages.attachments(of: test, in: export).contains { FailureScreen.isRecording($0["suggestedHumanReadableName"] as? String ?? "") })
+                        await bundle.attachments(of: id, onlyFailures: false) { export in
+                            (FailureImages.keep(of: id, from: export, in: bundle.runFolder(in: keepsImages)),
+                             FailureImages.attachments(of: id, in: export).contains { FailureScreen.isRecording($0["suggestedHumanReadableName"] as? String ?? "") })
                         }
                     } else {
                         (FailureImages?.none, false)
                     }
                     if let attached { added += attached.shown.map { "      \(imageLabel) \($0)" } + (attached.more.map { ["      \($0)"] } ?? []) }
-                    if recorded { added.append(lookLine(test, bundle: bundle.path)) }
-                    return (test, added, attached)
+                    if recorded { added.append(lookLine(named, bundle: bundle.path)) }
+                    return (test, id, added, attached)
                 }
             }
             for _ in 0..<mostAtOnce { lookUpNext() }
             // As each lookup finishes, the next one starts.
-            while let (test, added, attached) = await group.next() {
+            while let (test, id, added, attached) = await group.next() {
                 if !added.isEmpty { found[test] = added }
-                if let attached { images[test] = attached }
+                if let attached { images[id] = attached }
                 lookUpNext()
             }
             return found
         }
         if let imagesFolder, !images.isEmpty { FailureImages.record(bundle.runFolder(in: imagesFolder)) }
+        let textNames = Dictionary(order.compactMap { name in bundleIDs[name]?.found.map { ($0, name) } }) { first, _ in first }
         for repeated in repetitions {
-            let test = TestID(xcresultID: repeated.test)
+            let test = textNames[TestID(xcresultID: repeated.test)] ?? TestID(xcresultID: repeated.test)
             notes.repeated.insert(test)
             notes.failures[test, default: []].append("      failed \(repeated.failed) of \(repeated.runs) runs")
         }

@@ -268,4 +268,12 @@ import XcrewTestSupport
         #expect(withImages.images == (1...3).map { Self.kept(cache, "Screenshot \($0).png") })
         #expect(withImages.moreImages == "and 1 more image in \(cache.appending(path: "images/test_sim_1/CardTests/testCard").path)")
     }
+
+    /// A failure listed under the name the text gives it has the images kept under the bundle's id for that name, as a
+    /// nested suite's test the text keeps, `Inner/attaches`, has those kept under `Outer/Inner/attaches`.
+    @Test func aFailureHasTheImagesKeptUnderTheBundlesIDForIt() {
+        let images = [TestID(xcresultID: "Outer/Inner/attaches()"): FailureImages(paths: ["/run/Outer/Inner-attaches/screen.png"], folder: "/run/Outer/Inner-attaches")]
+        let failures = [ToolOutput.Failure(title: "Inner/attaches", message: "", isTest: true)]
+        #expect(Report.attaching(images, to: failures, resolutions: [TestID(suite: "Inner", name: "attaches"): .found(TestID(xcresultID: "Outer/Inner/attaches()"))]).map(\.images) == [["/run/Outer/Inner-attaches/screen.png"]])
+    }
 }

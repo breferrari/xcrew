@@ -2,7 +2,9 @@ import Foundation
 import XcrewCore
 
 /// What a test run kept about each failed UI test's failure: the steps before it and the screen at it, per
-/// configuration and device, from the project's newest MobileBuildMCP result bundle or one named.
+/// configuration and device, from the project's newest MobileBuildMCP result bundle or one named. A test or bundle quoted
+/// as a shell word, as the failure notes give them, is read as the value it quotes, an empty test as none: the `look`
+/// tool passes them on with no shell to take the quotes off.
 struct LookCommand: Command {
     let name = "look"
     let valuedOptions: Set<String> = ["bundle"]
@@ -16,14 +18,21 @@ struct LookCommand: Command {
     func run(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         guard invocation.arguments.positional.count <= 1 else { throw UsageError(description: "look takes one test at most (xcrew look --help)") }
-        let named = invocation.arguments["bundle"]
-        let newest = if named == nil { await ResultBundle.newest(project: context.project.root, machine: context.machine) } else { String?.none }
-        guard let path = named ?? newest else {
+        let bundleOption = invocation.arguments["bundle"]
+        let givenBundle = Self.given(bundleOption)
+        guard bundleOption == nil || givenBundle != nil else { throw UsageError(description: "look's --bundle names no result bundle (xcrew look --help)") }
+        let newest = if givenBundle == nil { await ResultBundle.newest(project: context.project.root, machine: context.machine) } else { String?.none }
+        guard let path = givenBundle ?? newest else {
             invocation.print(Self.noBundle)
             return 1
         }
         let bundle = ResultBundle(path: path, runner: context.runner)
-        invocation.print(await Look.report(bundle: bundle, named: invocation.arguments.positional.first, keptIn: context.machine.cacheFolder.appending(path: "images"), now: context.machine.now()))
+        invocation.print(await Look.report(bundle: bundle, named: Self.given(invocation.arguments.positional.first), keptIn: context.machine.cacheFolder.appending(path: "images"), now: context.machine.now()))
         return 0
+    }
+
+    /// A word as given, without the quotes a shell would take off; none when it's empty.
+    static func given(_ word: String?) -> String? {
+        word.map(ShellWord.unquoted).flatMap { $0.isEmpty ? nil : $0 }
     }
 }

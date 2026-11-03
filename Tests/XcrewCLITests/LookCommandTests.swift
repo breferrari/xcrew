@@ -48,11 +48,43 @@ import XcrewTestSupport
         #expect(!run.text.contains("screen") && !run.text.contains("on screen"), "\(run.text)")
     }
 
+    /// A crash's case, as look's own lines name it, is headed by its name alone whether its steps show a failure or not.
+    @Test func aCrashsCaseIsHeadedByItsNameAlone() async {
+        let crash = "xctest (1) encountered an error"
+        let steps = "xcrun xcresulttool get test-results activities --test-id \(crash) --path /runs/Run.xcresult --compact"
+        let failed = await Run("look", "'\(crash)'", "--bundle", "/runs/Run.xcresult", context: context([steps: Self.activities(recorded: false)]))
+        #expect(failed.text.hasPrefix("xcrew look: \(crash), in Run.xcresult\n"), "\(failed.text)")
+        let passed = await Run("look", "'\(crash)'", "--bundle", "/runs/Run.xcresult", context: context([steps: Self.activities(recorded: false, passed: true)]))
+        #expect(passed.text == "xcrew: \(crash) didn't fail in Run.xcresult", "\(passed.text)")
+    }
+
     /// A test in a nested suite is named as the result bundle names it, `()` and all, so its suite's `/` isn't taken
     /// for a target's.
     @Test func aTestNamedAsTheBundleNamesItIsFoundAsIs() async {
         let run = await Run("look", "Outer/Inner/testX()", "--bundle", "/runs/Run.xcresult", context: context([Self.steps("Outer/Inner/testX"): Self.activities(recorded: false)]))
         #expect(run.text.hasPrefix("xcrew look: Outer/Inner/testX, in Run.xcresult\n"), "\(run.text)")
+    }
+
+    /// A test and a bundle as the failure notes' line gives them, each quoted as one shell word, are read as the values
+    /// they quote: the `look` tool passes them on with no shell to take the quotes off.
+    @Test func aTestAndABundleQuotedForAShellAreReadAsTheyQuote() async {
+        let bundle = "/runs/My Runs/Run.xcresult"
+        let run = await Run("look", "'Outer/Inner/it'\\''s red()'", "--bundle", "'\(bundle)'", context: context([Self.steps("Outer/Inner/it's red", bundle): Self.activities(recorded: false)]))
+        #expect(run.text.hasPrefix("xcrew look: Outer/Inner/it's red, in Run.xcresult\n"), "\(run.text)")
+    }
+
+    /// An empty test, quoted `''` or not, is none: look looks at the bundle's every failed test. An empty bundle, quoted
+    /// or not, names none to read, which look says rather than read another.
+    @Test func anEmptyTestIsNoneAndAnEmptyBundleIsRefused() async {
+        for test in ["''", ""] {
+            let run = await Run("look", test, "--bundle", "/runs/Run.xcresult", context: context([Self.listing("/runs/Run.xcresult"): Self.passed]))
+            #expect(run.text == "xcrew: nothing failed in Run.xcresult", "\(run.text)")
+        }
+        for bundle in ["''", ""] {
+            let empty = await Run("look", "--bundle", bundle, context: context())
+            #expect(empty.status == 64)
+            #expect(empty.errors == ["look's --bundle names no result bundle (xcrew look --help)"])
+        }
     }
 
     /// `Target/Suite/test()` is a test the bundle names `Suite/test()` when it lists no `Target/Suite/test()`: the target
@@ -74,9 +106,9 @@ import XcrewTestSupport
     /// When `xcresulttool` gives no answer, `look` says it couldn't read the bundle, never that nothing failed.
     @Test func aBundleThatCantBeReadIsSaidSo() async {
         let all = await Run("look", "--bundle", "/runs/Run.xcresult", context: context())
-        #expect(all.text == "xcrew: couldn't read the tests in Run.xcresult; xcrun xcresulttool get test-results tests --path /runs/Run.xcresult says why")
+        #expect(all.text == "xcrew: couldn't read the tests in Run.xcresult; `xcrun xcresulttool get test-results tests --path /runs/Run.xcresult` says why")
         let one = await Run("look", "AppUITests/testLaunch", "--bundle", "/runs/Run.xcresult", context: context())
-        #expect(one.text == "xcrew: couldn't read AppUITests/testLaunch's steps in Run.xcresult; xcrun xcresulttool get test-results activities --test-id AppUITests/testLaunch() --path /runs/Run.xcresult says why")
+        #expect(one.text == "xcrew: couldn't read AppUITests/testLaunch's steps in Run.xcresult; `xcrun xcresulttool get test-results activities --test-id 'AppUITests/testLaunch()' --path /runs/Run.xcresult` says why")
     }
 
     /// A failed UI test is found however many failed unit tests come before it in the listing; a test without a

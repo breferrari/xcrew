@@ -106,29 +106,30 @@ public struct Report: Sendable, Equatable, Codable {
         (try? URL(fileURLWithPath: String(path)).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
-    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest.
-    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
+    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest,
+    /// kept under its title or under the bundle's id for it in `resolutions`.
+    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure], resolutions: [TestID: TestLookup.Resolution] = [:]) -> [ToolOutput.Failure] {
         failures.map { failure in
             guard failure.isTest else { return failure }
-            let found = images[TestID(xcresultID: failure.title)]
+            let test = TestID(xcresultID: failure.title)
+            let found = images[test] ?? resolutions[test]?.found.flatMap { images[$0] }
             return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: found?.shown, moreImages: found?.more, target: failure.target)
         }
     }
 
     /// The bundle's failed tests in the order the run reported them, the text's: the bundle lists its own by plan,
     /// target and suite. Each test the text lists takes its place there, with the bundle's name and content, the text's
-    /// message and place where the bundle gives none. The text names a nested suite's test from its own suite, and the
-    /// bundle from the outermost: it's matched by the end of the bundle's name for it, when no other's ends the same way
-    /// and none is the text's whole. A test only the bundle lists comes after; the text's other failures stay where
-    /// they were. A test only the text lists disagrees with the bundle, and is returned once as disagreeing. One among
-    /// `cleared`, which the bundle counts as passed, skipped or an expected failure in every entry, configuration
-    /// and device under that name, as a retry it passed, is none of the run's failures. Any other stays a failure in its place as
-    /// the text gives it, since no entry, an entry with no result, or another result is no sign it passed.
-    /// Never one the bundle lists as failed under its name or a nested name ending with it.
-    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
+    /// message and place where the bundle gives none. A test is matched by its own name among `bundled`, else by
+    /// `resolutions`, the bundle's id for it by the rule `TestLookup` keeps, as a nested suite's test from
+    /// its outermost suite; a test with none is matched by its own name alone. A test only the bundle lists comes after;
+    /// the text's other failures stay where they were. A test the text lists that matches none of the bundle's failures,
+    /// as one several ids end with, disagrees with the bundle, and is returned once as disagreeing: one among `cleared`,
+    /// which the bundle counts as passed, skipped or an expected failure in every entry, configuration and device under
+    /// that name, as a retry it passed, is none of the run's failures; any other stays a failure in its place as the text
+    /// gives it, since no entry, an entry with no result, or another result is no sign it passed.
+    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>, resolutions: [TestID: TestLookup.Resolution] = [:]) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
         let named = Set(pending.map(\.test))
-        let listed = { (test: TestID) in named.contains(test) || named.contains { test.isNested(in: $0) } }
         var ordered: [ToolOutput.Failure] = []
         var disagreeing: [TestID] = []
         for failure in text {
@@ -137,14 +138,11 @@ public struct Report: Sendable, Equatable, Codable {
                 continue
             }
             let test = TestID(xcresultID: failure.title)
-            let index = pending.firstIndex { $0.test == test } ?? {
-                guard !named.contains(test) else { return nil }
-                let nested = pending.indices.filter { test.isNested(in: pending[$0].test) }
-                return nested.count == 1 ? nested.first : nil
-            }()
-            if let index {
+            let resolution = named.contains(test) ? .found(test) : resolutions[test] ?? .missing
+            let found = resolution.found
+            if let found, let index = pending.firstIndex(where: { $0.test == found }) {
                 ordered.append(pending.remove(at: index).failure.filling(from: failure))
-            } else if !listed(test) {
+            } else if found.map(named.contains) != true {
                 if !disagreeing.contains(test) {
                     disagreeing.append(test)
                     if !cleared.contains(test) { ordered.append(failure) }
@@ -154,15 +152,26 @@ public struct Report: Sendable, Equatable, Codable {
         return (ordered + pending.map(\.failure), disagreeing)
     }
 
+    /// The note on each failed test a name MobileBuildMCP's text gives can mean, when several can.
+    static func reported(_ name: TestID, matching candidates: [TestID]) -> String {
+        "MobileBuildMCP reported \"\(name.shown)\", which matches these \(candidates.count) tests: \(FailureNotes.candidates(candidates))"
+    }
+
+    /// The label on a failure line the bundle's list adds, where the text lists the test `outcome`, as passed.
+    static func listedOtherwise(_ outcome: String) -> String {
+        "the result bundle's; MobileBuildMCP's text lists it as \(outcome)"
+    }
+
     /// The tests the text lists as failed that aren't among the bundle's failures, each with what the bundle records
     /// under the name the text gives, `results` each recorded test's results: every one it records, the clearing ones
     /// first, as passed and skipped for one skipped under another configuration. It names `ResultBundle.mostNamed` at
     /// most and counts the rest, each among MobileBuildMCP's failures in the result. Nil when there are none.
-    static func notFailedInBundleNote(_ tests: [TestID], results: [TestID: Set<String>]) -> String? {
+    static func notFailedInBundleNote(_ tests: [TestID], results: [TestID: Set<String>], ambiguous: Set<TestID> = []) -> String? {
         guard !tests.isEmpty else { return nil }
         let cleared = ResultBundle.cleared(in: results)
         let shown = tests.prefix(ResultBundle.mostNamed)
         let named = shown.map { test in
+            if ambiguous.contains(test) { return "\(test.shown), which names more than one of the bundle's tests" }
             guard let found = results[test] else { return "\(test.shown), which the bundle has no entry for under that name" }
             let worded = ResultBundle.clearing.filter { found.contains($0.result) }.map(\.counts) + found.subtracting(ResultBundle.clearingResults).subtracting([ResultBundle.noResult]).map { $0.lowercased() }.sorted()
             if cleared.contains(test) { return "\(test.shown), which the bundle counts as \(ResultBundle.joined(worded, rest: "the rest of them"))" }
@@ -319,18 +328,63 @@ public struct Report: Sendable, Equatable, Codable {
             parsed = list
             return list
         }
+        var built: TestLookup?
+        func testLookup() async -> TestLookup {
+            if let built { return built }
+            let made = TestLookup(nodes: await testList().nodes)
+            built = made
+            return made
+        }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
         let repetitions = if repeated, bundle != nil { ResultBundle.repetitions(listing: await testList()) } else { [ResultBundle.Repeated]() }
+        var bundleIDs: [TestID: TestLookup.Resolution] = [:]
+        var labels: [TestID: String] = [:]
         if var text = final.mobileText {
             var changed = false
             if let cleaned = text.withoutExcerpts() { (text, changed) = (cleaned, true) }
             // A repeated run's text lists no failures, and with test timing on, each test once for each run.
             if bundle != nil, text.isTestRun, !repetitions.isEmpty {
                 if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
-                if let once = text.listingRunsOnce(repetitions) { (text, changed) = (once, true) }
+                if text.testResultsStart != nil {
+                    let lookup = await testLookup()
+                    if let once = text.listingRunsOnce(repetitions, resolving: { lookup.resolution(of: $0).found ?? $0 }) { (text, changed) = (once, true) }
+                }
             }
-            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions),
-               // The test list is read for the skips once the failures are looked up: what failed is read first.
+            if bundle != nil, text.isTestRun, !final.summary.ok {
+                let listing = await testList()
+                let lookup = await testLookup()
+                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, lookup.resolution(of: $0)) }) { first, _ in first }
+                let named = Set(bundleIDs.values.compactMap(\.found)).union(bundleIDs.keys)
+                let unlisted = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
+                let failed = Set(unlisted.map(\.0))
+                let reported = bundleIDs.compactMapValues { resolution -> [TestID]? in
+                    if case let .ambiguous(ids) = resolution, ids.contains(where: failed.contains) { ids } else { nil }
+                }
+                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
+                let listed = { (entry: (test: TestID, message: String, id: TestID)) -> MobileText.FailureLine in
+                    (test: entry.test, message: entry.message, place: ResultBundle.place(of: entry.id, in: lookup.cases))
+                }
+                let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
+                    if let test = MobileBuildMCPLine.passed(line.text) { return (test, "passed") }
+                    if case let .skipped(test?) = line.kind { return (test, "skipped") }
+                    return nil
+                }
+                let outcomes = Dictionary(said.map { (lookup.resolution(of: $0.0).found ?? $0.0, $0.1) }) { first, _ in first }
+                labels = Dictionary(entries.compactMap { entry in outcomes[entry.id].map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
+                var placed: Set<TestID> = []
+                for (name, ids) in reported.sorted(by: { $0.key.shown < $1.key.shown }) {
+                    let candidateIDs = Set(ids)
+                    let candidates = entries.filter { candidateIDs.contains($0.test) && !placed.contains($0.test) }
+                    for candidate in candidates { labels[candidate.test] = Self.reported(name, matching: ids) }
+                    guard let swapped = text.replacing(name, with: candidates.map(listed)) else { continue }
+                    (text, changed) = (swapped.text, true)
+                    placed.formUnion(candidates.map(\.test))
+                    if swapped.left == 0 { bundleIDs[name] = nil }
+                }
+                if let added = text.adding(unlisted: entries.filter { !placed.contains($0.test) }.map(listed)) { (text, changed) = (added, true) }
+                for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
+            }
+            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, bundleIDs: bundleIDs, labels: labels),
                let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {
                 (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
             } else if changed {
@@ -383,10 +437,19 @@ public struct Report: Sendable, Equatable, Codable {
         // build's and the process's, are the text's.
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
-        let results = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
-        let ordered = bundled.map { Self.inRunOrder($0, text: final.failures, cleared: ResultBundle.cleared(in: results)) }
+        let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
+        let unresolved = Set(final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil })
+        var resolutions = bundleIDs
+        if !unresolved.isEmpty, bundled != nil {
+            let lookup = await testLookup()
+            for test in unresolved { resolutions[test] = lookup.resolution(of: test) }
+        }
+        let results = recorded.merging(resolutions.compactMap { test, resolution in
+            resolution.found.flatMap { recorded[$0] }.map { (test, $0) }
+        }) { own, _ in own }
+        let ordered = bundled.map { Self.inRunOrder($0, text: final.failures, cleared: ResultBundle.cleared(in: results), resolutions: resolutions) }
         let failures = ordered?.failures ?? final.failures
-        if let ordered, let note = Self.notFailedInBundleNote(ordered.disagreeing, results: results) { notes.append(note) }
+        if let ordered, let note = Self.notFailedInBundleNote(ordered.disagreeing, results: results, ambiguous: Set(resolutions.filter(\.value.isAmbiguous).keys)) { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?
@@ -408,7 +471,7 @@ public struct Report: Sendable, Equatable, Codable {
             detail: Self.naming(summary.detail, first: failures.first(where: \.isTest)?.title, insteadOf: final.failures.first(where: \.isTest)?.title),
             durationMs: final.reportedDuration,
             tests: tests,
-            failures: summary.ok ? [] : Self.attaching(images, to: failures),
+            failures: summary.ok ? [] : Self.attaching(images, to: failures, resolutions: resolutions),
             result: comesBack ? shortened : nil,
             notes: notes,
             repeated: repeatedTests,

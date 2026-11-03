@@ -76,7 +76,7 @@ public struct ResultBundle: Sendable {
         let targets = Self.targets(listing: listing)
         var listed: Set<TestID> = []
         return failedTests(in: found).compactMap { test in
-            let first = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
+            let first = cases[test].flatMap(firstFailureMessage)
             let parsed = first.map(Self.failure)
             let line = parsed?.line ?? "", location = parsed?.location
             let place = location.map { "\(ToolOutput.basename($0.file)):\($0.line)" }
@@ -92,6 +92,30 @@ public struct ResultBundle: Sendable {
             guard listed.insert(named).inserted else { return nil }
             return ToolOutput.Failure(title: named.shown, message: line, where: place, isTest: true, target: targets[test])
         }
+    }
+
+    /// Each test a crash under `System Failures` names, `xctest (<pid>) encountered an error`, by the case the bundle
+    /// files it under, from a test list's `nodes`: the first in the list when several name one test, as `failedTests`
+    /// keeps the first.
+    static func crashCases(in nodes: [[String: Any]]) -> [TestID: TestID] {
+        var found: [TestID: TestID] = [:]
+        for node in nodes where node["nodeType"] as? String == "Test Case" && MobileBuildMCPLine.isProcessCrash(node["name"] as? String ?? "") {
+            guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), let message = firstFailureMessage(in: [node]),
+                  let test = MobileBuildMCPLine.crashedTest(message: failure(message).line), found[test] == nil else { continue }
+            found[test] = id
+        }
+        return found
+    }
+
+    /// The first `Failure Message` node below a test's cases.
+    static func firstFailureMessage(in cases: [[String: Any]]) -> [String: Any]? {
+        cases.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
+    }
+
+    /// Where a failed test's first failure happened, `/path/File.swift:12`, as MobileBuildMCP's text writes a place, from
+    /// `cases`, the test list's test cases by id; nil when its test list gives none.
+    static func place(of test: TestID, in cases: [TestID: [[String: Any]]]) -> String? {
+        cases[test].flatMap(firstFailureMessage).flatMap { failure($0).location }.map { "\($0.file):\($0.line)" }
     }
 
     /// A `Failure Message` node's message as MobileBuildMCP's text words it, its first line without XCTest's
@@ -113,8 +137,7 @@ public struct ResultBundle: Sendable {
             guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Failed",
                   let test = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), !seen.contains(test) else { return nil }
             let failed = nodes(node["children"]).filter { $0["nodeType"] as? String == "Repetition" && $0["result"] as? String == "Failed" }
-            guard let message = failed.lazy.compactMap({ nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }).first,
-                  message["name"] is String else { return nil }
+            guard let message = firstFailureMessage(in: failed), message["name"] is String else { return nil }
             seen.insert(test)
             // The full path, as the text's own location lines write it, where these are written.
             let (line, location) = Self.failure(message)
@@ -247,7 +270,7 @@ public struct ResultBundle: Sendable {
         let images = report["usedImages"] as? [[String: Any]] ?? []
         let exception = report["exception"] as? [String: Any]
         let crashed = (exception?["type"] as? String).map { type in "crashed: \(type)\((exception?["signal"] as? String).map { " (\($0))" } ?? "")" }
-        let named = test.map { "\($0.suite).\($0.name)(" }
+        let named = test.map { $0.shown.replacingOccurrences(of: "/", with: ".") + "(" }
         let ownIndex = frames.firstIndex { frame in named.map { (frame["symbol"] as? String)?.contains($0) == true } == true && ownFrame(frame) != nil }
             ?? frames.firstIndex { ownFrame($0) != nil }
         let own = ownIndex.map { min($0 + 1, mostFrames) } ?? topFrames
@@ -408,9 +431,10 @@ public struct ResultBundle: Sendable {
         cache.appending(path: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)
     }
 
-    /// A crash's summary, from the crash log the result bundle attached to the test, and the test's line it names.
-    public func crash(of test: TestID) async -> (summary: [String], location: String?)? {
-        await attachments(of: test, onlyFailures: true) { Self.crashSummary(in: $0, test: test) }
+    /// A crash's summary, from the crash log the result bundle attached to `test`, and the test's line it names: the frame
+    /// of `named`, the test whose frame is sought when `test` is its `System Failures` case.
+    public func crash(of test: TestID, naming named: TestID? = nil) async -> (summary: [String], location: String?)? {
+        await attachments(of: test, onlyFailures: true) { Self.crashSummary(in: $0, test: named ?? test) }
     }
 
     /// A crash's summary, from the crash log among a test's exported attachments, and the test's line it names.

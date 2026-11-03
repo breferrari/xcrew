@@ -197,9 +197,9 @@ func failingRunText(passing: Int) -> String {
         #expect(ResultBundle.passedTests(listing: TestList(listing)) == [TestID(xcresultID: "LoginTests/testLogsIn()")])
     }
 
-    /// A failing run that also skipped a test has its failure looked up before its test list is read for the skip: what
-    /// failed is read first.
-    @Test func aRunsFailuresAreLookedUpBeforeItsSkips() async throws {
+    /// A failing run that also skipped a test reads its test list once, before its failure is looked up: the list holds
+    /// the id xcresulttool knows each failed test by, and the skip.
+    @Test func aRunsTestListIsReadOnceBeforeItsFailuresAreLookedUp() async throws {
         let text = Captured.text("mobileTestsFailedUnlocated")
             .replacingOccurrences(of: "  ❌ FormatterTests/test_symbol() (4.774s)\n", with: "  ❌ FormatterTests/test_symbol() (4.774s)\n  ⏭️ FormatterTests/test_later() (0.000s)\n")
             .replacingOccurrences(of: "1 passed, 0 skipped", with: "1 passed, 1 skipped")
@@ -207,7 +207,8 @@ func failingRunText(passing: Int) -> String {
         _ = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
         let details = try #require(runner.asked.firstIndex { $0.contains("test-results test-details") }, "\(runner.asked)")
         let list = try #require(runner.asked.firstIndex { $0.contains("test-results tests ") }, "\(runner.asked)")
-        #expect(details < list, "\(runner.asked)")
+        #expect(list < details, "\(runner.asked)")
+        #expect(runner.asked.filter { $0.contains("test-results tests ") }.count == 1, "\(runner.asked)")
     }
 
     /// A skipped line that names no test, with no skip counted, reads no test list: nothing names a skip to explain.
@@ -351,6 +352,12 @@ func failingRunText(passing: Int) -> String {
         #expect(added.contains("second assertion\n    /work/App/Tests/ProbeTests.swift:14"), "\(added)")
         #expect(added.components(separatedBy: "first assertion").count == 2, "\(added)")
         #expect(added.contains("Test Failures (2):"), "\(added)")
+    }
+
+    /// A nested suite's test's line is its own frame too, `Outer.Inner.test()`, found by the bundle's id for it.
+    @Test func aNestedSuitesCrashsLineIsTheTestsOwnFrame() {
+        let log = #"{"app_name":"xctest"}\#n{"faultingThread":0,"exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"usedImages":[{"name":"libswiftCore.dylib"},{"name":"Model"},{"name":"NestedTests"}],"threads":[{"frames":[{"imageIndex":0,"symbol":"_assertionFailure(_:_:file:line:flags:)"},{"imageIndex":1,"symbol":"Model.load()","sourceFile":"/work/Packages/Model/Sources/Model.swift","sourceLine":10},{"imageIndex":2,"symbol":"Outer.Inner.test()","sourceFile":"/work/App/Tests/NestedTests.swift","sourceLine":20}]}]}"#
+        #expect(ResultBundle.crashReport(log: log, test: TestID(xcresultID: "Outer/Inner/test()"))?.location == "NestedTests.swift:20")
     }
 
     /// The test's line is its own frame, found by its name, though a dependency built from source trapped first.

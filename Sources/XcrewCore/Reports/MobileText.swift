@@ -261,7 +261,7 @@ struct MobileText: Sendable {
     /// This keeps the failures, the failing and skipped tests' lines and the summary, and counts the
     /// passing ones. Nil when the list is short or the text is another shape.
     func compacted() -> MobileText? {
-        guard header.map({ MobileBuildMCPLine.isTestHeader($0.text) }) == true, let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
+        guard header.map({ MobileBuildMCPLine.isTestHeader($0.text) }) == true, let start = testResultsStart else { return nil }
         // The list runs to the summary line; a blank line inside it is where Claude Code cut a long one.
         let summary = lines.indices.first { $0 > start && lines[$0].isSummary }
         var end = summary ?? start + 1
@@ -289,20 +289,87 @@ struct MobileText: Sendable {
     /// summary, each in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place. Nil when the text lists its
     /// failures already, or has neither place to put them.
     /// It shapes only the text Claude reads: the report takes the failures from the bundle itself.
-    func addingFailures(_ failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
-        guard !failures.isEmpty, !lines.contains(where: { $0.isHeading(.testFailures) }),
-              let at = lines.firstIndex(where: { $0.isHeading(.testResults) }) ?? lines.firstIndex(where: \.isSummary) else { return nil }
-        let listed = failures.flatMap { failure in
-            [Line("  ✗ \(failure.test.suite) / \(failure.test.name)(): \(failure.message)")] + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
-        }
-        return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
+    func addingFailures(_ failures: [FailureLine]) -> MobileText? {
+        guard !lines.contains(where: { $0.isHeading(.testFailures) }) else { return nil }
+        return adding(unlisted: failures)
     }
+
+    /// The text with a line under Test Failures for each of `failures`, failed tests the result bundle records that the
+    /// text doesn't list, in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place; the section's count
+    /// raised, or the section added before Test Results or the summary when the text has none. Nil when there's nothing
+    /// to add, or nowhere to add it.
+    func adding(unlisted failures: [FailureLine]) -> MobileText? {
+        guard !failures.isEmpty else { return nil }
+        let listed = failures.flatMap(Self.entry)
+        guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else {
+            guard let at = testResultsStart ?? lines.firstIndex(where: \.isSummary) else { return nil }
+            return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
+        }
+        let ending = failuresEnd(after: heading)
+        return MobileText(lines: Array(lines[..<heading]) + [Self.counting(lines[heading], by: failures.count)] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
+    }
+
+    /// A Test Failures heading with its count moved by `change`; as it is when it holds no count.
+    static func counting(_ heading: Line, by change: Int) -> Line {
+        guard let count = MobileBuildMCPLine.failureCount(in: heading.text) else { return heading }
+        var counted = heading.text
+        counted.replaceSubrange(count.range, with: "Test Failures (\(count.count + change)):")
+        return Line(counted)
+    }
+
+    /// A failed test as its entry under Test Failures names it: its test, its message and its place.
+    typealias FailureLine = (test: TestID, message: String, place: String?)
+
+    /// Where the Test Failures section that starts at `heading` ends: the next heading or the summary, else the text's end.
+    func failuresEnd(after heading: Int) -> Int {
+        lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
+    }
+
+    /// The text with `name`'s first entries under Test Failures replaced, in their places, by `failures`, one each, in
+    /// MobileBuildMCP's shape; failures beyond its entries follow its last, the section's count raised by them, and its
+    /// entries beyond the failures stay. Each entry is its `✗` line and the lines below it, its place and those
+    /// `entryIndent` indents, up to the blank one that ends it. With the text, how many of `name`'s entries stay; nil
+    /// when the section lists none.
+    func replacing(_ name: TestID, with failures: [FailureLine]) -> (text: MobileText, left: Int)? {
+        guard !failures.isEmpty, let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
+        let ending = failuresEnd(after: heading)
+        var entries: [Range<Int>] = []
+        var index = heading + 1
+        while index < ending {
+            guard lines[index].failing?.test == name else { index += 1; continue }
+            var end = index + 1
+            while end < ending, lines[end].failing == nil, !lines[end].isBlank, lines[end].location != nil || lines[end].text.hasPrefix(Self.entryIndent) { end += 1 }
+            if end < ending, lines[end].isBlank { end += 1 }
+            entries.append(index..<end)
+            index = end
+        }
+        guard !entries.isEmpty else { return nil }
+        var replaced = lines
+        for (offset, entry) in entries.enumerated().reversed() where offset < failures.count {
+            let added = offset == entries.count - 1 ? failures[offset...] : failures[offset...offset]
+            replaced.replaceSubrange(entry, with: added.flatMap(Self.entry))
+        }
+        replaced[heading] = Self.counting(lines[heading], by: max(failures.count - entries.count, 0))
+        return (MobileText(lines: replaced), max(entries.count - failures.count, 0))
+    }
+
+    /// How MobileBuildMCP indents the lines below a failure's `✗` line, its place among them.
+    static let entryIndent = "    "
+
+    /// A failure's entry under Test Failures, as MobileBuildMCP writes one: `✗ Suite / test(): message`, its place, and
+    /// the blank line that ends it.
+    static func entry(_ failure: FailureLine) -> [Line] {
+        [Line("  ✗ \(failure.test.suite) / \(failure.test.function): \(failure.message)")] + (failure.place.map { [Line(entryIndent + $0)] } ?? []) + [Line("")]
+    }
+
+    /// Where the Test Results section starts, nil when the text has none.
+    var testResultsStart: Int? { lines.firstIndex(where: { $0.isHeading(.testResults) }) }
 
     /// With `showTestTiming`, a repeated run's Test Results list each test once for each of its runs: this lists each test
     /// once, a repeated one with its runs counted, as `✅ Suite/test(): passed 5 of 5 runs`. Nil when nothing repeats.
     /// It shapes only the text Claude reads: the report counts the runs from the bundle itself.
-    func listingRunsOnce(_ repetitions: [ResultBundle.Repeated]) -> MobileText? {
-        guard let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
+    func listingRunsOnce(_ repetitions: [ResultBundle.Repeated], resolving: (TestID) -> TestID = { $0 }) -> MobileText? {
+        guard let start = testResultsStart else { return nil }
         let counted = Dictionary(repetitions.map { ($0.test, $0) }, uniquingKeysWith: { first, _ in first })
         var end = start + 1
         while end < lines.count, !lines[end].isBlank, !lines[end].isSummary { end += 1 }
@@ -323,7 +390,7 @@ struct MobileText: Sendable {
                 changed = true
                 continue
             }
-            if let runs = counted[TestID(xcresultID: name).shown], runs.verdict != .none {
+            if let runs = counted[resolving(TestID(xcresultID: name)).shown], runs.verdict != .none {
                 let said = runs.failed > 0 ? "❌ \(name): failed \(runs.failed) of \(runs.runs) runs" : "✅ \(name): passed \(runs.passed) of \(runs.runs) runs"
                 kept.append(Line(String(listed.1) + said))
                 changed = true

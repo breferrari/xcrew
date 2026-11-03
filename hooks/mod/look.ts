@@ -7,7 +7,7 @@ export const LOOK_TOOL = {
   inputSchema: {
     type: 'object',
     properties: {
-      test: { type: 'string', description: 'One test, as Suite/test.' },
+      test: { type: 'string', description: "One test, as Suite/test, or as a failure note's look line names it: a nested suite's test as the result bundle names it, Outer/Inner/test()." },
       bundle: { type: 'string', description: 'A result bundle (.xcresult) to read instead of the newest test run, such as one the Xcode MCP made.' },
     },
   },
@@ -17,7 +17,6 @@ export const LOOK_TOOL = {
 export const LOOK_TOOL_NAME = 'mcp__xcrew__look'
 
 export function lookArgs(input: Record<string, unknown>): string[] {
-  const named = (key: string) => (typeof input[key] === 'string' && input[key] !== '' ? (input[key] as string) : undefined)
-  const test = named('test'), bundle = named('bundle')
-  return ['look', ...(test ? [test] : []), ...(bundle ? ['--bundle', bundle] : [])]
+  const passed = (value: unknown) => (typeof value === 'string' ? [value] : [])
+  return ['look', ...passed(input.test), ...passed(input.bundle).flatMap(bundle => ['--bundle', bundle])]
 }

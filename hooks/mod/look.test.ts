@@ -39,6 +39,18 @@ test('a test and a bundle Claude names are passed to the CLI', async ($, on) => 
   expect(seen.calls.find(call => call.args[0] === 'look')?.args).toEqual(['look', 'AppUITests/testLogin', '--bundle', '/runs/Run.xcresult'])
 })
 
+test('an empty bundle Claude names is passed on, for the CLI to refuse rather than read the newest run', async ($, on) => {
+  const seen = session(on, '')
+  await ask($, { bundle: '' })
+  expect(seen.calls.find(call => call.args[0] === 'look')?.args).toEqual(['look', '--bundle', ''])
+})
+
+test('an empty test Claude names is passed on, for the CLI to read as none', async ($, on) => {
+  const seen = session(on, '')
+  await ask($, { test: '' })
+  expect(seen.calls.find(call => call.args[0] === 'look')?.args).toEqual(['look', ''])
+})
+
 test('without either, the CLI picks the newest run', async ($, on) => {
   const seen = session(on, '')
   await ask($)

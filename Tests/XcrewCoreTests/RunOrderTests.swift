@@ -29,7 +29,8 @@ struct RunOrderTests {
     }
 
     /// A test in a nested suite, which the bundle names from its outermost suite and the text from its own, takes its
-    /// place in the run's order under the bundle's name, the one the bundle's passed tests give the ledger.
+    /// place in the run's order under the bundle's name, the one the bundle's passed tests give the ledger, as the
+    /// report's resolutions find it.
     @Test func aNestedSuitesTestTakesItsPlaceUnderTheBundlesName() {
         let bundled = [
             ToolOutput.Failure(title: "Later/test", message: "second", isTest: true),
@@ -39,26 +40,28 @@ struct RunOrderTests {
             ToolOutput.Failure(title: "Inner/test", message: "the text's first", isTest: true),
             ToolOutput.Failure(title: "Later/test", message: "the text's second", isTest: true),
         ]
-        #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-") | \($0.target ?? "-")" } == [
+        let resolutions: [TestID: TestLookup.Resolution] = [TestID(suite: "Inner", name: "test"): .found(TestID(xcresultID: "Outer/Inner/test()"))]
+        #expect(Report.inRunOrder(bundled, text: text, cleared: [], resolutions: resolutions).failures.map { "\($0.title) | \($0.message) | \($0.where ?? "-") | \($0.target ?? "-")" } == [
             "Outer/Inner/test | first | Inner.swift:7 | FeatureTests",
             "Later/test | second | - | -",
         ])
     }
 
-    /// A name the text gives that the ends of two of the bundle's share matches neither: both follow the run's order, as
-    /// tests only the bundle lists, rather than one taking the other's place.
+    /// A name the text gives that the ends of two of the bundle's share matches neither: no guess is taken, so the text's
+    /// line stays in its place and disagrees, and both of the bundle's follow the run's order, as tests only it lists.
     @Test func aNameTwoNestedSuitesShareMatchesNeither() {
         let bundled = ["Later/test", "A/Inner/test", "B/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
         let text = ["Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
-        #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map(\.title) == ["Later/test", "A/Inner/test", "B/Inner/test"])
-        #expect(Report.inRunOrder(bundled, text: text, cleared: []).disagreeing.isEmpty)
+        #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map(\.title) == ["Inner/test", "Later/test", "A/Inner/test", "B/Inner/test"])
+        #expect(Report.inRunOrder(bundled, text: text, cleared: []).disagreeing == [TestID(suite: "Inner", name: "test")])
     }
 
     /// A nested suite's test the text lists twice is matched once and never disagrees: the bundle lists it as failed.
     @Test func aNestedSuitesTestListedTwiceNeverDisagrees() {
         let bundled = [ToolOutput.Failure(title: "Outer/Inner/test", message: "", isTest: true)]
         let text = ["Inner/test", "Inner/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
-        #expect(Report.inRunOrder(bundled, text: text, cleared: []).disagreeing.isEmpty)
+        let resolutions: [TestID: TestLookup.Resolution] = [TestID(suite: "Inner", name: "test"): .found(TestID(xcresultID: "Outer/Inner/test()"))]
+        #expect(Report.inRunOrder(bundled, text: text, cleared: [], resolutions: resolutions).disagreeing.isEmpty)
     }
 
     /// The note reads a disagreeing test by the name the text gives: one the bundle files only in a nested suite, under a
@@ -151,6 +154,12 @@ struct RunOrderTests {
         #expect(ResultBundle.cleared(in: ResultBundle.results(in: listing.nodes)) == [TestID(suite: "Suite", name: "test")])
     }
 
+    /// A disagreeing test the text names that several of the bundle's nested ids end with is named as such, and stays.
+    @Test func theNoteNamesATestSeveralNestedIDsEndWith() {
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "fails")], results: [:], ambiguous: [TestID(suite: "Inner", name: "fails")])
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Inner/fails, which names more than one of the bundle's tests. A test the bundle doesn't count as passed, an expected failure or skipped in every entry, test plan configuration and device stays in the failures here, as MobileBuildMCP gives it.")
+    }
+
     /// A disagreeing test the bundle files more than once, as in two test bundles, skipped in one and passed in the
     /// other, counts as both.
     @Test func theNoteCountsATestSkippedInOneEntryAndPassedInAnotherAsBoth() {
@@ -213,6 +222,27 @@ struct RunOrderTests {
         #expect(!note.contains("Suite/t6") && !note.contains("Suite/t7"))
         let sixthCleared = Report.notFailedInBundleNote(tests, results: [tests[5]: ["Passed"]]) ?? ""
         #expect(!sixthCleared.contains("is left out of the failures here"))
+    }
+
+    /// The run order takes the report's resolutions: a test the text names that two of the bundle's ids end with, one of
+    /// them failed and the other passed, matches neither, so it stays and disagrees, and the failed one follows.
+    @Test func theRunOrderTakesTheReportsResolutions() {
+        let bundled = [ToolOutput.Failure(title: "Outer/Inner/fails", message: "from the bundle", isTest: true)]
+        let text = [ToolOutput.Failure(title: "Inner/fails", message: "from the text", isTest: true)]
+        let ambiguous = TestLookup.Resolution.ambiguous([TestID(xcresultID: "Other/Inner/fails()"), TestID(xcresultID: "Outer/Inner/fails()")])
+        let ordered = Report.inRunOrder(bundled, text: text, cleared: [], resolutions: [TestID(suite: "Inner", name: "fails"): ambiguous])
+        #expect(ordered.failures.map(\.title) == ["Inner/fails", "Outer/Inner/fails"])
+        #expect(ordered.disagreeing == [TestID(suite: "Inner", name: "fails")])
+    }
+
+
+    /// A repeated run's Test Results line for a nested suite's test, named from its own suite, has its runs counted:
+    /// the text's name is resolved to the bundle's id the counts are kept by.
+    @Test func aNestedTestsRunsAreCountedInTestResults() {
+        let text = MobileText("\n🧪 Test\n\nTest Results:\n  ❌ Inner/flaky() (0.010s)\n  ✅ Inner/flaky() (0.010s)\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        let repeated = [ResultBundle.Repeated(test: "Outer/Inner/flaky", failed: 1, passed: 1, runs: 2, verdict: .flaky)]
+        let listed = text.listingRunsOnce(repeated) { $0 == TestID(suite: "Inner", name: "flaky") ? TestID(xcresultID: "Outer/Inner/flaky()") : $0 }
+        #expect(listed?.text.contains("❌ Inner/flaky(): failed 1 of 2 runs") == true, "\(listed?.text ?? "")")
     }
 
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure

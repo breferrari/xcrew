@@ -21,12 +21,24 @@ public struct TestID: Sendable, Hashable {
     /// `Suite/test`, as Xcrew shows a test.
     public var shown: String { "\(suite)/\(name)" }
 
-    /// `Suite/test()`, as `xcresulttool` names one.
-    public var xcresultID: String { "\(shown)()" }
+    /// `test()`, or a test that takes arguments as the bundle lists it, with its labels: `parameterised(value:)`.
+    public var function: String { name.hasSuffix(")") ? name : "\(name)()" }
 
-    /// Whether `outer` is this test named from an outer suite, as a result bundle names a nested suite's test,
-    /// `Outer/Suite/test`, that MobileBuildMCP's text names from its own, `Suite/test`.
-    func isNested(in outer: TestID) -> Bool {
-        outer.shown.hasSuffix("/\(shown)")
-    }
+    /// `Suite/test`, as `look` heads what it says of a test, and an id with no `/`, as a crash's case, by itself.
+    var title: String { name.isEmpty ? suite : shown }
+
+    /// The name `look` takes for it: a nested suite's test as the bundle names it, `()` and all, so its suite's `/` isn't
+    /// read as a target's (`Target/Suite/test`); any other as `look` heads it.
+    var lookName: String { name.contains("/") ? xcresultID : title }
+
+    /// The `xcrew look` command on it in `bundle`, each a word a shell passes on as it is.
+    func lookCommand(bundle: String) -> String { Self.lookCommand(naming: ShellWord.word(lookName), bundle: bundle) }
+
+    /// The `xcrew look` command naming a test as `test` gives it, a word or a placeholder, in `bundle`.
+    static func lookCommand(naming test: String, bundle: String) -> String { "xcrew look \(test) --bundle \(ShellWord.word(bundle))" }
+
+    /// `Suite/test()`, as `xcresulttool` names one; an id it read with no `/`, as the case a crash under `System Failures`
+    /// is filed as, by itself.
+    public var xcresultID: String { name.isEmpty ? suite : "\(suite)/\(function)" }
+
 }
