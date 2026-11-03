@@ -1165,6 +1165,14 @@ import Testing
         #expect(try text("hooks/mod/evidence.ts").contains("export const EVIDENCE_TIMEOUT_MS = ASKED_MS"))
     }
 
+    /// Each call on the CLI has the time of who waits on it: `ON_RESULT_MS` on a tool's call, `ASKED_MS` when asked, and
+    /// none of xcrew's own when nobody waits, as a timer's; never a number written at the call.
+    @Test func everyCallOnTheCLINamesWhoWaits() throws {
+        let register = try text("hooks/mod/register.ts")
+        let numbered = register.matches(of: /(?:answer|xcrew)\(\$, [^\n]*?, (\d[\d_]*)(?:\)|, )/).map { String($0.output.0) }
+        #expect(numbered.isEmpty, "calls with a time written at the call: \(numbered)")
+    }
+
     /// Everything xcrew keeps that nothing uses any more goes after one age: the shim's unused builds and root keys, the
     /// mod's history, a failed test's images, the card, and a session's stamp no session end removed. Each prunes its own;
     /// the age is one choice.

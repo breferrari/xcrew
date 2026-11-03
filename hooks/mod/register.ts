@@ -4,7 +4,7 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, OutOfTime, reportCutNote, StillBuilding, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, ASKED_MS, ON_RESULT_MS, UNWAITED_MS, OutOfTime, reportCutNote, StillBuilding, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, ranOutOfTime, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { givesConcurrency, schemeOfScope } from './concurrency'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
@@ -550,7 +550,7 @@ async function endAfterResult($: EngineInterface, run: Ending, ok: boolean, ende
   const key = run.key
   // The run went from the call's start for `elapsed`: the server's own duration where it gives one, else until the call
   // answered, or for a call moved to the background, until its notification.
-  const overlapped = key !== undefined && overlappedOf(await answer($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)], 10_000)).length > 0
+  const overlapped = key !== undefined && overlappedOf(await answer($, ['runs', '--overlapped', '--since', String(run.startedAt), '--until', String(run.startedAt + elapsed)])).length > 0
   await quietly(() => show(overlapped))
   if (key === undefined || overlapped) return
   // Another run of the scope may have ended while this one's check was out: the history is read again just before it's
@@ -635,9 +635,12 @@ function ask($: EngineInterface, question: Question): Promise<string | undefined
   return quietly(() => $.ui.ask(question.question, { options: [...question.options], header: question.header }))
 }
 
-/** Runs a program of the CLI's to its end, within `timeoutMs`: every CLI call but the session start's background build. */
-function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string) {
-  return $.process.run([program, ...args], { timeoutMs, env: { XCREW_ROOT: $.plugin.root, XCREW_WITHIN_MS: String(timeoutMs) }, ...(stdin === undefined ? {} : { stdin }) })
+/**
+ * Runs a program of the CLI's to its end, within `timeoutMs`: every CLI call but the session start's background build.
+ * A call nobody waits on (`unwaited`) names no limit, so `$.process.run`'s own stops it; the CLI is told `timeoutMs`.
+ */
+function start($: EngineInterface, program: string, args: string[], timeoutMs: number, stdin?: string, unwaited = false) {
+  return $.process.run([program, ...args], { ...(unwaited ? {} : { timeoutMs }), env: { XCREW_ROOT: $.plugin.root, XCREW_WITHIN_MS: String(timeoutMs) }, ...(stdin === undefined ? {} : { stdin }) })
 }
 
 /** The question to the shim in flight, which callers at the same moment share rather than each starting a shim. */
@@ -735,11 +738,14 @@ function buildInBackground($: EngineInterface): Promise<string | null> {
  * there only (`--if-built`), so it never builds under a caller's time; a command that ran out of time isn't started
  * again, which would double the wait.
  */
-async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdin?: string): Promise<Ran> {
+async function xcrew($: EngineInterface, args: string[], timeoutMs: number | undefined, stdin?: string): Promise<Ran> {
+  // A call nobody waits on has `$.process.run`'s own limit, none of xcrew's.
+  const unwaited = timeoutMs === undefined
+  const budget = timeoutMs ?? UNWAITED_MS
   // The question for the build and any wait for it come out of the call's time: its command has what's left.
-  const until = await quietly(async () => (await $.clock.now()) + timeoutMs)
+  const until = await quietly(async () => (await $.clock.now()) + budget)
   const left = async () => {
-    const ms = await leftUntil($, until, timeoutMs)
+    const ms = await leftUntil($, until, budget)
     // `$.process.run` says nothing of a limit of none: a call with no time left isn't started.
     if (ms <= 0) throw new OutOfTime()
     return ms
@@ -750,7 +756,7 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
     const startedAt = await $.clock.now()
     const given = await left()
     try {
-      return await start($, binary, args, given, stdin)
+      return await start($, binary, args, given, stdin, unwaited)
     } catch (error) {
       if (ranOutOfTime(startedAt, await $.clock.now(), given)) throw new OutOfTime()
       await update($, buildState, () => null)
@@ -758,7 +764,7 @@ async function xcrew($: EngineInterface, args: string[], timeoutMs: number, stdi
   }
   const given = await left()
   const startedAt = await quietly(() => $.clock.now())
-  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], given, stdin).catch(async (error: unknown) => {
+  return start($, shimPath($.plugin.root), [...(cannotSpawn ? [] : ['--if-built']), ...args], given, stdin, unwaited).catch(async (error: unknown) => {
     const now = await quietly(() => $.clock.now())
     throw startedAt !== undefined && now !== undefined && ranOutOfTime(startedAt, now, given) ? new OutOfTime() : error
   })
@@ -801,13 +807,16 @@ async function leftUntil($: EngineInterface, until: number | undefined, otherwis
   return until === undefined || now === undefined ? otherwise : Math.max(0, until - now)
 }
 
-/** The CLI's JSON answer, or nothing when it couldn't run or said something else. */
-async function answer($: EngineInterface, args: string[], timeoutMs = 60_000, stdin?: string): Promise<unknown> {
+/**
+ * The CLI's JSON answer, or nothing when it couldn't run or said something else; with no `timeoutMs`, a call nobody
+ * waits on, under `$.process.run`'s own limit.
+ */
+async function answer($: EngineInterface, args: string[], timeoutMs?: number, stdin?: string): Promise<unknown> {
   return answerOf(await xcrew($, args, timeoutMs, stdin).catch(() => undefined))
 }
 
 function runPhase($: EngineInterface, tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined) {
-  return answer($, phaseArgs(tool, launches, since, expectedTests, log), 10_000).then(phaseOf)
+  return answer($, phaseArgs(tool, launches, since, expectedTests, log)).then(phaseOf)
 }
 
 /** Whether the project's generator reads YAML, asked once a session, again after setup or a generate, and next time when the CLI couldn't answer. */
@@ -907,7 +916,7 @@ function saveCard($: EngineInterface): void {
           const card = await cardNow($)
           const saved = card && JSON.stringify(card)
           if (!saved || saved === lastSavedCard) return
-          await answer($, ['card', '--save'], 10_000, saved)
+          await answer($, ['card', '--save'], undefined, saved)
           lastSavedCard = saved
         })(),
         $.clock.sleep(CARD_SAVE_MS),
@@ -1076,7 +1085,7 @@ async function pruneGone($: EngineInterface): Promise<void> {
   })
   const roots = [...new Set([...scopes, ...ledgers].map(entry => entry.root))]
   if (roots.length === 0) return
-  const gone = new Set(goneOf(await answer($, ['gone', ...roots], 10_000)))
+  const gone = new Set(goneOf(await answer($, ['gone', ...roots])))
   await Promise.all([
     ...scopes.filter(entry => gone.has(entry.root)).map(entry => dropScope($, entry.key)),
     ...ledgers.filter(entry => gone.has(entry.root)).map(entry => quietly(() => $.store.delete(entry.key))),
@@ -1322,7 +1331,7 @@ async function agentDescription($: EngineInterface, agentId: string | undefined)
 
 /** Reads the other worktrees' runs into the line: what the CLI answers, or what it held, until that ages out. */
 async function readElsewhere($: EngineInterface): Promise<void> {
-  const read = elsewhereOf(await answer($, ['runs'], 10_000))
+  const read = elsewhereOf(await answer($, ['runs']))
   const now = await quietly(() => $.clock.now())
   if (now === undefined) return
   await quietly(() => update($, elsewhereState, held => afterRead(held, read, now)))

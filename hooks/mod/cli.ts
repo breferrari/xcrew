@@ -105,6 +105,13 @@ export class StillBuilding extends Error {
   }
 }
 
+/**
+ * The time a call nobody waits on has, as a timer's or a task's no result waits for: the mods API's own default for
+ * running a process, 30 s when a call names no `timeoutMs` (its types' doc). The mod passes no limit of its own for
+ * such a call, and tells the CLI this one, to pass down to its commands.
+ */
+export const UNWAITED_MS = 30_000
+
 /** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
 const RECHECK_MS = 30_000
 

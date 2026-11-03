@@ -44,7 +44,7 @@ type ProjectAnswer = { isGenerated: boolean; readsYaml?: boolean; setup?: string
  * it was spawned rather than run, and whether the shim was asked to run only a build that's there (`--if-built`, left
  * out of `args`).
  */
-export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number; spawned?: true; ifBuilt?: true }
+export type CliCall = { args: readonly string[]; stdin?: string; program?: string; timeoutMs?: number; within?: string; spawned?: true; ifBuilt?: true }
 
 /** A command's arguments as the shim runs them, without a leading `--if-built`, which only asks it to run a build that's there. */
 export function withoutIfBuilt(args: readonly string[]): readonly string[] {
@@ -129,7 +129,8 @@ export function stubCli(
     // The shim's `--if-built` runs only a build that's there, and answers 75 (EX_TEMPFAIL) when there's none.
     const ifBuilt = asked[0] === '--if-built'
     const args = withoutIfBuilt(asked)
-    calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }), ...(ifBuilt ? { ifBuilt: true as const } : {}) })
+    const within = e.init?.env?.XCREW_WITHIN_MS
+    calls.push({ args, ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }), ...(program.endsWith('/bin/xcrew') ? {} : { program }), ...(timeoutMs === undefined ? {} : { timeoutMs }), ...(within === undefined ? {} : { within }), ...(ifBuilt ? { ifBuilt: true as const } : {}) })
     if (ifBuilt && (answers.noBuild || answers.built?.() === false)) return { value: { exitCode: 75, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (args[0] === 'doctor' && answers.doctorFails?.()) throw new Error('timed out')
     if (args[0] === 'report' && answers.reportFails?.()) throw new Error('timed out')
