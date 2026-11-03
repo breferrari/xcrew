@@ -19,10 +19,10 @@ struct LookCommand: Command {
         let context = invocation.context
         guard invocation.arguments.positional.count <= 1 else { throw UsageError(description: "look takes one test at most (xcrew look --help)") }
         let bundleOption = invocation.arguments["bundle"]
-        let named = Self.given(bundleOption)
-        guard bundleOption == nil || named != nil else { throw UsageError(description: "look's --bundle names no result bundle (xcrew look --help)") }
-        let newest = if named == nil { await ResultBundle.newest(project: context.project.root, machine: context.machine) } else { String?.none }
-        guard let path = named ?? newest else {
+        let givenBundle = Self.given(bundleOption)
+        guard bundleOption == nil || givenBundle != nil else { throw UsageError(description: "look's --bundle names no result bundle (xcrew look --help)") }
+        let newest = if givenBundle == nil { await ResultBundle.newest(project: context.project.root, machine: context.machine) } else { String?.none }
+        guard let path = givenBundle ?? newest else {
             invocation.print(Self.noBundle)
             return 1
         }

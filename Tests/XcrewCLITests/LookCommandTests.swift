@@ -73,16 +73,18 @@ import XcrewTestSupport
         #expect(run.text.hasPrefix("xcrew look: Outer/Inner/it's red, in Run.xcresult\n"), "\(run.text)")
     }
 
-    /// An empty test, quoted `''` or not, is none: look looks at the bundle's every failed test. An empty bundle names none to
-    /// read, which look says rather than read another.
-    @Test func anEmptyQuotedTestIsNoneAndAnEmptyBundleIsRefused() async {
+    /// An empty test, quoted `''` or not, is none: look looks at the bundle's every failed test. An empty bundle, quoted
+    /// or not, names none to read, which look says rather than read another.
+    @Test func anEmptyTestIsNoneAndAnEmptyBundleIsRefused() async {
         for test in ["''", ""] {
             let run = await Run("look", test, "--bundle", "/runs/Run.xcresult", context: context([Self.listing("/runs/Run.xcresult"): Self.passed]))
             #expect(run.text == "xcrew: nothing failed in Run.xcresult", "\(run.text)")
         }
-        let empty = await Run("look", "--bundle", "''", context: context())
-        #expect(empty.status == 64)
-        #expect(empty.errors == ["look's --bundle names no result bundle (xcrew look --help)"])
+        for bundle in ["''", ""] {
+            let empty = await Run("look", "--bundle", bundle, context: context())
+            #expect(empty.status == 64)
+            #expect(empty.errors == ["look's --bundle names no result bundle (xcrew look --help)"])
+        }
     }
 
     /// `Target/Suite/test()` is a test the bundle names `Suite/test()` when it lists no `Target/Suite/test()`: the target

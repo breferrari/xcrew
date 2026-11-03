@@ -488,12 +488,13 @@ import Testing
     /// The failure notes' pointer to `look` names the tool the mod registers and the CLI's command, and the result bundle's
     /// own spelling of a test in a nested suite, quoted so a shell passes the name on as it is.
     @Test func theFailureNotesPointToLookByItsNames() throws {
-        let name = try #require(try text("hooks/mod/look.ts").firstMatch(of: /export const LOOK_TOOL = \{\n  name: '(\w+)'/)?.1)
+        let tool = try text("hooks/mod/look.ts")
+        let name = try #require(tool.firstMatch(of: /export const LOOK_TOOL = \{\n  name: '(\w+)'/)?.1)
         let line = FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/runs/Run.xcresult")
         #expect(line.contains("`\(name)` tool"))
         #expect(line.contains("`xcrew \(LookCommand().name) Suite/test --bundle /runs/Run.xcresult`"))
         // The look tool's description names a nested suite's test as look's own lines do.
-        #expect(try text("hooks/mod/look.ts").contains("names it, \(TestID(xcresultID: "Outer/Inner/test()").lookName).\""))
+        #expect(tool.contains("names it, \(TestID(xcresultID: "Outer/Inner/test()").lookName).\""))
         #expect(Look.noRecording(in: "Run.xcresult", bundle: "/runs/Run.xcresult").contains("`xcrew \(LookCommand().name) <Suite/test> --bundle /runs/Run.xcresult`"))
         #expect(FailureNotes.lookLine(TestID(xcresultID: "Outer/Inner/testX()"), bundle: "/b.xcresult").contains("`xcrew look 'Outer/Inner/testX()' --bundle /b.xcresult`"))
         #expect(FailureNotes.lookLine(TestID(xcresultID: "Outer/Inner/sizes(value:)"), bundle: "/b.xcresult").contains("`xcrew look 'Outer/Inner/sizes(value:)' --bundle /b.xcresult`"))
