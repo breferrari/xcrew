@@ -129,6 +129,14 @@ struct BundleFailuresTests {
         #expect(Report.inRunOrder(bundled, text: text).map(\.title) == ["Later/test", "A/Inner/test", "B/Inner/test"])
     }
 
+    /// A name the text lists twice, as a parallel run's clones may, is its own test's both times: never a nested suite's
+    /// test whose name ends with it.
+    @Test func aNameListedTwiceIsItsOwnTestsBothTimes() {
+        let bundled = ["Later/test", "Inner/test", "A/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
+        let text = ["Inner/test", "Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
+        #expect(Report.inRunOrder(bundled, text: text).map(\.title) == ["Inner/test", "Later/test", "A/Inner/test"])
+    }
+
     /// A nested suite's failed test has no images kept under the end of its name: those are a test of that name's own,
     /// as the notes look a test's up under the name the text gives it.
     @Test func aNestedSuitesTestHasNoImagesOfATestNamedAsItsEnd() {

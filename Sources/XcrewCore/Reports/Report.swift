@@ -116,13 +116,14 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// The bundle's failed tests in the order the run reported them, the text's: the bundle lists its own by plan,
-    /// target and suite. Each test the text lists takes its place there, a nested suite's test matched by the end of the
-    /// bundle's name for it when no other's ends the same way, as the text names it from its own suite, with the bundle's
-    /// name and content, the text's message and place where the bundle gives none; a test only the bundle lists comes
-    /// after; the text's other failures stay where they were. A test only the text lists, as a retry the bundle counts
-    /// passed, is none of the run's failures.
+    /// target and suite. Each test the text lists takes its place there, with the bundle's name and content, the text's
+    /// message and place where the bundle gives none. The text names a nested suite's test from its own suite, and the
+    /// bundle from the outermost: it's matched by the end of the bundle's name for it, when no other's ends the same way
+    /// and none is the text's whole. A test only the bundle lists comes after; the text's other failures stay where
+    /// they were. A test only the text lists, as a retry the bundle counts passed, is none of the run's failures.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
+        let named = Set(pending.map(\.test))
         var ordered: [ToolOutput.Failure] = []
         for failure in text {
             guard failure.isTest else {
@@ -130,8 +131,12 @@ public struct Report: Sendable, Equatable, Codable {
                 continue
             }
             let test = TestID(xcresultID: failure.title)
-            let nested = pending.indices.filter { test.isNested(in: pending[$0].test) }
-            if let index = pending.firstIndex(where: { $0.test == test }) ?? (nested.count == 1 ? nested.first : nil) {
+            let index = pending.firstIndex { $0.test == test } ?? {
+                guard !named.contains(test) else { return nil }
+                let nested = pending.indices.filter { test.isNested(in: pending[$0].test) }
+                return nested.count == 1 ? nested.first : nil
+            }()
+            if let index {
                 let found = pending.remove(at: index).failure
                 ordered.append(ToolOutput.Failure(title: found.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
             }
