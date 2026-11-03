@@ -122,7 +122,8 @@ public struct Report: Sendable, Equatable, Codable {
     /// and none is the text's whole. A test only the bundle lists comes after; the text's other failures stay where
     /// they were. A test only the text lists disagrees with the bundle, and is returned once as disagreeing: one the
     /// bundle records under that name, among `recorded`, as a retry it counts passed, is none of the run's failures;
-    /// one it has no entry for stays a failure in its place, as the text gives it, as no record is no sign it passed.
+    /// one it has no entry for stays a failure in its place, as the text gives it, as no record is no sign it passed,
+    /// a later listing of it, as a parallel run's clone's, filling in the message or place the first lacked.
     /// Never one the bundle lists as failed under its name or a nested name ending with it.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], recorded: Set<TestID>) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
