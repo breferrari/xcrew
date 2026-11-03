@@ -119,7 +119,7 @@ struct BundleFailuresTests {
             #"ProbeTests/testGone | XCTAssertEqual failed: ("1") is not equal to ("0") - run 1 is odd"#,
         ])
         #expect(report.notes.filter { $0.contains("MobileBuildMCP's result lists") } == [
-            "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ProbeTests/testGone, which it records no result for under that name. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.",
+            "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ProbeTests/testGone, which it has no entry for under that name. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.",
         ])
     }
 
@@ -156,7 +156,7 @@ struct BundleFailuresTests {
         let report = await Report.make(kind: .test, output: output, home: Captured.home, runner: runner)
         #expect(report.detail == "1 of 4 failed · ProbeTests/testGone")
         #expect(report.failures.filter(\.isTest).map(\.title) == ["ProbeTests/testGone"])
-        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't list among its failures under that name: ProbeTests/testPasses, which it counts as passed; ProbeTests/testGone, which it records no result for under that name. A test the bundle counts as passed, skipped or an expected failure is left out of the failures here. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it."))
+        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't list among its failures under that name: ProbeTests/testPasses, which it counts as passed; ProbeTests/testGone, which it has no entry for under that name. A test the bundle counts as passed, skipped or an expected failure is left out of the failures here. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it."))
     }
 
     /// A test the text lists as failed that the bundle records as `unknown`, as one whose process was killed, stays a
@@ -184,7 +184,8 @@ struct BundleFailuresTests {
                 if let result = node["result"] as? String { found.insert(result) }
             }
         }
-        #expect(found.subtracting(ResultBundle.clearing.map(\.result) + ["Failed", "unknown"]).isEmpty, "\(found.sorted())")
+        #expect(found.subtracting(["Passed", "Expected Failure", "Skipped", "Failed", "unknown"]).isEmpty, "\(found.sorted())")
+        #expect(ResultBundle.clearing.map(\.result) == ["Passed", "Expected Failure", "Skipped"])
         #expect(found.isSuperset(of: ["Passed", "Failed", "Skipped", "Expected Failure"]), "\(found.sorted())")
     }
 

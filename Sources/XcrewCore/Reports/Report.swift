@@ -162,9 +162,10 @@ public struct Report: Sendable, Equatable, Codable {
         guard !tests.isEmpty else { return nil }
         let cleared = ResultBundle.cleared(in: results)
         let named = tests.map { test in
-            guard let found = results[test] else { return "\(test.shown), which it records no result for under that name" }
+            guard let found = results[test] else { return "\(test.shown), which it has no entry for under that name" }
             let clearing = cleared.contains(test) ? ResultBundle.clearing.first { found.contains($0.result) } : nil
-            return "\(test.shown), which it " + (clearing.map { "counts as \($0.counts)" } ?? "records as \(found.map { $0.lowercased() }.sorted().joined(separator: " and "))")
+            let recorded = found.map { result in ResultBundle.clearing.first { $0.result == result }?.counts ?? result.lowercased() }
+            return "\(test.shown), which it " + (clearing.map { "counts as \($0.counts)" } ?? "records as \(recorded.sorted().joined(separator: " and "))")
         }
         let these = named.count == 1 ? "a test its result bundle doesn't list among its failures under that name" : "tests its result bundle doesn't list among its failures under that name"
         let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as passed, skipped or an expected failure is left out of the failures here." : ""
@@ -182,9 +183,9 @@ public struct Report: Sendable, Equatable, Codable {
             guard let first, detail.hasSuffix(ToolOutput.Summary.failedCounts) else { return detail }
             return detail + ToolOutput.Summary.beforeFirstFailing + first
         }
-        let naming = ToolOutput.Summary.beforeFirstFailing + named
-        guard first != named, detail.hasSuffix(naming) else { return detail }
-        return String(detail.dropLast(naming.count)) + (first.map { ToolOutput.Summary.beforeFirstFailing + $0 } ?? "")
+        let namedSuffix = ToolOutput.Summary.beforeFirstFailing + named
+        guard first != named, detail.hasSuffix(namedSuffix) else { return detail }
+        return String(detail.dropLast(namedSuffix.count)) + (first.map { ToolOutput.Summary.beforeFirstFailing + $0 } ?? "")
     }
 
     /// The task Claude Code named in a handle: the one after "moved to the background as task", in each of its wordings

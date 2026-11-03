@@ -141,11 +141,14 @@ public struct ResultBundle: Sendable {
         }
     }
 
-    /// Each test case's results in a test list's nodes, by its id, for each test with one: a test filed more than once,
-    /// as under several configurations, has each of them.
+    /// Each test case's results in a test list's nodes, by its id: a test filed more than once, as under several
+    /// configurations, has each of them, and an entry with none has `noResult`.
     static func results(in nodes: [[String: Any]]) -> [TestID: Set<String>] {
-        testCases(in: nodes).mapValues { Set($0.compactMap { $0["result"] as? String }) }.filter { !$0.value.isEmpty }
+        testCases(in: nodes).mapValues { Set($0.map { $0["result"] as? String ?? noResult }) }
     }
+
+    /// What `results(in:)` gives for an entry that records no result.
+    static let noResult = "no result"
 
     /// The tests among `results` the bundle counts as passed, skipped or an expected failure in every entry: no failure
     /// whatever another listing says. A test of one name with another result in any entry, as `unknown` for one whose
@@ -160,20 +163,12 @@ public struct ResultBundle: Sendable {
     static let clearing: [(result: String, counts: String)] = [("Passed", "passed"), ("Expected Failure", "an expected failure"), ("Skipped", "skipped")]
 
     /// Each test the run's test list counts passed: a retried test that passed on a later try among them, as
-    /// MobileBuildMCP's count has it, its earlier failure only in its repetitions. Never one a test of the same id failed
-    /// in another target, or was recorded `unknown` in, as one whose process was killed: the report doesn't list a test
-    /// as both failed and passed.
+    /// MobileBuildMCP's count has it, its earlier failure only in its repetitions. Never one with an entry of another
+    /// result, as one of the same id failed in another target or recorded `unknown` in, as one whose process was
+    /// killed: the report doesn't list a test as both failed and passed.
     static func passedTests(listing: TestList) -> Set<TestID> {
-        var passed: Set<TestID> = [], notPassed: Set<TestID> = []
-        for node in listing.nodes where node["nodeType"] as? String == "Test Case" {
-            guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)) else { continue }
-            switch node["result"] as? String {
-            case "Passed": passed.insert(id)
-            case "Failed", "unknown": notPassed.insert(id)
-            default: break
-            }
-        }
-        return passed.subtracting(notPassed)
+        let results = Self.results(in: listing.nodes)
+        return cleared(in: results).filter { results[$0]?.contains("Passed") == true }
     }
 
     /// Each test `passedTests` counts passed, once per test bundle it passed in, the bundle its target, as `Suite/test`; a

@@ -66,7 +66,7 @@ struct RunOrderTests {
     @Test func theNoteReadsADisagreeingTestByTheTextsName() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Outer/Inner/testFlaky()","result":"Passed"}]}"#)
         #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "testFlaky")], results: ResultBundle.results(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Inner/testFlaky, which it records no result for under that name. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Inner/testFlaky, which it has no entry for under that name. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
     }
 
     /// The note names several disagreeing tests, each with what the bundle records under its name.
@@ -100,6 +100,23 @@ struct RunOrderTests {
         #expect(ResultBundle.cleared(in: results).isEmpty)
         #expect(Report.notFailedInBundleNote([TestID(suite: "ModelTests", name: "testDecode")], results: results)
             == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: ModelTests/testDecode, which it records as passed and unknown. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
+    }
+
+    /// A test one of whose entries records no result isn't cleared, nor passed, though another passed: no result is no
+    /// sign it passed.
+    @Test func aTestWithAnEntryRecordingNoResultIsNeitherClearedNorPassed() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed"},{"nodeType":"Test Case","nodeIdentifier":"Suite/test()"}]}"#)
+        #expect(ResultBundle.cleared(in: ResultBundle.results(in: listing.nodes)).isEmpty)
+        #expect(ResultBundle.passedTests(listing: listing).isEmpty)
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], results: ResultBundle.results(in: listing.nodes))
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Suite/test, which it records as no result and passed. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
+    }
+
+    /// A kept test's results read as the note words them elsewhere: an expected failure with its article.
+    @Test func aKeptTestsExpectedFailureReadsAsTheNoteWordsIt() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Expected Failure"},{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"unknown"}]}"#)
+        #expect(Report.notFailedInBundleNote([TestID(suite: "Suite", name: "test")], results: ResultBundle.results(in: listing.nodes))
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Suite/test, which it records as an expected failure and unknown. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
     }
 
     /// A disagreeing test the bundle files more than once, as under two configurations, skipped in one and passed in the
