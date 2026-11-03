@@ -72,25 +72,24 @@ public struct ResultBundle: Sendable {
         guard listing.isListing else { return nil }
         let found = listing.nodes
         let cases = testCases(in: found)
-        let targets = bundles(in: listing, result: "Failed")
+        let targets = Self.targets(listing: listing)
         var listed: Set<String> = []
         return failedTests(in: found).compactMap { test in
             let first = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
-            let found = first.map { Self.failure($0) }
-            let line = found?.line ?? "", location = found?.location
+            let parsed = first.map { Self.failure($0) }
+            let line = parsed?.line ?? "", location = parsed?.location
             let place = location.map { "\(ToolOutput.basename($0.file)):\($0.line)" }
             // A crash filed under `System Failures` is its test's, the one its message names, as the text's line is, with
             // its test bundle; one naming no test is no test's, and the text's line says it (docs/findings.md, *A crash
             // under System Failures*).
             let caseName = cases[test]?.first?["name"] as? String ?? ""
             var named = test
-            if caseName.wholeMatch(of: #/xctest \(\d+\) encountered an error/#) != nil {
+            if MobileBuildMCPLine.isProcessCrash(caseName) {
                 guard let crashed = MobileBuildMCPLine.crashedTest(message: line) else { return nil }
                 named = crashed
             }
             guard listed.insert(named.shown).inserted else { return nil }
-            let target = targets[test].flatMap { $0.count == 1 ? $0.first : nil }
-            return ToolOutput.Failure(title: named.shown, message: line, where: place, isTest: true, target: target)
+            return ToolOutput.Failure(title: named.shown, message: line, where: place, isTest: true, target: targets[test])
         }
     }
 

@@ -106,13 +106,12 @@ public struct Report: Sendable, Equatable, Codable {
         (try? URL(fileURLWithPath: String(path)).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
-    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest;
-    /// and its target, from the result bundle, for the ledger.
-    static func attaching(_ images: [TestID: FailureImages], targets: [TestID: String] = [:], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
+    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest.
+    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
         failures.map { failure in
             guard failure.isTest else { return failure }
             let test = TestID(xcresultID: failure.title)
-            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: images[test]?.shown, moreImages: images[test]?.more, target: targets[test] ?? failure.target)
+            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: images[test]?.shown, moreImages: images[test]?.more, target: failure.target)
         }
     }
 
@@ -325,7 +324,6 @@ public struct Report: Sendable, Equatable, Codable {
         // A failing test run's failed tests are its result bundle's, each failing test's target too; the text's only
         // without a test list to read. Its other failures, the build's and the process's, are the text's.
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
-        let targets = ResultBundle.targets(listing: listing)
         let failures = ResultBundle.failedTests(listing: listing).map { Self.inRunOrder($0, text: final.failures) } ?? final.failures
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
@@ -348,7 +346,7 @@ public struct Report: Sendable, Equatable, Codable {
             detail: Self.naming(summary.detail, first: failures.first(where: \.isTest)?.title, insteadOf: final.failures.first(where: \.isTest)?.title),
             durationMs: final.reportedDuration,
             tests: tests,
-            failures: summary.ok ? [] : Self.attaching(images, targets: targets, to: failures),
+            failures: summary.ok ? [] : Self.attaching(images, to: failures),
             result: comesBack ? shortened : nil,
             notes: notes,
             repeated: repeatedTests,

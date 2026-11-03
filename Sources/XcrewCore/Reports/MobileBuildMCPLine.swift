@@ -69,10 +69,16 @@ enum MobileBuildMCPLine {
     /// `System Failures`, as `xctest (<pid>) encountered an error`, is its test's when its message names one; else it's
     /// no test's failure (docs/findings.md, *A crash under System Failures*).
     static func test(in entry: String) -> (test: TestID, message: String)? {
-        if let crash = entry.wholeMatch(of: #/System Failures \/ xctest \(\d+\) encountered an error: (Crash: .*)/#) {
-            return crashedTest(message: String(crash.1)).map { ($0, String(crash.1)) }
+        if let crash = entry.wholeMatch(of: #/System Failures \/ (.+?): (Crash: .*)/#), isProcessCrash(String(crash.1)) {
+            return crashedTest(message: String(crash.2)).map { ($0, String(crash.2)) }
         }
         return entry.firstMatch(of: #/^(.+?) \/ (\S+?): (.*)$/#).map { (TestID(suite: $0.1, name: $0.2), String($0.3)) }
+    }
+
+    /// Whether a test case's name is the one the result bundle files a crash under in `System Failures`, its test
+    /// process's, `xctest (<pid>) encountered an error`.
+    static func isProcessCrash(_ name: String) -> Bool {
+        name.wholeMatch(of: #/xctest \(\d+\) encountered an error/#) != nil
     }
 
     /// A failure's message as written: XCTest words an `XCTFail` as `failed - <message>`.
