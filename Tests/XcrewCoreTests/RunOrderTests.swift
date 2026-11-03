@@ -196,6 +196,14 @@ struct RunOrderTests {
         #expect(Report.naming("1 of 4 failed · Inner/test", first: other, insteadOf: "Inner/test")?.count == 100)
     }
 
+    /// The note names five disagreeing tests at most and says where the rest are.
+    @Test func theNoteNamesFiveTestsAtMost() {
+        let tests = (1...7).map { TestID(suite: "Suite", name: "t\($0)") }
+        let note = Report.notFailedInBundleNote(tests, results: [:]) ?? ""
+        #expect(note.contains("Suite/t5, which the bundle has no entry for under that name; and 2 more, each among MobileBuildMCP's failures in the result."))
+        #expect(!note.contains("Suite/t6"))
+    }
+
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure
     /// once when the bundle has no entry for it.
     @Test func aTestOnlyTheTextListsTwiceDisagreesOnce() {

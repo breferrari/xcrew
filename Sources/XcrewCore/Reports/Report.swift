@@ -156,7 +156,8 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// The tests the text lists as failed that aren't among the bundle's failures, each with what the bundle records
     /// under the name the text gives, `results` each recorded test's results: every one it records, the clearing ones
-    /// first, as passed and skipped for one skipped under another configuration. Nil when there are none.
+    /// first, as passed and skipped for one skipped under another configuration. It names `ResultBundle.mostNamed` at
+    /// most and counts the rest, each among MobileBuildMCP's failures in the result. Nil when there are none.
     static func notFailedInBundleNote(_ tests: [TestID], results: [TestID: Set<String>]) -> String? {
         guard !tests.isEmpty else { return nil }
         let cleared = ResultBundle.cleared(in: results)
@@ -171,7 +172,8 @@ public struct Report: Sendable, Equatable, Codable {
         let clearing = ResultBundle.joined(ResultBundle.clearing.map(\.counts), or: true, rest: "the rest of them")
         let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as \(clearing) is left out of the failures here." : ""
         let kept = tests.contains { !cleared.contains($0) } ? " A test the bundle doesn't count as \(clearing) in every entry, test plan configuration and device stays in the failures here, as MobileBuildMCP gives it." : ""
-        return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.joined(separator: "; ")).\(leftOut)\(kept)"
+        let more = named.count > ResultBundle.mostNamed ? "; and \(named.count - ResultBundle.mostNamed) more, each among MobileBuildMCP's failures in the result" : ""
+        return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.prefix(ResultBundle.mostNamed).joined(separator: "; "))\(more).\(leftOut)\(kept)"
     }
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one

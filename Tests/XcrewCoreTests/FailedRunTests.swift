@@ -98,10 +98,11 @@ import Testing
         FailedRun.read(activities: activities, passedUnder: FailedRun.passedConfigurations(of: ResultBundle.testCases(in: TestList(listing).nodes)[test] ?? []))?.passed ?? []
     }
 
-    /// A configuration a retry passed is a pass: its earlier failure, on a device below a repetition, stays there.
-    @Test func aConfigurationARetryPassedIsAPass() {
+    /// The test list's word on a configuration a retry passed is a pass: its earlier failure, on a device below a
+    /// repetition, stays there. `look` still drops one with a failed run of its own in the activities.
+    @Test func theTestListsWordOnAConfigurationARetryPassedIsAPass() {
         let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"T/t()","name":"t()","result":"Failed","children":[{"nodeType":"Test Plan Configuration","name":"Light","result":"Passed","children":[{"nodeType":"Repetition","name":"First Run","result":"Failed","children":[{"nodeType":"Device","name":"A","result":"Failed"}]},{"nodeType":"Repetition","name":"Retry 1","result":"Passed","children":[{"nodeType":"Device","name":"A","result":"Passed"}]}]},{"nodeType":"Test Plan Configuration","name":"Dark","result":"Failed"}]}]}"#
-        #expect(Self.passed(Self.runs([("Light", false), ("Dark", true)]), listing, TestID(suite: "T", name: "t")) == ["Light · iPhone 17, iOS 27.2"])
+        #expect(FailedRun.passedConfigurations(of: ResultBundle.testCases(in: TestList(listing).nodes)[TestID(suite: "T", name: "t")] ?? []) == ["Light"])
     }
 
     /// A device node that carries no result says nothing either way, and doesn't hide a pass.
