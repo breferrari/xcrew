@@ -56,6 +56,13 @@ struct RunOrderTests {
             == "xcrew: MobileBuildMCP's text lists as failed a test its result bundle doesn't: Inner/testFlaky, which it doesn't list under that name. The tests listed as failed here are the bundle's.")
     }
 
+    /// The note names several dropped tests, each with what the bundle records under its name.
+    @Test func theNoteNamesSeveralDroppedTestsEachWithItsResult() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/skipped()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/expected()","result":"Expected Failure"}]}"#)
+        #expect(Report.notFailedInBundleNote(["skipped", "expected"].map { TestID(suite: "Suite", name: $0) }, listing: listing)
+            == "xcrew: MobileBuildMCP's text lists as failed tests its result bundle doesn't: Suite/skipped, which it counts as skipped; Suite/expected, which it counts as an expected failure. The tests listed as failed here are the bundle's.")
+    }
+
     /// A dropped test the bundle files more than once, as under two configurations, counts as passed when one passed.
     @Test func theNoteCountsATestFiledTwiceAsPassedWhenOnePassed() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Skipped"},{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed"}]}"#)

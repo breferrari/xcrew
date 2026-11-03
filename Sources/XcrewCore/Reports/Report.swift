@@ -175,8 +175,8 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
-    /// is no failure, and after it when the text names none. With no failing test, the one the text named goes: the
-    /// failures come from the text unless the bundle listed them, so it named a test the bundle doesn't count as failed.
+    /// is no failure, and after it when the text names none. With no failing test, `first` nil, the one the text named
+    /// goes.
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail else { return nil }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
@@ -382,6 +382,10 @@ public struct Report: Sendable, Equatable, Codable {
                 passedTests = ResultBundle.passed(listing: await testList())
             }
         }
+        // With no failing test left, the one the text named goes only when the bundle records it under that name: one it
+        // doesn't list, as a crash kept out, may have failed.
+        let textsFirst = final.failures.first(where: \.isTest)?.title
+        let firstFailing = failures.first(where: \.isTest)?.title ?? textsFirst.flatMap { ResultBundle.testCases(in: listing.nodes)[TestID(xcresultID: $0)] == nil ? $0 : nil }
         let isUnread = kind != .run && !final.isError && final.isNotTheServers
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         // What xcrew made of the result comes back in its place, but for a saved result only once it's under the size Claude
@@ -390,7 +394,7 @@ public struct Report: Sendable, Equatable, Codable {
         let comesBack = shortened.map { saved == nil || $0.utf16.count < Self.savedFrom } ?? false
         return Report(
             ok: summary.ok,
-            detail: Self.naming(summary.detail, first: failures.first(where: \.isTest)?.title, insteadOf: final.failures.first(where: \.isTest)?.title),
+            detail: Self.naming(summary.detail, first: firstFailing, insteadOf: textsFirst),
             durationMs: final.reportedDuration,
             tests: tests,
             failures: summary.ok ? [] : Self.attaching(images, to: failures),
