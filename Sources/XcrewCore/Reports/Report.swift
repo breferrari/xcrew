@@ -116,6 +116,28 @@ public struct Report: Sendable, Equatable, Codable {
         }
     }
 
+    /// The bundle's failed tests in the run's order, the text's, which the bundle's own, by plan, target and suite,
+    /// isn't: each in the text's place with the bundle's content, a test the text leaves out after those it lists, and
+    /// the text's other failures where they were. A failed test of the text's the bundle counts passed, as a retry that
+    /// passed, is none.
+    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], passed: Set<TestID>) -> [ToolOutput.Failure] {
+        var pending = Dictionary(bundled.map { (TestID(xcresultID: $0.title), $0) }) { first, _ in first }
+        var ordered: [ToolOutput.Failure] = []
+        for failure in text {
+            guard failure.isTest else {
+                ordered.append(failure)
+                continue
+            }
+            let test = TestID(xcresultID: failure.title)
+            if let found = pending.removeValue(forKey: test) {
+                ordered.append(ToolOutput.Failure(title: found.title, message: found.message, where: found.where ?? failure.where, isTest: true))
+            } else if !passed.contains(test) {
+                ordered.append(failure)
+            }
+        }
+        return ordered + bundled.filter { pending[TestID(xcresultID: $0.title)] != nil }
+    }
+
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
     /// is no failure.
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
@@ -299,12 +321,11 @@ public struct Report: Sendable, Equatable, Codable {
         // Which Xcode builds, where it can explain the failure.
         notes += await xcodeFacts.notes
 
-        // A failing test's target, from the run's test list, which skips and expected failures read too. A test the list
-        // counts passed, such as a retry that passed, is no failure, though MobileBuildMCP's text lists it.
-        let listing = if bundle != nil, !summary.ok, final.failures.contains(where: \.isTest) { await testList() } else { TestList("") }
+        // A failing test run's failed tests are its result bundle's, each failing test's target too; the text's only
+        // without a test list to read. Its other failures, the build's and the process's, are the text's.
+        let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let targets = ResultBundle.targets(listing: listing)
-        let passed = ResultBundle.passedTests(listing: listing)
-        let failures = final.failures.filter { !$0.isTest || !passed.contains(TestID(xcresultID: $0.title)) }
+        let failures = ResultBundle.failedTests(listing: listing).map { Self.inRunOrder($0, text: final.failures, passed: ResultBundle.passedTests(listing: listing)) } ?? final.failures
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?

@@ -65,14 +65,20 @@ public struct ResultBundle: Sendable {
     }
 
     /// Each failed test in `xcresulttool get test-results tests` output, once whatever configurations it failed under,
-    /// with its first failure message; nil when the output isn't a listing, as when `xcresulttool` couldn't read the bundle.
+    /// with its first failure's message as MobileBuildMCP's text words it, its first line without XCTest's `failed - `,
+    /// and its place as `File.swift:line`; nil when the output isn't a listing, as when `xcresulttool` couldn't read the
+    /// bundle.
     static func failedTests(listing: TestList) -> [ToolOutput.Failure]? {
         guard listing.isListing else { return nil }
         let found = listing.nodes
         let cases = testCases(in: found)
         return failedTests(in: found).map { test in
-            let message = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" }?["name"] as? String }.first
-            return ToolOutput.Failure(title: test.shown, message: message ?? "", isTest: true)
+            let first = cases[test]?.lazy.compactMap { nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }.first
+            let name = first?["name"] as? String ?? ""
+            let line = name.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? name
+            let location = first?["sourceLocation"] as? [String: Any]
+            let place = (location?["filePath"] as? String).flatMap { file in (location?["lineNumber"] as? Int).map { "\(ToolOutput.basename(file)):\($0)" } }
+            return ToolOutput.Failure(title: test.shown, message: line.replacing(#/^failed\s*-\s*/#, with: ""), where: place, isTest: true)
         }
     }
 
