@@ -107,19 +107,23 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest.
+    /// The notes keep a nested suite's test's under the text's name, from its own suite, and the bundle's names it from
+    /// the outermost: its images are the only ones kept under a name its own ends with.
     static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
         failures.map { failure in
             guard failure.isTest else { return failure }
-            let test = TestID(xcresultID: failure.title)
-            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: images[test]?.shown, moreImages: images[test]?.more, target: failure.target)
+            let nested = images.filter { failure.title.hasSuffix("/\($0.key.shown)") }
+            let found = images[TestID(xcresultID: failure.title)] ?? (nested.count == 1 ? nested.first?.value : nil)
+            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: found?.shown, moreImages: found?.more, target: failure.target)
         }
     }
 
     /// The bundle's failed tests in the order the run reported them, the text's: the bundle lists its own by plan,
-    /// target and suite. Each test the text lists takes its place there under its name, which a nested suite's test has
-    /// from its own suite where the bundle names it from the outermost, with the bundle's content, the text's message
-    /// and place where the bundle gives none; a test only the bundle lists comes after; the text's other failures stay
-    /// where they were. A test only the text lists, as a retry the bundle counts passed, is none of the run's failures.
+    /// target and suite. Each test the text lists takes its place there, a nested suite's test matched by the end of the
+    /// bundle's name for it, as the text names it from its own suite, with the bundle's name and content, the text's
+    /// message and place where the bundle gives none; a test only the bundle lists comes after; the text's other
+    /// failures stay where they were. A test only the text lists, as a retry the bundle counts passed, is none of the
+    /// run's failures.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
         var pending = bundled
         var ordered: [ToolOutput.Failure] = []
@@ -131,7 +135,7 @@ public struct Report: Sendable, Equatable, Codable {
             let test = TestID(xcresultID: failure.title).shown
             if let index = pending.firstIndex(where: { TestID(xcresultID: $0.title).shown == test }) ?? pending.firstIndex(where: { $0.title.hasSuffix("/\(test)") }) {
                 let found = pending.remove(at: index)
-                ordered.append(ToolOutput.Failure(title: failure.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
+                ordered.append(ToolOutput.Failure(title: found.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
             }
         }
         return ordered + pending

@@ -105,8 +105,8 @@ struct BundleFailuresTests {
     }
 
     /// A test in a nested suite, which the bundle names from its outermost suite and the text from its own, takes its
-    /// place in the run's order under the text's name, its images' and the ledger's.
-    @Test func aNestedSuitesTestTakesItsPlaceUnderTheTextsName() {
+    /// place in the run's order under the bundle's name, the one the bundle's passed tests give the ledger.
+    @Test func aNestedSuitesTestTakesItsPlaceUnderTheBundlesName() {
         let bundled = [
             ToolOutput.Failure(title: "Later/test", message: "second", isTest: true),
             ToolOutput.Failure(title: "Outer/Inner/test", message: "first", where: "Inner.swift:7", isTest: true, target: "FeatureTests"),
@@ -116,9 +116,16 @@ struct BundleFailuresTests {
             ToolOutput.Failure(title: "Later/test", message: "the text's second", isTest: true),
         ]
         #expect(Report.inRunOrder(bundled, text: text).map { "\($0.title) | \($0.message) | \($0.where ?? "-") | \($0.target ?? "-")" } == [
-            "Inner/test | first | Inner.swift:7 | FeatureTests",
+            "Outer/Inner/test | first | Inner.swift:7 | FeatureTests",
             "Later/test | second | - | -",
         ])
+    }
+
+    /// A nested suite's failed test has the images the notes kept under the text's name for it.
+    @Test func aNestedSuitesTestHasTheImagesKeptUnderTheTextsName() {
+        let images = [TestID(suite: "Inner", name: "test"): FailureImages(paths: ["/run/Inner/test/screen.png"], folder: "/run/Inner/test")]
+        let failures = [ToolOutput.Failure(title: "Outer/Inner/test", message: "first", isTest: true)]
+        #expect(Report.attaching(images, to: failures).map(\.images) == [["/run/Inner/test/screen.png"]])
     }
 
     /// A failed test the bundle gives no message keeps the text's, as it keeps its place when the bundle gives none.
