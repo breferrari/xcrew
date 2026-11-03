@@ -323,7 +323,6 @@ public struct Report: Sendable, Equatable, Codable {
             parsed = list
             return list
         }
-        // The test list's ids, a test the text names found among them by the one rule, built once.
         var built: TestLookup?
         func testLookup() async -> TestLookup {
             if let built { return built }

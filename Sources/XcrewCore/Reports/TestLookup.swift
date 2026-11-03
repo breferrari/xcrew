@@ -44,7 +44,7 @@ struct TestLookup {
         self.byEnding = byEnding.mapValues { $0.sorted { $0.shown < $1.shown } }
     }
 
-    /// Ids with no cases to read, as the failures a run order matches.
+    /// Ids alone, the rule read without a test list: its `cases` hold nothing to read.
     init(ids: Set<TestID>) {
         self.init(cases: Dictionary(uniqueKeysWithValues: ids.map { ($0, []) }))
     }
