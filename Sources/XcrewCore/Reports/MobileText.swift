@@ -309,9 +309,15 @@ struct MobileText: Sendable {
             return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
         }
         let ending = lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
-        var counted = lines[heading].text
-        if let count = MobileBuildMCPLine.failureCount(in: counted) { counted.replaceSubrange(count.range, with: "Test Failures (\(count.count + failures.count)):") }
-        return MobileText(lines: Array(lines[..<heading]) + [Line(counted)] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
+        return MobileText(lines: Array(lines[..<heading]) + [Self.counting(lines[heading], by: failures.count)] + Array(lines[(heading + 1)..<ending]) + listed + Array(lines[ending...]))
+    }
+
+    /// A Test Failures heading with its count moved by `change`; as it is when it holds no count.
+    static func counting(_ heading: Line, by change: Int) -> Line {
+        guard let count = MobileBuildMCPLine.failureCount(in: heading.text) else { return heading }
+        var counted = heading.text
+        counted.replaceSubrange(count.range, with: "Test Failures (\(count.count + change)):")
+        return Line(counted)
     }
 
     /// The text without the Test Failures lines of `tests`: each one's `✗` line and the lines below it up to the blank one
@@ -322,7 +328,7 @@ struct MobileText: Sendable {
         var inRemoved = false
         for line in lines {
             if inRemoved {
-                if line.text.isEmpty { inRemoved = false; continue }
+                if line.isBlank { inRemoved = false; continue }
                 if line.text.hasPrefix("    ") { continue }
                 inRemoved = false
             }
@@ -334,11 +340,7 @@ struct MobileText: Sendable {
             kept.append(line)
         }
         guard removed > 0 else { return nil }
-        if let heading = kept.firstIndex(where: { $0.isHeading(.testFailures) }), let count = MobileBuildMCPLine.failureCount(in: kept[heading].text) {
-            var counted = kept[heading].text
-            counted.replaceSubrange(count.range, with: "Test Failures (\(count.count - removed)):")
-            kept[heading] = Line(counted)
-        }
+        if let heading = kept.firstIndex(where: { $0.isHeading(.testFailures) }) { kept[heading] = Self.counting(kept[heading], by: -removed) }
         return MobileText(lines: kept)
     }
 
