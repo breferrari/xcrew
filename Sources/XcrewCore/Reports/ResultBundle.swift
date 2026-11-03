@@ -98,10 +98,10 @@ public struct ResultBundle: Sendable {
     /// message names `test`, from `cases`, the test list's test cases by id; nil when there's none.
     static func crashCase(of test: TestID, in cases: [TestID: [[String: Any]]]) -> TestID? {
         guard cases[test] == nil else { return nil }
-        return cases.sorted { $0.key.shown < $1.key.shown }.first { _, filed in
+        return cases.filter { _, filed in
             guard MobileBuildMCPLine.isProcessCrash(filed.first?["name"] as? String ?? ""), let message = firstFailureMessage(in: filed) else { return false }
             return MobileBuildMCPLine.crashedTest(message: failure(message).line) == test
-        }?.key
+        }.keys.min { $0.xcresultID < $1.xcresultID }
     }
 
     /// The first `Failure Message` node below a test's cases.
@@ -134,8 +134,7 @@ public struct ResultBundle: Sendable {
             guard node["nodeType"] as? String == "Test Case", node["result"] as? String == "Failed",
                   let test = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), !seen.contains(test) else { return nil }
             let failed = nodes(node["children"]).filter { $0["nodeType"] as? String == "Repetition" && $0["result"] as? String == "Failed" }
-            guard let message = failed.lazy.compactMap({ nodes($0["children"]).first { $0["nodeType"] as? String == "Failure Message" } }).first,
-                  message["name"] is String else { return nil }
+            guard let message = firstFailureMessage(in: failed), message["name"] is String else { return nil }
             seen.insert(test)
             // The full path, as the text's own location lines write it, where these are written.
             let (line, location) = Self.failure(message)

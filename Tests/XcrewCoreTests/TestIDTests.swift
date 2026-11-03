@@ -36,4 +36,9 @@ import Testing
         #expect(TestID(suite: "Inner", name: "fails").resolved(among: ids) == .ambiguous([TestID(xcresultID: "A/Inner/fails()"), TestID(xcresultID: "B/Inner/fails()")]))
         #expect(TestID(suite: "Inner", name: "gone").resolved(among: ids) == .missing)
     }
+
+    /// An id with no `/`, as the case a crash under `System Failures` is filed as, asks xcresulttool by itself.
+    @Test func anIDWithoutASlashAsksXcresulttoolByItself() {
+        #expect(TestID(xcresultID: "xctest (80341) encountered an error").xcresultID == "xctest (80341) encountered an error")
+    }
 }

@@ -350,10 +350,10 @@ public struct Report: Sendable, Equatable, Codable {
                     return nil
                 }
                 let saying = { (test: TestID) in said.first { $0.0 == test || (!ids.contains($0.0) && $0.0.isNested(in: test) && $0.0.resolved(among: ids) == .found(test)) }?.1 }
-                let entries = unlisted.map { test, failure in (test, failure, ResultBundle.crashCase(of: test, in: cases) ?? test) }
-                if let added = text.adding(unlisted: entries.map { ($0.0, $0.1.message, ResultBundle.place(of: $0.2, in: cases) ?? $0.1.where, saying($0.0).map(Self.listedOtherwise)) }) {
+                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: ResultBundle.crashCase(of: test, in: cases) ?? test) }
+                if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: cases), saying($0.test).map(Self.listedOtherwise)) }) {
                     (text, changed) = (added, true)
-                    for (test, _, id) in entries { bundleIDs[test] = .found(id) }
+                    for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
                 }
             }
             if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, bundleIDs: bundleIDs),

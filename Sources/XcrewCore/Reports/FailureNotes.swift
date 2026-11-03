@@ -206,10 +206,11 @@ public enum FailureNotes {
                 let keepsImages = imaged.contains(test) ? imagesFolder : nil
                 let resolution = bundleIDs[test]
                 let id = if case let .found(found)? = resolution { found } else { test }
+                let named = MobileBuildMCPLine.isProcessCrash(id.suite) || MobileBuildMCPLine.isProcessCrash(id.name) ? test : id
                 group.addTask {
                     if case let .ambiguous(ids)? = resolution { return (test, id, ["      \(Self.severalByThatName(ids))"], nil) }
                     var added: [String] = []
-                    let crash = isCrashed ? await bundle.crash(of: id, naming: MobileBuildMCPLine.isProcessCrash(id.suite) ? test : id) : nil
+                    let crash = isCrashed ? await bundle.crash(of: id, naming: named) : nil
                     // Where the bundle places the failure, or for a crash, the crash log's frame in the test's own code.
                     if !isLocated, let location = ResultBundle.sourceLocation(details: await bundle.details(of: id)) ?? crash?.location {
                         added.append("    \(location)")
@@ -231,7 +232,7 @@ public enum FailureNotes {
                         (FailureImages?.none, false)
                     }
                     if let attached { added += attached.shown.map { "      \(imageLabel) \($0)" } + (attached.more.map { ["      \($0)"] } ?? []) }
-                    if recorded { added.append(lookLine(id, bundle: bundle.path)) }
+                    if recorded { added.append(lookLine(named, bundle: bundle.path)) }
                     return (test, id, added, attached)
                 }
             }

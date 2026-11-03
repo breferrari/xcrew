@@ -21,8 +21,9 @@ public struct TestID: Sendable, Hashable {
     /// `Suite/test`, as Xcrew shows a test.
     public var shown: String { "\(suite)/\(name)" }
 
-    /// `Suite/test()`, as `xcresulttool` names one.
-    public var xcresultID: String { "\(shown)()" }
+    /// `Suite/test()`, as `xcresulttool` names one; an id it read with no `/`, as the case a crash under `System Failures`
+    /// is filed as, by itself.
+    public var xcresultID: String { name.isEmpty ? suite : "\(shown)()" }
 
     /// Whether `outer` is this test named from an outer suite, as a result bundle names a nested suite's test,
     /// `Outer/Suite/test`, that MobileBuildMCP's text names from its own, `Suite/test`.
