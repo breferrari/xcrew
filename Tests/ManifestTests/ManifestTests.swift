@@ -1153,12 +1153,16 @@ import Testing
         #expect(pattern.matches(of: /\$hex/).count == Int(kept), "the build pattern names \(pattern.matches(of: /\$hex/).count) characters, the key keeps \(kept)")
     }
 
-    /// The branch's runs' coverage is read within a budget that leaves the evidence call a minute of the time the mod
-    /// gives it: past the mod's limit the whole block is lost, not just a run.
-    @Test func theEvidencesCoverageBudgetFitsTheModsLimit() throws {
-        let limit = try #require(try text("hooks/mod/evidence.ts").firstMatch(of: /export const EVIDENCE_TIMEOUT_MS = ([\d_]+)/)?.1, "evidence.ts names no EVIDENCE_TIMEOUT_MS")
-        let milliseconds = try #require(Int(limit.replacingOccurrences(of: "_", with: "")))
-        #expect(BranchCoverage.budget + .seconds(60) <= .milliseconds(milliseconds), "the coverage budget, \(BranchCoverage.budget), leaves the evidence call less than a minute of its \(milliseconds) ms")
+    /// The mod gives each CLI call its time under the name the CLI reads it by, so the call's deadline passes down to
+    /// every command it starts; and what a person or Claude asks for has the CLI's own time when none is given, 120 s.
+    @Test func theModGivesEachCallItsTimeAndAskedCallsTheCLIs() throws {
+        let register = try text("hooks/mod/register.ts")
+        let start = try #require(register.firstMatch(of: /(?s)\nfunction start\([^\n]*\n(.*?)\n\}/)?.1, "register.ts has no start")
+        #expect(start.contains("\(DeadlineRunner.variable): String(timeoutMs)"), "start doesn't give the CLI its time under \(DeadlineRunner.variable)")
+        let cli = try text("hooks/mod/cli.ts")
+        let asked = try #require(cli.firstMatch(of: /export const ASKED_MS = ([\d_]+)/)?.1, "cli.ts names no ASKED_MS")
+        #expect(Int(asked.replacingOccurrences(of: "_", with: "")) == Int(DeadlineRunner.asked.components.seconds) * 1000)
+        #expect(try text("hooks/mod/evidence.ts").contains("export const EVIDENCE_TIMEOUT_MS = ASKED_MS"))
     }
 
     /// Everything xcrew keeps that nothing uses any more goes after one age: the shim's unused builds and root keys, the

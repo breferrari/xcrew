@@ -624,6 +624,31 @@ struct TestbedEvidenceTests {
         #expect(slow.peakArchiveReads == 2)
     }
 
+    /// A call whose deadline cut even the branch's changes says what it cut, rather than that there's no evidence.
+    @Test func evidenceCutBeforeItReadAnythingSaysSo() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran)
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        let run = await Run("evidence", context: CheckContext(project: project, machine: context.machine.setting("XCREW_WITHIN_MS", to: "1")), stdin: Self.input)
+        #expect(run.text.hasPrefix("This call's time ran out before git"), "\(run.text)")
+    }
+
+    /// The runs are read until the call's deadline by the machine's clock: past it, none is read, the block says how many
+    /// were left out, and the call stops waiting then, not when its time would have run out on the wall's clock.
+    @Test(.timeLimit(.minutes(1))) func theBranchsRunsAreReadUntilTheCallsDeadline() async throws {
+        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
+        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
+        // The call has 60 s on a clock that stands still but for Xcode's reads: each moves it past the deadline and
+        // answers only once the call stops waiting, so neither a slow git nor a slow Mac changes what's read.
+        // The fake runner answers no `sysctl`, so the pool runs one command at a time: the first run's summary read holds
+        // it until the cut, which is recorded before any other command starts.
+        let clock = StillClock(Date())
+        let slow = Machine(environment: ["XCREW_WITHIN_MS": "60000"], home: context.machine.home, runner: XcodeOutlastsTheDeadline(context.machine.runner, clock: clock, gitTakes: .milliseconds(1_100)), processID: context.machine.processID, applications: context.machine.applications, now: { clock.read() })
+        let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)
+        #expect(run.text.contains("- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."), "\(run.text)")
+        // What the deadline cut is said in one line, after the block's own.
+        #expect(run.text.contains("\n- This call's time ran out before xcresulttool"), "\(run.text)")
+    }
+
     /// A run of no test, as one whose filter matched nothing, counts nothing as run, so it's left out.
     @Test func aRunOfNoTestIsLeftOut() async throws {
         let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600), earlierTests: 0)
@@ -1071,6 +1096,42 @@ final class SlowRunner: CommandRunning {
         try? await Task.sleep(for: .milliseconds(50))
         reads.withLock { $0.now -= 1 }
         return await base.run(argv, stdin: stdin, timeout: timeout)
+    }
+
+    func which(_ name: String) -> String? { base.which(name) }
+}
+
+/// A runner that answers as another does, each `xcrun` command after `xcrun`'s wait, or timed out when its limit is shorter.
+/// A clock that stands still until a command moves it.
+final class StillClock: Sendable {
+    let time: Mutex<Date>
+
+    init(_ start: Date) { time = Mutex(start) }
+
+    func read() -> Date { time.withLock { $0 } }
+
+    func move(by seconds: TimeInterval) { time.withLock { $0 = $0.addingTimeInterval(seconds) } }
+}
+
+/// A runner on `clock`: every command but `xcrun` answers as `base` does, under a limit of its own, and takes none of the
+/// clock's time, `git` after `gitTakes`; `xcrun` moves the clock an hour on, and answers as timed out once cancelled.
+final class XcodeOutlastsTheDeadline: CommandRunning {
+    let base: any CommandRunning
+    let clock: StillClock
+    let gitTakes: Duration
+
+    init(_ base: any CommandRunning, clock: StillClock, gitTakes: Duration = .zero) {
+        self.base = base
+        self.clock = clock
+        self.gitTakes = gitTakes
+    }
+
+    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
+        if argv.first == "git" { try? await Task.sleep(for: gitTakes) }
+        guard argv.first == "xcrun" else { return await base.run(argv, stdin: stdin, timeout: .seconds(600)) }
+        clock.move(by: 3600)
+        try? await Task.sleep(for: .seconds(600))
+        return .timedOut
     }
 
     func which(_ name: String) -> String? { base.which(name) }

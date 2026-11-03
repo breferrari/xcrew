@@ -55,6 +55,16 @@ import XcrewTestSupport
         return log.path
     }
 
+    /// A report given no time left reads nothing more from the bundle, and says in one line what it left out.
+    @Test func aReportPastItsTimeSaysWhatItLeftOut() async throws {
+        let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"CrashTests/testOutOfRange()","name":"testOutOfRange()","result":"Failed"}]}"#
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(Self.bundle) --compact": .init(status: 0, stdout: listing)])
+        let run = await Run("report", "--server", "MobileBuildMCP", "--kind", "test", "--log", try Self.log("TEST EXECUTE FAILED"), context: .fake(runner, environment: ["XCREW_WITHIN_MS": "1"]))
+        let report = try Self.json(run)
+        #expect(report["failures"] as? [[String: Any]] == nil || (report["failures"] as? [[String: Any]])?.isEmpty == true)
+        #expect((report["notes"] as? [String])?.last == "xcrew: this call's time ran out before xcresulttool answered, so what the run's result bundle adds is left out of this result.", "\(report)")
+    }
+
     /// The bundle the log names, read by `xcresulttool`, gives each test's result: a test run read as any other.
     @Test func aLogsBundleGivesItsFailingTests() async throws {
         let listing = #"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"CrashTests/testOutOfRange()","name":"testOutOfRange()","result":"Failed","children":[{"nodeType":"Failure Message","name":"Crash: xctest at CrashTests.testOutOfRange()"}]},{"nodeType":"Test Case","nodeIdentifier":"CrashTests/testInRange()","name":"testInRange()","result":"Passed"}]}"#

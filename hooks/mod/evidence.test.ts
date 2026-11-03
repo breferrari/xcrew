@@ -85,10 +85,11 @@ test('a red-to-green test no run has written for weeks is still evidence, as the
   expect(sent.ledger).toEqual([old])
 })
 
-test('the CLI has as long as reading ten result bundles takes', async ($, on) => {
+/** Asked for, the evidence has what a `/xcrew` command has: the point where Claude Code stops letting a call hold the conversation. */
+test('the evidence has the time anything asked of xcrew has, 120 s', async ($, on) => {
   const seen = session(on, BLOCK)
   await ask($)
-  expect(seen.calls.find(call => call.args[0] === 'evidence')?.timeoutMs).toBe(300_000)
+  expect(seen.calls.find(call => call.args[0] === 'evidence')?.timeoutMs).toBe(120_000)
 })
 
 test('only what the CLI prints for the pull request reaches Claude: its warnings on stderr stay out', async ($, on) => {

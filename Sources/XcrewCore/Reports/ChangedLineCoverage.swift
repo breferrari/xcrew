@@ -36,32 +36,14 @@ struct ChangedLineCoverage: Sendable, Equatable {
     /// Changed files a run covered but that changed since it started, which it can't speak for.
     var stale: [String] = []
 
-    /// How long the whole reading may take: it shares the report's time with the failures and the summary, so past this
-    /// the note is dropped and the rest of the report stands.
-    static let budget = Duration.seconds(45)
-
-    /// `work`'s answer, or nothing once `limit` has passed, when the work is cancelled: a command it runs is stopped.
-    static func within<Answer: Sendable>(_ limit: Duration, _ work: @escaping @Sendable () async -> Answer) async -> Answer? {
-        await withTaskGroup(of: Answer?.self) { group in
-            group.addTask { await work() }
-            group.addTask {
-                try? await Task.sleep(for: limit)
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
-    }
-
     /// The changed-line coverage of a run whose report names `covered`: only its files named like a changed file are
     /// resolved, since an app's archive can list thousands. Nothing when the change is empty, or when git can't diff it
     /// or xccov can't give a file's counts, which would make a count up.
     /// With the run's `targets`, a test bundle's files are left out, and a target the run didn't reach is said once
     /// rather than its changed lines one by one; a file every target holding it leaves out is left out. Only files named
     /// like a changed one are resolved, since an app's coverage can list thousands.
-    /// With `keepingTestFiles`, files outside the coverage keep those only test targets build, for a caller that leaves
-    /// them out once for many runs. Every file's counts are asked at once: the runner's pool decides how many `xccov`s
+    /// With `keepingTestFiles`, the changed files outside the coverage include those only test targets build, for a
+    /// caller that leaves them out once, across many runs. Every file's counts are asked at once: the runner's pool decides how many `xccov`s
     /// run together.
     static func of(_ covered: [String], in change: GitChanges.Change, targets: [CoverageTarget], bundle: ResultBundle, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
         guard !change.files.isEmpty else { return nil }
@@ -146,11 +128,17 @@ struct ChangedLineCoverage: Sendable, Equatable {
 
     /// The files only test targets build, left out: a test target's own files are no code under test, so their being
     /// outside the coverage says nothing. Read from an Xcode project's own targets, as `xcrew graph --owner` reads
-    /// them, only when there are files to say anything of and the budget hasn't passed: the reading can't be stopped
+    /// them, only when there are files to say anything of and the call isn't cancelled: the reading can't be stopped
     /// once started. A file an exception set may move keeps its place, as does one no target lists and every file of a
     /// project whose targets can't be read, a plain Swift package's among them.
     static func withoutTestFiles(_ files: [String], of project: Project) -> [String] {
-        guard !files.isEmpty, !Task.isCancelled, case let .success(graph) = WorkspaceGraph.read(project) else { return files }
+        guard !files.isEmpty, !Task.isCancelled else { return files }
+        return withoutTestFiles(files, in: WorkspaceGraph.read(project))
+    }
+
+    /// `withoutTestFiles(_:of:)` on targets already read.
+    static func withoutTestFiles(_ files: [String], in targets: Result<WorkspaceGraph, WorkspaceGraph.Unread>) -> [String] {
+        guard case let .success(graph) = targets else { return files }
         return files.filter { file in
             let built = graph.builders(of: file)
             return built.isExcepted || built.targets.isEmpty || !built.targets.allSatisfy { graph.targets[$0]?.isTest == true }
@@ -199,15 +187,11 @@ struct ChangedLineCoverage: Sendable, Equatable {
         return runs.map { $0.count == 1 ? "\($0.lowerBound)" : "\($0.lowerBound)-\($0.upperBound)" }
     }
 
-    /// What a test run's coverage says of the lines a branch changed, within `budget`: nothing when the run gathered no
-    /// coverage. A bundle that says it holds none asks nothing of `xccov`, whose start alone takes over half a second;
-    /// otherwise the change is read while `xccov`'s report, which names every file the archive holds, is.
-    static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning) async -> ChangedLineCoverage? {
-        await within(budget) { await read(bundle, change: change, project: project, using: runner) } ?? nil
-    }
-
-    /// What `of` reads, with no time limit of its own; `keepingTestFiles` as `of(_:in:targets:bundle:project:using:keepingTestFiles:)` takes it.
-    static func read(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
+    /// What a test run's coverage says of the lines a branch changed: nothing when the run gathered no coverage, or
+    /// when the call's deadline cut what it needs. A bundle that says it holds none asks nothing of `xccov`, whose start
+    /// alone takes over half a second; otherwise the change is read while `xccov`'s report, which names every file the
+    /// archive holds, is. `keepingTestFiles` is as `of(_:in:targets:bundle:project:using:keepingTestFiles:)` says.
+    static func of(_ bundle: ResultBundle, change: @escaping @Sendable () async -> GitChanges.Change?, project: Project, using runner: any CommandRunning, keepingTestFiles: Bool = false) async -> ChangedLineCoverage? {
         guard await bundle.holdsCoverage() != false else { return nil }
         async let listed = change()
         let targets = CoverageTarget.targets(in: await bundle.coverageReport())

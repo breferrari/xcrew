@@ -72,6 +72,39 @@ export type Problem = { status: 'fail' | 'warn'; id: string; message: string }
 /** A finished program's output, as the hooks module hands it back. */
 export type Ran = { stdout: string; stderr: string }
 
+/**
+ * The time xcrew's work around a tool call has: each read before the call starts, and its work on the result, counted
+ * from when that came back: 10 s, the limit for keeping a person's attention on a wait (Nielsen,
+ * *Usability Engineering*, 1993, ch. 5), past which the server's own result serves better than one that waits on
+ * xcrew's notes (docs/findings.md, *Deadlines inside the CLI*).
+ */
+export const ON_RESULT_MS = 10_000
+
+/**
+ * The time what a person or Claude asks of xcrew has, a `/xcrew` command or the evidence: Claude Code's own point where
+ * a command stops holding the conversation, `BASH_DEFAULT_TIMEOUT_MS`'s 120 s. The CLI takes the same when given none.
+ */
+export const ASKED_MS = 120_000
+
+/** What a call fails with when its time ran out before the CLI answered, or before it could start. */
+export class OutOfTime extends Error {
+  constructor() {
+    super("the call's time ran out before the CLI answered")
+  }
+}
+
+/** The one line a result gets when its report's time, `ms`, ran out first: what's left out, as a fact. */
+export function reportCutNote(ms: number): string {
+  return `xcrew: its report on this result didn't answer within its ${ms / 1000} s, so its notes are left out.`
+}
+
+/** What a call fails with when its time ran out waiting for the CLI's build, which goes on. */
+export class StillBuilding extends Error {
+  constructor() {
+    super('the CLI is still being built for this version')
+  }
+}
+
 /** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
 const RECHECK_MS = 30_000
 

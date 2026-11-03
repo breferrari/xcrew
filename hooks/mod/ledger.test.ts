@@ -19,7 +19,7 @@ const DAY_MS = 24 * 60 * 60_000
  * A project on `branch` (the CLI names it and the project's root), whose test runs report the next of `reports`. The
  * store starts with `stored`; registered tools are collected in `registered`.
  */
-function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; readsStore?: boolean; reportFails?: () => boolean; holdFirst?: Promise<void>; flaky?: unknown[] } = {}) {
+function project(on: On, reports: Partial<Report>[], options: { branch?: () => string | Error; stored?: Record<string, unknown>; readsStore?: boolean; reportFails?: () => boolean; holdFirst?: Promise<void>; flaky?: unknown[]; beforeBranch?: () => Promise<void> } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 9, 30, 12, 0) })
   // A test that reads what the mod kept gets the store as a plain map.
   const store = options.readsStore ? mapStore(on) : (mock.store(on, options.stored ?? {}), undefined)
@@ -40,8 +40,9 @@ function project(on: On, reports: Partial<Report>[], options: { branch?: () => s
     ...(options.reportFails ? { reportFails: options.reportFails } : {}),
     // `xcrew flaky`'s answers, one per repeated run, in order: the CLI works out the marks, the mod keeps them.
     ...(options.flaky ? { flaky: () => options.flaky?.shift() ?? null } : {}),
-    project: args => {
+    project: async args => {
       if (!args.includes('--branch')) return { isGenerated: false }
+      await options.beforeBranch?.()
       const branch = options.branch?.() ?? 'feat/ledger'
       // A CLI that can't answer: the stand-in fails as a process that timed out would.
       if (branch instanceof Error) throw branch
@@ -74,6 +75,21 @@ test('a test that fails and then passes in the same scope is listed red, then gr
   expect(text).toContain('Red, then green, on feat/ledger (1 test)')
   expect(text).toMatch(new RegExp(`- ${TEST}: red .* in test_sim › AppTests: XCTAssertEqual failed.*; green .* in test_sim › AppTests`))
   expect(text).not.toContain('Still red')
+})
+
+test("a ledger read that doesn't answer takes none of the report's 10 s", async ($, on) => {
+  let stuck = false
+  const { calls, clock } = project(on, [PASSED], { beforeBranch: () => (stuck ? new Promise<void>(() => {}) : Promise.resolve()) })
+  await run($, 'AppTests')
+  // Past the time a branch read is shared, so the next run reads it again, and that read never answers.
+  await clock.advance(6_000)
+  stuck = true
+  // The result waits for nothing of the ledger's: with no time passing, it comes back.
+  await run($, 'AppTests')
+  // Not knowing whether a red waits, it asks for the passed tests, and the report has its whole 10 s.
+  const report = calls.filter(call => call.args[0] === 'report').at(-1)
+  expect(report?.timeoutMs).toBe(10_000)
+  expect(report?.args).toContain('--passed')
 })
 
 test('a test run asks the CLI for its passed tests only while its branch has a red waiting', async ($, on) => {

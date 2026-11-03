@@ -121,3 +121,70 @@ test("a quick call during the background build doesn't build, doesn't stop it, a
   await callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' })
   expect(cli.filter(call => call.args[0] === 'project').map(call => call.program ?? 'the shim')).toEqual([BUILT_BINARY])
 })
+
+test("a call that waited for the background build gives its command only what's left of its time", async ($, on) => {
+  let finish: () => void = () => {}
+  const held = new Promise<void>(resolve => { finish = resolve })
+  let built = false
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('tool.describe', (_, e) => ({ description: e.description }))
+  on('session.surfaces', () => ({ value: ['vscode'] }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', () => ({ result: { ok: true } }))
+  const cli = stubCli(on, { built: () => built, spawn: { held }, project: () => ({ isGenerated: true }) })
+  await start($)
+  const call = callTool($, 'mcp__xcode__XcodeWrite', { filePath: 'App/Info.plist', content: '' })
+  await clock.advance(4_000)
+  built = true
+  finish()
+  await call
+  expect(cli.filter(call => call.args[0] === 'project').map(call => call.timeoutMs)).toEqual([6_000, 6_000])
+})
+
+test("a report its 10 s cut says so in one line, beside the server's result", async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('session.surfaces', () => ({ value: ['vscode'] }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', () => ({ result: {}, text: 'the server\'s result' }))
+  stubCli(on, { reportTimesOut: clock })
+  const result = await callTool($, 'mcp__xcode__BuildProject')
+  expect(result.context).toContain("xcrew: its report on this result didn't answer within its 10 s, so its notes are left out.")
+})
+
+/** What xcrew adds to a tool's result has 10 s, which also goes to the CLI, to pass down to every command it starts. */
+test("a call on a tool's result has 10 s, given to the CLI too", async ($, on) => {
+  const seen: { args: readonly string[]; timeoutMs?: number; within?: string }[] = []
+  mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__xcrew__${e.name}` } }))
+  on('session.surfaces', () => ({ value: ['vscode'] }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', () => ({ result: {}, text: 'done' }))
+  on('process.run', (_, e) => {
+    const args = e.argv.slice(1)
+    seen.push({ args, ...(e.init?.timeoutMs === undefined ? {} : { timeoutMs: e.init.timeoutMs }), ...(e.init?.env?.XCREW_WITHIN_MS === undefined ? {} : { within: e.init.env.XCREW_WITHIN_MS }) })
+    const stdout = args.includes('--binary-path') ? `${BUILT_BINARY}\n` : args[0] === 'affected' ? 'null' : '{}'
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('process.spawn', async function* () {
+    return { value: { code: 0, signal: null } }
+  })
+  await callTool($, 'mcp__xcode__BuildProject')
+  await callTool($, 'mcp__xcrew__affected')
+  const timed = (command: string) => seen.filter(call => call.args[0] === command).map(call => [call.timeoutMs, call.within])
+  expect(timed('report')).toEqual([[10_000, '10000']])
+  expect(timed('affected')).toEqual([[10_000, '10000']])
+})

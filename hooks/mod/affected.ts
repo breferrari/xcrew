@@ -74,8 +74,12 @@ function schemeName(scheme: { name: string; container: string }, beside: readonl
   return `\`${scheme.name}\`${twin ? ` in ${scheme.container}` : ''}`
 }
 
-/** The answer as Claude reads it, the count first; without one from the CLI, the whole suite. */
-export function affectedText(answer: unknown): string {
+/**
+ * The answer as Claude reads it, the count first; without one from the CLI, the whole suite, or with `unanswered`, why
+ * there's none yet.
+ */
+export function affectedText(answer: unknown, unanswered?: string): string {
+  if (unanswered !== undefined) return `xcrew couldn't say yet which tests the changes can break: ${unanswered}.`
   const affected = (answer ?? {}) as Affected
   const since = affected.base ? ` Compared with ${affected.base}.` : ''
   if (!Array.isArray(affected.selections)) {

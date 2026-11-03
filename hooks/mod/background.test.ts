@@ -98,7 +98,7 @@ test("a backgrounded test run's notification is read as its result", async ($, o
   const text = notificationText('the server\'s result')
   const entered = await notify($, clock, text)
   // One call: the CLI falls back to the run's log itself when the result can't be read.
-  expect(reportCalls(cli).at(-1)).toMatchObject({ args: ['report', '--server', 'MobileBuildMCP', '--kind', 'test', '--notification', '--log', LOG], stdin: text })
+  expect(reportCalls(cli).at(-1)).toMatchObject({ args: ['report', '--server', 'MobileBuildMCP', '--kind', 'test', '--passed', '--notification', '--log', LOG], stdin: text })
   expect(entered.text).toBe(notificationText('shorter'))
   expect(entered.context).toContain('xcrew: a note on the run')
   // The run took from the call to the notification: 0:05, then a second.
@@ -312,6 +312,15 @@ test("a backgrounded test run's notification asks for its passed tests while a r
   await callTool($, TEST, { tool_use_id: 'toolu_bg' })
   await notify($, clock)
   expect(reportCalls(cli).at(-1)?.args).toEqual(['report', '--server', 'MobileBuildMCP', '--kind', 'test', '--passed', '--notification', '--log', LOG])
+})
+
+/** What the ledger said at the run's start may be old by its notification, as after a branch switch: it asks either way. */
+test("a backgrounded test run's notification asks for its passed tests though no red waited at its start", async ($, on) => {
+  const { clock, cli, store } = session(on, { reports: [{ ok: true, passed: [{ test: 'CrashTests/testOutOfRange' }] }] })
+  await callTool($, TEST, { tool_use_id: 'toolu_bg' })
+  store.set('ledger./work/App @ main', { entries: [{ test: 'CrashTests/testOutOfRange', red: { scope: 'test_sim · App', at: 0, message: 'Crash' }, failing: 'test_sim · App', last: 0 }], updated: 0 })
+  await notify($, clock)
+  expect(reportCalls(cli).at(-1)?.args).toContain('--passed')
 })
 
 // MARK: Followed in the background
