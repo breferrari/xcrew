@@ -36,7 +36,7 @@ public enum FailureNotes {
         message.hasPrefix("Crash:") || message.hasPrefix("Test crashed with signal")
     }
 
-    struct Notes {
+    struct Notes: Sendable {
         var failures: [TestID: [String]] = [:]
         /// Tests run more than once: their failures are listed once, the first, with how many runs failed.
         var repeated: Set<TestID> = []
@@ -122,8 +122,46 @@ public enum FailureNotes {
 
     /// The failing run's text with what the result bundle adds; nil when it adds nothing. With `images`, each failed
     /// test's images are kept in its folder, and the runs kept there longer than `FailureImages.keptDays` before its `now`
-    /// are removed.
-    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = []) async -> Added? {
+    /// are removed. The skips are read from the bundle's own test list, after the failures are looked up.
+    static func adding(to text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions: [ResultBundle.Repeated] = []) async -> Added? {
+        guard let pending = await lookingUp(text, from: bundle, keepingImagesIn: images, repetitions: repetitions) else { return nil }
+        return pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: TestList(await bundle.tests())) : [])
+    }
+
+    /// What `adding` finds before the run's skips: each failed test's lookups and its repeated runs, the failures read
+    /// first.
+    struct Pending: Sendable {
+        let text: MobileText
+        let notes: Notes
+        let images: [TestID: FailureImages]
+        /// The skipped tests the text lists, by name.
+        let listedSkips: [TestID]
+        /// Whether the run's skips are read from its test list: its text counts or lists a skipped test.
+        let readsSkips: Bool
+
+        /// The text with every note, `skips` the run's skipped tests from its test list: a listed one's reason under its
+        /// line, a few the text leaves out added; nil when it adds nothing.
+        func adding(skips: [(test: TestID, skip: ResultBundle.Skip)]) -> Added? {
+            var notes = notes
+            let listed = Set(listedSkips)
+            let reason = { (skip: ResultBundle.Skip) in skip.reason.map { [MobileBuildMCPLine.skipReason($0)] } ?? [] }
+            var unlisted = 0
+            for (test, skip) in skips {
+                if listed.contains(test) {
+                    notes.skipped[test] = reason(skip)
+                } else if unlisted < mostLookups {
+                    unlisted += 1
+                    notes.unlisted += ["  ⏭️ \(test.xcresultID) (\(seconds(skip.seconds))s)"] + reason(skip)
+                }
+            }
+            guard !notes.isEmpty, let annotated = annotate(text, with: notes) else { return nil }
+            return Added(text: annotated, images: images)
+        }
+    }
+
+    /// The first step of `adding`: each failed test's lookups and its repeated runs. Nil when there's nothing to add and
+    /// no skip to read.
+    static func lookingUp(_ text: MobileText, from bundle: ResultBundle, keepingImagesIn images: (folder: URL, now: Date)? = nil, repetitions repeatedTests: [ResultBundle.Repeated] = []) async -> Pending? {
         let imagesFolder = images?.folder
         var order: [TestID] = []
         var located: Set<TestID> = []
@@ -142,10 +180,10 @@ public enum FailureNotes {
             if case let .skipped(test) = line.kind { return test }
             return nil
         }
-        let isSkipping = text.skippedCount > 0 || !listedSkips.isEmpty
-        // A repeated run's tests, from its test list, which skips read too: how many runs each failed.
+        let readsSkips = text.skippedCount > 0 || !listedSkips.isEmpty
+        // A repeated run's tests, from its test list: how many runs each failed.
         let repetitions = repeatedTests.filter { $0.failed > 0 }
-        guard !lookups.isEmpty || isSkipping || !repetitions.isEmpty else { return nil }
+        guard !lookups.isEmpty || readsSkips || !repetitions.isEmpty else { return nil }
         // A Swift runtime error stops the process before XCTest records a message, so the run lists it under Errors, once
         // plainly and once with the xctest log's prefix. With one crashed test, it's that test's.
         let crashError = crashed.count == 1 ? text.reportedErrors.compactMap { MobileBuildMCPLine.runtimeError($0.message) }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } } : []
@@ -205,20 +243,6 @@ public enum FailureNotes {
             notes.repeated.insert(test)
             notes.failures[test, default: []].append("      failed \(repeated.failed) of \(repeated.runs) runs")
         }
-        if isSkipping {
-            let listed = Set(listedSkips)
-            let reason = { (skip: ResultBundle.Skip) in skip.reason.map { [MobileBuildMCPLine.skipReason($0)] } ?? [] }
-            var unlisted = 0
-            for (test, skip) in await bundle.skips() {
-                if listed.contains(test) {
-                    notes.skipped[test] = reason(skip)
-                } else if unlisted < mostLookups {
-                    unlisted += 1
-                    notes.unlisted += ["  ⏭️ \(test.xcresultID) (\(seconds(skip.seconds))s)"] + reason(skip)
-                }
-            }
-        }
-        guard !notes.isEmpty, let annotated = annotate(text, with: notes) else { return nil }
-        return Added(text: annotated, images: images)
+        return Pending(text: text, notes: notes, images: images, listedSkips: listedSkips, readsSkips: readsSkips)
     }
 }

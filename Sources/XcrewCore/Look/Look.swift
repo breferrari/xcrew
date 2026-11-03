@@ -14,10 +14,9 @@ public enum Look {
     /// runs kept a screen recording. Screens are kept under `folder`, in a folder per run, and runs kept there too long
     /// before `now` are removed.
     public static func report(bundle: ResultBundle, named: String?, keptIn folder: URL, now: Date) async -> String {
-        let listing = ResultBundle.parse(await bundle.tests())
-        let nodes = ResultBundle.nodes(listing)
-        let cases = ResultBundle.testCases(in: nodes)
-        return await report(bundle: bundle, test: named.map { test($0, among: cases) }, cases: cases, failed: listing == nil ? nil : ResultBundle.failedTests(in: nodes), keptIn: folder, now: now)
+        let listing = TestList(await bundle.tests())
+        let cases = ResultBundle.testCases(in: listing.nodes)
+        return await report(bundle: bundle, test: named.map { test($0, among: cases) }, cases: cases, failed: listing.json == nil ? nil : ResultBundle.failedTests(in: listing.nodes), keptIn: folder, now: now)
     }
 
     /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,

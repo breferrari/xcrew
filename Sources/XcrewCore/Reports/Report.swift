@@ -134,7 +134,7 @@ public struct Report: Sendable, Equatable, Codable {
         guard let ok = RunLog.outcome(of: log, kind: kind) else { return unread }
         let path = kind == .test ? RunLog.resultBundle(in: log) : nil
         if let path {
-            let listing = await ResultBundle(path: path, runner: runner).tests()
+            let listing = TestList(await ResultBundle(path: path, runner: runner).tests())
             if let failed = ResultBundle.failedTests(listing: listing) {
                 return Report(ok: ok, failures: ok ? [] : failed, notes: [], repeated: repeated ? ResultBundle.repetitions(listing: listing) : nil, passed: listsPassed ? ResultBundle.passed(listing: listing) : nil, bundle: path)
             }
@@ -227,17 +227,27 @@ public struct Report: Sendable, Equatable, Codable {
             (final, edited) = (kept, true)
         }
         if let collapsed = final.collapsingWarnings() { (final, edited) = (collapsed, true) }
+        // The run's test list, parsed once, when the first question needs it; none without a bundle.
+        var parsed: TestList?
+        func testList() async -> TestList {
+            if let parsed { return parsed }
+            let list = TestList(await bundle?.tests() ?? "")
+            parsed = list
+            return list
+        }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
-        let repetitions = if repeated, let bundle { ResultBundle.repetitions(listing: await bundle.tests()) } else { [ResultBundle.Repeated]() }
+        let repetitions = if repeated, bundle != nil { ResultBundle.repetitions(listing: await testList()) } else { [ResultBundle.Repeated]() }
         if var text = final.mobileText {
             var changed = false
             if let cleaned = text.withoutExcerpts() { (text, changed) = (cleaned, true) }
             // A repeated run's text lists no failures, and with test timing on, each test once for each run.
-            if let bundle, text.isTestRun, !repetitions.isEmpty {
-                if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await bundle.tests())) { (text, changed) = (added, true) }
+            if bundle != nil, text.isTestRun, !repetitions.isEmpty {
+                if let added = text.addingFailures(ResultBundle.repeatedFailures(listing: await testList())) { (text, changed) = (added, true) }
                 if let once = text.listingRunsOnce(repetitions) { (text, changed) = (once, true) }
             }
-            if let bundle, text.isTestRun, let annotated = await FailureNotes.adding(to: text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions) {
+            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions),
+               // The test list is read for the skips once the failures are looked up: what failed is read first.
+               let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {
                 (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
             } else if changed {
                 (final, edited) = (ToolOutput(text, isError: output.isError), true)
@@ -260,9 +270,9 @@ public struct Report: Sendable, Equatable, Codable {
                 notes.append(bundleCounts == nil ? noTestsNote : noTestsInBundleNote)
             }
         }
-        if let bundle, let summary = await bundleSummary {
+        if bundle != nil, let summary = await bundleSummary {
             // The test list is only asked for when the summary counts expected failures to name.
-            let listing = ResultBundle.expectedFailureCount(summary: summary) > 0 ? await bundle.tests() : ""
+            let listing = ResultBundle.expectedFailureCount(summary: summary) > 0 ? await testList() : TestList("")
             if let expected = ResultBundle.expectedFailuresNote(summary: summary, names: ResultBundle.expectedFailures(listing: listing), knownIssues: ResultBundle.knownIssues(listing: listing)) { notes.append(expected) }
         }
         // A run repeated with `-test-iterations` says, per test, whether it's flaky or failing for real.
@@ -286,7 +296,7 @@ public struct Report: Sendable, Equatable, Codable {
 
         // A failing test's target, from the run's test list, which skips and expected failures read too. A test the list
         // counts passed, such as a retry that passed, is no failure, though MobileBuildMCP's text lists it.
-        let listing = if let bundle, !summary.ok, final.failures.contains(where: \.isTest) { await bundle.tests() } else { "" }
+        let listing = if bundle != nil, !summary.ok, final.failures.contains(where: \.isTest) { await testList() } else { TestList("") }
         let targets = ResultBundle.targets(listing: listing)
         let passed = ResultBundle.passedTests(listing: listing)
         let failures = final.failures.filter { !$0.isTest || !passed.contains(TestID(xcresultID: $0.title)) }
@@ -296,8 +306,8 @@ public struct Report: Sendable, Equatable, Codable {
         if listsPassed, isTest {
             if read.server == .xcode {
                 passedTests = final.passedTests
-            } else if let bundle {
-                passedTests = ResultBundle.passed(listing: await bundle.tests())
+            } else if bundle != nil {
+                passedTests = ResultBundle.passed(listing: await testList())
             }
         }
         let isUnread = kind != .run && !final.isError && final.isNotTheServers
