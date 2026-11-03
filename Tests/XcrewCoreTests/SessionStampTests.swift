@@ -106,4 +106,12 @@ import XcrewTestSupport
         #expect(await BriefingCurrentCheck().run(context(nil)).status == .skip)
         #expect(await ModLoadedCheck().run(context(nil)).status == .skip)
     }
+
+    /// A stamp's file name keeps an id's ASCII letters, digits, `-` and `_`, and is `_` with none: the shim names it so
+    /// for a session's end, which runs no CLI (bin/xcrew's `hook_session`).
+    @Test func aStampsNameKeepsTheASCIIOfTheIdAsTheShimDoes() {
+        #expect(SessionStamp.fileName("0b1c2d3e-4f50_x") == "0b1c2d3e-4f50_x")
+        #expect(SessionStamp.fileName("été-1/../2") == "t-12")
+        #expect(SessionStamp.fileName("é") == "_")
+    }
 }

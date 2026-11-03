@@ -12,6 +12,56 @@ case $0 in */*) cd -P "${0%/*}/.." ;; *) cd -P "$(dirname "$(command -v "$0")")/
 root=$PWD
 cd "$here"
 cache=${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}
+
+# The session id in a hook's JSON on standard input, kept to the characters a stamp's file name takes, `_` for none,
+# as SessionStamp.fileName names it (ManifestTests pairs them).
+hook_session() {
+    named=$(printf '%s' "$1" | tr -d '\n' | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | tr -cd 'A-Za-z0-9_-')
+    printf '%s' "${named:-_}"
+}
+
+# Takes a briefing left due, by a rename only one taker can make: true for the one that took it.
+take_due() {
+    mv "$1" "$1.taken-$$" 2>/dev/null || return 1
+    rm -f "$1.taken-$$"
+}
+
+# The Claude Code this hook runs under, by its process id and when it started, as `ps` prints it in the C locale; `none`
+# outside one. A briefing left due names it, so a late start takes only the briefings its own Claude Code's starts left,
+# not one a Claude Code that's gone left.
+claude_code() {
+    p=$$
+    while [ "${p:-0}" -gt 1 ]; do
+        command=$(ps -o comm= -p "$p" 2>/dev/null) || break
+        if [ "${command##*/}" = claude ]; then
+            printf '%s %s\n' "$p" "$(LC_ALL=C ps -o lstart= -p "$p" | tr -s ' ')"
+            return
+        fi
+        p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+    done
+    echo none
+}
+
+# Takes one briefing a start of this Claude Code left due for the session `$1`: true for the start that took one.
+take_own_due() {
+    owner=$(claude_code)
+    for left in "$cache/briefings/$1".due.*; do
+        [ -f "$left" ] && [ "$(cat "$left" 2>/dev/null)" = "$owner" ] && take_due "$left" && return 0
+    done
+    return 1
+}
+
+# A session's end only moves its stamp aside and removes it: Claude Code gives SessionEnd hooks 1.5 s in all, which
+# a plugin's own timeout doesn't raise (docs/findings.md, *The session hooks*). So it hashes nothing, starts no CLI
+# and never builds. One rename takes the whole stamp at once: a cancel leaves it there or gone, never half of it, and
+# one left aside is pruned with the other stamps.
+if [ "${1:-}" = hook ] && [ "${2:-}" = session-end ]; then
+    session=$(hook_session "$(cat)")
+    aside="$cache/sessions/.ended-$session-$$"
+    mv "$cache/sessions/$session" "$aside" 2>/dev/null && rm -rf "$aside"
+    rm -f "$cache/sessions/$session.json" "$cache/briefings/$session.due" "$cache/briefings/$session".due.*
+    exit 0
+fi
 # Hashing every source takes most of this script's time. The key is kept in the cache, under this
 # checkout's path, and worked out again only when something under the sources changed after it: an
 # edit or a deletion (which changes its folder) by modification time, and a copy or unpacking, which
@@ -31,6 +81,43 @@ if [ -z "$key" ]; then
     rm -f "$began" "$began.key"
 fi
 binary="$cache/$key/xcrew"
+
+# A session's start never waits on a build, as Claude's first answer waits on it. With a build there, it briefs at
+# once and clears what's due. With none, it leaves a briefing due, named for this start and its Claude Code, and says
+# the CLI is being built; the late start, an async hook, builds or waits for the build, takes one briefing its Claude
+# Code's starts left due and gives it with the next turn. A briefing is taken by a rename only one start can make, so a
+# start is briefed once, and one left by a Claude Code that's gone is no start's (docs/findings.md, *The session hooks*).
+if [ "${1:-}" = hook ] && [ "${2:-}" = session-start ]; then
+    input=$(cat)
+    session=$(hook_session "$input")
+    if [ "${3:-}" = --late ]; then
+        # Built in a shim of its own, so a failed build is said rather than ending this one.
+        # A failed build is said whether or not the start has left its briefing due yet: no start briefed without a build.
+        # An async hook's words reach Claude as its JSON's additionalContext.
+        if ! binary=$("$root/bin/xcrew" --binary-path); then
+            take_own_due "$session" || true
+            printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"xcrew: its CLI couldn'"'"'t be built for this version, so the briefing on this project and its tools isn'"'"'t given; /xcrew doctor says why."}}'
+            exit 0
+        fi
+        take_own_due "$session" || exit 0
+    elif [ -x "$binary" ]; then
+        # This start briefs now: a briefing an earlier start left due is covered by this one, and one a Claude Code that's
+        # gone left is no one's.
+        rm -f "$cache/briefings/$session.due" "$cache/briefings/$session".due.*
+    else
+        due="$cache/briefings/$session.due.$$"
+        mkdir -p "${due%/*}"
+        claude_code > "$due"
+        # A build that landed meanwhile is the start's to brief from, if the late start hasn't taken it.
+        if [ ! -x "$binary" ]; then
+            echo "xcrew: its CLI is being built for this version; the briefing on this project and its tools follows with the next turn, once it's built."
+            exit 0
+        fi
+        take_due "$due" || exit 0
+    fi
+    set -- hook session-start
+    starting=1
+fi
 
 # The MobileBuildMCP launcher asks only of a build that's there: a first build would hold up the server's start.
 # 75 is sysexits' EX_TEMPFAIL: try again later.
@@ -87,6 +174,12 @@ fi
 if [ "${1:-}" = --binary-path ]; then
     printf '%s\n' "$binary"
     exit 0
+fi
+
+if [ -n "${starting:-}" ]; then
+    XCREW_ROOT=$root exec "$binary" "$@" <<INPUT
+$input
+INPUT
 fi
 
 XCREW_ROOT=$root exec "$binary" "$@"

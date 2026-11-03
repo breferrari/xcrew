@@ -65,8 +65,14 @@ import XcrewTestSupport
         if executable { try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path) }
     }
 
-    func shim(_ arguments: String..., environment: [String: String] = [:]) async throws -> (status: Int32, output: String, errors: String) {
+    func shim(_ arguments: String..., environment: [String: String] = [:], input: String? = nil) async throws -> (status: Int32, output: String, errors: String) {
         let process = Process()
+        if let input {
+            let pipe = Pipe()
+            process.standardInput = pipe
+            try pipe.fileHandleForWriting.write(contentsOf: Data(input.utf8))
+            try pipe.fileHandleForWriting.close()
+        }
         process.executableURL = root.appending(path: "bin/xcrew")
         process.arguments = arguments
         process.environment = [
@@ -352,5 +358,146 @@ extension ShimTests {
         #expect(!FileManager.default.fileExists(atPath: stale.path))
         let current = cache.appending(path: "roots" + (try await Self.physicalPath(root)) + ".key")
         #expect(FileManager.default.fileExists(atPath: current.path))
+    }
+}
+
+/// The session hooks: Claude Code gives SessionEnd hooks 1.5 s in all, which a plugin's own `timeout` doesn't raise, and the
+/// first answer waits on SessionStart's, so neither builds the CLI (docs/findings.md, *The session hooks*).
+extension ShimTests {
+    static let session = "0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"
+    static func event(_ name: String) -> String { #"{"hook_event_name":"\#(name)","session_id":"\#(session)","source":"startup"}"# }
+    var stamp: URL { cache.appending(path: "sessions/\(Self.session)") }
+
+    @Test func aSessionsEndWithNoBuildBuildsNothingAndHashesNothing() async throws {
+        try FileManager.default.createDirectory(at: stamp, withIntermediateDirectories: true)
+        try "0.14.1".write(to: stamp.appending(path: "briefing"), atomically: true, encoding: .utf8)
+        let run = try await shim("hook", "session-end", input: Self.event("SessionEnd"))
+        #expect(run.status == 0 && run.output.isEmpty)
+        #expect(builds == 0 && hashes == 0)
+        #expect(!FileManager.default.fileExists(atPath: stamp.path))
+        // The stamp went aside whole and then went; nothing of it is left beside the others.
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: stamp.deletingLastPathComponent().path)) ?? []).isEmpty)
+    }
+
+    @Test func aSessionsStartWithNoBuildAnswersAtOnceAndBuildsNothing() async throws {
+        let run = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(run.status == 0)
+        #expect(builds == 0)
+        #expect(run.output.contains("being built"))
+    }
+
+    @Test func theLateStartBuildsAndBriefsWhenTheStartCouldnt() async throws {
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        #expect(late.status == 0)
+        #expect(builds == 1)
+        #expect(late.output == "ran hook session-start root=\(try await Self.physicalPath(root))\n")
+    }
+
+    @Test func withABuildTheStartBriefsAndTheLateStartSaysNothing() async throws {
+        _ = try await shim("help")
+        let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        #expect(start.output == "ran hook session-start root=\(try await Self.physicalPath(root))\n")
+        #expect(late.status == 0 && late.output.isEmpty)
+    }
+
+    @Test func aLateStartThatRunsFirstLeavesTheBriefingToTheStart() async throws {
+        _ = try await shim("help")
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(late.output.isEmpty)
+        #expect(start.output.hasPrefix("ran hook session-start"))
+    }
+
+    /// With a build there, the start briefs and leaves nothing a late start could take, whichever runs first.
+    @Test func withABuildTheStartLeavesNothingDue() async throws {
+        _ = try await shim("help")
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: cache.appending(path: "briefings").path)) ?? []).isEmpty)
+    }
+
+    /// A build that fails says so with the next turn, rather than the briefing the start promised, and leaves nothing due.
+    @Test func aLateStartWhoseBuildFailsSaysSo() async throws {
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let late = try await shim("hook", "session-start", "--late", environment: ["FAIL_BUILD": "1"], input: Self.event("SessionStart"))
+        #expect(late.status == 0)
+        // An async hook's words reach Claude as its JSON's additionalContext.
+        #expect(late.output.contains("couldn't be built") && late.output.contains(#""additionalContext""#))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: cache.appending(path: "briefings").path)) ?? []).isEmpty)
+    }
+
+    /// A build that fails before the start has even left its briefing due is still said.
+    @Test func aLateStartWhoseBuildFailsFirstStillSaysSo() async throws {
+        let late = try await shim("hook", "session-start", "--late", environment: ["FAIL_BUILD": "1"], input: Self.event("SessionStart"))
+        #expect(late.output.contains("couldn't be built"))
+    }
+
+    /// A briefing left due by a session that ended without its end hook, then resumed with a build there, isn't given
+    /// twice: the start that briefs takes it.
+    @Test func aBriefingLeftDueIsntGivenTwice() async throws {
+        _ = try await shim("help")
+        let briefings = cache.appending(path: "briefings")
+        try FileManager.default.createDirectory(at: briefings, withIntermediateDirectories: true)
+        try "".write(to: briefings.appending(path: "\(Self.session).due"), atomically: true, encoding: .utf8)
+        let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        #expect(start.output.hasPrefix("ran hook session-start"))
+        #expect(late.output.isEmpty)
+    }
+
+    /// A briefing left due by a Claude Code that's gone, as one that crashed while the CLI built, is no start's of
+    /// this one: a late start that runs first doesn't take it, and the start that briefs clears it.
+    @Test func aBriefingAnEndedClaudeCodeLeftDueIsntGivenWhicheverStartRunsFirst() async throws {
+        _ = try await shim("help")
+        let briefings = cache.appending(path: "briefings")
+        try FileManager.default.createDirectory(at: briefings, withIntermediateDirectories: true)
+        for name in ["\(Self.session).due", "\(Self.session).due.4242"] {
+            try "999999 Mon Jan 1 00:00:00 2024\n".write(to: briefings.appending(path: name), atomically: true, encoding: .utf8)
+        }
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(late.output.isEmpty)
+        #expect(start.output.hasPrefix("ran hook session-start"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: briefings.path)) ?? []).isEmpty)
+    }
+
+    /// Two starts while the CLI builds, as a compaction during the first build, each leave their briefing due, and each
+    /// late start gives one.
+    @Test func twoStartsWhileTheCLIBuildsAreEachBriefed() async throws {
+        let first = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        let second = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(first.output.contains("being built") && second.output.contains("being built"))
+        let lates = [try await shim("hook", "session-start", "--late", input: Self.event("SessionStart")), try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))]
+        #expect(lates.filter { $0.output.hasPrefix("ran hook session-start") }.count == 2)
+    }
+
+    /// A briefing its start left due is given, even when the build its start waited for landed before the late start
+    /// began: the start said the briefing follows, so it does.
+    @Test func aBriefingLeftDueIsGivenThoughTheBuildLandedFirst() async throws {
+        let briefings = cache.appending(path: "briefings")
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: briefings.path)) ?? []).contains { $0.hasPrefix("\(Self.session).due") })
+        _ = try await shim("help")
+        let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+        #expect(late.output.hasPrefix("ran hook session-start"))
+    }
+
+    /// A session's end takes a briefing still due with its stamp.
+    @Test func aSessionsEndTakesABriefingStillDue() async throws {
+        _ = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+        _ = try await shim("hook", "session-end", input: Self.event("SessionEnd"))
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: cache.appending(path: "briefings").path)) ?? []).isEmpty)
+    }
+
+    /// A resume, a `/clear` or a compaction is a start of its own, briefed once again.
+    @Test func eachStartIsBriefedOnce() async throws {
+        var briefings = 0
+        for _ in 0..<2 {
+            let start = try await shim("hook", "session-start", input: Self.event("SessionStart"))
+            let late = try await shim("hook", "session-start", "--late", input: Self.event("SessionStart"))
+            briefings += [start, late].filter { $0.output.hasPrefix("ran hook session-start") }.count
+        }
+        #expect(briefings == 2)
     }
 }

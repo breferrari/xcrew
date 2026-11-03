@@ -8,9 +8,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "XCREW_WITHIN_MS=10000 \"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook session-start",
-            "timeout": 180,
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook session-start",
             "statusMessage": "Preparing Xcode tooling"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook session-start --late",
+            "async": true
           }
         ]
       }
@@ -20,8 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "XCREW_WITHIN_MS=10000 \"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook session-end",
-            "timeout": 10
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/xcrew\" hook session-end"
           }
         ]
       }

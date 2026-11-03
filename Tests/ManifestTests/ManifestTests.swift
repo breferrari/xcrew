@@ -55,6 +55,11 @@ import Testing
         #expect(messages.allSatisfy { !$0.hasPrefix("xcrew:") && $0.first?.isUppercase == true })
     }
 
+    func handlers(_ event: String) throws -> [[String: Any]] {
+        let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: [[String: Any]]])
+        return try #require(hooks[event]).flatMap { ($0["hooks"] as? [[String: Any]]) ?? [] }
+    }
+
     func hook(_ event: String) throws -> (matcher: String?, command: String) {
         let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: [[String: Any]]])
         let group = try #require(hooks[event]?.first)
@@ -62,15 +67,40 @@ import Testing
         return (group["matcher"] as? String, try #require(handler["command"] as? String))
     }
 
-    @Test func sessionStartBriefsThroughTheCLI() async throws {
-        #expect(try hook("SessionStart").command == #"XCREW_WITHIN_MS=10000 "${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start"#)
+    /// The start briefs when a build is there, and the late start, run in the background, when it had to wait for one
+    /// (docs/findings.md, *The session hooks*).
+    @Test func sessionStartBriefsThroughTheCLIOrLate() async throws {
+        let start = try handlers("SessionStart")
+        #expect(start.map { $0["command"] as? String } == [#""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start"#, #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-start --late"#])
+        #expect(start.map { $0["async"] as? Bool } == [nil, true])
     }
 
     /// The command hooks are the briefing at a session's start and the stamp's removal at its end; no other.
     @Test func theCommandHooksAreSessionStartAndSessionEnd() async throws {
         let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: Any])
         #expect(Set(hooks.keys) == ["SessionStart", "SessionEnd"])
-        #expect(try hook("SessionEnd").command == #"XCREW_WITHIN_MS=10000 "${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-end"#)
+        #expect(try hook("SessionEnd").command == #""${CLAUDE_PLUGIN_ROOT}/bin/xcrew" hook session-end"#)
+    }
+
+    /// No hook carries a time of xcrew's: Claude Code's own limits govern (docs/findings.md, *The session hooks*).
+    @Test func noHookCarriesATimeOfItsOwn() throws {
+        for event in ["SessionStart", "SessionEnd"] {
+            for handler in try handlers(event) {
+                #expect(handler["timeout"] == nil, "\(event) names a timeout")
+                #expect(!((handler["command"] as? String) ?? "").contains("XCREW_WITHIN_MS"), "\(event) names a deadline")
+            }
+        }
+    }
+
+    /// The shim's session end names a stamp's folder as SessionStamp does: by the id's letters, digits, `-` and `_`.
+    @Test func theShimNamesASessionsStampAsTheCLIDoes() throws {
+        let shim = try text("bin/xcrew")
+        #expect(shim.contains("tr -cd 'A-Za-z0-9_-'"))
+        #expect(shim.contains(#"mv "$cache/sessions/$session" "$aside""#))
+        let stamp = try text("Sources/XcrewCore/Hooks/SessionStamp.swift")
+        #expect(stamp.contains(#"$0.isASCII && (CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_")"#))
+        #expect(shim.contains(#"printf '%s' "${named:-_}""#) && stamp.contains(#"name.isEmpty ? "_" : name"#))
+        #expect(stamp.contains(#"cacheFolder.appending(path: "sessions/\(fileName(session))")"#))
     }
 
     /// The mod-loaded check names the mcs that loads a pack's mod, as the techpack requires it.
@@ -1371,21 +1401,9 @@ import Testing
         #expect(named.isEmpty, "\(named)")
     }
 
-    /// Every way into the CLI carries its deadline: the mod's calls name theirs, the SessionStart hook's work after the
-    /// build has a result's 10 s, as Claude's first answer waits on it, the SessionEnd hook its own timeout, and the
-    /// MobileBuildMCP launcher its pin's wait; run with none, as from a terminal, the CLI takes an asked call's 120 s.
+    /// The MobileBuildMCP launcher carries its pin's wait; run with none, as from a terminal, the CLI takes an asked
+    /// call's 120 s. The session hooks carry no time of their own (`noHookCarriesATimeOfItsOwn`).
     @Test func everyWayIntoTheCLICarriesADeadline() throws {
-        let hooks = try #require(try json("hooks/hooks.json")["hooks"] as? [String: [[String: Any]]])
-        let commands = hooks.flatMap { event, groups in groups.flatMap { ($0["hooks"] as? [[String: Any]] ?? []).map { (event, $0) } } }
-        let onResult = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export const ON_RESULT_MS = ([\d_]+)/)?.1).replacingOccurrences(of: "_", with: "")
-        for (event, hook) in commands {
-            let command = try #require(hook["command"] as? String)
-            let within = command.firstMatch(of: /XCREW_WITHIN_MS=(\d+)\s/).map { String($0.1) }
-            switch event {
-            case "SessionStart": #expect(within == onResult, "\(event): \(command)")
-            default: #expect(within.flatMap(Int.init) == (hook["timeout"] as? Int).map { $0 * 1000 }, "\(event): \(command)")
-            }
-        }
         let launcher = try text("libexec/mobilebuildmcp-server")
         #expect(launcher.contains(#"XCREW_WITHIN_MS=$((PIN_SECONDS * 1000)) "$plugin/bin/xcrew" --if-built xcode"#))
         // Every command runs under the call's deadline, an asked call's when none is given.

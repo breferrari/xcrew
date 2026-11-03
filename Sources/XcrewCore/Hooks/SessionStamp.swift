@@ -54,7 +54,8 @@ public struct SessionStamp: Codable, Equatable, Sendable {
         try? FileManager.default.removeItem(at: legacyFile(session, on: machine))
     }
 
-    /// A session's folder, its id kept to the characters a file name takes as they are.
+    /// A session's folder, its id kept to the ASCII characters a file name takes as they are, as the shim keeps them for
+    /// a session's end (ManifestTests pairs them).
     static func folder(_ session: String, on machine: Machine) -> URL {
         machine.cacheFolder.appending(path: "sessions/\(fileName(session))")
     }
@@ -65,7 +66,7 @@ public struct SessionStamp: Codable, Equatable, Sendable {
     }
 
     static func fileName(_ session: String) -> String {
-        let name = String(session.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_" }.map(Character.init))
+        let name = String(session.unicodeScalars.filter { $0.isASCII && (CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_") }.map(Character.init))
         return name.isEmpty ? "_" : name
     }
 
