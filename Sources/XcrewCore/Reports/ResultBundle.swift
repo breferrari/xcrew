@@ -159,9 +159,10 @@ public struct ResultBundle: Sendable {
     /// tests are its bundle's*).
     static let clearing: [(result: String, counts: String)] = [("Passed", "passed"), ("Expected Failure", "an expected failure"), ("Skipped", "skipped")]
 
-    /// Each test the run's test list counts passed, as MobileBuildMCP's count does: a retried test that passed on a later
-    /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
-    /// target, or recorded `unknown` in, as one whose process was killed.
+    /// Each test the run's test list counts passed: a retried test that passed on a later try among them, as
+    /// MobileBuildMCP's count has it, its earlier failure only in its repetitions. Never one a test of the same id failed
+    /// in another target, or was recorded `unknown` in, as one whose process was killed: the report doesn't list a test
+    /// as both failed and passed.
     static func passedTests(listing: TestList) -> Set<TestID> {
         var passed: Set<TestID> = [], notPassed: Set<TestID> = []
         for node in listing.nodes where node["nodeType"] as? String == "Test Case" {
