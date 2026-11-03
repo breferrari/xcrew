@@ -486,7 +486,7 @@ import Testing
     }
 
     /// The failure notes' pointer to `look` names the tool the mod registers and the CLI's command, and the result bundle's
-    /// own spelling of a test in a nested suite, quoted so a shell takes its parentheses as the name's.
+    /// own spelling of a test in a nested suite, quoted so a shell passes the name on as it is.
     @Test func theFailureNotesPointToLookByItsNames() throws {
         let name = try #require(try text("hooks/mod/look.ts").firstMatch(of: /export const LOOK_TOOL = \{\n  name: '(\w+)'/)?.1)
         let line = FailureNotes.lookLine(TestID(suite: "Suite", name: "test"), bundle: "/runs/Run.xcresult")
@@ -494,6 +494,7 @@ import Testing
         #expect(line.contains("`xcrew \(LookCommand().name) Suite/test --bundle /runs/Run.xcresult`"))
         #expect(FailureNotes.lookLine(TestID(xcresultID: "Outer/Inner/testX()"), bundle: "/b.xcresult").contains("`xcrew look 'Outer/Inner/testX()' --bundle /b.xcresult`"))
         #expect(FailureNotes.lookLine(TestID(xcresultID: "Outer/Inner/sizes(value:)"), bundle: "/b.xcresult").contains("`xcrew look 'Outer/Inner/sizes(value:)' --bundle /b.xcresult`"))
+        #expect(FailureNotes.lookLine(TestID(suite: "Suite", name: "it's red"), bundle: "/b.xcresult").contains("`xcrew look 'Suite/it'\\''s red' --bundle /b.xcresult`"))
     }
 
     /// The routing rules tell Claude how to repeat a test, with the flag the mod recognises a repeated run by, and none

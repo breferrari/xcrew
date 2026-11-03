@@ -107,10 +107,11 @@ public enum FailureNotes {
 
     /// The line sending Claude to `look` on this run's bundle, so a later run doesn't stand in for it. A test in a nested
     /// suite is named as the bundle names it, `()` and all, so its suite's `/` isn't read as a target's; a name holding
-    /// parentheses is quoted, so a shell passes them on.
+    /// anything a shell reads, as parentheses, is quoted, so the shell passes it on as it is.
     static func lookLine(_ test: TestID, bundle: String) -> String {
         let named = test.shown.count(where: { $0 == "/" }) > 1 ? test.xcresultID : test.shown
-        let quoted = named.contains("(") ? "'\(named)'" : named
+        let plain = named.allSatisfy { $0.isLetter || $0.isNumber || "_/.:-".contains($0) }
+        let quoted = plain ? named : "'\(named.replacingOccurrences(of: "'", with: #"'\''"#))'"
         return "      \(lookLabel) the steps leading to the failure and the screen at it, with the `look` tool or `xcrew look \(quoted) --bundle \(bundle)`"
     }
 

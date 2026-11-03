@@ -79,5 +79,7 @@ import XcrewTestSupport
         // As MobileBuildMCP's Discovered list names them, from the target.
         #expect(Look.test("NestedTests/Inner/fails", among: lookup) == TestID(xcresultID: "Outer/Inner/fails()"))
         #expect(Look.test("Target/Suite/crashes()", among: lookup) == TestID(xcresultID: "xctest (1) encountered an error"))
+        // As the failure notes' line quotes it for a shell, copied whole.
+        #expect(Look.test("'Outer/Inner/fails()'", among: lookup) == TestID(xcresultID: "Outer/Inner/fails()"))
     }
 }

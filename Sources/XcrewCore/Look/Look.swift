@@ -21,8 +21,9 @@ public enum Look {
     /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way; else, as
     /// the run's text names a test, the one nested id that ends with it, or the `System Failures` case a crash of it is
     /// filed under. When the bundle lists none, a name ending `()` is taken as the bundle's own and one without as
-    /// `-only-testing:`'s.
-    static func test(_ named: String, among lookup: TestLookup) -> TestID {
+    /// `-only-testing:`'s. A name in single quotes, as the failure notes' line quotes one for a shell, is read without them.
+    static func test(_ given: String, among lookup: TestLookup) -> TestID {
+        let named = given.count > 1 && given.hasPrefix("'") && given.hasSuffix("'") ? String(given.dropFirst().dropLast()) : given
         let exact = TestID(xcresultID: named)
         let parts = named.split(separator: "/", maxSplits: 1)
         let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
