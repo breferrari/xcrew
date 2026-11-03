@@ -141,10 +141,14 @@ public struct ResultBundle: Sendable {
         }
     }
 
-    /// Each test case's results in a test list's nodes, by its id: a test filed more than once, as under several
-    /// configurations, has each of them, and an entry with none has `noResult`.
+    /// Each test case's results in a test list's nodes, by its id: a test filed more than once, as in several test
+    /// bundles, has each of them, and each test plan configuration it ran under, a child of its case, its own too. An
+    /// entry with none has `noResult`.
     static func results(in nodes: [[String: Any]]) -> [TestID: Set<String>] {
-        testCases(in: nodes).mapValues { Set($0.map { $0["result"] as? String ?? noResult }) }
+        testCases(in: nodes).mapValues { cases in
+            let entries = cases + cases.flatMap { self.nodes($0["children"]).filter { $0["nodeType"] as? String == "Test Plan Configuration" } }
+            return Set(entries.map { $0["result"] as? String ?? noResult })
+        }
     }
 
     /// What `results(in:)` gives for an entry that records no result.
@@ -154,7 +158,7 @@ public struct ResultBundle: Sendable {
     /// whatever another listing says. A test of one name with another result in any entry, as `unknown` for one whose
     /// process was killed in another test bundle, isn't: a pass in one entry is no sign of the other.
     static func cleared(in results: [TestID: Set<String>]) -> Set<TestID> {
-        Set(results.filter { $0.value.allSatisfy { result in clearing.contains { $0.result == result } } }.keys)
+        Set(results.filter { $0.value.isSubset(of: clearingResults) }.keys)
     }
 
     /// The results that make a test no failure, each with how a note says it counts, in the order one is named when a
@@ -162,13 +166,18 @@ public struct ResultBundle: Sendable {
     /// tests are its bundle's*).
     static let clearing: [(result: String, counts: String)] = [("Passed", "passed"), ("Expected Failure", "an expected failure"), ("Skipped", "skipped")]
 
+    /// The results in `clearing`, as a set.
+    static let clearingResults = Set(clearing.map(\.result))
+
     /// Each test the run's test list counts passed: a retried test that passed on a later try among them, as
     /// MobileBuildMCP's count has it, its earlier failure only in its repetitions. Never one with an entry of another
     /// result, as one of the same id failed in another target or recorded `unknown` in, as one whose process was
-    /// killed: the report doesn't list a test as both failed and passed.
+    /// killed, or one the bundle lists as failed, as through a crash it files under `System Failures`: the report doesn't
+    /// list a test as both failed and passed.
     static func passedTests(listing: TestList) -> Set<TestID> {
         let results = Self.results(in: listing.nodes)
-        return cleared(in: results).filter { results[$0]?.contains("Passed") == true }
+        let failed = Set((failedTests(listing: listing) ?? []).map { TestID(xcresultID: $0.title) })
+        return cleared(in: results).filter { results[$0]?.contains("Passed") == true }.subtracting(failed)
     }
 
     /// Each test `passedTests` counts passed, once per test bundle it passed in, the bundle its target, as `Suite/test`; a
