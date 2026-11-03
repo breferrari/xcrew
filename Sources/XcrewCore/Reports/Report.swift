@@ -139,9 +139,12 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
-    /// is no failure.
+    /// is no failure, and after it when the text names none.
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
-        guard let detail, let first, let named, first != named, detail.hasSuffix(" · \(named)") else { return detail }
+        guard let detail, let first else { return detail }
+        // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
+        guard let named else { return detail.contains(" · ") ? detail : "\(detail) · \(first)" }
+        guard first != named, detail.hasSuffix(" · \(named)") else { return detail }
         return String(detail.dropLast(named.count)) + first
     }
 
