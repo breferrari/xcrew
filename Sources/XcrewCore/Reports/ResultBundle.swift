@@ -141,6 +141,12 @@ public struct ResultBundle: Sendable {
         }
     }
 
+    /// Each test case's results in a test list's nodes, by its id, for each test with one: a test filed more than once,
+    /// as under several configurations, has each of them.
+    static func results(in nodes: [[String: Any]]) -> [TestID: Set<String>] {
+        testCases(in: nodes).mapValues { Set($0.compactMap { $0["result"] as? String }) }.filter { !$0.value.isEmpty }
+    }
+
     /// Each test the run's test list counts passed, as MobileBuildMCP's count does: a retried test that passed on a later
     /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
     /// target.

@@ -102,7 +102,7 @@ struct BundleFailuresTests {
         let notes = try await Self.report("retry", repeated: true).notes
         #expect(notes.filter { $0.contains("ProbeTests/testFlaky") } == [
             "xcrew: across repeated runs: ProbeTests/testFails failed every run, a real failure; ProbeTests/testFlaky is flaky, failing 1 of 2.",
-            "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: ProbeTests/testFlaky, which it counts as passed. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place.",
+            "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: ProbeTests/testFlaky, which it counts as passed. A test the bundle records otherwise is left out of the failures here.",
         ])
     }
 
@@ -119,7 +119,7 @@ struct BundleFailuresTests {
             #"ProbeTests/testGone | XCTAssertEqual failed: ("1") is not equal to ("0") - run 1 is odd"#,
         ])
         #expect(report.notes.filter { $0.contains("MobileBuildMCP's result lists") } == [
-            "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: ProbeTests/testGone, which it has no entry for under that name. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place.",
+            "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: ProbeTests/testGone, which it has no entry for under that name. A test it has no entry for stays in the failures here, with MobileBuildMCP's message and place.",
         ])
     }
 
@@ -141,7 +141,7 @@ struct BundleFailuresTests {
         let report = await Report.make(kind: .test, output: ToolOutput(text: text.replacingOccurrences(of: failing, with: ""), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
         #expect(report.detail == "1 of 4 failed")
         #expect(report.failures.filter(\.isTest).isEmpty)
-        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: ProbeTests/testFlaky, which it counts as passed. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place."))
+        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: ProbeTests/testFlaky, which it counts as passed. A test the bundle records otherwise is left out of the failures here."))
     }
 
     /// With no failed test in the bundle, the summary names the first the text lists that the bundle has no entry for,
@@ -156,7 +156,7 @@ struct BundleFailuresTests {
         let report = await Report.make(kind: .test, output: output, home: Captured.home, runner: runner)
         #expect(report.detail == "1 of 4 failed · ProbeTests/testGone")
         #expect(report.failures.filter(\.isTest).map(\.title) == ["ProbeTests/testGone"])
-        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't: ProbeTests/testPasses, which it counts as passed; ProbeTests/testGone, which it has no entry for under that name. A test the bundle records otherwise is left out of the failures here; one it has no entry for stays in them, with MobileBuildMCP's message and place."))
+        #expect(report.notes.contains("xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't: ProbeTests/testPasses, which it counts as passed; ProbeTests/testGone, which it has no entry for under that name. A test the bundle records otherwise is left out of the failures here. A test it has no entry for stays in the failures here, with MobileBuildMCP's message and place."))
     }
 
     /// An expected failure is no failure, nor is a test a retry passed.
