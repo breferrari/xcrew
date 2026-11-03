@@ -54,8 +54,8 @@ public struct Report: Sendable, Equatable, Codable {
     static let inTheResult = "the result lists them all above"
 
     /// The warnings in the lines this branch changed, a few named and the rest counted with `rest`, which says where they
-    /// all are, or that no list is kept.
-    static func warningsSentence(_ inChanged: [ToolOutput.Warning], of total: Int, rest: String) -> String? {
+    /// all are; every one without it.
+    static func warningsSentence(_ inChanged: [ToolOutput.Warning], of total: Int, rest: String?) -> String? {
         guard !inChanged.isEmpty else { return nil }
         // Messages carry commas, so a semicolon parts them.
         let named = inChanged.map { "\(ToolOutput.basename($0.path ?? "")):\($0.line ?? 0) \($0.message)" }

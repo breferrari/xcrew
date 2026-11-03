@@ -13,7 +13,7 @@ enum TestPlans {
 
         /// The plan, the schemes it's the default of, and its configurations, in a sentence.
         var sentence: String {
-            let named = String(ResultBundle.listed(schemes.map { "`\($0)`" }, rest: ResultBundle.noList).dropFirst(2))
+            let named = String(ResultBundle.listed(schemes.map { "`\($0)`" }, rest: nil).dropFirst(2))
             return "Test plan `\(plan)`, the default of \(schemes.count == 1 ? "scheme" : "schemes") \(named), runs each test under each of its configurations\(ResultBundle.listed(configurations, rest: "`\(file)` lists them all"))."
         }
     }

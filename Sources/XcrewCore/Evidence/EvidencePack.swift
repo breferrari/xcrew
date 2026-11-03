@@ -124,7 +124,7 @@ public enum EvidencePack {
             guard let log = RunLog.newestBuild(project: project.root, home: machine.home), let text = try? String(contentsOf: log, encoding: .utf8) else { return nil }
             let found = BuildLog.warnings(in: text)
             guard let inChanged = await ChangedLines.warnings(found, in: change, project: project, using: runner),
-                  let sentence = Report.warningsSentence(inChanged, of: found.count, rest: ResultBundle.noList)
+                  let sentence = Report.warningsSentence(inChanged, of: found.count, rest: nil)
             else { return nil }
             return ("the build", log, sentence)
         }()

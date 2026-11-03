@@ -125,8 +125,8 @@ import XcrewTestSupport
             project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "\(name).xctestplan")
         }
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
-        // 80 schemes read: 5 named, 75 counted.
-        #expect(text.contains("- **xcrew:** and 75 more test plans run each test under several configurations (no list of them is kept)."), "\(text)")
+        #expect((1...80).allSatisfy { index in text.contains("Test plan `S" + String(repeating: "0", count: 3 - String(index).count) + String(index) + "`") }, "\(text)")
+        #expect(!text.contains("more test plans"), "\(text)")
     }
 
     /// With every scheme read and one plan to name, nothing more is said.
@@ -144,9 +144,8 @@ import XcrewTestSupport
         #expect(!text.contains("weren't read"), "\(text)")
     }
 
-    /// One line per test plan, whichever schemes share it, and a few plans at most: a large modular app's schemes would
-    /// otherwise each add one.
-    @Test func briefingNamesEachTestPlanOnceAndAFewAtMost() async {
+    /// One line per test plan, whichever schemes share it, and every plan.
+    @Test func briefingNamesEachTestPlanOnce() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         for scheme in ["A", "B", "C"] { project.writeScheme(scheme, plan: "Shared.xctestplan") }
         for plan in 1...6 {
@@ -158,8 +157,8 @@ import XcrewTestSupport
         // In the order the schemes sort: `Shared` comes with `A`.
         #expect(notes.first == "- **xcrew:** Test plan `Shared`, the default of schemes `A`, `B` and `C`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which.", "\(notes)")
         #expect(notes.contains("- **xcrew:** Test plan `P1`, the default of scheme `P1`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which."), "\(notes)")
-        #expect(notes.count == 6, "\(notes)")
-        #expect(notes.last == "- **xcrew:** and 2 more test plans run each test under several configurations (no list of them is kept).", "\(notes)")
+        #expect(notes.count == 7, "\(notes)")
+        #expect(notes.last == "- **xcrew:** Test plan `P6`, the default of scheme `P6`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which.", "\(notes)")
     }
 
     /// MobileBuildMCP writes a config of its own when Claude saves session defaults: one without a profile naming a
