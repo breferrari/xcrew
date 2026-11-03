@@ -108,7 +108,7 @@ public enum FailureNotes {
     /// The line sending Claude to `look` on this run's bundle, so a later run doesn't stand in for it, the test and the
     /// bundle each one word of the command.
     static func lookLine(_ test: TestID, bundle: String) -> String {
-        "      \(lookLabel) the steps leading to the failure and the screen at it, with the `look` tool or `xcrew look \(ShellWord.word(test.lookName)) --bundle \(ShellWord.word(bundle))`"
+        "      \(lookLabel) the steps leading to the failure and the screen at it, with the `look` tool or `\(test.lookCommand(bundle: bundle))`"
     }
 
     /// The text with its notes, and each failed test's images, for the failures pane.

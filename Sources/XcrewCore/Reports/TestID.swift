@@ -28,6 +28,9 @@ public struct TestID: Sendable, Hashable {
     /// read as a target's (`Target/Suite/test`).
     var lookName: String { shown.count(where: { $0 == "/" }) > 1 ? xcresultID : shown }
 
+    /// The `xcrew look` command on it in `bundle`, each a word a shell passes on as it is.
+    func lookCommand(bundle: String) -> String { "xcrew look \(ShellWord.word(lookName)) --bundle \(ShellWord.word(bundle))" }
+
     /// `Suite/test()`, as `xcresulttool` names one; an id it read with no `/`, as the case a crash under `System Failures`
     /// is filed as, by itself.
     public var xcresultID: String { name.isEmpty ? suite : "\(suite)/\(function)" }

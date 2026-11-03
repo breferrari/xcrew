@@ -13,9 +13,12 @@ public enum Look {
     /// before `now` are removed.
     public static func report(bundle: ResultBundle, named: String?, keptIn folder: URL, now: Date) async -> String {
         let listing = TestList(await bundle.tests())
-        let lookup = named.map { _ in TestLookup(nodes: listing.nodes) }
-        let found = named.flatMap { name in lookup.map { test(name, among: $0) } }
-        return await report(bundle: bundle, test: found, cases: lookup?.cases ?? ResultBundle.testCases(in: listing.nodes), failed: listing.json == nil ? nil : ResultBundle.failedTests(in: listing.nodes), keptIn: folder, now: now)
+        let failed = listing.json == nil ? nil : ResultBundle.failedTests(in: listing.nodes)
+        if let named {
+            let lookup = TestLookup(nodes: listing.nodes)
+            return await report(bundle: bundle, test: test(named, among: lookup), cases: lookup.cases, failed: failed, keptIn: folder, now: now)
+        }
+        return await report(bundle: bundle, test: nil, cases: ResultBundle.testCases(in: listing.nodes), failed: failed, keptIn: folder, now: now)
     }
 
     /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,
@@ -93,7 +96,7 @@ public enum Look {
 
     /// The line naming the failed tests not shown, each as a `look` command on this bundle takes it.
     static func moreLine(_ unshown: [TestID], bundle: String) -> String {
-        "and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { "xcrew look \(ShellWord.word($0.lookName)) --bundle \(ShellWord.word(bundle))" }, rest: "`xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle))` lists them all")
+        "and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { $0.lookCommand(bundle: bundle) }, rest: "`xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle))` lists them all")
     }
 
     /// One test's failed runs, each with its steps, failure and screen, then where it passed; nil when none failed. A
