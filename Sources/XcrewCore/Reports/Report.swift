@@ -180,13 +180,16 @@ public struct Report: Sendable, Equatable, Codable {
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
         guard let detail else { return nil }
         // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
+        let separator = ToolOutput.Summary.beforeFirstFailing
         guard let named else {
             guard let first, detail.hasSuffix(ToolOutput.Summary.failedCounts) else { return detail }
-            return detail + ToolOutput.Summary.beforeFirstFailing + first
+            return ToolOutput.shorten(detail + separator + first)
         }
-        let namedSuffix = ToolOutput.Summary.beforeFirstFailing + named
-        guard first != named, detail.hasSuffix(namedSuffix) else { return detail }
-        return String(detail.dropLast(namedSuffix.count)) + (first.map { ToolOutput.Summary.beforeFirstFailing + $0 } ?? "")
+        // The summary is shortened to one line, which can cut the name it ends with.
+        guard first != named, let cut = detail.range(of: separator, options: .backwards) else { return detail }
+        let shown = detail[cut.upperBound...]
+        guard shown == named || (shown.hasSuffix("…") && named.hasPrefix(shown.dropLast())) else { return detail }
+        return ToolOutput.shorten(String(detail[..<cut.lowerBound]) + (first.map { separator + $0 } ?? ""))
     }
 
     /// The task Claude Code named in a handle: the one after "moved to the background as task", in each of its wordings

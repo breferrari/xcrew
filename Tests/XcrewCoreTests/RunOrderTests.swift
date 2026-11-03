@@ -159,6 +159,14 @@ struct RunOrderTests {
             == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't list among its failures under that name: Suite/test, which the bundle counts as passed and skipped. A test the bundle counts as passed, an expected failure or skipped is left out of the failures here.")
     }
 
+    /// A device below a test's case that records no result says nothing either way, as `look` reads it: the test is
+    /// cleared and passed on its other results.
+    @Test func aDeviceThatRecordsNoResultSaysNothing() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/test()","result":"Passed","children":[{"nodeType":"Device","name":"iPhone","result":"Passed"},{"nodeType":"Device","name":"iPad"}]}]}"#)
+        #expect(ResultBundle.cleared(in: ResultBundle.results(in: listing.nodes)) == [TestID(suite: "Suite", name: "test")])
+        #expect(ResultBundle.passedTests(listing: listing) == [TestID(suite: "Suite", name: "test")])
+    }
+
     /// A test run on two devices, passed on one and `unknown` on the other, is neither cleared nor passed: a pass on
     /// one device is no sign of the other.
     @Test func aTestWhoseDevicesDisagreeIsNeitherClearedNorPassed() {
@@ -175,6 +183,17 @@ struct RunOrderTests {
         let bundled = ["Later/test", "Inner/test", "A/Inner/test"].map { ToolOutput.Failure(title: $0, message: $0, isTest: true) }
         let text = ["Inner/test", "Inner/test", "Later/test"].map { ToolOutput.Failure(title: $0, message: "", isTest: true) }
         #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map(\.title) == ["Inner/test", "Later/test", "A/Inner/test"])
+    }
+
+    /// A summary shortened to one line, its test's name cut, still drops or replaces that test, and stays one line.
+    @Test func aShortenedSummaryStillDropsOrReplacesItsTest() {
+        let long = "CheckoutViewModelTests/test_givenExpiredCard_whenUserTapsPay_thenPresentsRetryAlertWithTheCardNumber"
+        let shortened = ToolOutput.shorten("1 of 312 failed · " + long)
+        #expect(shortened.hasSuffix("…"))
+        #expect(Report.naming(shortened, first: nil, insteadOf: long) == "1 of 312 failed")
+        let other = "CheckoutViewModelTests/test_givenValidCard_whenUserTapsPay_thenCompletesThePurchaseAndShowsTheReceipt"
+        #expect(Report.naming(shortened, first: other, insteadOf: long) == ToolOutput.shorten("1 of 312 failed · " + other))
+        #expect(Report.naming("1 of 4 failed · Inner/test", first: other, insteadOf: "Inner/test")?.count == 100)
     }
 
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure

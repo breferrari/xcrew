@@ -143,10 +143,10 @@ public struct ResultBundle: Sendable {
 
     /// Each test case's results in a test list's nodes, by its id: a test filed more than once, as in several test
     /// bundles, has each of them, and each test plan configuration and device it ran under, below its case, its own
-    /// too. An entry with none has `noResult`.
+    /// too. A case with none has `noResult`; a configuration or device with none says nothing, as `look` reads it.
     static func results(in nodes: [[String: Any]]) -> [TestID: Set<String>] {
         testCases(in: nodes).mapValues { cases in
-            Set(cases.map { $0["result"] as? String ?? noResult } + nestedResults(of: cases).map { $0.result ?? noResult })
+            Set(cases.map { $0["result"] as? String ?? noResult } + nestedResults(of: cases).compactMap(\.result))
         }
     }
 
