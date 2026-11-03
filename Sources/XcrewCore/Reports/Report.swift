@@ -382,10 +382,13 @@ public struct Report: Sendable, Equatable, Codable {
                 passedTests = ResultBundle.passed(listing: await testList())
             }
         }
-        // With no failing test left, the one the text named goes only when the bundle records it under that name: one it
-        // doesn't list, as a crash kept out, may have failed.
+        // With no failing test left, the summary names the first the text lists that the bundle has no entry for under
+        // that name: one it doesn't list, as a crash kept out, may have failed.
         let textsFirst = final.failures.first(where: \.isTest)?.title
-        let firstFailing = failures.first(where: \.isTest)?.title ?? textsFirst.flatMap { ResultBundle.testCases(in: listing.nodes)[TestID(xcresultID: $0)] == nil ? $0 : nil }
+        let firstFailing = failures.first(where: \.isTest)?.title ?? {
+            let cases = ResultBundle.testCases(in: listing.nodes)
+            return final.failures.first { $0.isTest && cases[TestID(xcresultID: $0.title)] == nil }?.title
+        }()
         let isUnread = kind != .run && !final.isError && final.isNotTheServers
         let compact = saved.flatMap { final.compactTestResult(savedPath: $0) } ?? (saved == nil ? final.compactTestText : nil)
         // What xcrew made of the result comes back in its place, but for a saved result only once it's under the size Claude

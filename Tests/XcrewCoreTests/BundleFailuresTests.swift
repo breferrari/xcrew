@@ -158,6 +158,18 @@ struct BundleFailuresTests {
         #expect(report.detail == "1 of 4 failed · ProbeTests/testGone")
     }
 
+    /// With the first test the text names counted passed by the bundle, the summary names the first it doesn't list.
+    /// Composed from the retry capture: the failing test renamed to one that passed, the flaky one to one not listed.
+    @Test func theSummaryNamesTheFirstTestTheBundleDoesntList() async throws {
+        let text = try Raw.text("retry")
+        #expect(text.contains("✗ ProbeTests / testFails:") && text.contains("✗ ProbeTests / testFlaky:"))
+        let listing = try Raw.file("retry.tests.json").replacingOccurrences(of: #""result":"Failed""#, with: #""result":"Passed""#)
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("retry")) --compact": .init(status: 0, stdout: listing)])
+        let output = ToolOutput(text: text.replacingOccurrences(of: "✗ ProbeTests / testFails:", with: "✗ ProbeTests / testPasses:").replacingOccurrences(of: "✗ ProbeTests / testFlaky:", with: "✗ ProbeTests / testGone:"), server: .mobileBuildMCP, isError: true)
+        let report = await Report.make(kind: .test, output: output, home: Captured.home, runner: runner)
+        #expect(report.detail == "1 of 4 failed · ProbeTests/testGone")
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
