@@ -121,11 +121,12 @@ public struct Report: Sendable, Equatable, Codable {
     /// bundle from the outermost: it's matched by the end of the bundle's name for it, when no other's ends the same way
     /// and none is the text's whole. A test only the bundle lists comes after; the text's other failures stay where
     /// they were. A test only the text lists disagrees with the bundle, and is returned once as disagreeing: one the
-    /// bundle records under that name, among `recorded`, as a retry it counts passed, is none of the run's failures;
-    /// one it has no entry for stays a failure in its place, as the text gives it, as no record is no sign it passed,
+    /// bundle counts as passed, skipped or an expected failure under that name, among `cleared`, as a retry it passed,
+    /// is none of the run's failures; any other stays a failure in its place, as the text gives it, as no record, or
+    /// one of none of those, is no sign it passed,
     /// a later listing of it, as a parallel run's clone's, filling in the message or place the first lacked.
     /// Never one the bundle lists as failed under its name or a nested name ending with it.
-    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], recorded: Set<TestID>) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
+    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
         let named = Set(pending.map(\.test))
         let listed = { (test: TestID) in named.contains(test) || named.contains { test.isNested(in: $0) } }
@@ -143,15 +144,13 @@ public struct Report: Sendable, Equatable, Codable {
                 return nested.count == 1 ? nested.first : nil
             }()
             if let index {
-                let found = pending.remove(at: index).failure
-                ordered.append(ToolOutput.Failure(title: found.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
+                ordered.append(pending.remove(at: index).failure.filling(from: failure))
             } else if !listed(test) {
                 if !disagreeing.contains(test) {
                     disagreeing.append(test)
-                    if !recorded.contains(test) { ordered.append(failure) }
-                } else if !recorded.contains(test), let kept = ordered.firstIndex(where: { $0.isTest && TestID(xcresultID: $0.title) == test }) {
-                    let first = ordered[kept]
-                    ordered[kept] = ToolOutput.Failure(title: first.title, message: first.message.isEmpty ? failure.message : first.message, where: first.where ?? failure.where, isTest: true, target: first.target)
+                    if !cleared.contains(test) { ordered.append(failure) }
+                } else if !cleared.contains(test), let kept = ordered.firstIndex(where: { $0.isTest && TestID(xcresultID: $0.title) == test }) {
+                    ordered[kept] = ordered[kept].filling(from: failure)
                 }
             }
         }
@@ -174,9 +173,10 @@ public struct Report: Sendable, Equatable, Codable {
             return "\(test.shown), \(recorded)"
         }
         let these = named.count == 1 ? "a test its result bundle doesn't" : "tests its result bundle doesn't"
-        let otherwise = tests.contains { results[$0] != nil } ? " A test the bundle records otherwise is left out of the failures here." : ""
-        let unlisted = tests.contains { results[$0] == nil } ? " A test it has no entry for stays in the failures here, with MobileBuildMCP's message and place." : ""
-        return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.joined(separator: "; ")).\(otherwise)\(unlisted)"
+        let cleared = ResultBundle.cleared(in: results)
+        let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as passed, skipped or an expected failure is left out of the failures here." : ""
+        let kept = tests.contains { !cleared.contains($0) } ? " A test it has none of those for stays in the failures here, as MobileBuildMCP gives it." : ""
+        return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.joined(separator: "; ")).\(leftOut)\(kept)"
     }
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
@@ -375,7 +375,7 @@ public struct Report: Sendable, Equatable, Codable {
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
         let results = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
-        let ordered = bundled.map { Self.inRunOrder($0, text: final.failures, recorded: Set(results.keys)) }
+        let ordered = bundled.map { Self.inRunOrder($0, text: final.failures, cleared: ResultBundle.cleared(in: results)) }
         let failures = ordered?.failures ?? final.failures
         if let ordered, let note = Self.notFailedInBundleNote(ordered.disagreeing, results: results) { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its

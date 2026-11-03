@@ -147,6 +147,13 @@ public struct ResultBundle: Sendable {
         testCases(in: nodes).mapValues { Set($0.compactMap { $0["result"] as? String }) }.filter { !$0.value.isEmpty }
     }
 
+    /// The tests among `results` the bundle counts as passed, skipped or an expected failure in any entry: no failure
+    /// whatever another listing says. Any other result, as `unknown` for a test whose process was killed, is no sign it
+    /// passed.
+    static func cleared(in results: [TestID: Set<String>]) -> Set<TestID> {
+        Set(results.filter { !$0.value.isDisjoint(with: ["Passed", "Skipped", "Expected Failure"]) }.keys)
+    }
+
     /// Each test the run's test list counts passed, as MobileBuildMCP's count does: a retried test that passed on a later
     /// try among them, its earlier failure only in its repetitions. Never one a test of the same id failed in another
     /// target.

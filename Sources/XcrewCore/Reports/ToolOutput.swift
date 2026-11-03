@@ -91,6 +91,11 @@ public struct ToolOutput: Sendable {
             self.moreImages = moreImages
             self.target = target
         }
+
+        /// This failure, its empty message and missing place filled in from `other`, a listing of the same test.
+        func filling(from other: Failure) -> Failure {
+            Failure(title: title, message: message.isEmpty ? other.message : message, where: self.where ?? other.where, isTest: isTest, images: images, moreImages: moreImages, target: target)
+        }
     }
 
     /// Keeps the summary to one line.
