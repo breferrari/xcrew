@@ -452,6 +452,47 @@ struct BundleFailuresTests {
         #expect(!report.notes.contains { $0.contains("Inner/fails") }, "\(report.notes)")
     }
 
+    /// A name the text gives twice, of which the bundle records only one candidate as failed and the other as `unknown`,
+    /// loses no failure: its first line becomes the failed candidate, in its place, and its second keeps the text's data
+    /// with the line saying the bundle has more than one test by that name. A failure between them stays where it was.
+    @Test func aNameOneOfWhoseCandidatesFailedLosesNoFailure() async throws {
+        let home = "/testbed/user"
+        let bundle = "\(home)/Library/Developer/MobileBuildMCP/workspaces/field-0000/result-bundles/test_sim_1.xcresult"
+        let text = """
+
+            🧪 Test
+
+            Test Failures (3):
+
+              ✗ Inner / fails(): one
+                A.swift:3
+
+              ✗ Other / test(): other
+                Other.swift:5
+
+              ✗ Inner / fails(): two
+                B.swift:3
+
+            ❌ 3 tests failed, 0 passed, 0 skipped (⏱️ 1.0s)
+              └ Files:
+                 └── ~/Library/Developer/MobileBuildMCP/workspaces/field-0000/
+                     └── result-bundles/test_sim_1.xcresult — Result Bundle
+
+            """
+        let nodes = [
+            #"{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"A/Inner/fails()","result":"Failed","children":[{"nodeType":"Failure Message","name":"one","sourceLocation":{"filePath":"/work/A.swift","lineNumber":3}}]}"#,
+            #"{"nodeType":"Test Case","name":"test()","nodeIdentifier":"Other/test()","result":"Failed","children":[{"nodeType":"Failure Message","name":"other","sourceLocation":{"filePath":"/work/Other.swift","lineNumber":5}}]}"#,
+            #"{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"B/Inner/fails()","result":"unknown"}"#,
+        ]
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: #"{"testNodes":[\#(nodes.joined(separator: ","))]}"#)])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: home, runner: runner)
+        let result = try #require(report.result)
+        let note = #"      MobileBuildMCP reported "Inner/fails", which matches these 2 tests: A/Inner/fails and B/Inner/fails"#
+        #expect(result.contains("Test Failures (3):\n\n  ✗ A / Inner/fails(): one\n    /work/A.swift:3\n\(note)\n\n  ✗ Other / test(): other\n"), "\(result)")
+        #expect(result.contains("  ✗ Inner / fails(): two\n      the result bundle has more than one test by that name: A/Inner/fails and B/Inner/fails\n    B.swift:3\n"), "\(result)")
+        #expect(report.failures.map(\.title) == ["A/Inner/fails", "Other/test", "Inner/fails"], "\(report.failures)")
+    }
+
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
     /// bundle has more than one test by that name. The nested capture's text, its `Inner` composed into two suites.
     @Test func aNameTwoNestedSuitesShareIsLookedUpUnderNeither() async throws {

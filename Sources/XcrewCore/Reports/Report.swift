@@ -154,7 +154,7 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// The note on each failed test a name MobileBuildMCP's text gives can mean, when several can.
     static func reported(_ name: TestID, matching candidates: [TestID]) -> String {
-        "MobileBuildMCP reported \"\(name.shown)\", which matches these \(candidates.count) tests: \(ResultBundle.joined(candidates.map(\.shown), rest: "in the result bundle's test list"))"
+        "MobileBuildMCP reported \"\(name.shown)\", which matches these \(candidates.count) tests: \(FailureNotes.candidates(candidates))"
     }
 
     /// The label on a failure line the bundle's list adds, where the text lists the test `outcome`, as passed.
@@ -360,9 +360,15 @@ public struct Report: Sendable, Equatable, Codable {
                 let reported = bundleIDs.compactMapValues { resolution -> [TestID]? in
                     if case let .ambiguous(ids) = resolution, ids.contains(where: failed.contains) { ids } else { nil }
                 }
-                if let without = text.removing(Set(reported.keys)) {
-                    (text, changed) = (without, true)
-                    for name in reported.keys { bundleIDs[name] = nil }
+                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
+                let listed = { (entry: (test: TestID, message: String, id: TestID)) in (entry.test, entry.message, ResultBundle.place(of: entry.id, in: lookup.cases)) }
+                var placed: Set<TestID> = []
+                for (name, ids) in reported.sorted(by: { $0.key.shown < $1.key.shown }) {
+                    let candidates = entries.filter { ids.contains($0.test) }
+                    guard let swapped = text.replacing(name, with: candidates.map(listed)) else { continue }
+                    (text, changed) = (swapped.text, true)
+                    placed.formUnion(candidates.map(\.test))
+                    if swapped.left == 0 { bundleIDs[name] = nil }
                 }
                 let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
                     if let test = MobileBuildMCPLine.passed(line.text) { return (test, "passed") }
@@ -370,15 +376,12 @@ public struct Report: Sendable, Equatable, Codable {
                     return nil
                 }
                 let outcomes = Dictionary(said.map { (lookup.resolution(of: $0.0).found ?? $0.0, $0.1) }) { first, _ in first }
-                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
                 labels = Dictionary(entries.compactMap { entry in outcomes[entry.id].map { (entry.test, Self.listedOtherwise($0)) } }) { first, _ in first }
-                for (name, ids) in reported.sorted(by: { $0.key.shown < $1.key.shown }) {
-                    for id in ids where failed.contains(id) { labels[id] = Self.reported(name, matching: ids) }
+                for (name, ids) in reported {
+                    for id in ids where placed.contains(id) { labels[id] = Self.reported(name, matching: ids) }
                 }
-                if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: lookup.cases)) }) {
-                    (text, changed) = (added, true)
-                    for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
-                }
+                if let added = text.adding(unlisted: entries.filter { !placed.contains($0.test) }.map(listed)) { (text, changed) = (added, true) }
+                for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
             }
             if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: machine.map { ($0.cacheFolder.appending(path: "images"), $0.now()) }, repetitions: repetitions, bundleIDs: bundleIDs, labels: labels),
                let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {

@@ -300,10 +300,7 @@ struct MobileText: Sendable {
     /// to add, or nowhere to add it.
     func adding(unlisted failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
         guard !failures.isEmpty else { return nil }
-        let listed = failures.flatMap { failure in
-            [Line("  ✗ \(failure.test.suite) / \(failure.test.function): \(failure.message)")]
-                + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
-        }
+        let listed = failures.flatMap(Self.entry)
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else {
             guard let at = testResultsStart ?? lines.firstIndex(where: \.isSummary) else { return nil }
             return MobileText(lines: Array(lines[..<at]) + [Line("Test Failures (\(failures.count)):"), Line("")] + listed + Array(lines[at...]))
@@ -320,28 +317,37 @@ struct MobileText: Sendable {
         return Line(counted)
     }
 
-    /// The text without the Test Failures lines of `tests`: each one's `✗` line and the lines below it up to the blank one
-    /// that ends it, the section's count lowered. Nil when it lists none of them.
-    func removing(_ tests: Set<TestID>) -> MobileText? {
-        var kept: [Line] = []
-        var removed = 0
-        var inRemoved = false
-        for line in lines {
-            if inRemoved {
-                if line.isBlank { inRemoved = false; continue }
-                if line.text.hasPrefix("    ") { continue }
-                inRemoved = false
-            }
-            if let test = line.failing?.test, tests.contains(test) {
-                removed += 1
-                inRemoved = true
-                continue
-            }
-            kept.append(line)
+    /// The text with `name`'s first entries under Test Failures replaced, in their places, by `failures`, one each, in
+    /// MobileBuildMCP's shape; failures beyond its entries follow its last, the section's count raised by them, and its
+    /// entries beyond the failures stay. Each entry is its `✗` line and the lines below it up to the blank one that ends
+    /// it. Nil when the section lists no entry of `name`, with how many of its entries stay.
+    func replacing(_ name: TestID, with failures: [(test: TestID, message: String, place: String?)]) -> (text: MobileText, left: Int)? {
+        guard !failures.isEmpty, let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
+        let ending = lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
+        var entries: [Range<Int>] = []
+        var index = heading + 1
+        while index < ending {
+            guard lines[index].failing?.test == name else { index += 1; continue }
+            var end = index + 1
+            while end < ending, lines[end].failing == nil, !lines[end].isBlank { end += 1 }
+            if end < ending, lines[end].isBlank { end += 1 }
+            entries.append(index..<end)
+            index = end
         }
-        guard removed > 0 else { return nil }
-        if let heading = kept.firstIndex(where: { $0.isHeading(.testFailures) }) { kept[heading] = Self.counting(kept[heading], by: -removed) }
-        return MobileText(lines: kept)
+        guard !entries.isEmpty else { return nil }
+        var replaced = lines
+        for (offset, entry) in entries.enumerated().reversed() where offset < failures.count {
+            let added = offset == entries.count - 1 ? failures[offset...] : failures[offset...offset]
+            replaced.replaceSubrange(entry, with: added.flatMap(Self.entry))
+        }
+        replaced[heading] = Self.counting(lines[heading], by: max(failures.count - entries.count, 0))
+        return (MobileText(lines: replaced), max(entries.count - failures.count, 0))
+    }
+
+    /// A failure's entry under Test Failures, as MobileBuildMCP writes one: `✗ Suite / test(): message`, its place, and
+    /// the blank line that ends it.
+    static func entry(_ failure: (test: TestID, message: String, place: String?)) -> [Line] {
+        [Line("  ✗ \(failure.test.suite) / \(failure.test.function): \(failure.message)")] + (failure.place.map { [Line("    \($0)")] } ?? []) + [Line("")]
     }
 
     /// Where the Test Results section starts, nil when the text has none.

@@ -157,7 +157,12 @@ public enum FailureNotes {
 
     /// The line under a failed test whose name ends several of the bundle's ids, `ids`: it's looked up under none.
     static func severalByThatName(_ ids: [TestID]) -> String {
-        "the result bundle has more than one test by that name: \(ResultBundle.joined(ids.map(\.shown), rest: "in the result bundle's test list"))"
+        "the result bundle has more than one test by that name: \(candidates(ids))"
+    }
+
+    /// The bundle's tests a name can mean, five at most and the rest counted.
+    static func candidates(_ ids: [TestID]) -> String {
+        ResultBundle.joined(ids.map(\.shown), rest: "in the result bundle's test list")
     }
 
     /// The first step of `adding`: each failed test's lookups and its repeated runs. Nil when there's nothing to add and
