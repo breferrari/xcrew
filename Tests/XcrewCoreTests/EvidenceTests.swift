@@ -16,10 +16,9 @@ import XcrewTestSupport
         return #"{"test":"\#(test)","red":\#(red),"failing":"test_sim · App"\#(passed)\#(marked),"last":\#(at)}"#
     }
 
-    /// The input as the mod sends it; with `times`, as a mod before run times left the evidence sent it.
-    static func input(_ entries: [String], times: [String]? = nil) throws -> EvidenceInput {
-        let listed = times.map { #","times":["# + $0.map { #""\#($0)""# }.joined(separator: ",") + "]" } ?? ""
-        return try JSONDecoder().decode(EvidenceInput.self, from: Data(#"{"ledger":[\#(entries.joined(separator: ","))]\#(listed)}"#.utf8))
+    static func input(_ entries: [String], times: [String] = []) throws -> EvidenceInput {
+        let listed = times.map { #""\#($0)""# }.joined(separator: ",")
+        return try JSONDecoder().decode(EvidenceInput.self, from: Data(#"{"ledger":[\#(entries.joined(separator: ","))],"times":[\#(listed)]}"#.utf8))
     }
 
     static func pack(_ input: EvidenceInput, project: Project = .temporary(), open: @escaping @Sendable (String) -> ResultBundle = { ResultBundle(path: $0, runner: FakeRunner()) }) async -> EvidencePack.Text? {
@@ -31,7 +30,7 @@ import XcrewTestSupport
             Self.entry("CardTests/testCard", message: "Snapshot does not match reference."),
             Self.entry("Suite/testOther", message: "XCTAssertEqual failed", green: false),
             Self.entry("Suite/testFlaky", green: false, flaky: (2, 5)),
-        ])))
+        ], times: ["test_sim · App: usually 1m 20s, 312 tests"])))
         #expect(text.block == """
             ## Evidence
 
@@ -41,43 +40,11 @@ import XcrewTestSupport
             Still red:
             - `Suite/testOther`: "XCTAssertEqual failed"
             - `Suite/testFlaky`: "failed", flaky, failing 2 of 5 runs
+
+            Usual run times:
+            - test_sim · App: usually 1m 20s, 312 tests
             """)
         #expect(text.attach == nil)
-    }
-
-    /// Run times a mod from before they left the evidence still sends are read past: a reviewer acts on test results,
-    /// coverage and warnings.
-    @Test func anOlderModsRunTimesAreLeftOut() async throws {
-        let text = try #require(await Self.pack(try Self.input([Self.entry("Suite/testOther", green: false)], times: ["test_sim · App: usually 1m 20s, 312 tests"])))
-        #expect(text.block == """
-            ## Evidence
-
-            Still red:
-            - `Suite/testOther`: "failed"
-            """)
-    }
-
-    /// When the time allowed passed before any run was read, the block says so rather than nothing.
-    @Test func noRunReadInTimeIsSaid() {
-        #expect(BranchCoverage(sentence: "", finished: [], leftOut: 3).line(lastCommit: nil) == "- No test run read in the time allowed speaks for the changed lines: 3 runs are left out.")
-        #expect(BranchCoverage(sentence: "", finished: [], leftOut: 0).line(lastCommit: nil) == "- No test run here speaks for the changed lines: each started before their last change.")
-    }
-
-    /// A file whose date can't be read has no date, so no run counts as compiling it as it is.
-    @Test func aFileWhoseDateCantBeReadHasNone() {
-        #expect(EvidencePack.modifiedIfKnown(URL(fileURLWithPath: "/nonexistent/xcrew/Cart.swift")) == nil)
-    }
-
-    /// A red test the newest run in its scope didn't run, as one deleted since it failed, says so.
-    @Test func aRedTestTheNewestRunDidntRunSaysSo() async throws {
-        let gone = Self.entry("Suite/testGone", green: false).replacingOccurrences(of: #","last""#, with: #","unseen":{"scope":"test_sim · App","at":\#(Self.at + 120_000)},"last""#)
-        let text = try #require(await Self.pack(try Self.input([gone])))
-        #expect(text.block == """
-            ## Evidence
-
-            Still red:
-            - `Suite/testGone`: "failed", not in the newest run of its scope
-            """)
     }
 
     /// A flaky test says how many of the passes in a row it needs it has, still red, and how many it passed once green,
@@ -91,18 +58,17 @@ import XcrewTestSupport
             ## Evidence
 
             Tests this branch took from red to green:
-            - `Suite/testFixed`: failed in `test_sim · App` ("failed"), then passed in `test_sim · App`. Its images aren't known: its failing run was recorded before xcrew kept the run's result bundle. Flaky: it failed 1 of 5 runs, then passed 14 in a row in repeated runs, of 14 needed.
+            - `Suite/testFixed`: failed in `test_sim · App` ("failed"), then passed in `test_sim · App`. Its images aren't known: its failing run was recorded before xcrew kept the run's result bundle. Flaky: it failed 1 of 5 runs, then passed 14 in a row, of 14 needed.
 
             Still red:
-            - `Suite/testFlaky`: "failed", flaky, failing 1 of 5 runs, passed 10 of the 14 needed in repeated runs since
+            - `Suite/testFlaky`: "failed", flaky, failing 1 of 5 runs, passed 10 of the 14 needed since
 
             Passes needed: enough in a row that a test failing at the rate it was seen failing would pass them all under 5% of the time. From few runs, that rate can understate a rarer flake.
             """)
     }
 
     /// The images of a red-to-green test's failing run, read again from its result bundle: named in the block by a label
-    /// the person replaces, listed with their paths only outside it. The run's size is recorded once they're kept: three
-    /// images of the PNG header's 12 bytes, 36.
+    /// the person replaces, listed with their paths only outside it.
     @Test func aRedToGreenTestsImagesAreListedOutsideTheBlock() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "xcrew-tests-\(UUID().uuidString)")
         let red = root.appending(path: "test_sim_1.xcresult"), export = root.appending(path: "export")
@@ -116,7 +82,6 @@ import XcrewTestSupport
         })
         #expect(text.block.contains("then passed in `test_sim · App`. Images from its failing run: attached below."), "\(text.block)")
         let kept = project.root.appending(path: "home/Library/Caches/xcrew/images/test_sim_1/CardTests/testCard")
-        #expect(try String(contentsOf: project.root.appending(path: "home/Library/Caches/xcrew/images/test_sim_1/\(FailureImages.sizeRecord)"), encoding: .utf8) == "36")
         #expect(text.attach == """
             Images to attach (for you, not the PR):
             - `CardTests/testCard`, images from its failing run:

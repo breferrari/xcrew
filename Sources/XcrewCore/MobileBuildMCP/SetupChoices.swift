@@ -17,16 +17,12 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         /// Its container, from the root.
         public let container: String
         public let roles: [Role]
-        /// The app it builds for running and launches, else the first it builds for running; absent when it builds none.
+        /// The app it builds for running; absent when it builds none.
         public var app: String?
         /// The project that holds `app`, as the scheme names it, by its standardized path.
         var appProject: String?
-        /// How many unit-test targets its test action runs; absent when none.
-        public var unitTestTargets: Int?
-        /// How many UI-test targets its test action runs; absent when none.
-        public var uiTestTargets: Int?
 
-        enum CodingKeys: String, CodingKey { case name, container, roles, app, unitTestTargets, uiTestTargets }
+        enum CodingKeys: String, CodingKey { case name, container, roles, app }
     }
 
     /// An installed simulator, once per name, on the newest runtime that has it.
@@ -121,8 +117,7 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         choices.picks.appScheme = app?.name
         let ui = choices.schemes.filter { $0.roles.contains(.uiTests) }
         choices.picks.uiScheme = (app.flatMap { $0.roles.contains(.uiTests) ? $0 : nil } ?? ui.onlyOne)?.name
-        let unitTests = Dictionary(choices.schemes.compactMap { scheme in scheme.unitTestTargets.map { (scheme.name, $0) } }, uniquingKeysWith: max)
-        choices.picks.testScheme = TestSchemes.widest(unitTests, preferring: app?.name).onlyOne
+        if case let .scheme(scheme) = TestSchemes.choose(in: url, preferring: app?.name) { choices.picks.testScheme = scheme }
         if let target = app?.app {
             // The project the scheme builds the app from first, then any that has a target of that name.
             let all = TestSchemes.containers(from: [url]).filter { Project.isXcodeProject($0.lastPathComponent) }
@@ -133,14 +128,13 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         return choices
     }
 
-    /// The shared schemes of a container and the projects its workspace lists, each with its roles and test-target counts.
+    /// The shared schemes of a container and the projects its workspace lists, each with its roles.
     static func schemes(of container: URL, from root: String) -> [Scheme] {
         let containers = TestSchemes.containers(from: [container])
         let type = TestSchemes.productTypeLookup(for: containers)
         return containers.flatMap { holder -> [Scheme] in
             let base = holder.deletingLastPathComponent()
             return TestSchemes.sharedSchemes(of: holder).map { name, document in
-                let launched = (try? document.nodes(forXPath: "//LaunchAction/BuildableProductRunnable/BuildableReference/@BlueprintName"))?.first?.stringValue
                 let references = (try? document.nodes(forXPath: "//BuildAction/BuildActionEntries/BuildActionEntry[@buildForRunning='YES']/BuildableReference")) ?? []
                 let built = references.compactMap { $0 as? XMLElement }.compactMap { reference -> (target: String, project: String?)? in
                     guard let target = reference.attribute(forName: "BlueprintName")?.stringValue else { return nil }
@@ -148,14 +142,10 @@ public struct SetupChoices: Sendable, Equatable, Codable {
                     return type(target, project) == TestSchemes.application ? (target, project) : nil
                 }
                 let kinds = TestSchemes.tested(by: document, in: holder).testables.map { type($0.name, $0.project) }
-                let app = built.first { $0.target == launched } ?? built.first
                 var roles: [Role] = built.isEmpty ? [] : [.app]
                 if kinds.contains(TestSchemes.unitTest) { roles.append(.unitTests) }
                 if kinds.contains(TestSchemes.uiTest) { roles.append(.uiTests) }
-                let byDefault = TestSchemes.runByDefault(by: document, in: holder).map { type($0.name, $0.project) }
-                let (unitTests, uiTests) = (byDefault.count { $0 == TestSchemes.unitTest }, byDefault.count { $0 == TestSchemes.uiTest })
-                return Scheme(name: name, container: ProjectLayout.path(ProjectLayout.canonical(holder), from: root), roles: roles, app: app?.target, appProject: app?.project ?? nil,
-                              unitTestTargets: unitTests > 0 ? unitTests : nil, uiTestTargets: uiTests > 0 ? uiTests : nil)
+                return Scheme(name: name, container: ProjectLayout.path(ProjectLayout.canonical(holder), from: root), roles: roles, app: built.first?.target, appProject: built.first?.project ?? nil)
             }
         }
     }

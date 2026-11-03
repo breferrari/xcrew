@@ -89,16 +89,16 @@ import XcrewTestSupport
         responses["du -sk \(dd)/Old-def"] = .init(status: 0, stdout: "3000\t\(dd)/Old-def\n")
         let archives = home.appending(path: "Library/Developer/Xcode/Archives").path
         responses["du -sk \(archives)"] = .init(status: 0, stdout: "52000\t\(archives)\n")
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(installed: xcodes ? ["xcodes"] : [], responses: responses), applications: apps, now: { Self.now })
-        return await Space.report(project: project, machine: machine)
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(installed: xcodes ? ["xcodes"] : [], responses: responses), applications: apps)
+        return await Space.report(project: project, machine: machine, now: Self.now)
     }
 
     @Test func thisProjectsWorkspaceIsNamedWithTheCommandThatWouldReclaimIt() async throws {
         let text = try await report().text
-        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes testProducts,logs,resultBundles,stateTransients\n  App's DerivedData, 77.9 MB, costs a cold build to make again, so deleting it is the person's to agree to\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData\n"), "\(text)")
+        #expect(text.contains("  App, \(root): 81.5 MB, DerivedData 77.9 MB, newest 2 d ago\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes testProducts,logs,resultBundles,stateTransients\n  App's DerivedData, 77.9 MB, costs a cold build to make again\n      mobilebuildmcp purge --dry-run --scope workspace --workspace-key \(key) --classes derivedData\n"), "\(text)")
         #expect(text.hasPrefix(SpaceReport.unitsNote + "\n\n"), "\(text)")
         #expect(text.contains("MobileBuildMCP\n  this project's MobileBuildMCP workspaces take 81.5 MB (77.7 MiB as `du -h` counts), within its budget of 40 GB (XCREW_STORAGE_BUDGET_GB sets another)\n"), "\(text)")
-        #expect(text.contains("  Each `--dry-run` lists what it would delete. Deleting loses those builds, logs and results, so it's the person's to agree to: `--delete` in place of `--dry-run`, with `--confirm delete-mobilebuildmcp-storage`\n"), "\(text)")
+        #expect(text.contains("  Each `--dry-run` lists what it would delete; with `--delete` in its place and `--confirm delete-mobilebuildmcp-storage`, it deletes.\n"), "\(text)")
     }
 
     /// The figures of a large workspace, as a field report gave them (October 31, 2026): test products, the most of it,
@@ -109,7 +109,7 @@ import XcrewTestSupport
         let lines = Space.workspaceLines(workspace, name: "App", root: "/work/App", newest: "today", bundles: 105, isBuilding: true)
         #expect(lines.map(\.text) == [
             "App, /work/App: 126.2 GB, test products 95.0 GB in 105 bundles of about 904.8 MB each, DerivedData 24.2 GB, newest today; a build is writing to its DerivedData now",
-            "App's DerivedData, 24.2 GB, costs a cold build to make again, so deleting it is the person's to agree to",
+            "App's DerivedData, 24.2 GB, costs a cold build to make again",
         ])
         #expect(lines.map(\.command) == ["mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes testProducts,logs", "mobilebuildmcp purge --dry-run --scope workspace --workspace-key App-1 --classes derivedData"])
     }
@@ -166,13 +166,13 @@ import XcrewTestSupport
 
     @Test func devicesAreTotalledAndTheUnavailableCounted() async throws {
         let text = try await report().text
-        #expect(text.contains("  5 devices: 2.4 GB of data, 1 unavailable. Deleting the unavailable one loses the apps installed on it and their data, so it's the person's to agree to:\n      xcrun simctl delete unavailable\n"), "\(text)")
+        #expect(text.contains("  5 devices: 2.4 GB of data, 1 unavailable\n      xcrun simctl delete unavailable\n"), "\(text)")
     }
 
     /// The selected and the pinned Xcode are never offered for uninstalling, and nothing is offered without `xcodes`.
     @Test func onlyAnXcodeNeitherSelectedNorPinnedIsOffered() async throws {
         let text = try await report().text
-        #expect(text.contains("  Xcode 27.2, selected: 3.6 GB\n  Xcode 26.4, pinned: 3.4 GB\n  Xcode 26.0: 3.1 GB. Uninstalling it removes that Xcode, so it's the person's to agree to:\n      xcodes uninstall 26.0\n"), "\(text)")
+        #expect(text.contains("  Xcode 27.2, selected: 3.6 GB\n  Xcode 26.4, pinned: 3.4 GB\n  Xcode 26.0: 3.1 GB\n      xcodes uninstall 26.0\n"), "\(text)")
         #expect(!(try await report(xcodes: false).text.contains("xcodes uninstall")))
     }
 
@@ -197,7 +197,7 @@ import XcrewTestSupport
     /// Xcode's DerivedData kept beside each workspace, a relative location, can't be listed from one folder: said so.
     @Test func aRelativeDerivedDataLocationIsSaidNotRead() async {
         let runner = FakeRunner(responses: ["defaults read com.apple.dt.Xcode IDECustomDerivedDataLocation": .init(status: 0, stdout: "DerivedData\n")])
-        let machine = Machine(environment: [:], home: home, runner: runner, now: { Self.now })
+        let machine = Machine(environment: [:], home: home, runner: runner)
         let part = await Space.xcodeDerivedData(in: await Space.derivedDataFolder(machine: machine), live: Task { [] }, machine: machine)
         #expect(part?.lines.map(\.text) == ["not read: Xcode keeps DerivedData in each workspace's folder (`DerivedData`)"])
     }
@@ -211,8 +211,8 @@ import XcrewTestSupport
 
     /// A tool that doesn't answer is said not to have been read; the other parts stand.
     @Test func aToolThatDoesntAnswerIsSaidSo() async throws {
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: home, now: { Self.now })
-        let text = await Space.report(project: project, machine: machine).text
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: home)
+        let text = await Space.report(project: project, machine: machine, now: Self.now).text
         #expect(text.contains("MobileBuildMCP\n  not read: `mobilebuildmcp purge --report` didn't answer\n"), "\(text)")
         #expect(text.contains("Simulator runtimes\n  not read: `xcrun simctl runtime list` didn't answer\n"), "\(text)")
     }

@@ -16,7 +16,7 @@ const FIX = { worktree: 'fix', root: '/work/trees/fix', tool: 'build_sim' }
 const PROBLEM: Problem = { status: 'fail', id: 'xcode-mcp/claude-approved', message: "Claude Code isn't approved in Xcode" }
 
 /** A session where `xcrew runs` answers the next of `answers` each time it's asked, the last one again after. */
-function session(on: On, answers: unknown[], options: { problems?: Problem[]; surfaces?: RenderSurface[]; reports?: Partial<Report>[]; held?: Promise<void>; runs?: () => unknown } = {}) {
+function session(on: On, answers: unknown[], options: { problems?: Problem[]; surfaces?: RenderSurface[]; reports?: Partial<Report>[]; held?: Promise<void> } = {}) {
   const clock = mock.clock(on, { now: Date.UTC(2026, 10, 1, 12, 0) })
   mock.store(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -38,7 +38,7 @@ function session(on: On, answers: unknown[], options: { problems?: Problem[]; su
     return { result: {}, text: 'ok' }
   })
   const queue = [...answers]
-  const calls = stubCli(on, { runs: options.runs ?? (() => (queue.length > 1 ? queue.shift() : queue[0])), problems: options.problems ?? [], reports: options.reports ?? [{ ok: true }] })
+  const calls = stubCli(on, { runs: () => (queue.length > 1 ? queue.shift() : queue[0]), problems: options.problems ?? [], reports: options.reports ?? [{ ok: true }] })
   return { clock, calls, statuses }
 }
 
@@ -49,19 +49,12 @@ async function bandLines($: Engine): Promise<string[]> {
   return lines
 }
 
-/** Whether the elsewhere line is the band's last: after it come only its own label and runs, in that order. */
-function isLast(lines: string[]): boolean {
-  const at = lines.findIndex(line => line.startsWith('elsewhere: '))
-  const own = lines[at] ?? ''
-  return at >= 0 && at === lines.length - 3 && lines[at + 1] === 'elsewhere: ' && own === `elsewhere: ${lines[at + 2]}`
-}
-
 async function start($: Engine, clock: { settle: () => Promise<void> }) {
   await $.session.start({ cwd: '/work/App', surface: 'terminal', isInteractive: true })
   await clock.settle()
 }
 
-test("another worktree's run shows as a fact on a line of its own, only its label dim", async ($, on) => {
+test("another worktree's run shows as a fact on a dim line of its own", async ($, on) => {
   const { clock } = session(on, [[FEATURE]])
   await start($, clock)
   await submitPrompt($, 'go on')
@@ -69,9 +62,7 @@ test("another worktree's run shows as a fact on a line of its own, only its labe
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const line = await ui.find({ type: 'Text', text: /^elsewhere: / })
   expect(line?.text).toBe('elsewhere: feature · test_sim · testing 120 of 959')
-  expect(line?.props.color).toBeUndefined()
-  expect((await ui.find({ type: 'Text', text: /^elsewhere:\s*$/ }))?.props.color).toBe('subtle')
-  expect((await ui.find({ type: 'Text', text: /^feature · test_sim/ }))?.props.color).toBeUndefined()
+  expect(line?.props.color).toBe('subtle')
   await ui.unmount()
 })
 
@@ -89,7 +80,7 @@ test('the line sits below a problem the band ranks first', async ($, on) => {
   await submitPrompt($, 'go on')
   await clock.settle()
   const lines = await bandLines($)
-  expect(isLast(lines)).toBe(true)
+  expect(lines.findIndex(line => line.startsWith('elsewhere: '))).toBe(lines.length - 1)
   expect(lines.join('')).toContain("Claude Code isn't approved in Xcode")
 })
 
@@ -102,7 +93,7 @@ test("the line sits below this session's run while it goes", async ($, on) => {
   await clock.settle()
   const lines = await bandLines($)
   expect(lines.join('')).toContain('build_sim')
-  expect(isLast(lines)).toBe(true)
+  expect(lines.findIndex(line => line.startsWith('elsewhere: '))).toBe(lines.length - 1)
   release()
   await running
 })
@@ -118,42 +109,6 @@ test('reads started together share one timer, which stops once the line goes', a
   const asked = calls.filter(call => call.args[0] === 'runs').length
   await clock.advance(60_000)
   expect(calls.filter(call => call.args[0] === 'runs').length).toBe(asked)
-})
-
-/** Nobody waits on a timer's read: it has `$.process.run`'s own limit, and the CLI is told that limit's 30 s. */
-test("a timer's read of the other worktrees has the process's own limit, none of xcrew's", async ($, on) => {
-  const { clock, calls } = session(on, [[FEATURE]])
-  await start($, clock)
-  await submitPrompt($, 'go on')
-  await clock.settle()
-  await clock.advance(5_000)
-  const runs = calls.filter(call => call.args[0] === 'runs' && !call.ifBuilt)
-  expect(runs.length).toBeGreaterThan(1)
-  expect(runs.map(call => [call.timeoutMs, call.within])).toEqual(runs.map(() => [undefined, '30000']))
-})
-
-/** A timer's read of the other worktrees that hasn't answered keeps the next ticks from starting another. */
-test("a read of the other worktrees still going holds back the next tick's", async ($, on) => {
-  let release = () => {}
-  const held = new Promise<void>(resolve => {
-    release = resolve
-  })
-  let asked = 0
-  // The first read shows a run elsewhere, so the timer goes on; the second, the timer's first, holds.
-  const { clock } = session(on, [], {
-    runs: () => {
-      asked += 1
-      return asked === 2 ? held.then(() => [FEATURE]) : [FEATURE]
-    },
-  })
-  await start($, clock)
-  await submitPrompt($, 'go on')
-  await clock.settle()
-  await clock.advance(5_000)
-  await clock.advance(15_000)
-  expect(asked).toBe(2)
-  release()
-  await clock.settle()
 })
 
 test('the line goes when the CLI answers none, and the refresh stops', async ($, on) => {

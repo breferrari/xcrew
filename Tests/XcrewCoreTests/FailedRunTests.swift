@@ -95,7 +95,7 @@ import Testing
 
     /// Where a test passed, the way `look` reads it: the test list indexed once, then the test's activities.
     static func passed(_ activities: String, _ listing: String, _ test: TestID) -> [String] {
-        FailedRun.read(activities: activities, passedUnder: FailedRun.passedConfigurations(of: ResultBundle.testCases(in: TestList(listing).nodes)[test] ?? []))?.passed ?? []
+        FailedRun.read(activities: activities, passedUnder: FailedRun.passedConfigurations(of: ResultBundle.testCases(in: listing)[test] ?? []))?.passed ?? []
     }
 
     /// A device node that carries no result says nothing either way, and doesn't hide a pass.

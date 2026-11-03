@@ -4,11 +4,12 @@ import Foundation
 /// *Disk space*). Facts and the command that would reclaim each part only; it never deletes, never offers the selected or
 /// the pinned Xcode, and never offers archives. It walks folders, so it runs only when asked, never on the prompt line.
 public enum Space {
+    /// How long one folder's `du` may take before its size is left unmeasured.
+    static let folderTimeout = Duration.seconds(30)
     /// The age a dry run of `purge` and of `simctl runtime delete` is named with.
     static let days = 30
 
-    public static func report(project: Project, machine: Machine) async -> SpaceReport {
-        let now = machine.now()
+    public static func report(project: Project, machine: Machine, now: Date = Date()) async -> SpaceReport {
         let live = Task { await ProjectWorkspaces.live(of: project, using: machine.runner) }
         async let derivedData = derivedDataFolder(machine: machine)
         async let mobile = mobileBuildMCP(live: live, machine: machine, now: now)
@@ -34,7 +35,7 @@ public enum Space {
     // MARK: MobileBuildMCP
 
     /// What follows each `--dry-run`, said once.
-    static let purgeNote = "Each `--dry-run` lists what it would delete. Deleting loses those builds, logs and results, so it's the person's to agree to: `--delete` in place of `--dry-run`, with `--confirm delete-mobilebuildmcp-storage`"
+    static let purgeNote = "Each `--dry-run` lists what it would delete; with `--delete` in its place and `--confirm delete-mobilebuildmcp-storage`, it deletes."
 
     /// The dry run of `purge` for one workspace's `classes`; none for none.
     static func purge(_ workspace: StorageReport.Workspace, classes: [String]) -> String? {
@@ -72,7 +73,7 @@ public enum Space {
         let classes = reclaimable(workspace)
         let line = SpaceReport.Line(text: "\(name), \(root): \(SpaceReport.size(workspace.bytes))\(products)\(derived.map { ", DerivedData \(SpaceReport.size($0))" } ?? "")\(newest.map { ", newest \($0)" } ?? "")\(building)", bytes: workspace.bytes, command: purge(workspace, classes: classes.filter { $0 != "derivedData" }))
         guard let derived, classes.contains("derivedData") else { return [line] }
-        return [line, .init(text: "\(name)'s DerivedData, \(SpaceReport.size(derived)), costs a cold build to make again, so deleting it is the person's to agree to", bytes: derived, command: purge(workspace, classes: ["derivedData"]))]
+        return [line, .init(text: "\(name)'s DerivedData, \(SpaceReport.size(derived)), costs a cold build to make again", bytes: derived, command: purge(workspace, classes: ["derivedData"]))]
     }
 
     /// How long MobileBuildMCP's purge keeps a log after it's written (`WORKSPACE_FILESYSTEM_LIFECYCLE_MIN_VISIBLE_MS`).
@@ -138,7 +139,7 @@ public enum Space {
     }
 
     static func derivedDataFolder(machine: Machine) async -> DerivedDataFolder {
-        let custom = await machine.runner.run("defaults", "read", "com.apple.dt.Xcode", "IDECustomDerivedDataLocation")
+        let custom = await machine.runner.run("defaults", "read", "com.apple.dt.Xcode", "IDECustomDerivedDataLocation", timeout: .seconds(5))
         let named = custom.succeeded ? custom.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : ""
         if named.isEmpty { return .folder(machine.home.appending(path: "Library/Developer/Xcode/DerivedData")) }
         return named.hasPrefix("/") ? .folder(URL(fileURLWithPath: named)) : .besideEachWorkspace(named)
@@ -203,20 +204,20 @@ public enum Space {
 
     /// A folder's size from `du -sk`, capped.
     static let du: @Sendable (String, any CommandRunning) async -> Int? = { path, runner in
-        let ran = await runner.run(["du", "-sk", path], stdin: nil, timeout: DeadlineRunner.untimed)
+        let ran = await runner.run(["du", "-sk", path], stdin: nil, timeout: folderTimeout)
         return ran.succeeded ? ran.stdout.split(separator: "\t").first.flatMap { Int($0) }.map { $0 * 1024 } : nil
     }
 
     /// An app's size from Spotlight, at once where `du` would walk it.
     static let spotlight: @Sendable (String, any CommandRunning) async -> Int? = { path, runner in
-        Int(await runner.run("mdls", "-raw", "-name", "kMDItemPhysicalSize", path).stdout.trimmingCharacters(in: .whitespacesAndNewlines))
+        Int(await runner.run("mdls", "-raw", "-name", "kMDItemPhysicalSize", path, timeout: .seconds(10)).stdout.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     // MARK: Simulators
 
     static func runtimes(machine: Machine, now: Date) async -> SpaceReport.Part {
         let title = "Simulator runtimes"
-        let listed = await machine.runner.run("xcrun", "simctl", "runtime", "list", "-j")
+        let listed = await machine.runner.run("xcrun", "simctl", "runtime", "list", "-j", timeout: .seconds(30))
         guard listed.succeeded, let images = (try? JSONSerialization.jsonObject(with: Data(listed.stdout.utf8))) as? [String: [String: Any]] else {
             return SpaceReport.notRead(title, by: "xcrun simctl runtime list")
         }
@@ -232,22 +233,15 @@ public enum Space {
 
     static func devices(machine: Machine) async -> SpaceReport.Part {
         let title = "Simulator devices"
-        let listed = await machine.runner.run("xcrun", "simctl", "list", "devices", "-j")
+        let listed = await machine.runner.run("xcrun", "simctl", "list", "devices", "-j", timeout: .seconds(30))
         guard listed.succeeded, let object = (try? JSONSerialization.jsonObject(with: Data(listed.stdout.utf8))) as? [String: Any],
               let byRuntime = object["devices"] as? [String: [[String: Any]]]
         else { return SpaceReport.notRead(title, by: "xcrun simctl list devices") }
         let devices = byRuntime.values.joined()
         let bytes = devices.reduce(0) { $0 + ($1["dataPathSize"] as? Int ?? 0) }
         let unavailable = devices.filter { ($0["isAvailable"] as? Bool) == false }.count
-        return .init(title: title, lines: [Self.devicesLine(devices: devices.count, bytes: bytes, unavailable: unavailable)])
-    }
-
-    /// The devices' line: how many and their data, and the unavailable ones, whose delete loses the apps on them and their
-    /// data, the person's call, said before the command, which `SpaceReport` prints on the line below.
-    static func devicesLine(devices: Int, bytes: Int, unavailable: Int) -> SpaceReport.Line {
-        let text = "\(counted(devices, "device")): \(SpaceReport.size(bytes)) of data"
-            + (unavailable > 0 ? ", \(unavailable) unavailable. Deleting the unavailable \(unavailable == 1 ? "one" : "ones") \(SimulatorDelete.loses(unavailable == 1 ? "it" : "them")):" : "")
-        return .init(text: text, bytes: bytes, command: unavailable > 0 ? "xcrun simctl delete unavailable" : nil)
+        let text = "\(counted(devices.count, "device")): \(SpaceReport.size(bytes)) of data" + (unavailable > 0 ? ", \(unavailable) unavailable" : "")
+        return .init(title: title, lines: [.init(text: text, bytes: bytes, command: unavailable > 0 ? "xcrun simctl delete unavailable" : nil)])
     }
 
     // MARK: Xcodes
@@ -268,15 +262,9 @@ public enum Space {
             let roles = [same(chosen) ? "selected" : nil, same(pinned) ? "pinned" : nil].compactMap(\.self)
             let alone = all.filter { $0.version == xcode.version }.count == 1
             let offered = roles.isEmpty && alone && canUninstall
-            return Self.xcodeLine("\(xcode.label)\(roles.isEmpty ? "" : ", " + roles.joined(separator: " and ")): \(sizes[xcode.path].map(SpaceReport.size) ?? "size not known")", bytes: sizes[xcode.path], offering: offered ? xcode.version : nil)
+            return .init(text: "\(xcode.label)\(roles.isEmpty ? "" : ", " + roles.joined(separator: " and ")): \(sizes[xcode.path].map(SpaceReport.size) ?? "size not known")", bytes: sizes[xcode.path], command: offered ? "xcodes uninstall \(xcode.version)" : nil)
         }
         return .init(title: "Xcodes", lines: lines)
-    }
-
-    /// An Xcode's line, and when `version` is offered, the uninstall that removes it, the person's call, said before the
-    /// command `SpaceReport` prints on the line below.
-    static func xcodeLine(_ text: String, bytes: Int?, offering version: String?) -> SpaceReport.Line {
-        .init(text: text + (version == nil ? "" : ". Uninstalling it removes that Xcode, so it's the person's to agree to:"), bytes: bytes, command: version.map { "xcodes uninstall \($0)" })
     }
 
     // MARK: Other folders

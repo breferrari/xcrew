@@ -10,7 +10,6 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # docs/findings.md, Deadlines: `release.yml release`
     permissions:
       contents: write
       checks: read

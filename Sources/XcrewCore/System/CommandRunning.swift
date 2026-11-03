@@ -25,7 +25,7 @@ public protocol CommandRunning: Sendable {
 }
 
 extension CommandRunning {
-    public func run(_ argv: String..., stdin: Data? = nil, timeout: Duration = DeadlineRunner.untimed) async -> CommandResult {
+    public func run(_ argv: String..., stdin: Data? = nil, timeout: Duration = .seconds(30)) async -> CommandResult {
         await run(argv, stdin: stdin, timeout: timeout)
     }
 }

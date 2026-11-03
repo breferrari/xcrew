@@ -23,7 +23,7 @@ struct LookCommand: Command {
             return 1
         }
         let bundle = ResultBundle(path: path, runner: context.runner)
-        invocation.print(await Look.report(bundle: bundle, named: invocation.arguments.positional.first, keptIn: context.machine.cacheFolder.appending(path: "images"), now: context.machine.now()))
+        invocation.print(await Look.report(bundle: bundle, named: invocation.arguments.positional.first, keptIn: context.machine.cacheFolder.appending(path: "images")))
         return 0
     }
 }

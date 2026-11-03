@@ -70,7 +70,7 @@ export type SetupChoices = {
   container?: string
   containers: string[]
   containerProblem?: string
-  schemes: { name: string; container: string; roles: ('app' | 'unit-tests' | 'ui-tests')[]; app?: string; unitTestTargets?: number; uiTestTargets?: number }[]
+  schemes: { name: string; container: string; roles: ('app' | 'unit-tests' | 'ui-tests')[]; app?: string }[]
   picks: { appScheme?: string; uiScheme?: string; testScheme?: string; bundleID?: string; testSimulator?: string; appSimulator?: string }
   simulators: { name: string; runtime: string; twoDisplays?: boolean }[]
   config?: { owner: 'xcrew' | 'edited' | 'other'; scheme?: string; debuggerBackend?: string }

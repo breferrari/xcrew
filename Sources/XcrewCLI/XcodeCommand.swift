@@ -9,8 +9,6 @@ struct XcodeCommand: Command {
     static let noPin: Int32 = 3
     /// `--developer-dir`'s status when no installed Xcode is the pinned one.
     static let noMatch: Int32 = 4
-    /// `--developer-dir`'s status when the call's deadline cut what finding the pinned Xcode needs.
-    static let timedOut: Int32 = 5
 
     let name = "xcode"
     let flags: Set<String> = ["developer-dir"]
@@ -24,7 +22,7 @@ struct XcodeCommand: Command {
         if invocation.arguments.has("developer-dir") {
             switch await Xcodes.pinned(in: context.project, on: context.machine) {
             case .none: return Self.noPin
-            case .notInstalled: return context.machine.leftOut() == nil ? Self.noMatch : Self.timedOut
+            case .notInstalled: return Self.noMatch
             case let .installed(install):
                 invocation.print(install.developerFolder)
                 return 0

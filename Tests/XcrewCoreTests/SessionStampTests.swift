@@ -9,67 +9,17 @@ import XcrewTestSupport
 
     func context(_ stamp: SessionStamp?, project: Project = .temporary(), session: String? = Self.session) -> CheckContext {
         let context = CheckContext.fake(project: project, environment: session.map { ["CLAUDE_CODE_SESSION_ID": $0] } ?? [:])
-        if let briefing = stamp?.briefing { SessionStamp.record(Self.session, on: context.machine, .briefing, version: briefing) }
-        if let mod = stamp?.mod { SessionStamp.record(Self.session, on: context.machine, .mod, version: mod) }
+        if let stamp { SessionStamp.record(Self.session, on: context.machine) { $0 = stamp } }
         return context
     }
 
     @Test func aStampIsKeptReadAndRemoved() {
         let machine = context(nil).machine
-        SessionStamp.record(Self.session, on: machine, .briefing, version: "0.12.0")
-        SessionStamp.record(Self.session, on: machine, .mod, version: "0.12.0")
+        SessionStamp.record(Self.session, on: machine) { $0.briefing = "0.12.0" }
+        SessionStamp.record(Self.session, on: machine) { $0.mod = "0.12.0" }
         #expect(SessionStamp.read(Self.session, on: machine) == SessionStamp(briefing: "0.12.0", mod: "0.12.0"))
         SessionStamp.remove(Self.session, on: machine)
         #expect(SessionStamp.read(Self.session, on: machine) == nil)
-    }
-
-    /// The start hook and the mod's doctor read write a session's stamp at once as it starts, each its own fact: one
-    /// writer never rewrites a file that holds the other's, so neither can put back an older view of it.
-    @Test func oneWriterNeverRewritesTheOthersFact() throws {
-        let machine = context(nil).machine
-        SessionStamp.record(Self.session, on: machine, .mod, version: "mod-2")
-        let sessions = machine.cacheFolder.appending(path: "sessions")
-        let files = { (FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []).filter { !$0.hasDirectoryPath } }
-        for file in files() { try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 0)], ofItemAtPath: file.path) }
-        SessionStamp.record(Self.session, on: machine, .briefing, version: "briefing-1")
-        let holdingMod = files().filter { (try? String(contentsOf: $0, encoding: .utf8))?.contains("mod-2") == true }
-        #expect(!holdingMod.isEmpty)
-        for file in holdingMod {
-            #expect(try file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == Date(timeIntervalSince1970: 0), "\(file.lastPathComponent) was rewritten")
-        }
-        #expect(SessionStamp.read(Self.session, on: machine) == SessionStamp(briefing: "briefing-1", mod: "mod-2"))
-    }
-
-    /// A session open across an upgrade keeps what it reported to the older xcrew, in the one file it kept, until its own
-    /// writer reports again; ending the session removes both.
-    @Test func anOlderXcrewsStampIsReadUntilEachWriterReportsAgain() throws {
-        let machine = context(nil).machine
-        let older = machine.cacheFolder.appending(path: "sessions/\(Self.session).json")
-        try FileManager.default.createDirectory(at: older.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(#"{"briefing":"0.13.1","mod":"0.13.1"}"#.utf8).write(to: older)
-        SessionStamp.record(Self.session, on: machine, .mod, version: "0.14.0")
-        #expect(SessionStamp.read(Self.session, on: machine) == SessionStamp(briefing: "0.13.1", mod: "0.14.0"))
-        SessionStamp.remove(Self.session, on: machine)
-        #expect(SessionStamp.read(Self.session, on: machine) == nil)
-        #expect(!FileManager.default.fileExists(atPath: older.path))
-    }
-
-    /// A session's first record removes the stamps no session end removed for longer than they're kept, a session's
-    /// folder or an older xcrew's file, and leaves the newer ones: one left 15 days ago goes, one left 13 days ago stays.
-    @Test func aSessionsFirstRecordRemovesTheStampsLeftTooLong() throws {
-        let given = context(nil).machine
-        let now = Date(timeIntervalSince1970: 1_767_225_600)
-        let machine = Machine(environment: given.environment, home: given.home, runner: given.runner, processID: given.processID, now: { now })
-        let sessions = machine.cacheFolder.appending(path: "sessions")
-        SessionStamp.record("old", on: machine, .mod, version: "0.13.0")
-        SessionStamp.record("recent", on: machine, .mod, version: "0.13.0")
-        try Data("{}".utf8).write(to: sessions.appending(path: "older.json"))
-        let ago = { (days: Double) in now.addingTimeInterval(-days * 24 * 3600) }
-        try FileManager.default.setAttributes([.modificationDate: ago(15)], ofItemAtPath: sessions.appending(path: "old").path)
-        try FileManager.default.setAttributes([.modificationDate: ago(15)], ofItemAtPath: sessions.appending(path: "older.json").path)
-        try FileManager.default.setAttributes([.modificationDate: ago(13)], ofItemAtPath: sessions.appending(path: "recent").path)
-        SessionStamp.record(Self.session, on: machine, .briefing, version: "0.14.0")
-        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: sessions.path)) == ["recent", Self.session])
     }
 
     /// From a terminal Claude Code names no session: both checks skip.

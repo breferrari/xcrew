@@ -82,16 +82,8 @@ import Testing
         #expect(try await record() == "not built\n")
         try xcrew("sleep 30; echo /Apps/Xcode-26.4.app/Contents/Developer")
         let slow = try await start()
-        // The record and a start without the pin say the timer stopped the CLI: no elapsed time is asserted.
         #expect(slow.output == "cwd=\(try await real()) developer=none\n")
-        #expect(try await record() == "timed out 2\n")
-    }
-
-    /// A pin read whose deadline cut it is recorded as the timer's would be.
-    @Test func aPinReadItsDeadlineCutIsRecordedAsTimedOut() async throws {
-        try pin()
-        try xcrew("exit 5")
-        #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
+        #expect(slow.seconds < 5)
         #expect(try await record() == "timed out 2\n")
     }
 

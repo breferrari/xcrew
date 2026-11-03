@@ -15,13 +15,13 @@ struct TestCounts: Decodable, Sendable {
     }
 
     var sum: Int { (passed ?? 0) + (failed ?? 0) + (skipped ?? 0) }
-    /// How many tests ran: the total when the server gives one, which holds tests in none of the three counts, such as
-    /// expected failures.
+    /// How many tests ran: the total when the server gives one.
     var ran: Int { total ?? sum }
 
     /// The run's verdict from these counts, the same whichever shape gave them: none counted is no test ran, which is a
     /// fact and not a pass; a failure fails, after it the first failing test when one is named; else how many passed.
     func summary(succeeded: Bool, failing first: String? = nil) -> ToolOutput.Summary {
+        // The total, where the server gives one, holds tests in none of the three counts, such as expected failures.
         if ran == 0 { return ToolOutput.Summary(ok: false, detail: ToolOutput.noTestsRan) }
         if let failed, failed > 0 { return ToolOutput.Summary(ok: false, detail: "\(failed) of \(ran) failed\(first.map { " · \($0)" } ?? "")") }
         return ToolOutput.Summary(ok: succeeded, detail: "\(passed ?? 0) passed")

@@ -18,8 +18,7 @@ public struct SystemCommandRunner: CommandRunning {
 
     /// How long the pipes may stay open once the program has ended or been stopped: a background child that outlives it
     /// can hold them for as long as it lives (after a stop, only one that ignores SIGTERM or leaves its process group;
-    /// docs/findings.md, *Stopping a program*), and the program's last output can arrive just after its exit. A cap on
-    /// that child, not a measured time: the program's own output is in the pipe when it exits.
+    /// docs/findings.md, *Stopping a program*), and the program's last output can arrive just after its exit.
     static let grace = Duration.seconds(1)
 
     public func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
@@ -55,10 +54,10 @@ public struct SystemCommandRunner: CommandRunning {
         }
         guard let status else {
             process.terminate()
-            _ = await Self.collect(stdout, stderr, until: ContinuousClock.now + Self.grace)
+            _ = await Self.collect(stdout, stderr, until: .now + Self.grace)
             return .timedOut
         }
-        let (out, err) = await Self.collect(stdout, stderr, until: ContinuousClock.now + Self.grace)
+        let (out, err) = await Self.collect(stdout, stderr, until: .now + Self.grace)
         return CommandResult(status: status, stdout: out, stderr: err)
     }
 

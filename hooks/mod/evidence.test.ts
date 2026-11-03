@@ -44,13 +44,13 @@ function session(on: On, answer: string | Error | { stdout: string; stderr: stri
 
 const ask = async (tool: Engine) => String((await callTool(tool, TOOL)).result ?? '')
 
-test('the CLI gets this branch\'s ledger and no run times, and Claude reads its answer as it is', async ($, on) => {
+test('the CLI gets this branch\'s ledger and the run times of this folder, and Claude reads its answer as it is', async ($, on) => {
   const seen = session(on, BLOCK)
   expect(await ask($)).toBe(BLOCK)
   const sent = JSON.parse(seen.calls.find(call => call.args[0] === 'evidence')?.stdin ?? '{}') as { ledger?: unknown[]; times?: string[] }
   expect(sent.ledger).toEqual([ENTRY])
-  // A reviewer acts on test results, coverage and warnings; how long runs take isn't one of them.
-  expect(sent.times).toBeUndefined()
+  // Run times as the card words them, of the scopes last run in this folder only.
+  expect(sent.times).toEqual(['test_sim: usually 1:20, 312 tests'])
 })
 
 test('evidence asked right after a test run holds that run\'s red', async ($, on) => {
@@ -85,11 +85,10 @@ test('a red-to-green test no run has written for weeks is still evidence, as the
   expect(sent.ledger).toEqual([old])
 })
 
-/** Asked for, the evidence has what a `/xcrew` command has: the point where Claude Code stops letting a call hold the conversation. */
-test('the evidence has the time anything asked of xcrew has, 120 s', async ($, on) => {
+test('the CLI has as long as reading ten result bundles takes', async ($, on) => {
   const seen = session(on, BLOCK)
   await ask($)
-  expect(seen.calls.find(call => call.args[0] === 'evidence')?.timeoutMs).toBe(120_000)
+  expect(seen.calls.find(call => call.args[0] === 'evidence')?.timeoutMs).toBe(300_000)
 })
 
 test('only what the CLI prints for the pull request reaches Claude: its warnings on stderr stay out', async ($, on) => {

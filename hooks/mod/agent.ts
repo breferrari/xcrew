@@ -1,7 +1,4 @@
-/**
- * How many characters of a subagent's description a run's `by` keeps, counted as a reader counts them
- * (docs/findings.md, *A run's subagent*).
- */
+/** How many characters of a subagent's description a run's `by` keeps, counted as a reader counts them. */
 const KEPT = 40
 
 /**

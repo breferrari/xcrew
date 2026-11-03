@@ -12,9 +12,9 @@ enum MobileBuildMCPStatus: Sendable, Equatable {
     /// names; everything xcrew writes assumes the new ones.
     static let minimum = Version("2.7.1")
 
-    static func assess(_ machine: Machine) async -> MobileBuildMCPStatus {
+    static func assess(_ machine: Machine, timeout: Duration = .seconds(30)) async -> MobileBuildMCPStatus {
         guard let path = machine.runner.which("mobilebuildmcp") else { return .missing }
-        let version = await Self.version(at: path, machine: machine)
+        let version = await Self.version(at: path, machine: machine, timeout: timeout)
         if version.isEmpty { return .unreadable }
         return Version(version) >= minimum ? .usable(version: version) : .outdated(version: version)
     }
@@ -40,14 +40,14 @@ enum MobileBuildMCPStatus: Sendable, Equatable {
 
     /// The installed version, kept beside xcrew's build until the binary changes. Homebrew's link points into a
     /// folder named for the version, so the resolved path and its modification time change with every upgrade.
-    static func version(at path: String, machine: Machine) async -> String {
+    static func version(at path: String, machine: Machine, timeout: Duration) async -> String {
         let cache = machine.cacheFolder.appending(path: "mobilebuildmcp-version")
         let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
         let key = (try? FileManager.default.attributesOfItem(atPath: resolved)[.modificationDate] as? Date).map { "\(resolved) \($0.timeIntervalSince1970)" }
         if let key, let saved = try? String(contentsOf: cache, encoding: .utf8), saved.hasPrefix(key + "\n") {
             return String(saved.dropFirst(key.count + 1))
         }
-        let result = await machine.runner.run("mobilebuildmcp", "--version")
+        let result = await machine.runner.run("mobilebuildmcp", "--version", timeout: timeout)
         let version = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         if let key, result.succeeded, !version.isEmpty {
             try? FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)

@@ -35,6 +35,9 @@ public struct StorageReport: Sendable, Equatable {
     public let bytes: Int
     public let workspaces: [Workspace]
 
+    /// How long a report may take: it walks every file of the workspaces it reports.
+    static let timeout = Duration.seconds(60)
+
     init?(json: Data) {
         struct Totals: Decodable { let bytes: Int }
         struct Class: Decodable {
@@ -63,12 +66,12 @@ public struct StorageReport: Sendable, Equatable {
     }
 
     /// The report for `scope`; none when MobileBuildMCP couldn't answer, or answered otherwise.
-    static func read(_ scope: Scope, using runner: any CommandRunning) async -> StorageReport? {
+    static func read(_ scope: Scope, using runner: any CommandRunning, timeout: Duration = timeout) async -> StorageReport? {
         let scoped = switch scope {
         case .all: ["--scope", "all"]
         case .workspace(let key): ["--scope", "workspace", "--workspace-key", key]
         }
-        let answer = await runner.run(["mobilebuildmcp", "purge", "--report"] + scoped + ["--json"], stdin: nil, timeout: DeadlineRunner.untimed)
+        let answer = await runner.run(["mobilebuildmcp", "purge", "--report"] + scoped + ["--json"], stdin: nil, timeout: timeout)
         return answer.succeeded ? StorageReport(json: Data(answer.stdout.utf8)) : nil
     }
 }

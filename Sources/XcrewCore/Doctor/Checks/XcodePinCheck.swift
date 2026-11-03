@@ -6,14 +6,14 @@ struct XcodePinCheck: Check {
     let id = "xcode/pin"
     let title = "The project's Xcode pin applies"
     /// For a failed MobileBuildMCP build, test or run: the Xcode building isn't the one the project pins, so a different SDK
-    /// may be why, with what fixes it stated as a fact. Nothing when the pin applies or there's none.
+    /// may be why, in the check's words and with its fix. Nothing when the pin applies or there's none.
     static func failureNote(_ xcodes: XcodeSnapshot, hasXcodes: Bool) -> String? {
         let using = xcodes.forBuilds?.label ?? "the selected Xcode"
         switch xcodes.pinState {
         case let .notInstalled(pin, file):
-            return "xcrew: builds use \(using) while the project pins Xcode \(pin) (\(file)): a different SDK may be the cause. \(hasXcodes ? "`\(xcodesInstall(pin))` installs the pin's Xcode" : "The pin's Xcode \(pin) downloads from \(downloads)")"
+            return "xcrew: builds use \(using) while the project pins Xcode \(pin) (\(file)): a different SDK may be the cause. To build with the pin, \(install(pin, hasXcodes: hasXcodes))"
         case let .notApplied(install, file, _):
-            return "xcrew: MobileBuildMCP started without the project's pin, \(install.label) (\(file)), so it builds with \(using): a different SDK may be the cause. The pin takes effect once Claude Code restarts."
+            return "xcrew: MobileBuildMCP started without the project's pin, \(install.label) (\(file)), so it builds with \(using): a different SDK may be the cause. Restart Claude Code to build with the pin."
         case .none, .waiting, .applied:
             return nil
         }
@@ -26,17 +26,9 @@ struct XcodePinCheck: Check {
         error.contains(/compiled with Swift [\d.]+ cannot be imported|range of supported deployment target versions|SDK "[^"]+" cannot be located|[Uu]nable to find (?:a )?sdk|[Uu]nrecognized platform name/)
     }
 
-    /// Where Apple offers every Xcode for download.
-    static let downloads = "https://developer.apple.com/download/all/"
-
-    /// The command that installs Xcode `pin` with xcodes.
-    static func xcodesInstall(_ pin: String) -> String {
-        "xcodes install \(pin)"
-    }
-
     /// The command that installs a pinned Xcode: xcodes when it's on PATH, else Apple's download page.
     static func install(_ pin: String, hasXcodes: Bool) -> String {
-        hasXcodes ? xcodesInstall(pin) : "install Xcode \(pin) from \(downloads)"
+        hasXcodes ? "xcodes install \(pin)" : "install Xcode \(pin) from https://developer.apple.com/download/all/"
     }
 
     func run(_ context: CheckContext) async -> CheckResult {

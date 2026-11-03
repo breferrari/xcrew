@@ -183,7 +183,7 @@ import XcrewTestSupport
     @Test func briefingEndsWithTheProjectCardForThisBranch() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let machine = Self.machine(project, version: "2.7.1", branch: "feat/card")
-        ProjectCard.save(.init(folder: project.canonicalRoot, branch: "feat/card", updated: machine.now().timeIntervalSince1970 * 1000 - 5 * 60_000, text: "Notes:\n- a"), on: machine)
+        ProjectCard.save(.init(folder: project.canonicalRoot, branch: "feat/card", updated: Date().timeIntervalSince1970 * 1000 - 5 * 60_000, text: "Notes:\n- a"), on: machine)
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n")
         #expect(text?.hasSuffix("\n\nNotes, as of the run 5 min ago:\n- a") == true)
     }
@@ -206,9 +206,9 @@ import XcrewTestSupport
     @Test func theBootedSimulatorsAreTheOnesBootedOrBootingNow() async {
         let listed = Self.booted.replacingOccurrences(of: #""udid":"C3","state":"Booted""#, with: #""udid":"C3","state":"Booting""#)
         let runner = FakeRunner(responses: ["xcrun simctl list devices booted --json": .init(status: 0, stdout: listed)])
-        let booted = await SimulatorCatalog.booted(using: runner)
+        let booted = await SimulatorCatalog.booted(using: runner, timeout: .seconds(1))
         #expect(booted.map(\.name) == ["iPad Air 11-inch (M3)", "iPhone 17"])
-        #expect(await SimulatorCatalog.booted(using: FakeRunner()).isEmpty)
+        #expect(await SimulatorCatalog.booted(using: FakeRunner(), timeout: .seconds(1)).isEmpty)
     }
 
     @Test func briefingNamesTheBootedSimulatorsWhenThereAreAny() async {

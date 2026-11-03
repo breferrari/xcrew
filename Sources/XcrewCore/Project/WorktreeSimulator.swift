@@ -63,7 +63,8 @@ public enum WorktreeSimulator {
             let mine = catalog.devices.first { $0.udid.map(recorded.contains) == true && $0.deviceType == deviceType }
             if let earlier = mine ?? catalog.devices.first(where: { $0.name == name }), let udid = earlier.udid {
                 made[from] = udid
-                said.append(Self.reused(name: earlier.name, label: label, udid: udid, fresh: fresh))
+                let clean = fresh ? "; `xcrun simctl delete \(udid)` and setup again make a fresh one" : ""
+                said.append("xcrew: this worktree uses simulator `\(earlier.name)` (\(label)), made for it earlier\(clean)")
                 continue
             }
             var notCloned: String?
@@ -124,12 +125,5 @@ public enum WorktreeSimulator {
     /// A device type's name as its identifier spells it: `iPhone 18 Pro` for `….SimDeviceType.iPhone-18-Pro`.
     static func typeName(_ identifier: String) -> String {
         (identifier.split(separator: ".").last.map(String.init) ?? identifier).replacingOccurrences(of: "-", with: " ")
-    }
-
-    /// What setup says of a simulator it made for this worktree earlier and uses again; asked for a fresh one, how to get
-    /// it: deleting this one, which loses the apps on it and their data, the person's call, said before the command.
-    static func reused(name: String, label: String, udid: String, fresh: Bool) -> String {
-        "xcrew: this worktree uses simulator `\(name)` (\(label)), made for it earlier"
-            + (fresh ? ". Once it's deleted, running this setup again makes a fresh one; the delete \(SimulatorDelete.loses("it")): `xcrun simctl delete \(udid)`" : "")
     }
 }

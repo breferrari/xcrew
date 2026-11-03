@@ -24,7 +24,7 @@ public enum ProjectWorkspaces {
     /// prunable one, at the project's folder in it, with its key as written and as the file system spells it. Outside
     /// git, the project alone.
     static func live(of project: Project, using runner: any CommandRunning) async -> [Checkout] {
-        let git = { (arguments: String...) in await runner.run(["git", "-C", project.root.path] + arguments, stdin: nil, timeout: DeadlineRunner.untimed) }
+        let git = { (arguments: String...) in await runner.run(["git", "-C", project.root.path] + arguments, stdin: nil, timeout: .seconds(10)) }
         async let prefixed = git("rev-parse", "--show-prefix")
         let listed = await git("worktree", "list", "--porcelain")
         let prefix = await prefixed.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
