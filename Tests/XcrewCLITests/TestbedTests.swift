@@ -641,8 +641,8 @@ struct TestbedEvidenceTests {
         // answers only once the call stops waiting, so neither a slow git nor a slow Mac changes what's read.
         // The fake runner answers no `sysctl`, so the pool runs one command at a time: the first run's summary read holds
         // it until the cut, which is recorded before any other command starts.
-        let clock = StillClock(Date())
-        let slow = Machine(environment: ["XCREW_WITHIN_MS": "60000"], home: context.machine.home, runner: XcodeOutlastsTheDeadline(context.machine.runner, clock: clock, gitTakes: .milliseconds(1_100)), processID: context.machine.processID, applications: context.machine.applications, now: { clock.read() })
+        let clock = StillClock()
+        let slow = Machine(environment: ["XCREW_WITHIN_MS": "60000"], home: context.machine.home, runner: XcodeOutlastsTheDeadline(context.machine.runner, clock: clock, gitTakes: .milliseconds(1_100)), processID: context.machine.processID, applications: context.machine.applications, monotonic: { clock.read() })
         let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)
         #expect(run.text.contains("- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."), "\(run.text)")
         // What the deadline cut is said in one line, after the block's own.
@@ -1102,15 +1102,13 @@ final class SlowRunner: CommandRunning {
 }
 
 /// A runner that answers as another does, each `xcrun` command after `xcrun`'s wait, or timed out when its limit is shorter.
-/// A clock that stands still until a command moves it.
+/// A monotonic clock that stands still until a command moves it.
 final class StillClock: Sendable {
-    let time: Mutex<Date>
+    let time = Mutex(Duration.zero)
 
-    init(_ start: Date) { time = Mutex(start) }
+    func read() -> Duration { time.withLock { $0 } }
 
-    func read() -> Date { time.withLock { $0 } }
-
-    func move(by seconds: TimeInterval) { time.withLock { $0 = $0.addingTimeInterval(seconds) } }
+    func move(by duration: Duration) { time.withLock { $0 += duration } }
 }
 
 /// A runner on `clock`: every command but `xcrun` answers as `base` does, under a limit of its own, and takes none of the
@@ -1129,7 +1127,7 @@ final class XcodeOutlastsTheDeadline: CommandRunning {
     func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
         if argv.first == "git" { try? await Task.sleep(for: gitTakes) }
         guard argv.first == "xcrun" else { return await base.run(argv, stdin: stdin, timeout: .seconds(600)) }
-        clock.move(by: 3600)
+        clock.move(by: .seconds(3600))
         try? await Task.sleep(for: .seconds(600))
         return .timedOut
     }
