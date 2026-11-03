@@ -88,15 +88,20 @@ public enum Look {
         }
         FailureImages.record(run)
         guard !shown.isEmpty else {
-            return "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; xcrew look <Suite/test> --bundle \(ShellWord.word(bundle.path)) shows one test's steps"
+            return noRecording(in: name, bundle: bundle.path)
         }
         unshown += failed.dropFirst(next)
         return (shown + (unshown.isEmpty ? [] : [moreLine(unshown, bundle: bundle.path)])).joined(separator: "\n")
     }
 
+    /// The line on a run, `name` at `bundle`, none of whose failed tests kept a screen recording.
+    static func noRecording(in name: String, bundle: String) -> String {
+        "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; `xcrew look <Suite/test> --bundle \(ShellWord.word(bundle))` shows one test's steps"
+    }
+
     /// The line naming the failed tests not shown, each as a `look` command on this bundle takes it.
     static func moreLine(_ unshown: [TestID], bundle: String) -> String {
-        "and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { $0.lookCommand(bundle: bundle) }, rest: "`xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle))` lists them all")
+        "and \(unshown.count) more failed \(unshown.count == 1 ? "test" : "tests")" + ResultBundle.listed(unshown.map { "`\($0.lookCommand(bundle: bundle))`" }, rest: "`xcrun xcresulttool get test-results tests --path \(ShellWord.word(bundle))` lists them all")
     }
 
     /// One test's failed runs, each with its steps, failure and screen, then where it passed; nil when none failed. A

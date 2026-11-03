@@ -66,7 +66,7 @@ import XcrewTestSupport
         let nodes = (1...41).map { #"{"nodeType":"Test Case","nodeIdentifier":"Suite/test_\#($0)()","name":"test_\#($0)()","result":"Failed"}"# }.joined(separator: ",")
         let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: #"{"testNodes":[\#(nodes)]}"#)])
         let text = await Look.report(bundle: ResultBundle(path: bundle, runner: runner), named: nil, keptIn: FileManager.default.temporaryDirectory.appending(path: "xcrew-look-\(UUID().uuidString)"), now: Date())
-        #expect(text == "xcrew: no failed test in test_sim_1.xcresult kept a screen recording, as a UI test's failed run does; xcrew look <Suite/test> --bundle /runs/test_sim_1.xcresult shows one test's steps", "\(text)")
+        #expect(text == "xcrew: no failed test in test_sim_1.xcresult kept a screen recording, as a UI test's failed run does; `xcrew look <Suite/test> --bundle /runs/test_sim_1.xcresult` shows one test's steps", "\(text)")
     }
 
     /// `look` takes the name the run's text gives a test: a nested suite's, `Inner/fails()`, means the one nested id that
@@ -90,7 +90,8 @@ import XcrewTestSupport
 
     /// The line naming the failed tests not shown names each as a `look` command on this bundle takes it, one shell word.
     @Test func theLineOnTestsNotShownNamesEachAsAShellWord() {
-        #expect(Look.moreLine([TestID(suite: "Suite", name: "test"), TestID(xcresultID: "Outer/Inner/fails()")], bundle: "/runs/Run.xcresult") == "and 2 more failed tests: xcrew look Suite/test --bundle /runs/Run.xcresult and xcrew look 'Outer/Inner/fails()' --bundle /runs/Run.xcresult")
+        let tests = [TestID(suite: "Suite", name: "test"), TestID(xcresultID: "Outer/Inner/fails()"), TestID(xcresultID: "xctest (1) encountered an error")]
+        #expect(Look.moreLine(tests, bundle: "/runs/Run.xcresult") == "and 3 more failed tests: `xcrew look Suite/test --bundle /runs/Run.xcresult`, `xcrew look 'Outer/Inner/fails()' --bundle /runs/Run.xcresult` and `xcrew look 'xctest (1) encountered an error' --bundle /runs/Run.xcresult`")
     }
 
     /// The line on a test list that couldn't be read names its xcresulttool command with the bundle quoted for a shell.

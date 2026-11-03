@@ -63,6 +63,14 @@ import XcrewTestSupport
         #expect(run.text.hasPrefix("xcrew look: Outer/Inner/it's red, in Run.xcresult\n"), "\(run.text)")
     }
 
+    /// An empty quoted test or bundle, `''`, is none: look looks at every failed test of the newest run's bundle.
+    @Test func anEmptyQuotedTestOrBundleIsNone() async {
+        let run = await Run("look", "''", "--bundle", "/runs/Run.xcresult", context: context([Self.listing("/runs/Run.xcresult"): Self.passed]))
+        #expect(run.text == "xcrew: nothing failed in Run.xcresult", "\(run.text)")
+        let none = await Run("look", "--bundle", "''", context: context())
+        #expect(none.text == LookCommand.noBundle, "\(none.text)")
+    }
+
     /// `Target/Suite/test()` is a test the bundle names `Suite/test()` when it lists no `Target/Suite/test()`: the target
     /// is dropped, as for the form without `()`.
     @Test func aTargetBeforeABundlesNameIsDropped() async {
