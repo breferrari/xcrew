@@ -18,8 +18,9 @@ struct LookCommand: Command {
     func run(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         guard invocation.arguments.positional.count <= 1 else { throw UsageError(description: "look takes one test at most (xcrew look --help)") }
-        let named = Self.given(invocation.arguments["bundle"])
-        guard named != nil || invocation.arguments["bundle"] == nil else { throw UsageError(description: "look's --bundle names no result bundle (xcrew look --help)") }
+        let given = invocation.arguments["bundle"]
+        let named = Self.given(given)
+        guard given == nil || named != nil else { throw UsageError(description: "look's --bundle names no result bundle (xcrew look --help)") }
         let newest = if named == nil { await ResultBundle.newest(project: context.project.root, machine: context.machine) } else { String?.none }
         guard let path = named ?? newest else {
             invocation.print(Self.noBundle)

@@ -24,6 +24,9 @@ public struct TestID: Sendable, Hashable {
     /// `test()`, or a test that takes arguments as the bundle lists it, with its labels: `parameterised(value:)`.
     public var function: String { name.hasSuffix(")") ? name : "\(name)()" }
 
+    /// `Suite/test`, as Xcrew heads what it says of a test, and an id with no `/`, as a crash's case, by itself.
+    var title: String { name.isEmpty ? suite : shown }
+
     /// The name `look` takes for it: a nested suite's test as the bundle names it, `()` and all, so its suite's `/` isn't
     /// read as a target's (`Target/Suite/test`), and an id with no `/`, as a crash's case, by itself.
     var lookName: String { name.isEmpty || shown.count(where: { $0 == "/" }) > 1 ? xcresultID : shown }
