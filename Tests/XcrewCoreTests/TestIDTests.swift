@@ -41,4 +41,21 @@ import Testing
     @Test func anIDWithoutASlashAsksXcresulttoolByItself() {
         #expect(TestID(xcresultID: "xctest (80341) encountered an error").xcresultID == "xctest (80341) encountered an error")
     }
+
+    /// A test the text names is the bundle's own id, else the one nested id ending with it, else the `System Failures`
+    /// case its crash is filed under: one rule for every lookup.
+    @Test func aTestIsItsOwnIDTheOneNestedIDOrItsCrashCase() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"Outer/Inner/fails()","result":"Failed"},{"nodeType":"Test Case","name":"xctest (1) encountered an error","nodeIdentifier":"xctest (1) encountered an error","result":"Failed","children":[{"nodeType":"Failure Message","name":"Crash: xctest at Suite.crashes()"}]}]}"#)
+        let cases = ResultBundle.testCases(in: listing.nodes)
+        let crashes = ResultBundle.crashCases(in: cases)
+        #expect(ResultBundle.resolution(of: TestID(suite: "Inner", name: "fails"), in: cases, crashCases: crashes) == .found(TestID(xcresultID: "Outer/Inner/fails()")))
+        #expect(ResultBundle.resolution(of: TestID(suite: "Suite", name: "crashes"), in: cases, crashCases: crashes) == .found(TestID(xcresultID: "xctest (1) encountered an error")))
+        #expect(ResultBundle.resolution(of: TestID(suite: "Suite", name: "gone"), in: cases, crashCases: crashes) == .missing)
+    }
+
+    /// The line on a test several nested ids end with names five at most, and counts the rest.
+    @Test func theLineOnATestSeveralIDsEndWithNamesFiveAtMost() {
+        let ids = (1...7).map { TestID(xcresultID: "Module\($0)/Loading/showsSpinner()") }
+        #expect(FailureNotes.severalByThatName(ids) == "the result bundle has more than one test by that name: Module1/Loading/showsSpinner, Module2/Loading/showsSpinner, Module3/Loading/showsSpinner, Module4/Loading/showsSpinner, Module5/Loading/showsSpinner and 2 more (in the result bundle's test list)")
+    }
 }

@@ -94,15 +94,24 @@ public struct ResultBundle: Sendable {
         }
     }
 
-    /// The case the bundle files `test`'s crash under, `xctest (<pid>) encountered an error` in `System Failures`, when its
-    /// message names `test`, from `cases`, the test list's test cases by id: the first by id when several do; nil when
-    /// none does.
-    static func crashCase(of test: TestID, in cases: [TestID: [[String: Any]]]) -> TestID? {
-        guard cases[test] == nil else { return nil }
-        return cases.filter { _, filed in
-            guard MobileBuildMCPLine.isProcessCrash(filed.first?["name"] as? String ?? ""), let message = firstFailureMessage(in: filed) else { return false }
-            return MobileBuildMCPLine.crashedTest(message: failure(message).line) == test
-        }.keys.min { $0.xcresultID < $1.xcresultID }
+    /// Each test a crash under `System Failures` names, `xctest (<pid>) encountered an error`, by the case the bundle
+    /// files it under, from `cases`, the test list's test cases by id: the first by id when several name one test.
+    static func crashCases(in cases: [TestID: [[String: Any]]]) -> [TestID: TestID] {
+        var found: [TestID: TestID] = [:]
+        for (id, filed) in cases.sorted(by: { $0.key.xcresultID < $1.key.xcresultID }) {
+            guard MobileBuildMCPLine.isProcessCrash(filed.first?["name"] as? String ?? ""), let message = firstFailureMessage(in: filed),
+                  let test = MobileBuildMCPLine.crashedTest(message: failure(message).line), found[test] == nil else { continue }
+            found[test] = id
+        }
+        return found
+    }
+
+    /// The bundle's id for a test the run's text names, `test`, among `cases`: its own, else the one nested id that ends
+    /// with it (`TestID.resolved(among:)`), else the case its crash is filed under in `crashCases`.
+    static func resolution(of test: TestID, in cases: [TestID: [[String: Any]]], crashCases: [TestID: TestID]) -> TestID.Resolution {
+        let resolved = test.resolved(among: Set(cases.keys))
+        guard resolved == .missing, let crash = crashCases[test] else { return resolved }
+        return .found(crash)
     }
 
     /// The first `Failure Message` node below a test's cases.

@@ -331,7 +331,7 @@ struct BundleFailuresTests {
                                               bundleIDs: [TestID(suite: "Inner", name: "fails"): ambiguous])
         #expect(added?.text.text.contains("""
               ✗ Inner / fails(): Expectation failed: Kit.name == "Other"
-                  the result bundle has more than one test by that name: A/Inner/fails, B/Inner/fails
+                  the result bundle has more than one test by that name: A/Inner/fails and B/Inner/fails
                 Kit.name → "Kit": the name is Kit
             """) == true, "\(added?.text.text ?? "")")
         #expect(!runner.asked.contains { $0.contains("A/Inner/fails()") || $0.contains("B/Inner/fails()") || $0.contains("--test-id Inner/fails()") }, "\(runner.asked)")

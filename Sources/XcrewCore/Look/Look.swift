@@ -28,8 +28,10 @@ public enum Look {
         let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
         if cases[exact] != nil { return exact }
         if let withoutTarget, cases[withoutTarget] != nil { return withoutTarget }
-        if case let .found(nested) = exact.resolved(among: Set(cases.keys)) { return nested }
-        if let crash = ResultBundle.crashCase(of: exact, in: cases) { return crash }
+        let crashes = ResultBundle.crashCases(in: cases)
+        for named in [exact, withoutTarget].compactMap(\.self) {
+            if case let .found(id) = ResultBundle.resolution(of: named, in: cases, crashCases: crashes) { return id }
+        }
         return named.hasSuffix("()") ? exact : withoutTarget ?? exact
     }
 

@@ -338,10 +338,8 @@ public struct Report: Sendable, Equatable, Codable {
                 let listing = await testList()
                 let cases = ResultBundle.testCases(in: listing.nodes)
                 let ids = Set(cases.keys)
-                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { test in
-                    let resolved = test.resolved(among: ids)
-                    return (test, resolved == .missing ? ResultBundle.crashCase(of: test, in: cases).map { .found($0) } ?? resolved : resolved)
-                }) { first, _ in first }
+                let crashes = ResultBundle.crashCases(in: cases)
+                bundleIDs = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, ResultBundle.resolution(of: $0, in: cases, crashCases: crashes)) }) { first, _ in first }
                 let named = Set(bundleIDs.values.compactMap { if case let .found(id) = $0 { id } else { nil } }).union(bundleIDs.keys)
                 let unlisted = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
                 let said = unlisted.isEmpty ? [] : text.lines.compactMap { line -> (TestID, String)? in
@@ -350,7 +348,7 @@ public struct Report: Sendable, Equatable, Codable {
                     return nil
                 }
                 let saying = { (test: TestID) in said.first { $0.0 == test || (!ids.contains($0.0) && $0.0.isNested(in: test) && $0.0.resolved(among: ids) == .found(test)) }?.1 }
-                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: ResultBundle.crashCase(of: test, in: cases) ?? test) }
+                let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: crashes[test] ?? test) }
                 if let added = text.adding(unlisted: entries.map { ($0.test, $0.message, ResultBundle.place(of: $0.id, in: cases), saying($0.test).map(Self.listedOtherwise)) }) {
                     (text, changed) = (added, true)
                     for entry in entries { bundleIDs[entry.test] = .found(entry.id) }
@@ -410,8 +408,10 @@ public struct Report: Sendable, Equatable, Codable {
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let bundled = ResultBundle.failedTests(listing: listing)
         let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
-        let recordedIDs = Set(recorded.keys)
-        let resolutions = bundleIDs.merging(final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil }.map { ($0, $0.resolved(among: recordedIDs)) }) { own, _ in own }
+        let unresolved = final.failures.filter(\.isTest).map { TestID(xcresultID: $0.title) }.filter { bundleIDs[$0] == nil }
+        let cases = unresolved.isEmpty || bundled == nil ? [:] : ResultBundle.testCases(in: listing.nodes)
+        let crashes = ResultBundle.crashCases(in: cases)
+        let resolutions = bundleIDs.merging(unresolved.map { ($0, ResultBundle.resolution(of: $0, in: cases, crashCases: crashes)) }) { own, _ in own }
         let results = recorded.merging(resolutions.compactMap { test, resolution in
             if case let .found(id) = resolution, let found = recorded[id] { (test, found) } else { nil }
         }) { own, _ in own }

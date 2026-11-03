@@ -158,7 +158,7 @@ public enum FailureNotes {
 
     /// The line under a failed test whose name ends several of the bundle's ids, `ids`: it's looked up under none.
     static func severalByThatName(_ ids: [TestID]) -> String {
-        "the result bundle has more than one test by that name: \(ids.map(\.shown).joined(separator: ", "))"
+        "the result bundle has more than one test by that name: \(ResultBundle.joined(ids.map(\.shown), rest: "in the result bundle's test list"))"
     }
 
     /// The first step of `adding`: each failed test's lookups and its repeated runs. Nil when there's nothing to add and
@@ -206,7 +206,7 @@ public enum FailureNotes {
                 let keepsImages = imaged.contains(test) ? imagesFolder : nil
                 let resolution = bundleIDs[test]
                 let id = if case let .found(found)? = resolution { found } else { test }
-                let named = MobileBuildMCPLine.isProcessCrash(id.suite) || MobileBuildMCPLine.isProcessCrash(id.name) ? test : id
+                let named = MobileBuildMCPLine.isProcessCrash(id.suite) ? test : id
                 group.addTask {
                     if case let .ambiguous(ids)? = resolution { return (test, id, ["      \(Self.severalByThatName(ids))"], nil) }
                     var added: [String] = []
