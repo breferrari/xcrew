@@ -46,15 +46,17 @@ export function setupArgs(choices: SetupChoices, picks: SetupPicks): string[] {
     return ['setup', '--worktree', ...simulator, ...force]
   }
   const option = (name: string, value: string | undefined) => (value ? [`--${name}`, value] : [])
+  // Setup keeps what a config's profiles hold unless an option names a choice, so each is named, none as empty.
+  const choice = (name: string, value: string | undefined) => [`--${name}`, value ?? '']
   return [
     'setup',
     ...option('container', picks.container),
-    ...option('app-scheme', picks.appScheme),
-    ...option('bundle-id', picks.bundleID),
-    ...option('ui-scheme', picks.uiScheme),
-    ...option('test-scheme', picks.testScheme),
+    ...choice('app-scheme', picks.appScheme),
+    ...choice('bundle-id', picks.bundleID),
+    ...choice('ui-scheme', picks.uiScheme),
+    ...choice('test-scheme', picks.testScheme),
     ...option('test-simulator', picks.testSimulator),
-    ...option('app-simulator', picks.appSimulator),
+    ...choice('app-simulator', picks.appSimulator),
     // Always named: setup otherwise keeps the backend the old config had.
     ...option('debugger-backend', picks.debuggerBackend ?? 'dap'),
     ...force,

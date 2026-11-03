@@ -45,6 +45,40 @@ public struct SetupChoices: Sendable, Equatable, Codable {
         public var testSimulator: String?
         /// The app's simulator, when it isn't the test simulator.
         public var appSimulator: String?
+
+        /// What the person chose, as the config holds it: the profiles xcrew writes, `unit`, `app` and `ui`, or with
+        /// none, the session defaults' simulator; nil when the config has neither.
+        public static func chosen(in yaml: String) -> Picks? {
+            let names = ConfigRenderer.profiles(in: yaml).names
+            guard !names.isEmpty else {
+                guard let simulator = ConfigRenderer.setting("simulatorName", profile: ConfigRenderer.globalProfile, in: yaml) else { return nil }
+                var picks = Picks()
+                picks.testSimulator = simulator
+                return picks
+            }
+            func value(_ key: String, of profile: String) -> String? {
+                names.contains(profile) ? ConfigRenderer.setting(key, profile: profile, in: yaml) : nil
+            }
+            var picks = Picks()
+            picks.appScheme = value("scheme", of: "app")
+            picks.uiScheme = value("scheme", of: "ui")
+            picks.testScheme = value("scheme", of: "unit")
+            picks.bundleID = value("bundleId", of: "app")
+            // The app and UI-test profiles share the app's simulator, as setup writes them.
+            let appSimulator = value("simulatorName", of: "app") ?? value("simulatorName", of: "ui")
+            picks.testSimulator = value("simulatorName", of: "unit") ?? appSimulator
+            picks.appSimulator = appSimulator == picks.testSimulator ? nil : appSimulator
+            return picks
+        }
+
+        /// The container the config builds, as its first profile or its session defaults name it: from the root, as
+        /// setup's containers are, or a full path when it's outside the root or named from the home folder.
+        public static func container(in yaml: String, root: URL, home: URL) -> String? {
+            let profile = ConfigRenderer.profiles(in: yaml).names.first ?? ConfigRenderer.globalProfile
+            guard let path = ["workspacePath", "projectPath"].lazy.compactMap({ ConfigRenderer.setting($0, profile: profile, in: yaml) }).first else { return nil }
+            let relative = ConfigRenderer.relative(ConfigRenderer.resolved(path, root: root, home: home), to: root)
+            return relative.hasPrefix("./") ? String(relative.dropFirst(2)) : relative
+        }
     }
 
     /// The config there is now.
@@ -77,19 +111,11 @@ public struct SetupChoices: Sendable, Equatable, Codable {
     public static func read(container: String?, containers: [String], containerProblem: String?, in project: Project, catalog: SimulatorCatalog) -> SetupChoices {
         var choices = readWithoutConfig(container: container, containers: containers, containerProblem: containerProblem, in: project, catalog: catalog)
         // The profiles xcrew wrote hold what the person chose before; setup's own rules are only for what they don't.
-        guard choices.config != nil, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8) else { return choices }
-        let names = ConfigRenderer.profiles(in: yaml).names
-        guard !names.isEmpty else { return choices }
-        func value(_ key: String, of profile: String) -> String? {
-            names.contains(profile) ? ConfigRenderer.setting(key, profile: profile, in: yaml) : nil
-        }
-        choices.picks.appScheme = value("scheme", of: "app")
-        choices.picks.uiScheme = value("scheme", of: "ui")
-        choices.picks.testScheme = value("scheme", of: "unit")
-        choices.picks.bundleID = value("bundleId", of: "app")
-        choices.picks.testSimulator = value("simulatorName", of: "unit") ?? value("simulatorName", of: "app") ?? choices.picks.testSimulator
-        let appSimulator = value("simulatorName", of: "app")
-        choices.picks.appSimulator = appSimulator == choices.picks.testSimulator ? nil : appSimulator
+        guard choices.config != nil, let yaml = try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8), let chosen = Picks.chosen(in: yaml) else { return choices }
+        let fallback = choices.picks.testSimulator
+        // Session defaults alone hold a simulator and no scheme: setup's own scheme picks stand.
+        if !ConfigRenderer.profiles(in: yaml).names.isEmpty { choices.picks = chosen }
+        choices.picks.testSimulator = chosen.testSimulator ?? fallback
         return choices
     }
 
