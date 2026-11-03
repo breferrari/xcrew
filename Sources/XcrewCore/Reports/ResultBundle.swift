@@ -151,16 +151,18 @@ public struct ResultBundle: Sendable {
     }
 
     /// The results a test's cases hold below them, each test plan configuration's and each device's, in either nesting,
-    /// with the configuration each is under: nil for a device under none. A result a node doesn't give is nil.
+    /// with the configuration each is under: nil for a device under none. A result a node doesn't give is nil. Nothing
+    /// below a repetition counts: a retried test's earlier failure stays in its repetitions.
     static func nestedResults(of testCases: [[String: Any]]) -> [(configuration: String?, result: String?)] {
         var found: [(configuration: String?, result: String?)] = []
         func walk(_ node: [String: Any], under configuration: String?) {
             let type = node["nodeType"] as? String
+            guard type != "Repetition" else { return }
             let current = type == "Test Plan Configuration" ? node["name"] as? String : configuration
             if type == "Test Plan Configuration" || type == "Device" { found.append((current, node["result"] as? String)) }
-            for child in nodes(node["children"]) { walk(child, under: current) }
+            for child in node["children"] as? [[String: Any]] ?? [] { walk(child, under: current) }
         }
-        for node in testCases { for child in nodes(node["children"]) { walk(child, under: nil) } }
+        for node in testCases { for child in node["children"] as? [[String: Any]] ?? [] { walk(child, under: nil) } }
         return found
     }
 
