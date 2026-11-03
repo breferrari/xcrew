@@ -93,6 +93,17 @@ struct BundleFailuresTests {
         #expect(report.failures.filter { $0.message == message }.count == 1)
     }
 
+    /// With the bundle's list, the text's failed tests only order the bundle's: a test only the text names, as one it
+    /// names otherwise than the bundle, is never listed beside it. The text's other failures stay where they were.
+    @Test func theTextOnlyOrdersTheBundlesFailedTests() {
+        let bundled = [ToolOutput.Failure(title: "Outer/Inner/test", message: "from the bundle", isTest: true)]
+        let text = [
+            ToolOutput.Failure(title: "Inner/test", message: "from the text", isTest: true),
+            ToolOutput.Failure(title: "App.swift:3", message: "a warning as an error", isTest: false),
+        ]
+        #expect(Report.inRunOrder(bundled, text: text).map(\.title) == ["App.swift:3", "Outer/Inner/test"])
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(try await Self.report("serial").failures.map(\.title) == ["ProbeTests/testFails", "ProbeTests/testFlaky"])

@@ -118,24 +118,22 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// The bundle's failed tests in the order the run reported them, the text's: the bundle lists its own by plan,
     /// target and suite. Each test the text lists takes its place there with the bundle's content; a test only the
-    /// bundle lists comes after; the text's other failures stay where they were. A test the text lists as failed but
-    /// the bundle counts passed, as a retry that passed, is dropped.
-    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], passed: Set<TestID>) -> [ToolOutput.Failure] {
-        var pending = Dictionary(bundled.map { (TestID(xcresultID: $0.title), $0) }) { first, _ in first }
+    /// bundle lists comes after; the text's other failures stay where they were. A test only the text lists is none of
+    /// the run's failures: one the bundle counts passed, as a retry that passed, or one the text names otherwise.
+    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
+        let keyed = bundled.map { (TestID(xcresultID: $0.title), $0) }
+        var pending = Dictionary(keyed) { first, _ in first }
         var ordered: [ToolOutput.Failure] = []
         for failure in text {
             guard failure.isTest else {
                 ordered.append(failure)
                 continue
             }
-            let test = TestID(xcresultID: failure.title)
-            if let found = pending.removeValue(forKey: test) {
+            if let found = pending.removeValue(forKey: TestID(xcresultID: failure.title)) {
                 ordered.append(ToolOutput.Failure(title: found.title, message: found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
-            } else if !passed.contains(test) {
-                ordered.append(failure)
             }
         }
-        return ordered + bundled.filter { pending[TestID(xcresultID: $0.title)] != nil }
+        return ordered + keyed.filter { pending[$0.0] != nil }.map(\.1)
     }
 
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
@@ -328,8 +326,7 @@ public struct Report: Sendable, Equatable, Codable {
         // without a test list to read. Its other failures, the build's and the process's, are the text's.
         let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
         let targets = ResultBundle.targets(listing: listing)
-        let passed = ResultBundle.passedTests(listing: listing)
-        let failures = ResultBundle.failedTests(listing: listing).map { Self.inRunOrder($0, text: final.failures, passed: passed) } ?? final.failures
+        let failures = ResultBundle.failedTests(listing: listing).map { Self.inRunOrder($0, text: final.failures) } ?? final.failures
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?
