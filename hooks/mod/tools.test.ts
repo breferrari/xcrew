@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { buildsProject, generatedApps, generatedPart, kindOf, launchesAfterBuild, mayBeGenerated, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
+import { buildsProject, generatedApps, generatedPart, kindOf, mayBeGenerated, mayBeManifest, parseTool, runsGenerate, runsSetup } from './tools'
 
 const kind = (name: string) => {
   const tool = parseTool(name)
@@ -137,14 +137,4 @@ test('a path inside a bundle or Derived folder may be generated; others are not 
 test('a generated file is shown from its bundle or Derived folder on', () => {
   expect(generatedPart('/work/App/ios/App.xcodeproj/project.pbxproj')).toBe('App.xcodeproj/project.pbxproj')
   expect(generatedPart('/work/App/Derived/InfoPlists/App-Info.plist')).toBe('Derived/InfoPlists/App-Info.plist')
-})
-
-/** A build that goes on to install and launch what it built: its log's build verdict isn't how it ends. */
-test('a build and run launches after its build, and nothing else does', () => {
-  const launches = (name: string) => {
-    const tool = parseTool(name)
-    return tool ? launchesAfterBuild(tool) : undefined
-  }
-  expect(['mcp__MobileBuildMCP__build_run_sim', 'mcp__plugin_xcrew_MobileBuildMCP__build_run_device', 'mcp__MobileBuildMCP__build_run_macos'].map(launches)).toEqual([true, true, true])
-  expect(['mcp__MobileBuildMCP__build_sim', 'mcp__MobileBuildMCP__test_sim', 'mcp__MobileBuildMCP__launch_app_sim', 'mcp__xcode__RunProject', 'mcp__xcode__BuildProject'].map(launches)).toEqual([false, false, false, false, false])
 })

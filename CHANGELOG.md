@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.14.1 — 2026-11-03
+
+- xcrew returns to how 0.13.1 worked: 0.14.0's changes are taken back, as in 0.14.0 `/xcrew doctor` could fail without saying why. Everything listed under 0.14.0 below is withdrawn, and comes back in a later release.
+
 ## 0.14.0 — 2026-11-03
 
 - `/xcrew setup` and `xcrew setup --choices` show how many unit-test and UI-test targets each scheme runs by default, and setup gives the `unit` profile the scheme that runs the most, rather than the app's scheme that may test one module. So running `xcrew setup` again without `--test-scheme` can move `unit` from the app's scheme to a workspace scheme, or list the schemes that tie for the most, where before it picked the app's scheme. The `/xcrew setup` form starts from the scheme your config's `unit` profile has, and setup keeps a config edited by hand unless you pass `--force`. A scheme that builds several apps names the one it launches.

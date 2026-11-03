@@ -7,9 +7,8 @@ import XcrewCore
 struct PhaseCommand: Command {
     let name = "phase"
     let valuedOptions: Set<String> = ["tool", "since", "expected", "log"]
-    let flags: Set<String> = ["launches"]
     let usage = [
-        "phase --tool T [--launches] --since MS [--expected N] [--log PATH]   (mod) the running call's log and phase, as JSON; --launches for a call that installs and launches after its build, whose build's success doesn't end it",
+        "phase --tool T --since MS [--expected N] [--log PATH]   (mod) the running call's log and phase, as JSON",
     ]
 
     struct Answer: Codable, Equatable {
@@ -34,14 +33,13 @@ struct PhaseCommand: Command {
         } else {
             log = await RunLog.find(tool: tool, since: Date(timeIntervalSince1970: since / 1000), project: context.project.root, machine: context.machine)
         }
-        let kind: Report.Kind = invocation.arguments.has("launches") ? .run : tool.hasPrefix("test") ? .test : .build
-        let followed = log.flatMap { RunLog.follow(logAt: $0, expectedTests: invocation.arguments["expected"].flatMap(Int.init), kind: kind, keptIn: RunLog.readingsKept(on: context.machine)) }
-        let outcome = followed?.outcome
+        let phase = log.flatMap { RunLog.phase(ofLogAt: $0, expectedTests: invocation.arguments["expected"].flatMap(Int.init), keptIn: RunLog.readings(on: context.machine)) }
+        let kind: Report.Kind = tool.hasPrefix("test") ? .test : .build
+        let outcome = log.flatMap { RunLog.outcome(of: RunLog.tail(ofLogAt: $0), kind: kind) }
         let written = log.flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         let began = Date(timeIntervalSince1970: since / 1000)
-        let now = context.machine.now()
-        let quiet = outcome == nil && (written.map { now.timeIntervalSince($0) >= OtherRuns.quietFor } ?? (log == nil && now.timeIntervalSince(began) >= OtherRuns.quietFor))
-        let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: followed?.phase, scheme: followed?.scheme, outcome: outcome, quiet: quiet ? true : nil))
+        let quiet = outcome == nil && (written.map { Date().timeIntervalSince($0) >= OtherRuns.quietFor } ?? (log == nil && Date().timeIntervalSince(began) >= OtherRuns.quietFor))
+        let encoded = try JSONEncoder.sorted.encode(Answer(log: log?.path, phase: phase, scheme: log.flatMap(RunLog.scheme(ofLogAt:)), outcome: outcome, quiet: quiet ? true : nil))
         invocation.print(String(decoding: encoded, as: UTF8.self))
         return 0
     }

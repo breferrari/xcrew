@@ -58,15 +58,15 @@ final class Drain: Sendable {
         }
     }
 
-    /// Returns once reading has stopped, stopping it once `idle` passes on `clock` with nothing new arriving: true at end
-    /// of file, false when the pipe went quiet without closing.
-    func ended<C: Clock>(idleFor idle: Duration, clock: C = ContinuousClock()) async -> Bool where C.Duration == Duration {
+    /// Returns once reading has stopped, stopping it once `idle` passes with nothing new arriving: true at end of file,
+    /// false when the pipe went quiet without closing.
+    func ended(idleFor idle: Duration) async -> Bool {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.ended() }
             group.addTask {
                 while !Task.isCancelled {
                     let seen = self.data.count
-                    try? await clock.sleep(for: idle)
+                    try? await Task.sleep(for: idle)
                     if Task.isCancelled { return }
                     if self.data.count == seen {
                         self.state.withLock { $0.wentQuiet = true }

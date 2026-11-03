@@ -32,20 +32,20 @@ import XcrewTestSupport
     @Test func aRecordedSimulatorWhoseWorktreeIsGoneIsNamedWithItsDeleteCommand() async throws {
         let context = try Self.leftovers([("xcrew · App · old", "U1", "Shutdown", true), ("xcrew · App · live", "U2", "Shutdown", true)], live: ["live"], recorded: [("U1", "old"), ("U2", "live")])
         let result = await WorktreeLeftovers.run(context)
-        #expect(result == .warn("`xcrew · App · old` (its worktree is gone). Deleting it loses the apps installed on it and their data, so it's the person's to agree to: `xcrun simctl delete U1`"))
+        #expect(result == .warn("`xcrew · App · old` (its worktree is gone); `xcrun simctl delete U1` removes it"))
         #expect(result.isOffThePrompt == false)
     }
 
     /// git calls a worktree whose folder was deleted prunable: it's gone too.
     @Test func aPrunableWorktreeCountsAsGone() async throws {
         let context = try Self.leftovers([("xcrew · App · moved · iPhone 17", "U1", "Shutdown", true)], live: [], prunable: ["moved"], recorded: [("U1", "moved")])
-        #expect(await WorktreeLeftovers.run(context) == .warn("`xcrew · App · moved · iPhone 17` (its worktree is gone). Deleting it loses the apps installed on it and their data, so it's the person's to agree to: `xcrun simctl delete U1`"))
+        #expect(await WorktreeLeftovers.run(context) == .warn("`xcrew · App · moved · iPhone 17` (its worktree is gone); `xcrun simctl delete U1` removes it"))
     }
 
     /// One whose runtime the Mac has lost can't run; several are removed by one command.
     @Test func aRuntimeGoneIsNamedThoughItsWorktreeLivesAndSeveralShareOneCommand() async throws {
         let context = try Self.leftovers([("xcrew · App · live", "U2", "Shutdown", false), ("xcrew · App · old", "U1", "Shutdown", true)], live: ["live"], recorded: [("U2", "live"), ("U1", "old")])
-        #expect(await WorktreeLeftovers.run(context) == .warn("`xcrew · App · live` (its runtime is gone), `xcrew · App · old` (its worktree is gone). Deleting them loses the apps installed on them and their data, so it's the person's to agree to: `xcrun simctl delete U2 U1`"))
+        #expect(await WorktreeLeftovers.run(context) == .warn("`xcrew · App · live` (its runtime is gone), `xcrew · App · old` (its worktree is gone); `xcrun simctl delete U2 U1` removes them"))
     }
 
     /// Only what setup recorded is judged: a simulator named like one of xcrew's, as another clone of a folder of the same
@@ -70,7 +70,7 @@ import XcrewTestSupport
     /// `xcrew space` says it, in a part of its own, as it says what else takes room; the doctor doesn't.
     @Test func xcrewSpaceNamesALeftoverSimulator() async throws {
         let context = try Self.leftovers([("xcrew · App · old", "U1", "Shutdown", true)], live: [], recorded: [("U1", "old")])
-        #expect(await Space.worktreePart(context) == SpaceReport.Part(title: "Simulators setup made for worktrees", lines: [SpaceReport.Line(text: "`xcrew · App · old` (its worktree is gone). Deleting it loses the apps installed on it and their data, so it's the person's to agree to: `xcrun simctl delete U1`")]))
+        #expect(await Space.worktreePart(context) == SpaceReport.Part(title: "Simulators setup made for worktrees", lines: [SpaceReport.Line(text: "`xcrew · App · old` (its worktree is gone); `xcrun simctl delete U1` removes it")]))
     }
 
     @Test func withNothingRecordedTheCheckSkips() async throws {

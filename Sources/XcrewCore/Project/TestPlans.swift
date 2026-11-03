@@ -18,7 +18,7 @@ enum TestPlans {
 
     /// The plan of several configurations a scheme runs by default, if any, from the project's containers.
     static func configured(forScheme scheme: String, in project: Project) -> Configured? {
-        configured(containers: project.repositoryContainers).plans.first { $0.schemes.contains(scheme) }
+        configured(containers: project.layout(.repository).containers.map { project.root.appending(path: $0) }).plans.first { $0.schemes.contains(scheme) }
     }
 
     /// Schemes read at most: the briefing reads them at every session start, and a large modular app has hundreds.

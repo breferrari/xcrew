@@ -14,7 +14,6 @@ permissions:
 jobs:
   canary:
     runs-on: macos-26
-    timeout-minutes: 17  # docs/findings.md, Deadlines: `canary.yml canary`
     steps:
       - uses: actions/checkout@v7
       - name: Installs follow the latest release
@@ -82,7 +81,6 @@ jobs:
       - name: The CLI builds and checks the installed MobileBuildMCP
         run: bin/xcrew doctor --check mobilebuildmcp/version
       - name: MobileBuildMCP still accepts the config xcrew writes
-        timeout-minutes: 5  # docs/findings.md, Deadlines: `canary.yml config step`
         run: |
           project=$(mktemp -d)
           mkdir "$project/App.xcworkspace"
@@ -90,16 +88,7 @@ jobs:
           log=$(mktemp)
           # Through the plugin's launcher, as Claude Code starts the server. The project pins no Xcode, so the server
           # starts unchanged: nothing of the launcher's on its standard error, and no launch record.
-          # Its input stays open until the line is read, so it doesn't exit first; waited on the line, not on a time,
-          # while the server runs. The step's own timeout is the hang guard.
-          open=$(mktemp -u) && mkfifo "$open"
-          "$PWD/libexec/mobilebuildmcp-server" "$project" < "$open" > /dev/null 2> "$log" &
-          server=$!
-          exec 3> "$open"
-          until grep -qF "Loaded project config" "$log" || ! kill -0 "$server" 2> /dev/null; do sleep 0.2; done
-          exec 3>&-
-          kill "$server" 2> /dev/null || true
-          wait "$server" 2> /dev/null || true
+          ("$PWD/libexec/mobilebuildmcp-server" "$project" < /dev/null > /dev/null 2> "$log" &) ; sleep 5
           grep -F "Loaded project config" "$log" || { cat "$log"; exit 1; }
           if grep -F "mobilebuildmcp-server" "$log"; then echo "the launcher wrote to the server's standard error" >&2; exit 1; fi
           record="${XCREW_CACHE:-$HOME/Library/Caches/xcrew}/launches$(cd "$project" && pwd -P).launch"
@@ -109,8 +98,7 @@ jobs:
         run: scripts/readme-images.sh 2> "$RUNNER_TEMP/reasons" || { cat "$RUNNER_TEMP/reasons" >&2; exit 1; }
       - name: Sosumi answers
         run: |
-          # docs/findings.md, Deadlines: `canary.yml sosumi curl`
-          curl --fail --silent --show-error --max-time 10 -o /dev/null https://sosumi.ai/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"0"}}}'
+          curl --fail --silent --show-error --max-time 20 -o /dev/null https://sosumi.ai/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"xcrew-canary","version":"0"}}}'
       # Only for main, scheduled or dispatched there: a dispatch on a branch tests the canary itself.
       - name: Open an issue when something broke
         if: failure() && github.ref == 'refs/heads/main'

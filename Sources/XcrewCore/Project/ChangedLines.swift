@@ -28,7 +28,7 @@ enum ChangedLines {
         var lines: [String: [ClosedRange<Int>]] = [:]
         if !tracked.isEmpty {
             // Every name as written, and no `a/` or `b/` before it.
-            let diff = await runner.run(["git", "-C", project.root.path, "-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-renames", "--no-relative", "--no-prefix", change.since, "--"] + tracked, stdin: nil, timeout: DeadlineRunner.untimed)
+            let diff = await runner.run(["git", "-C", project.root.path, "-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-renames", "--no-relative", "--no-prefix", change.since, "--"] + tracked, stdin: nil, timeout: .seconds(30))
             guard diff.succeeded else { return nil }
             lines = hunks(diff.stdout, top: change.top)
         }

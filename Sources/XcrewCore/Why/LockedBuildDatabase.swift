@@ -26,14 +26,14 @@ struct LockedBuildDatabase: MachineCause {
     }
 
     /// When nothing holds the database any more.
-    static let free = "its build database is locked (\"database is locked\") by another build, and no process holds it now, so a build started now can take it."
+    static let free = "its build database is locked (\"database is locked\") by another build, and no process holds it now. Build again."
 
     /// When the processes couldn't be listed: nothing is said about whether one holds it.
     static let unknown = "its build database is locked (\"database is locked\") by another build; xcrew couldn't list the processes to say which."
 
     /// An xcodebuild holding the database: where it builds for, how long it has run, and how to stop it.
     static func held(by holder: ProcessList.Process) -> String {
-        "an xcodebuild holds its build database (\"database is locked\"): \(holder.described). A call stopped partway leaves its xcodebuild running; stopping it frees the database. It may be a build of the person's own, so it's the person's to agree to: kill \(holder.id)"
+        "an xcodebuild holds its build database (\"database is locked\"): \(holder.described). A call stopped partway leaves its xcodebuild running; stopping it frees the database: kill \(holder.id)"
     }
 
     /// Another process holding it, such as Xcode's build service: a build still going, not one to stop.

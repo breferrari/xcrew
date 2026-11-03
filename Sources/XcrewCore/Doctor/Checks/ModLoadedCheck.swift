@@ -1,7 +1,7 @@
 import Foundation
 
 /// xcrew's mod reported in this session: without it its notes, its tools and the line above the prompt are off, with
-/// nothing to say so, as under an mcs older than `minMCSVersion` or before `mcs sync`.
+/// nothing to say so, as under mcs before 2026.10.31 or before `mcs sync`.
 struct ModLoadedCheck: Check {
     let id = "xcrew/mod-loaded"
     let title = "xcrew's mod is loaded in this session"

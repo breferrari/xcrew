@@ -3,6 +3,7 @@ import Foundation
 /// Where a project's Xcode containers are and what generates them. Every question about the project's kind or location
 /// asks this, so the answers can't disagree. Each walks the project level by level, nearest first, and stops at its answer.
 public struct ProjectLayout: Sendable {
+    /// How far below the root a walk goes, chosen by what a miss costs.
     /// A project bundle's own file: `project.pbxproj`, or in Xcode 27.2's JSON format `project.xcproj`, which replaces it
     /// when a project switches format ("Updating your Xcode project configuration file format").
     static let pbxproj = "project.pbxproj"
@@ -13,7 +14,6 @@ public struct ProjectLayout: Sendable {
         [pbxproj, jsonProject].map { bundle.appending(path: $0) }.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    /// How far below the root a walk goes, chosen by what a miss costs.
     public enum Reach: Sendable {
         /// Below the root only in a git repository. Session start asks; a miss costs one briefing, and a walk of a
         /// folder such as Downloads would cost every session.
@@ -55,7 +55,7 @@ public struct ProjectLayout: Sendable {
 
         /// The path as one shell word.
         var argument: String {
-            ShellWord.word(path)
+            path.allSatisfy { $0.isLetter || $0.isNumber || "/._-".contains($0) } ? path : "'" + path.replacing("'", with: #"'\''"#) + "'"
         }
     }
 

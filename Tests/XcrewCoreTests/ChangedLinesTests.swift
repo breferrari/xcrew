@@ -118,37 +118,6 @@ import XcrewTestSupport
         #expect(note?.contains("Kit.swift:1 ") == false)
     }
 
-    /// The result Claude reads lists only the warning in the changed line; the other six are counted, with where the
-    /// full list is.
-    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"), arguments: ["text", "JSON"])
-    func onlyTheWarningsInChangedLinesAreListed(_ shape: String) async throws {
-        let project = Project.temporary(containing: ["Kit"])
-        let output = try build(shape == "text" ? Raw.text : Raw.json, in: project)
-        let report = await Report.make(kind: .build, output: output, home: Captured.home, runner: kitChanged(project), project: project)
-        let result = try #require(report.result, "\(shape): the result wasn't edited")
-        #expect(result.contains("Kit.swift:9"), "\(shape)")
-        #expect(!result.contains("Kit.swift:1\n") && !result.contains("Kit.swift:1\"") && !result.contains("Kit.swift:34"), "\(shape)")
-        #expect(result.contains("6 warnings outside the lines this branch changed left out; the full list is in "), "\(shape)")
-    }
-
-    /// None in a changed line: every warning is counted, none listed.
-    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func noWarningInAChangedLineListsNone() async throws {
-        let project = Project.temporary(containing: ["Kit"])
-        let report = await Report.make(kind: .build, output: try build(Raw.text, in: project), home: Captured.home, runner: kitChanged(project, diff: "+++ Kit/Kit.swift\n@@ -40,0 +41 @@\n"), project: project)
-        let result = try #require(report.result)
-        #expect(!result.contains("⚠"))
-        #expect(result.contains("7 warnings outside the lines this branch changed left out"))
-    }
-
-    /// Without the branch's changes to compare with, every warning stays listed.
-    @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
-    func withoutABaseEveryWarningStays() async throws {
-        let project = Project.temporary(containing: ["Kit"])
-        let report = await Report.make(kind: .build, output: try build(Raw.text, in: project), home: Captured.home, runner: kitChanged(project, remote: false), project: project)
-        #expect(!(report.result ?? "").contains("left out"))
-    }
-
     @Test(.enabled(if: Testbed.isCheckedOut, "no test bed"))
     func noWarningInAChangedLineSaysNothing() async throws {
         let project = Project.temporary(containing: ["Kit"])

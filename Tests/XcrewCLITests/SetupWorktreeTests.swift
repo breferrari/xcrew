@@ -51,16 +51,6 @@ import XcrewTestSupport
         #expect(ConfigWriter.keeping(worktree) == nil)
     }
 
-    /// A main checkout's config that writes its paths from the root, as setup does (`./App.xcodeproj`): the calls the
-    /// worktree's setup prints name the plain path, with no `/./` in it.
-    @Test func aPathWrittenFromTheRootIsPrintedPlain() async {
-        let main = Project.temporary(containing: ["App.xcodeproj"])
-        main.write("schemaVersion: 1\nsessionDefaultsProfiles:\n  unit:\n    projectPath: './App.xcodeproj'\n    scheme: 'App'\nactiveSessionDefaultsProfile: unit\n", to: ".mobilebuildmcp/config.yaml")
-        let (worktree, context) = Self.worktree(main: main)
-        let run = await Run("setup", "--worktree", context: context)
-        #expect(run.output.filter { $0.contains("session_set_defaults") } == [#"  session_set_defaults {"createIfNotExists":true,"profile":"unit","projectPath":"\#(worktree.root.path)/App.xcodeproj","scheme":"App"}"#])
-    }
-
     /// Setup again with the server part as it was: the calls carry the change, and no restart is asked for.
     @Test func aSecondSetupThatChangesOnlyProfilesAsksForNoRestart() async {
         let main = Project.temporary(containing: ["App.xcodeproj"])
@@ -332,7 +322,7 @@ import XcrewTestSupport
         var runner = shutDown
         runner.responses["xcrun simctl list devices available --json"] = CommandResult(status: 0, stdout: Self.listed([("iPhone 18 Pro", "MAIN-UDID"), (name, "EARLIER-UDID")], state: "Shutdown"))
         let run = await Run("setup", "--worktree", "--fresh-simulator", context: .fake(runner, project: worktree))
-        #expect(run.output.contains("xcrew: this worktree uses simulator `\(name)` (iPhone 18 Pro, iOS 27.2), made for it earlier. Once it's deleted, running this setup again makes a fresh one; the delete loses the apps installed on it and their data, so it's the person's to agree to: `xcrun simctl delete EARLIER-UDID`"), "\(run.output)")
+        #expect(run.output.contains("xcrew: this worktree uses simulator `\(name)` (iPhone 18 Pro, iOS 27.2), made for it earlier; `xcrun simctl delete EARLIER-UDID` and setup again make a fresh one"), "\(run.output)")
     }
 
     /// Sharing the main checkout's simulator and making a fresh one can't both be.

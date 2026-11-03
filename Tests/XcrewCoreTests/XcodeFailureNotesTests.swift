@@ -16,13 +16,13 @@ import XcrewTestSupport
     /// CI on another Xcode than the pinned one: that alone, no other fact of the doctor's.
     @Test func ciOnAnotherXcodeIsTheOnlyNoteWhenItAloneHolds() async {
         let context = fixture.context(pin: "26.4\n", workflow: XcodeChecksTests.ciOn26_3, launch: Self.applied)
-        #expect(await notes(context) == ["xcrew: CI uses Xcode 26.3 (.github/workflows/ci.yml:6), but this project pins Xcode 26.4, so a different SDK from CI's may be the cause; moving CI to 26.4, or pinning 26.3 in .xcode-version, puts CI and these builds on one Xcode"])
+        #expect(await notes(context) == ["xcrew: CI uses Xcode 26.3 (.github/workflows/ci.yml:6), but this project pins Xcode 26.4, so a different SDK from CI's may be the cause: move CI to 26.4, or pin 26.3 in .xcode-version"])
     }
 
     /// Without a pin, with several Xcodes installed, CI's is suggested as the pin, in place of the CI note.
     @Test func withoutAPinCIsXcodeIsSuggestedAsThePin() async {
         let context = fixture.context(workflow: XcodeChecksTests.ciOn26_3)
-        #expect(await notes(context) == ["xcrew: several Xcodes are installed and CI uses Xcode 26.3 (.github/workflows/ci.yml:6), but nothing pins one, so builds use Xcode 27.2, and a different SDK from CI's may be the cause; `echo 26.3 > .xcode-version` pins CI's"])
+        #expect(await notes(context) == ["xcrew: several Xcodes are installed and CI uses Xcode 26.3 (.github/workflows/ci.yml:6), but nothing pins one, so builds use Xcode 27.2, and a different SDK from CI's may be the cause: pin CI's with echo 26.3 > .xcode-version"])
     }
 
     /// The Xcode MCP's open Xcode other than the one building: two toolchains in one session.
@@ -31,8 +31,8 @@ import XcrewTestSupport
         let said = await notes(context)
         #expect(said.count == 1, "\(said)")
         let note = try #require(said.first)
-        #expect(note.hasPrefix("xcrew: the Xcode MCP works through the open Xcode 27.2, but MobileBuildMCP builds with Xcode 26.4, so their builds and errors can disagree; once Xcode 27.2 is quit, opening "), "\(note)")
-        #expect(note.hasSuffix("/Xcode-26.4.app puts the Xcode MCP and MobileBuildMCP on Xcode 26.4"), "\(note)")
+        #expect(note.hasPrefix("xcrew: the Xcode MCP works through the open Xcode 27.2, but MobileBuildMCP builds with Xcode 26.4, so their builds and errors can disagree: quit Xcode 27.2 and open "), "\(note)")
+        #expect(note.hasSuffix("/Xcode-26.4.app"), "\(note)")
     }
 
     /// With none of them holding, a toolchain failure gets none of them.

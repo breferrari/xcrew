@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import Testing
 @testable import XcrewCLI
 @testable import XcrewCore
@@ -304,7 +303,7 @@ struct TestbedPrivacyTests {
 struct TestbedRepetitionTests {
     @Test func aRealRunsRepetitionsGiveEachTestItsVerdict() throws {
         let listing = try String(contentsOf: Testbed.root.appending(path: "captures/repetitions/tests.json"), encoding: .utf8)
-        let found = ResultBundle.repetitions(listing: TestList(listing))
+        let found = ResultBundle.repetitions(listing: listing)
         #expect(found.map { "\($0.test) \($0.failed)/\($0.runs) \($0.verdict)" } == ["RepetitionTests/testFailsEveryOtherRun 2/5 flaky", "RepetitionTests/testFailsEveryRun 5/5 real", "RepetitionTests/testPassesEveryRun 0/5 passed"])
     }
 }
@@ -340,29 +339,6 @@ struct TestbedCoverageTests {
         let output = #"{"schema":"mobilebuildmcp.output.test-result","didError":false,"data":{"summary":{"status":"SUCCEEDED"},"artifacts":{"xcresultPath":"\#(Self.bundle)"}}}"#
         let report = await Report.make(kind: .test, output: ToolOutput(text: output, server: .mobileBuildMCP), home: "/home", runner: runner, project: project)
         #expect(report.notes.contains("xcrew: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5."), "\(report.notes)")
-    }
-
-    /// A run filtered to some tests builds no other test target, so a changed test file of one isn't in the coverage,
-    /// and that says nothing: only a changed file of the code under test is named as outside it. Field shape, names
-    /// neutralised (November 2, 2026): a module's run named a file of the UI test target. Composed from the test bed's
-    /// coverage capture, its report holding neither `GreetingTests.swift`, of the test target, nor `ContentView.swift`.
-    @Test func aChangedTestFileOutsideTheCoverageIsNotNamed() async throws {
-        let root = try TestbedTests.copy("captures/coverage")
-        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
-        let project = Project(root: root)
-        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift", "AppTests/GreetingTests.swift", "App/ContentView.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
-        let listed = try captured("file-list.json", in: root)
-        let files = try JSONDecoder().decode([String].self, from: Data(listed.utf8)).filter { !$0.hasSuffix("/GreetingTests.swift") && !$0.hasSuffix("/ContentView.swift") }
-        responses.merge([
-            "xcrun xcresulttool get content-availability --path \(Self.bundle) --compact": .init(status: 0, stdout: try captured("content-availability.json", in: root)),
-            "xcrun xccov view --report --json \(Self.bundle)": .init(status: 0, stdout: reportHolding(String(decoding: try JSONEncoder().encode(files), as: UTF8.self))),
-            "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(Self.bundle)": .init(status: 0, stdout: try captured("Pricing.json", in: root)),
-        ]) { _, new in new }
-        let output = #"{"schema":"mobilebuildmcp.output.test-result","didError":false,"data":{"summary":{"status":"SUCCEEDED"},"artifacts":{"xcresultPath":"\#(Self.bundle)"}}}"#
-        let report = await Report.make(kind: .test, output: ToolOutput(text: output, server: .mobileBuildMCP), home: "/home", runner: FakeRunner(responses: responses), project: project)
-        let note = try #require(report.notes.first { $0.contains("changed line") || $0.contains("changed file") }, "\(report.notes)")
-        #expect(note.contains("1 changed file isn't in this run's coverage: ContentView.swift."), "\(note)")
-        #expect(!note.contains("GreetingTests.swift"), "\(note)")
     }
 }
 
@@ -402,8 +378,8 @@ struct TestbedWhyTests {
     }
 
     @Test(arguments: [
-        ("module-cache-malformed", "a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Removing the cached modules lets the next build rebuild them. That deletes part of DerivedData, so it's the person's to agree to: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
-        ("module-cache-invalid", "is not a valid module file\"). Removing the cached modules lets the next build rebuild them. That deletes part of DerivedData, so it's the person's to agree to: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
+        ("module-cache-malformed", "a module in its DerivedData's module cache is corrupt (\"malformed or corrupted precompiled file\"). Remove the cached modules, then build again: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
+        ("module-cache-invalid", "is not a valid module file\"). Remove the cached modules, then build again: rm -rf '/testbed/DerivedData/ModuleCache.noindex' '/testbed/DerivedData/SDKExplicitPrecompiledModules'"),
         ("simulator-missing", "no simulator here is named iPhone 1, which the build asked for"),
     ])
     func aRealBuildLogNamesItsCause(capture: String, cause: String) async {
@@ -415,7 +391,7 @@ struct TestbedWhyTests {
     /// MobileBuildMCP's own result names the same cause. The log it points at isn't on this Mac, so the DerivedData
     /// goes unnamed where the result doesn't name it.
     @Test(arguments: [
-        ("module-cache-malformed", "\"malformed or corrupted precompiled file\"). Removing ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used lets the next build rebuild them"),
+        ("module-cache-malformed", "\"malformed or corrupted precompiled file\"). Remove ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used"),
         ("module-cache-invalid", "rm -rf '/testbed/DerivedData/ModuleCache.noindex'"),
         ("simulator-missing", "no simulator here is named iPhone 1"),
     ])
@@ -466,7 +442,7 @@ struct TestbedSnapshotTests {
         let (bundle, root) = Self.bundle("mobilebuildmcp")
         defer { try? FileManager.default.removeItem(at: root) }
         let text = try String(contentsOf: Self.captures.appending(path: "test_sim.txt"), encoding: .utf8)
-        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: (root.appending(path: "images"), Date()))).text.text
+        let added = try #require(await FailureNotes.adding(to: MobileText(text), from: bundle, keepingImagesIn: root.appending(path: "images"))).text.text
         let listed = added.components(separatedBy: "\n").filter { $0.hasPrefix("      image: ") }.map { URL(fileURLWithPath: String($0.dropFirst("      image: ".count))).lastPathComponent }
         #expect(listed == [
             "reference_0_00000000-0000-0000-0000-000000000016.png", "failure_0_00000000-0000-0000-0000-000000000008.png", "difference_0_00000000-0000-0000-0000-000000000014.png",
@@ -501,62 +477,26 @@ struct TestbedMediaFlagTests {
 struct TestbedEvidenceTests {
     /// A copy of the coverage capture on a branch that wrote `price(for:)`'s body, its last commit at `committed`, with
     /// MobileBuildMCP's newest test run and build at `ran`.
-    /// A test run's bundle as MobileBuildMCP names it when the run starts (`utils/test-common.js`).
-    static func named(_ started: Date) -> String {
-        let stamp = started.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)).replacingOccurrences(of: ":", with: "-").replacingOccurrences(of: ".", with: "-")
-        return "test_sim_\(stamp)_pid100_0a1b2c3d.xcresult"
-    }
-
-    static func project(committed: Date, ran: Date, changed: Date? = nil, earlier: Date? = nil, earlierTests: Int? = nil, alsoChanged: Date? = nil, outsideChanged: Bool = false) throws -> (project: Project, context: CheckContext) {
+    static func project(committed: Date, ran: Date) throws -> (project: Project, context: CheckContext) {
         let root = try TestbedTests.copy("captures/coverage")
-        // The changed file as the runs compiled it: last changed two days before the run unless given.
-        try FileManager.default.setAttributes([.modificationDate: changed ?? ran.addingTimeInterval(-2 * 86_400)], ofItemAtPath: root.appending(path: "App/Pricing.swift").path)
-        // A second changed file, `ContentView.swift`, last changed then.
-        if let alsoChanged { try FileManager.default.setAttributes([.modificationDate: alsoChanged], ofItemAtPath: root.appending(path: "App/ContentView.swift").path) }
         let project = Project(root: root)
         let workspace = root.appending(path: "home/Library/Developer/MobileBuildMCP/workspaces/\(RunLog.workspaceKey(root: root.path))")
-        let bundle = workspace.appending(path: "result-bundles/\(Self.named(ran.addingTimeInterval(-60)))"), log = workspace.appending(path: "logs/build_sim_1.log")
+        let bundle = workspace.appending(path: "result-bundles/test_sim_1.xcresult"), log = workspace.appending(path: "logs/build_sim_1.log")
         try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "\(root.path)/App/Pricing.swift:4:13: warning: initialization of immutable value 'rate' was never used\n\(root.path)/App/Other.swift:2:5: warning: deprecated\n".write(to: log, atomically: true, encoding: .utf8)
-        // A finished run's bundle has MobileBuildMCP's completion mark beside it, dated when the run finished.
-        let mark = URL(fileURLWithPath: bundle.path + ResultBundle.completionMark)
-        try Data().write(to: mark)
-        for item in [bundle, log, mark] { try FileManager.default.setAttributes([.modificationDate: ran], ofItemAtPath: item.path) }
-        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"] + (alsoChanged == nil ? [] : ["App/ContentView.swift"]) + (outsideChanged ? Self.outside : []), diffed: (["App/Pricing.swift"] + (alsoChanged == nil ? [] : ["App/ContentView.swift"])).map { "\(ProjectLayout.canonical(root))/\($0)" }, diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
+        for item in [bundle, log] { try FileManager.default.setAttributes([.modificationDate: ran], ofItemAtPath: item.path) }
+        var responses = FakeRunner.branch(at: root, changed: ["App/Pricing.swift"], diffed: ["\(ProjectLayout.canonical(root))/App/Pricing.swift"], diff: "+++ App/Pricing.swift\n@@ -2,0 +3,6 @@\n")
         let captured = { (file: String) in
             try String(contentsOf: root.appending(path: file), encoding: .utf8).replacingOccurrences(of: "\\/testbed\\/captures\\/coverage", with: root.path.replacingOccurrences(of: "/", with: "\\/"))
-        }
-        if let earlier {
-            let second = workspace.appending(path: "result-bundles/\(Self.named(earlier.addingTimeInterval(-60)))")
-            try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
-            let secondMark = URL(fileURLWithPath: second.path + ResultBundle.completionMark)
-            try Data().write(to: secondMark)
-            for item in [second, secondMark] { try FileManager.default.setAttributes([.modificationDate: earlier], ofItemAtPath: item.path) }
-            if let earlierTests {
-                responses["xcrun xcresulttool get test-results summary --path \(second.path) --compact"] = .init(status: 0, stdout: #"{"totalTestCount":\#(earlierTests),"passedTests":\#(earlierTests),"failedTests":0,"skippedTests":0}"#)
-            }
-            responses.merge([
-                "xcrun xcresulttool get content-availability --path \(second.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
-                "xcrun xccov view --report --json \(second.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
-                "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(second.path)": .init(status: 0, stdout: try captured("Pricing.json").replacingOccurrences(of: #"{"executionCount":0,"isExecutable":true,"line":5}"#, with: #"{"executionCount":1,"isExecutable":true,"line":5}"#)),
-            ]) { _, new in new }
         }
         responses.merge([
             "git -C \(root.path) log -1 --format=%ct": .init(status: 0, stdout: "\(Int(committed.timeIntervalSince1970))\n"),
             "xcrun xcresulttool get content-availability --path \(bundle.path) --compact": .init(status: 0, stdout: try captured("content-availability.json")),
-            "xcrun xccov view --report --json \(bundle.path)": .init(status: 0, stdout: reportHolding(try Self.without(outsideChanged ? Self.outside : [], captured("file-list.json")))),
+            "xcrun xccov view --report --json \(bundle.path)": .init(status: 0, stdout: reportHolding(try captured("file-list.json"))),
             "xcrun xccov view --archive --file \(root.path)/App/Pricing.swift --json \(bundle.path)": .init(status: 0, stdout: try captured("Pricing.json")),
         ]) { _, new in new }
         return (project, CheckContext.fake(FakeRunner(responses: responses), project: project))
-    }
-
-    /// A test file and a file of the code under test, changed and left out of the newest run's coverage with `outsideChanged`.
-    static let outside = ["AppTests/GreetingTests.swift", "App/ContentView.swift"]
-
-    static func without(_ files: [String], _ fileList: String) throws -> String {
-        let listed = try JSONDecoder().decode([String].self, from: Data(fileList.utf8)).filter { path in !files.contains { path.hasSuffix("/" + $0) } }
-        return String(decoding: try JSONEncoder().encode(listed), as: UTF8.self)
     }
 
     static let ran = Date(timeIntervalSince1970: 1_793_370_240)
@@ -573,88 +513,6 @@ struct TestbedEvidenceTests {
             - From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5.
             - From the build of 2026-10-30 14:24 UTC: 1 of 2 warnings are in lines this branch changed: Pricing.swift:4 initialization of immutable value 'rate' was never used.
             """, "\(run.text)")
-    }
-
-    /// A run that started before a changed file's last change compiled other content: its lines there would name the
-    /// wrong ones, so it doesn't count for that file, as when another branch's run was written in the same checkout.
-    @Test func aRunOlderThanAChangedFilesLastChangeDoesntCountForIt() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran, changed: Self.ran.addingTimeInterval(-30))
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        let run = await Run("evidence", context: context, stdin: Self.input)
-        #expect(!run.text.contains("changed lines that can run"), "\(run.text)")
-        #expect(run.text.contains("- No test run here speaks for the changed lines: each started before their last change."), "\(run.text)")
-    }
-
-    /// The branch's runs together: a line one run left out and another ran counts as run, and the runs are named.
-    @Test func theBranchsRunsCountTogether() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        let run = await Run("evidence", context: context, stdin: Self.input)
-        #expect(run.text.contains("- From the test runs of 2026-10-30 14:24 UTC and 2026-10-30 13:24 UTC: all 6 changed lines that can run ran in these test runs."), "\(run.text)")
-    }
-
-    /// A run that started after one changed file's last change and before another's speaks for the first alone: its
-    /// lines in the second came from content it never compiled.
-    @Test func aRunSpeaksForTheFilesUnchangedSinceItStartedAlone() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, changed: Self.ran.addingTimeInterval(-1800), earlier: Self.ran.addingTimeInterval(-3600), alsoChanged: Self.ran.addingTimeInterval(-7200))
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        let run = await Run("evidence", context: context, stdin: Self.input)
-        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run. Not run: Pricing.swift:5."), "\(run.text)")
-    }
-
-    /// A changed test file outside the runs' coverage says nothing of them; a file of the code under test there is named.
-    @Test func aChangedTestFileOutsideTheRunsCoverageIsNotNamed() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran, outsideChanged: true)
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        let run = await Run("evidence", context: context, stdin: Self.input)
-        #expect(run.text.contains("1 changed file isn't in this run's coverage: ContentView.swift."), "\(run.text)")
-        #expect(!run.text.contains("GreetingTests.swift"), "\(run.text)")
-    }
-
-    /// The branch's runs are read side by side, each one's `xccov` calls beside the others', not one run after another.
-    @Test func theBranchsRunsAreReadSideBySide() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        var fake = try #require(context.machine.runner as? FakeRunner)
-        fake.responses["sysctl -n hw.perflevel0.physicalcpu"] = .init(status: 0, stdout: "8\n")
-        let slow = SlowRunner(fake)
-        let machine = Machine(environment: context.machine.environment, home: context.machine.home, runner: slow, processID: context.machine.processID, applications: context.machine.applications, now: context.machine.now)
-        let run = await Run("evidence", context: CheckContext(project: project, machine: machine), stdin: Self.input)
-        #expect(run.text.contains("these test runs"), "\(run.text)")
-        #expect(slow.peakArchiveReads == 2)
-    }
-
-    /// A call whose deadline cut even the branch's changes says what it cut, rather than that there's no evidence.
-    @Test func evidenceCutBeforeItReadAnythingSaysSo() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-3600), ran: Self.ran)
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        let run = await Run("evidence", context: CheckContext(project: project, machine: context.machine.setting("XCREW_WITHIN_MS", to: "1")), stdin: Self.input)
-        #expect(run.text.hasPrefix("This call's time ran out before git"), "\(run.text)")
-    }
-
-    /// The runs are read until the call's deadline by the machine's clock: past it, none is read, the block says how many
-    /// were left out, and the call stops waiting then, not when its time would have run out on the wall's clock.
-    @Test(.timeLimit(.minutes(1))) func theBranchsRunsAreReadUntilTheCallsDeadline() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600))
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        // The call has 60 s on a clock that stands still but for Xcode's reads: each moves it past the deadline and
-        // answers only once the call stops waiting, so neither a slow git nor a slow Mac changes what's read.
-        // The fake runner answers no `sysctl`, so the pool runs one command at a time: the first run's summary read holds
-        // it until the cut, which is recorded before any other command starts.
-        let clock = StillClock()
-        let slow = Machine(environment: ["XCREW_WITHIN_MS": "60000"], home: context.machine.home, runner: XcodeOutlastsTheDeadline(context.machine.runner, clock: clock, gitTakes: .milliseconds(1_100)), processID: context.machine.processID, applications: context.machine.applications, monotonic: { clock.read() })
-        let run = await Run("evidence", context: CheckContext(project: project, machine: slow), stdin: Self.input)
-        #expect(run.text.contains("- No test run read in the time allowed speaks for the changed lines: 2 runs are left out."), "\(run.text)")
-        // What the deadline cut is said in one line, after the block's own.
-        #expect(run.text.contains("\n- This call's time ran out before xcresulttool"), "\(run.text)")
-    }
-
-    /// A run of no test, as one whose filter matched nothing, counts nothing as run, so it's left out.
-    @Test func aRunOfNoTestIsLeftOut() async throws {
-        let (project, context) = try Self.project(committed: Self.ran.addingTimeInterval(-7200), ran: Self.ran, earlier: Self.ran.addingTimeInterval(-3600), earlierTests: 0)
-        defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-        let run = await Run("evidence", context: context, stdin: Self.input)
-        #expect(run.text.contains("- From the test run of 2026-10-30 14:24 UTC: 5 of 6 changed lines that can run ran in this test run."), "\(run.text)")
     }
 
     /// A run before the branch's last commit is named as older, never left out and never shown as current.
@@ -1080,57 +938,4 @@ private func reportHolding(_ fileList: String) -> String {
     let files = (try? JSONDecoder().decode([String].self, from: Data(fileList.utf8))) ?? []
     let listed = files.map { #"{"path":"\#($0)"}"# }.joined(separator: ",")
     return #"{"targets":[{"name":"App.app","coveredLines":1,"executableLines":1,"files":[\#(listed)]}]}"#
-}
-
-/// A runner that answers as another does, each `xccov` file read after a short wait, counting how many run at once.
-final class SlowRunner: CommandRunning {
-    let base: any CommandRunning
-    let reads = Mutex((now: 0, peak: 0))
-    var peakArchiveReads: Int { reads.withLock { $0.peak } }
-
-    init(_ base: any CommandRunning) { self.base = base }
-
-    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-        guard argv.contains("--archive") else { return await base.run(argv, stdin: stdin, timeout: timeout) }
-        reads.withLock { $0.now += 1; $0.peak = max($0.peak, $0.now) }
-        try? await Task.sleep(for: .milliseconds(50))
-        reads.withLock { $0.now -= 1 }
-        return await base.run(argv, stdin: stdin, timeout: timeout)
-    }
-
-    func which(_ name: String) -> String? { base.which(name) }
-}
-
-/// A runner that answers as another does, each `xcrun` command after `xcrun`'s wait, or timed out when its limit is shorter.
-/// A monotonic clock that stands still until a command moves it.
-final class StillClock: Sendable {
-    let time = Mutex(Duration.zero)
-
-    func read() -> Duration { time.withLock { $0 } }
-
-    func move(by duration: Duration) { time.withLock { $0 += duration } }
-}
-
-/// A runner on `clock`: every command but `xcrun` answers as `base` does, under a limit of its own, and takes none of the
-/// clock's time, `git` after `gitTakes`; `xcrun` moves the clock an hour on, and answers as timed out once cancelled.
-final class XcodeOutlastsTheDeadline: CommandRunning {
-    let base: any CommandRunning
-    let clock: StillClock
-    let gitTakes: Duration
-
-    init(_ base: any CommandRunning, clock: StillClock, gitTakes: Duration = .zero) {
-        self.base = base
-        self.clock = clock
-        self.gitTakes = gitTakes
-    }
-
-    func run(_ argv: [String], stdin: Data?, timeout: Duration) async -> CommandResult {
-        if argv.first == "git" { try? await Task.sleep(for: gitTakes) }
-        guard argv.first == "xcrun" else { return await base.run(argv, stdin: stdin, timeout: .seconds(600)) }
-        clock.move(by: .seconds(3600))
-        try? await Task.sleep(for: .seconds(600))
-        return .timedOut
-    }
-
-    func which(_ name: String) -> String? { base.which(name) }
 }

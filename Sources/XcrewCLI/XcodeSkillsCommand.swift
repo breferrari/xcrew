@@ -24,14 +24,8 @@ struct XcodeSkillsCommand: Command {
             invocation.print("xcrew: copied \(report.copied.count) Xcode skills into .claude/skills: \(report.copied.joined(separator: ", "))")
         }
         if !report.kept.isEmpty {
-            invocation.print(Self.kept(report.kept))
+            invocation.print("xcrew: kept the project's own \(report.kept.joined(separator: ", ")) (--force replaces them)")
         }
         return 0
-    }
-
-    /// What's said of the project's own skills it kept: `--force` deletes them for Xcode's with no copy kept, the
-    /// person's call, said before the command, which ends the line.
-    static func kept(_ names: [String]) -> String {
-        "xcrew: kept the project's own \(names.joined(separator: ", ")). Replacing them loses the project's own versions, so it's the person's to agree to: xcrew xcode-skills --force \(names.map(ShellWord.word).joined(separator: " "))"
     }
 }

@@ -21,7 +21,6 @@ jobs:
   changes:
     name: Changes
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # docs/findings.md, Deadlines: `ci.yml changes`
     outputs:
       code: ${{ steps.diff.outputs.code }}
       distribution: ${{ steps.diff.outputs.distribution }}
@@ -63,7 +62,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
-    timeout-minutes: 10  # docs/findings.md, Deadlines: `ci.yml swift`
     steps:
       - uses: actions/checkout@v7
       # The test bed's fixtures, at the commit these tests expect: bump the SHA on purpose, with the tag beside it.
@@ -88,26 +86,6 @@ jobs:
           XCREW_TESTBED: ${{ github.workspace }}/xcrew-testbed
           XCREW_ASSETS: ${{ github.workspace }}/xcrew-assets
 
-  # The CLI's release build, as the shim makes it on a person's first run, timed on each push to main and only there: its
-  # times on a fresh runner are the basis of the guard a build runs under (docs/findings.md, *Building after a
-  # reload*), and a pull request's run gains no release compile.
-  release-build:
-    name: Release build, timed
-    if: github.event_name == 'push'
-    runs-on: macos-26
-    timeout-minutes: 10  # docs/findings.md, Deadlines: `ci.yml release-build`
-    steps:
-      - uses: actions/checkout@v7
-      - name: Use the newest Xcode on the runner
-        run: |
-          sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_*.app | sort -V | tail -1)"
-          swift --version
-      - name: Build the CLI for release, timed
-        run: |
-          began=$(date +%s)
-          swift build -c release --product xcrew
-          echo "Release build: $(( $(date +%s) - began )) s" | tee -a "$GITHUB_STEP_SUMMARY"
-
   # The oldest Swift Package.swift accepts, which a person's first build may use. Plain `swift test`: an older
   # compiler's warnings don't stop their build either.
   swift-floor:
@@ -115,7 +93,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
-    timeout-minutes: 10  # docs/findings.md, Deadlines: `ci.yml swift-floor`
     steps:
       - uses: actions/checkout@v7
       # The test bed's fixtures, at the commit these tests expect: bump the SHA on purpose, with the tag beside it.
@@ -151,7 +128,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
-    timeout-minutes: 6  # docs/findings.md, Deadlines: `ci.yml plugin`
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -169,7 +145,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.distribution == 'true'
     runs-on: macos-26
-    timeout-minutes: 11  # docs/findings.md, Deadlines: `ci.yml distribution`
     env:
       XCREW_ASSETS: ${{ github.workspace }}/xcrew-assets
     steps:
@@ -201,22 +176,20 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # docs/findings.md, Deadlines: `ci.yml shell`
     steps:
       - uses: actions/checkout@v7
       - name: ShellCheck
         run: shellcheck bin/xcrew libexec/* mcs/*.sh mcs/checks/*.sh scripts/*.sh
 
   # The one check the ruleset and the release require. It needs every job above, so adding or renaming one never
-  # touches either. Only the code jobs may be skipped, for a Markdown-only change, the release build, timed on pushes to main alone, and Distribution, for a change no
+  # touches either. Only the code jobs may be skipped, for a Markdown-only change, and Distribution, for a change no
   # channel ships: a failed or cancelled job fails it, and so does `changes` not succeeding, which would otherwise skip
   # everything.
   ci:
     name: CI
-    needs: [changes, swift, release-build, swift-floor, plugin, distribution, shell]
+    needs: [changes, swift, swift-floor, plugin, distribution, shell]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5  # docs/findings.md, Deadlines: `ci.yml ci`
     steps:
       - name: Every job passed, or was skipped for a change it doesn't check
         env:

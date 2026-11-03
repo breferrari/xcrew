@@ -58,10 +58,3 @@ test('a build and a test run of one scheme, or two selections, are one scheme', 
   expect(said(await build($, 'App', 'test_sim'))).toHaveLength(0)
   expect(said(await build($, 'App', 'test_sim', { extraArgs: ['-only-testing:AppTests/One'] }))).toHaveLength(0)
 })
-
-/** A run whose scheme only its report names, as a fast build that names none, is given the note as that scheme's. */
-test("a build whose report names its scheme is given the note as that scheme's", async ($, on) => {
-  session(on, [{ ...built(40), scheme: 'Feature' }, built(40)])
-  expect(said(((await callTool($, 'mcp__MobileBuildMCP__build_sim', {})).context ?? []) as string[])).toHaveLength(1)
-  expect(said(await build($, 'Feature'))).toHaveLength(0)
-})
