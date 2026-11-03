@@ -239,8 +239,7 @@ struct MobileText: Sendable {
             if let failing = entry.failing {
                 // It lists a failing test twice, once with its location; the first is kept.
                 guard seen.insert(failing.test).inserted else { continue }
-                // XCTest words an XCTFail as `failed - <message>`; the message is what was written.
-                let message = failing.message.replacing(#/^failed - /#, with: "")
+                let message = MobileBuildMCPLine.withoutFailedPrefix(failing.message)
                 failures.append(ToolOutput.Failure(title: failing.test.shown, message: message, where: location, isTest: true))
             } else if let location {
                 failures.append(ToolOutput.Failure(title: location, message: entry.text))
@@ -289,6 +288,7 @@ struct MobileText: Sendable {
     /// A Test Failures section for failures the text doesn't list, as a repeated run's, before its Test Results or its
     /// summary, each in MobileBuildMCP's shape: `✗ Suite / test(): message`, then its place. Nil when the text lists its
     /// failures already, or has neither place to put them.
+    /// It shapes only the text Claude reads: the report takes the failures from the bundle itself.
     func addingFailures(_ failures: [(test: TestID, message: String, place: String?)]) -> MobileText? {
         guard !failures.isEmpty, !lines.contains(where: { $0.isHeading(.testFailures) }),
               let at = lines.firstIndex(where: { $0.isHeading(.testResults) }) ?? lines.firstIndex(where: \.isSummary) else { return nil }
@@ -300,6 +300,7 @@ struct MobileText: Sendable {
 
     /// With `showTestTiming`, a repeated run's Test Results list each test once for each of its runs: this lists each test
     /// once, a repeated one with its runs counted, as `✅ Suite/test(): passed 5 of 5 runs`. Nil when nothing repeats.
+    /// It shapes only the text Claude reads: the report counts the runs from the bundle itself.
     func listingRunsOnce(_ repetitions: [ResultBundle.Repeated]) -> MobileText? {
         guard let start = lines.firstIndex(where: { $0.isHeading(.testResults) }) else { return nil }
         let counted = Dictionary(repetitions.map { ($0.test, $0) }, uniquingKeysWith: { first, _ in first })

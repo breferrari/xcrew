@@ -23,4 +23,10 @@ public struct TestID: Sendable, Hashable {
 
     /// `Suite/test()`, as `xcresulttool` names one.
     public var xcresultID: String { "\(shown)()" }
+
+    /// Whether `outer` is this test named from an outer suite, as a result bundle names a nested suite's test,
+    /// `Outer/Suite/test`, that MobileBuildMCP's text names from its own, `Suite/test`.
+    func isNested(in outer: TestID) -> Bool {
+        outer.shown.hasSuffix("/\(shown)")
+    }
 }

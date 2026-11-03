@@ -106,20 +106,51 @@ public struct Report: Sendable, Equatable, Codable {
         (try? URL(fileURLWithPath: String(path)).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
-    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest;
-    /// and its target, from the result bundle, for the ledger.
-    static func attaching(_ images: [TestID: FailureImages], targets: [TestID: String] = [:], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
+    /// Each failed test's images, on its failure for the pane: those the notes list, and the count and folder of the rest.
+    static func attaching(_ images: [TestID: FailureImages], to failures: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
         failures.map { failure in
             guard failure.isTest else { return failure }
-            let test = TestID(xcresultID: failure.title)
-            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: images[test]?.shown, moreImages: images[test]?.more, target: targets[test])
+            let found = images[TestID(xcresultID: failure.title)]
+            return ToolOutput.Failure(title: failure.title, message: failure.message, where: failure.where, isTest: true, images: found?.shown, moreImages: found?.more, target: failure.target)
         }
     }
 
+    /// The bundle's failed tests in the order the run reported them, the text's: the bundle lists its own by plan,
+    /// target and suite. Each test the text lists takes its place there, with the bundle's name and content, the text's
+    /// message and place where the bundle gives none. The text names a nested suite's test from its own suite, and the
+    /// bundle from the outermost: it's matched by the end of the bundle's name for it, when no other's ends the same way
+    /// and none is the text's whole. A test only the bundle lists comes after; the text's other failures stay where
+    /// they were. A test only the text lists, as a retry the bundle counts passed, is none of the run's failures.
+    static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure]) -> [ToolOutput.Failure] {
+        var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
+        let named = Set(pending.map(\.test))
+        var ordered: [ToolOutput.Failure] = []
+        for failure in text {
+            guard failure.isTest else {
+                ordered.append(failure)
+                continue
+            }
+            let test = TestID(xcresultID: failure.title)
+            let index = pending.firstIndex { $0.test == test } ?? {
+                guard !named.contains(test) else { return nil }
+                let nested = pending.indices.filter { test.isNested(in: pending[$0].test) }
+                return nested.count == 1 ? nested.first : nil
+            }()
+            if let index {
+                let found = pending.remove(at: index).failure
+                ordered.append(ToolOutput.Failure(title: found.title, message: found.message.isEmpty ? failure.message : found.message, where: found.where ?? failure.where, isTest: true, target: found.target))
+            }
+        }
+        return ordered + pending.map(\.failure)
+    }
+
     /// A summary that names its first failing test, naming `first` in place of `named`, the text's first, when that one
-    /// is no failure.
+    /// is no failure, and after it when the text names none.
     static func naming(_ detail: String?, first: String?, insteadOf named: String?) -> String? {
-        guard let detail, let first, let named, first != named, detail.hasSuffix(" · \(named)") else { return detail }
+        guard let detail, let first else { return detail }
+        // A text that names no failing test, as one in a shape it isn't read in, gets the first in the same form.
+        guard let named else { return detail.hasSuffix(ToolOutput.Summary.failedCounts) ? detail + ToolOutput.Summary.beforeFirstFailing + first : detail }
+        guard first != named, detail.hasSuffix(ToolOutput.Summary.beforeFirstFailing + named) else { return detail }
         return String(detail.dropLast(named.count)) + first
     }
 
@@ -299,12 +330,10 @@ public struct Report: Sendable, Equatable, Codable {
         // Which Xcode builds, where it can explain the failure.
         notes += await xcodeFacts.notes
 
-        // A failing test's target, from the run's test list, which skips and expected failures read too. A test the list
-        // counts passed, such as a retry that passed, is no failure, though MobileBuildMCP's text lists it.
-        let listing = if bundle != nil, !summary.ok, final.failures.contains(where: \.isTest) { await testList() } else { TestList("") }
-        let targets = ResultBundle.targets(listing: listing)
-        let passed = ResultBundle.passedTests(listing: listing)
-        let failures = final.failures.filter { !$0.isTest || !passed.contains(TestID(xcresultID: $0.title)) }
+        // A failing test run's failed tests are its result bundle's, each failing test's target too; the text's only
+        // without a test list to read. Its other failures, the build's and the process's, are the text's.
+        let listing = if bundle != nil, isTest, !summary.ok { await testList() } else { TestList("") }
+        let failures = ResultBundle.failedTests(listing: listing).map { Self.inRunOrder($0, text: final.failures) } ?? final.failures
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?
@@ -326,7 +355,7 @@ public struct Report: Sendable, Equatable, Codable {
             detail: Self.naming(summary.detail, first: failures.first(where: \.isTest)?.title, insteadOf: final.failures.first(where: \.isTest)?.title),
             durationMs: final.reportedDuration,
             tests: tests,
-            failures: summary.ok ? [] : Self.attaching(images, targets: targets, to: failures),
+            failures: summary.ok ? [] : Self.attaching(images, to: failures),
             result: comesBack ? shortened : nil,
             notes: notes,
             repeated: repeatedTests,

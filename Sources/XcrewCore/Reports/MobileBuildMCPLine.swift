@@ -66,13 +66,30 @@ enum MobileBuildMCPLine {
     }
 
     /// `Suite / test(): message`, the part of a failing test's line after its `✗`. A crash the result bundle files under
-    /// `System Failures`, as `xctest (<pid>) encountered an error`, is its test's: the message names it last,
-    /// `Crash: xctest at implicit closure #1 in Suite.test()` (docs/findings.md, *A crash under System Failures*).
+    /// `System Failures`, as `xctest (<pid>) encountered an error`, is its test's when its message names one; else it's
+    /// no test's failure (docs/findings.md, *A crash under System Failures*).
     static func test(in entry: String) -> (test: TestID, message: String)? {
-        if let crash = entry.wholeMatch(of: #/System Failures \/ xctest \(\d+\) encountered an error: (Crash: .* in (?:\S+\.)?([^.\s]+)\.([^.\s]+\(\)))/#) {
-            return (TestID(suite: crash.2, name: crash.3), String(crash.1))
+        if let crash = entry.wholeMatch(of: #/System Failures \/ (.+?): (Crash: .*)/#), isProcessCrash(String(crash.1)) {
+            return crashedTest(message: String(crash.2)).map { ($0, String(crash.2)) }
         }
         return entry.firstMatch(of: #/^(.+?) \/ (\S+?): (.*)$/#).map { (TestID(suite: $0.1, name: $0.2), String($0.3)) }
+    }
+
+    /// Whether a test case's name is the one the result bundle files a crash under in `System Failures`, its test
+    /// process's, `xctest (<pid>) encountered an error`.
+    static func isProcessCrash(_ name: String) -> Bool {
+        name.wholeMatch(of: #/xctest \(\d+\) encountered an error/#) != nil
+    }
+
+    /// A failure's message as written: XCTest words an `XCTFail` as `failed - <message>`.
+    static func withoutFailedPrefix(_ message: String) -> String {
+        message.replacing(#/^failed\s*-\s*/#, with: "")
+    }
+
+    /// The test a crash's message names last, `Crash: xctest at implicit closure #1 in Suite.test()` or `Crash: xctest at
+    /// Suite.test()`, a test taking no arguments; nil when the frame it ends on is no such test, as `Model.load(from:)`.
+    static func crashedTest(message: String) -> TestID? {
+        message.wholeMatch(of: #/Crash: .* (?:in|at) (?:\S+\.)?([^.\s]+)\.([^.\s(]+\(\))/#).map { TestID(suite: $0.1, name: $0.2) }
     }
 
     /// `    /path/File.swift:12`, the line after a failure, an error or a warning that says where it happened.

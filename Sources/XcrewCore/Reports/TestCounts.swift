@@ -23,7 +23,7 @@ struct TestCounts: Decodable, Sendable {
     /// fact and not a pass; a failure fails, after it the first failing test when one is named; else how many passed.
     func summary(succeeded: Bool, failing first: String? = nil) -> ToolOutput.Summary {
         if ran == 0 { return ToolOutput.Summary(ok: false, detail: ToolOutput.noTestsRan) }
-        if let failed, failed > 0 { return ToolOutput.Summary(ok: false, detail: "\(failed) of \(ran) failed\(first.map { " · \($0)" } ?? "")") }
+        if let failed, failed > 0 { return .failing(failed, of: ran, first: first) }
         return ToolOutput.Summary(ok: succeeded, detail: "\(passed ?? 0) passed")
     }
 }

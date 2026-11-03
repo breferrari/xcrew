@@ -218,6 +218,42 @@ func failingRunText(passing: Int) -> String {
         #expect(runner.asked.isEmpty, "\(runner.asked)")
     }
 
+    /// The captured run's result bundle, where `Captured.text("mobileTestsFailedUnlocated")` names it.
+    static let bundle = "\(Captured.workspace)/result-bundles/test_sim_1.xcresult"
+
+    /// A failed `FormatterTests` case of a test list, its one failure's message at `FormatterTests.swift:line`.
+    static func failed(_ name: String, _ message: String, _ line: Int) -> String {
+        #"{"nodeType":"Test Case","nodeIdentifier":"FormatterTests/\#(name)","name":"\#(name)","result":"Failed","children":[{"nodeType":"Failure Message","name":"\#(message)","sourceLocation":{"filePath":"/Users/dev/App/Tests/FormatterTests.swift","lineNumber":\#(line)}}]}"#
+    }
+
+    /// A failing run with a result bundle takes its failed tests from the bundle's test list, each once, with the message
+    /// and place its first failure gives, though the text lists fewer. They keep the run's order, the text's: one it
+    /// leaves out goes after, and the summary still names the run's first.
+    @Test func aRunsFailedTestsAreItsBundlesWhenItHasOne() async throws {
+        let listing = #"{"testNodes":[{"nodeType":"Unit test bundle","name":"AppTests","children":["# + Self.failed("test_euro()", "XCTAssertEqual failed: (1) is not equal to (2)", 12) + "," + Self.failed("test_symbol()", "failed - deliberate failure", 7) + "]}]}"
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(Self.bundle) --compact": .init(status: 0, stdout: listing)])
+        let report = await Report.make(kind: .test, output: Captured.output("mobileTestsFailedUnlocated", isError: true), home: Captured.home, runner: runner)
+        #expect(report.failures.map(\.title) == ["FormatterTests/test_symbol", "FormatterTests/test_euro"])
+        #expect(report.failures.map(\.message) == ["deliberate failure", "XCTAssertEqual failed: (1) is not equal to (2)"])
+        #expect(report.failures.map(\.where) == ["FormatterTests.swift:7", "FormatterTests.swift:12"])
+        #expect(report.detail?.hasSuffix("FormatterTests/test_symbol") == true, "\(report.detail ?? "")")
+    }
+
+    /// The bundle lists its tests by plan, target and suite, not in the order they failed: a run's failures keep the
+    /// text's order, which the summary's first failing test follows, with the bundle's content.
+    @Test func aRunsFailuresKeepTheRunsOrderNotTheBundles() async throws {
+        let listing = #"{"testNodes":[{"nodeType":"Unit test bundle","name":"AppTests","children":["# + Self.failed("test_euro()", "euro differs", 12) + "," + Self.failed("test_symbol()", "symbol differs", 7) + "]}]}"
+        let text = Captured.text("mobileTestsFailedUnlocated")
+            .replacingOccurrences(of: "Test Failures (1):\n\n  ✗ FormatterTests / test_symbol(): failed - deliberate failure\n", with: "Test Failures (2):\n\n  ✗ FormatterTests / test_symbol(): failed - deliberate failure\n  ✗ FormatterTests / test_euro(): euro differs\n")
+            .replacingOccurrences(of: "  ✅ FormatterTests/test_euro() (0.001s)\n", with: "  ❌ FormatterTests/test_euro() (0.001s)\n")
+            .replacingOccurrences(of: "❌ 1 test failed, 1 passed", with: "❌ 2 tests failed, 0 passed")
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(Self.bundle) --compact": .init(status: 0, stdout: listing)])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(report.failures.map(\.title) == ["FormatterTests/test_symbol", "FormatterTests/test_euro"])
+        #expect(report.failures.map(\.message) == ["symbol differs", "euro differs"])
+        #expect(report.detail?.hasSuffix("FormatterTests/test_symbol") == true, "\(report.detail ?? "")")
+    }
+
     /// The summary names the first test still failed, not one the test list counts passed.
     @Test func theSummaryNamesTheFirstTestStillFailed() {
         #expect(Report.naming("1 of 4 failed · ProbeTests/testAFlaky", first: "ProbeTests/testFails", insteadOf: "ProbeTests/testAFlaky") == "1 of 4 failed · ProbeTests/testFails")
