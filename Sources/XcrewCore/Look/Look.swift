@@ -96,7 +96,7 @@ public enum Look {
 
     /// The line on a run, `name` at `bundle`, none of whose failed tests kept a screen recording.
     static func noRecording(in name: String, bundle: String) -> String {
-        "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; `xcrew look <Suite/test> --bundle \(ShellWord.word(bundle))` shows one test's steps"
+        "xcrew: no failed test in \(name) kept a screen recording, as a UI test's failed run does; `\(TestID.lookCommand(naming: "<Suite/test>", bundle: bundle))` shows one test's steps"
     }
 
     /// The line naming the failed tests not shown, each as a `look` command on this bundle takes it.

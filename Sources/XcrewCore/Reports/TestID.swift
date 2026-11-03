@@ -29,7 +29,10 @@ public struct TestID: Sendable, Hashable {
     var lookName: String { name.isEmpty || shown.count(where: { $0 == "/" }) > 1 ? xcresultID : shown }
 
     /// The `xcrew look` command on it in `bundle`, each a word a shell passes on as it is.
-    func lookCommand(bundle: String) -> String { "xcrew look \(ShellWord.word(lookName)) --bundle \(ShellWord.word(bundle))" }
+    func lookCommand(bundle: String) -> String { Self.lookCommand(naming: ShellWord.word(lookName), bundle: bundle) }
+
+    /// The `xcrew look` command naming a test as `test` gives it, a word or a placeholder, in `bundle`.
+    static func lookCommand(naming test: String, bundle: String) -> String { "xcrew look \(test) --bundle \(ShellWord.word(bundle))" }
 
     /// `Suite/test()`, as `xcresulttool` names one; an id it read with no `/`, as the case a crash under `System Failures`
     /// is filed as, by itself.

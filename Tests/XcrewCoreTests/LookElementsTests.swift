@@ -88,6 +88,13 @@ import XcrewTestSupport
         #expect(TestID(xcresultID: "Suite/sizes(value:)").lookName == "Suite/sizes(value:)")
     }
 
+    /// The name `look` suggests for a test, a nested suite's, one taking arguments and a crash's case, finds that test.
+    @Test(arguments: ["Outer/Inner/fails()", "Suite/sizes(value:)", "xctest (1) encountered an error"])
+    func theNameLookSuggestsFindsItsTest(id: String) {
+        let test = TestID(xcresultID: id)
+        #expect(Look.test(test.lookName, among: TestLookup(cases: [test: []])) == test)
+    }
+
     /// The line naming the failed tests not shown names each as a `look` command on this bundle takes it, one shell word.
     @Test func theLineOnTestsNotShownNamesEachAsAShellWord() {
         let tests = [TestID(suite: "Suite", name: "test"), TestID(xcresultID: "Outer/Inner/fails()"), TestID(xcresultID: "xctest (1) encountered an error")]

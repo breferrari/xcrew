@@ -63,7 +63,8 @@ import XcrewTestSupport
         #expect(run.text.hasPrefix("xcrew look: Outer/Inner/it's red, in Run.xcresult\n"), "\(run.text)")
     }
 
-    /// An empty quoted test or bundle, `''`, is none: look looks at every failed test of the newest run's bundle.
+    /// An empty quoted test or bundle, `''`, is none: with a bundle named, look looks at its every failed test, and with
+    /// an empty one, at the newest run's, which a project with none doesn't have.
     @Test func anEmptyQuotedTestOrBundleIsNone() async {
         let run = await Run("look", "''", "--bundle", "/runs/Run.xcresult", context: context([Self.listing("/runs/Run.xcresult"): Self.passed]))
         #expect(run.text == "xcrew: nothing failed in Run.xcresult", "\(run.text)")
