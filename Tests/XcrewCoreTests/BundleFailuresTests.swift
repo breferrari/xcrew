@@ -36,6 +36,15 @@ struct BundleFailuresTests {
         ])
     }
 
+    /// A parallel run's clones run its tests: a test failed on one is one failure, the bundle giving its place, which
+    /// the text leaves out.
+    @Test func aParallelRunsFailureIsOneWithItsPlace() async throws {
+        #expect(Self.lines(try await Self.report("parallel")) == [
+            "1 of 4 failed · ProbeTests/testFails",
+            #"ProbeTests/testFails | XCTAssertEqual failed: ("Kit") is not equal to ("Other") - the name is Kit | ProbeTests.swift:10"#,
+        ])
+    }
+
     /// An expected failure is no failure, nor is a test a retry passed.
     @Test func anExpectedFailureOrARetryThatPassedIsNoFailure() async throws {
         #expect(Self.lines(try await Self.report("serial")).dropFirst().map { String($0.prefix { $0 != " " }) } == ["ProbeTests/testFails", "ProbeTests/testFlaky"])
