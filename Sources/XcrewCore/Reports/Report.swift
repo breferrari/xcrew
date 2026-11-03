@@ -175,7 +175,7 @@ public struct Report: Sendable, Equatable, Codable {
         let these = named.count == 1 ? "a test its result bundle doesn't" : "tests its result bundle doesn't"
         let cleared = ResultBundle.cleared(in: results)
         let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as passed, skipped or an expected failure is left out of the failures here." : ""
-        let kept = tests.contains { !cleared.contains($0) } ? " A test it has none of those for stays in the failures here, as MobileBuildMCP gives it." : ""
+        let kept = tests.contains { !cleared.contains($0) } ? " A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it." : ""
         return "xcrew: MobileBuildMCP's result lists as failed \(these): \(named.joined(separator: "; ")).\(leftOut)\(kept)"
     }
 

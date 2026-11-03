@@ -66,7 +66,7 @@ struct RunOrderTests {
     @Test func theNoteReadsADisagreeingTestByTheTextsName() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Outer/Inner/testFlaky()","result":"Passed"}]}"#)
         #expect(Report.notFailedInBundleNote([TestID(suite: "Inner", name: "testFlaky")], results: ResultBundle.results(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Inner/testFlaky, which it has no entry for under that name. A test it has none of those for stays in the failures here, as MobileBuildMCP gives it.")
+            == "xcrew: MobileBuildMCP's result lists as failed a test its result bundle doesn't: Inner/testFlaky, which it has no entry for under that name. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
     }
 
     /// The note names several disagreeing tests, each with what the bundle records under its name.
@@ -82,7 +82,7 @@ struct RunOrderTests {
     @Test func theNoteKeepsATestTheBundleRecordsNeitherPassedSkippedNorExpected() {
         let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","nodeIdentifier":"Suite/killed()","result":"unknown"},{"nodeType":"Test Case","nodeIdentifier":"Suite/crashed()","result":"Failed"}]}"#)
         #expect(Report.notFailedInBundleNote(["killed", "crashed"].map { TestID(suite: "Suite", name: $0) }, results: ResultBundle.results(in: listing.nodes))
-            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't: Suite/killed, which it records as unknown; Suite/crashed, which it records as Failed. A test it has none of those for stays in the failures here, as MobileBuildMCP gives it.")
+            == "xcrew: MobileBuildMCP's result lists as failed tests its result bundle doesn't: Suite/killed, which it records as unknown; Suite/crashed, which it records as Failed. A test it doesn't count as passed, skipped or an expected failure stays in the failures here, as MobileBuildMCP gives it.")
         #expect(ResultBundle.cleared(in: ResultBundle.results(in: listing.nodes)).isEmpty)
     }
 
