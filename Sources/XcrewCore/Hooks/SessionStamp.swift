@@ -70,10 +70,6 @@ public struct SessionStamp: Codable, Equatable, Sendable {
     }
 
     static func prune(_ folder: URL, now: Date) {
-        let oldest = now.addingTimeInterval(-Double(keptDays) * 24 * 3600)
-        for entry in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        where ((try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? now) < oldest {
-            try? FileManager.default.removeItem(at: entry)
-        }
+        AgedEntries.removing(olderThan: Double(keptDays) * 24 * 3600, in: folder, now: now)
     }
 }

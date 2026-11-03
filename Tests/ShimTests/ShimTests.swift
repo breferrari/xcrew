@@ -257,11 +257,6 @@ extension ShimTests {
         #expect(builds == 1)
     }
 
-    /// Waits for `condition`, which another process makes true, checking it often; a hang guard ends the wait.
-    func until(_ condition: () -> Bool) async throws {
-        for _ in 0..<50_000 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
-        try #require(condition(), "never came true")
-    }
 }
 
 extension ShimTests {
