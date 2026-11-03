@@ -265,9 +265,9 @@ struct BundleFailuresTests {
     }
 
     /// A crash filed under `System Failures` whose message names a test in a nested suite is said once: the text's line
-    /// names it as the bundle's failure does, from its innermost suite, so no line is added for it. Field shape as above,
-    /// the message composed.
-    @Test func aNestedSuitesCrashUnderSystemFailuresIsSaidOnce() async throws {
+    /// names it as the bundle's failure does, from the innermost suite its message names, so no line is added for it.
+    /// Field shape as above, the bundle's entry the `xctest (<pid>)` case, the message composed.
+    @Test func aCrashUnderSystemFailuresNamingANestedSuitesTestIsSaidOnce() async throws {
         let message = "Crash: xctest at implicit closure #1 in Outer.AssertCrashTests.test_crash()"
         let bundle = try Raw.bundle("system-failure-crash")
         let filed = "  ✗ AssertCrashTests / test_crash(): Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"
