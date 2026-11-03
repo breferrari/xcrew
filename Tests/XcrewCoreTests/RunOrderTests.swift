@@ -201,7 +201,7 @@ struct RunOrderTests {
         let tests = (1...7).map { TestID(suite: "Suite", name: "t\($0)") }
         let note = Report.notFailedInBundleNote(tests, results: [:]) ?? ""
         #expect(note.contains("Suite/t5, which the bundle has no entry for under that name; and 2 more, each among MobileBuildMCP's failures in the result."))
-        #expect(!note.contains("Suite/t6"))
+        #expect(!note.contains("Suite/t6") && !note.contains("Suite/t7"))
     }
 
     /// A test only the text lists, listed twice as a parallel run's clones may, disagrees once, and stays a failure
