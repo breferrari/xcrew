@@ -123,7 +123,7 @@ public struct Report: Sendable, Equatable, Codable {
     /// they were. A test only the text lists disagrees with the bundle, and is returned once as disagreeing. One among
     /// `cleared`, which the bundle counts as passed, skipped or an expected failure in every entry under that name, as
     /// a retry it passed, is none of the run's failures. Any other stays a failure in its place as the text gives it,
-    /// since no result, or another one, is no sign it passed.
+    /// since no entry, an entry with no result, or another result is no sign it passed.
     /// Never one the bundle lists as failed under its name or a nested name ending with it.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
@@ -164,8 +164,9 @@ public struct Report: Sendable, Equatable, Codable {
         let named = tests.map { test in
             guard let found = results[test] else { return "\(test.shown), which it has no entry for under that name" }
             let clearing = cleared.contains(test) ? ResultBundle.clearing.first { found.contains($0.result) } : nil
-            let recorded = found.map { result in ResultBundle.clearing.first { $0.result == result }?.counts ?? result.lowercased() }
-            return "\(test.shown), which it " + (clearing.map { "counts as \($0.counts)" } ?? "records as \(recorded.sorted().joined(separator: " and "))")
+            let worded = found.subtracting([ResultBundle.noResult]).map { result in ResultBundle.clearing.first { $0.result == result }?.counts ?? result.lowercased() }
+            let recorded = (worded.isEmpty ? [] : ["as " + worded.sorted().joined(separator: " and ")]) + (found.contains(ResultBundle.noResult) ? ["with no result"] : [])
+            return "\(test.shown), which it " + (clearing.map { "counts as \($0.counts)" } ?? "records \(recorded.joined(separator: " and "))")
         }
         let these = named.count == 1 ? "a test its result bundle doesn't list among its failures under that name" : "tests its result bundle doesn't list among its failures under that name"
         let leftOut = tests.contains(where: cleared.contains) ? " A test the bundle counts as passed, skipped or an expected failure is left out of the failures here." : ""
