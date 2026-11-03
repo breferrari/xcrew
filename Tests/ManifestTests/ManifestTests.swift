@@ -490,6 +490,7 @@ import Testing
         #expect(launcher.contains("\"$plugin/bin/xcrew\" --if-built xcode --developer-dir"))
         #expect(launcher.contains("\n        \(XcodeCommand.noPin)) outcome= ;;"))
         #expect(launcher.contains("\n        \(XcodeCommand.noMatch)) outcome=\"no match\" ;;"))
+        #expect(launcher.contains("\n        \(XcodeCommand.timedOut)) outcome=\"timed out $PIN_SECONDS\" ;;"))
         #expect(shim.contains("[ -x \"$binary\" ] || exit 75") && launcher.contains("\n        75) outcome=\"not built\" ;;"))
         #expect(launcher.contains("\nPIN_SECONDS=2\n"))
     }

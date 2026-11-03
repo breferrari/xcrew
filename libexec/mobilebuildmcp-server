@@ -27,12 +27,13 @@ if [ -f .xcode-version ] || [ -n "$(find . -maxdepth 3 -type d \( -name '.?*' -o
     { kill "$timer" && wait "$timer"; } 2> /dev/null
     developer=$(head -n 1 "$answer")
     rm -f "$answer"
-    # The statuses are the CLI's (XcodeCommand), the shim's, and 143 for the CLI the timer stopped; the record holds
-    # facts, which the doctor words.
+    # The statuses are the CLI's (XcodeCommand; 5 when its deadline cut the read), the shim's, and 143 for the CLI the
+    # timer stopped; the record holds facts, which the doctor words.
     case $status in
         0) export DEVELOPER_DIR="$developer"; outcome="applied $developer" ;;
         3) outcome= ;;
         4) outcome="no match" ;;
+        5) outcome="timed out $PIN_SECONDS" ;;
         75) outcome="not built" ;;
         143) outcome="timed out $PIN_SECONDS" ;;
         *) outcome="failed $status" ;;

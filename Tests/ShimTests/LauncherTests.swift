@@ -87,6 +87,14 @@ import Testing
         #expect(try await record() == "timed out 2\n")
     }
 
+    /// A pin read whose deadline cut it is recorded as the timer's would be.
+    @Test func aPinReadItsDeadlineCutIsRecordedAsTimedOut() async throws {
+        try pin()
+        try xcrew("exit 5")
+        #expect(try await start().output == "cwd=\(try await real()) developer=none\n")
+        #expect(try await record() == "timed out 2\n")
+    }
+
     @Test func aPinNoInstalledXcodeMatchesIsRecorded() async throws {
         try pin()
         try xcrew("exit 4")

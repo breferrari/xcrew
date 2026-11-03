@@ -35,6 +35,14 @@ import XcrewTestSupport
         #expect(unmatched.output == [])
     }
 
+    /// A pin read the call's deadline cut says so, with its own status, rather than that nothing installed matches.
+    @Test func aPinReadTheDeadlineCutSaysSo() async {
+        let (context, _) = context(pin: "25.0")
+        let run = await Run("xcode", "--developer-dir", context: CheckContext(project: context.project, machine: context.machine.setting("XCREW_WITHIN_MS", to: "1")))
+        #expect(run.status == 5)
+        #expect(run.output == [])
+    }
+
     /// A server started with another Xcode than the pin's, the pin changed since, didn't start with the pin: the command
     /// says so as `xcode/pin` does.
     @Test func aServerStartedWithAnotherXcodeIsNotThePins() async throws {
