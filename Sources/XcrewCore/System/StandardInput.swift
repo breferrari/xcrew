@@ -3,7 +3,8 @@ import Foundation
 /// What xcrew was handed on standard input. Claude Code closes a hook's and the mod's stdin, but a script can leave
 /// it open, and reading to end of file would then wait for as long as that caller lives.
 public enum StandardInput {
-    /// How long stdin may stay open with nothing new arriving before xcrew stops reading it and goes on.
+    /// How long stdin may stay open with nothing new arriving before xcrew stops reading it and goes on. Claude Code
+    /// closes a hook's and the mod's input, so only a script that leaves it open meets this; nothing measured its pauses.
     public static let idleLimit = Duration.seconds(2)
     /// What xcrew says on stderr when it stops reading an input its caller never closed.
     public static let cutNote = "xcrew: stopped reading standard input once nothing more arrived; close it when you're done writing\n"

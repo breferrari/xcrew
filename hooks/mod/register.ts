@@ -1114,7 +1114,8 @@ async function countFullRun($: EngineInterface, scope: string, run: FullRun) {
 /**
  * The checkout the CLI last named and when: a run's start and end, its ledger and its card ask within moments, so an
  * answer under `HEAD_FRESH_MS` old is shared. A Bash call, which may switch branches, drops it; a switch outside the
- * session shows once it's that old. Only an answer is kept, never a read still waiting.
+ * session shows once it's that old. Only an answer is kept, never a read still waiting. The 5 s bounds that staleness;
+ * nothing measured it (docs/findings.md, *Deadlines inside the CLI*).
  */
 let headRead: { at: number; head: Head } | undefined
 const HEAD_FRESH_MS = 5_000

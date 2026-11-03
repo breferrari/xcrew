@@ -112,7 +112,11 @@ export class StillBuilding extends Error {
  */
 export const UNWAITED_MS = 30_000
 
-/** How long the shim's answer is trusted before asking again: a development checkout rebuilds when its sources change. */
+/**
+ * How long the shim's answer is trusted before asking again, and a build that named nothing remembered: a development
+ * checkout rebuilds when its sources change, and shows it within this. Nothing measured it (docs/findings.md,
+ * *Deadlines inside the CLI*).
+ */
 const RECHECK_MS = 30_000
 
 

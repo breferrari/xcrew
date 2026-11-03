@@ -4,8 +4,10 @@
 #
 # A project that pins its Xcode in .xcode-version builds with it: the server gets that Xcode's developer
 # folder as DEVELOPER_DIR, which every xcodebuild and simctl it runs inherits. The xcrew CLI is asked only
-# when it's already built, for at most PIN_SECONDS; otherwise the server starts as it would without a pin.
-# What happened is recorded for the doctor's xcode/pin check, which words it (docs/findings.md, *Which Xcode*).
+# when it's already built, for at most PIN_SECONDS, which it's also given as its deadline; otherwise the server
+# starts as it would without a pin. What happened is recorded for the doctor's xcode/pin check, which words it
+# (docs/findings.md, *Which Xcode*). The 2 s is how long a server's start may wait for a pin it can do without, not a
+# measured ceiling: the read takes milliseconds (*Deadlines inside the CLI*).
 PIN_SECONDS=2
 
 plugin=$(cd -P "$(dirname "$0")/.." && pwd)
