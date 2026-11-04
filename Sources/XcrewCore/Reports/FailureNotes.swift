@@ -64,6 +64,8 @@ public enum FailureNotes {
         var placed: [FailedLine: String] = [:]
         var added = false
         var dropped = 0
+        // Bare places the bundle's whole path for the same file and line stands for, by index.
+        var replacedPlaces: Set<Int> = []
         // A note can span lines, a skip reason the test wrote over several; each is read as its own.
         func add(_ notes: [String]) {
             let split = notes.flatMap { $0.components(separatedBy: "\n") }.map(MobileText.Line.init)
@@ -91,9 +93,17 @@ public enum FailureNotes {
                 } else {
                     out += lines[index..<index + span]
                     if placed[key] == nil { placed[key] = place }
-                    if noted.insert(key).inserted { add(notes.failures[key] ?? []) }
+                    if noted.insert(key).inserted {
+                        let entryNotes = notes.failures[key] ?? []
+                        add(entryNotes)
+                        replacedPlaces.formUnion(barePlaces(standingFor: entryNotes.first, below: index + span, in: lines))
+                    }
                 }
                 index += span
+                continue
+            }
+            if replacedPlaces.contains(index) {
+                index += 1
                 continue
             }
             out.append(line)
@@ -106,6 +116,20 @@ public enum FailureNotes {
             out[heading] = MobileText.Line(out[heading].text.replacingCharacters(in: counted.range, with: "Test Failures (\(counted.count - dropped)):"))
         }
         return added ? MobileText(lines: out) : nil
+    }
+
+    /// The lines of the entry from `start` that are a bare place, `File.swift:29`, of the file and line `note`, a whole
+    /// path the bundle gave, names: that path stands for them. None when the note is no place.
+    static func barePlaces(standingFor note: String?, below start: Int, in lines: [MobileText.Line]) -> [Int] {
+        guard let note, let place = MobileText.Line(note).location else { return [] }
+        let bare = "\(ToolOutput.basename(place.path)):\(place.line)"
+        var standing: [Int] = []
+        var index = start
+        while index < lines.count, lines[index].failing == nil, !lines[index].isBlank {
+            if lines[index].location == nil, lines[index].text.trimmingCharacters(in: .whitespaces) == bare { standing.append(index) }
+            index += 1
+        }
+        return standing
     }
 
     /// What a failed test's image lines begin with, which the routing rules name.

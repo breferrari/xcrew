@@ -15,6 +15,27 @@ import Testing
         #expect(TestLookup(ids: ids).resolution(of: TestID(suite: "Inner", name: "fails")) == .found(TestID(xcresultID: "Outer/Inner/fails()")))
     }
 
+    /// A Swift Testing test the text names by its display name is the bundle's test of that name: under its innermost
+    /// suite, as `Inner / Adds numbers`, or under `(Unknown Suite)`, as MobileBuildMCP's log names it, and a top-level
+    /// test's under `(Unknown Suite)` alone.
+    @Test func aDisplayNameIsItsTestsUnderItsSuiteOrUnknownSuite() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"Adds numbers","nodeIdentifier":"Outer/Inner/addsNumbers()","result":"Failed"},{"nodeType":"Test Case","name":"Top level","nodeIdentifier":"topLevel()","result":"Failed"},{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"Outer/Inner/fails()","result":"Failed"}]}"#)
+        let lookup = TestLookup(nodes: listing.nodes)
+        #expect(lookup.resolution(of: TestID(suite: "Inner", name: "Adds numbers")) == .found(TestID(xcresultID: "Outer/Inner/addsNumbers()")))
+        #expect(lookup.resolution(of: TestID(suite: "(Unknown Suite)", name: "Adds numbers")) == .found(TestID(xcresultID: "Outer/Inner/addsNumbers()")))
+        #expect(lookup.resolution(of: TestID(suite: "(Unknown Suite)", name: "Top level")) == .found(TestID(xcresultID: "topLevel()")))
+        #expect(lookup.resolution(of: TestID(suite: "Outer", name: "Adds numbers")) == .missing)
+    }
+
+    /// A display name two tests share takes no guess where both could be meant, and is its own suite's where only one is.
+    @Test func aDisplayNameTwoTestsShareIsAmbiguous() {
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"Adds numbers","nodeIdentifier":"Outer/Inner/addsNumbers()","result":"Failed"},{"nodeType":"Test Case","name":"Adds numbers","nodeIdentifier":"Other/adds()","result":"Failed"}]}"#)
+        let lookup = TestLookup(nodes: listing.nodes)
+        #expect(lookup.resolution(of: TestID(suite: "(Unknown Suite)", name: "Adds numbers")) == .ambiguous([TestID(xcresultID: "Other/adds()"), TestID(xcresultID: "Outer/Inner/addsNumbers()")]))
+        #expect(lookup.resolution(of: TestID(suite: "Inner", name: "Adds numbers")) == .found(TestID(xcresultID: "Outer/Inner/addsNumbers()")))
+        #expect(lookup.resolution(of: TestID(suite: "Other", name: "Adds numbers")) == .found(TestID(xcresultID: "Other/adds()")))
+    }
+
     /// Two nested ids ending with it take no guess, and no id at all is missing.
     @Test func twoNestedIDsEndingWithItAreAmbiguous() {
         let ids: Set = [TestID(xcresultID: "A/Inner/fails()"), TestID(xcresultID: "B/Inner/fails()")]

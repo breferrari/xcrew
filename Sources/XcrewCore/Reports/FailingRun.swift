@@ -24,13 +24,18 @@ final class FailingRun {
         bundled = ResultBundle.failedTests(listing: listing)
     }
 
-    /// `text` with the bundle's failed tests it doesn't list: a name's candidates where the name matches several of the
-    /// bundle's tests, the rest after its failures, each labelled. Nil when nothing changes. It sets `resolutions` from
+    /// `text` with each test it lists under a name other than the bundle's named as the bundle does, one entry however
+    /// many names it has, and the bundle's failed tests it doesn't list: a name's candidates where the name matches
+    /// several of the bundle's tests, the rest after its failures, each labelled. Nil when nothing changes. It sets `resolutions` from
     /// the text, so it comes before `ordering`, which adds to them.
     func placing(in text: MobileText) -> MobileText? {
         var text = text
         var changed = false
-        resolutions = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, lookup.resolution(of: $0)) }) { first, _ in first }
+        resolutions = resolving(text)
+        if let folded = text.folding(by: { resolutions[$0]?.found }) {
+            (text, changed) = (folded, true)
+            resolutions = resolving(text)
+        }
         let named = Set(resolutions.values.compactMap(\.found)).union(resolutions.keys)
         let notNamed = (bundled ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
         let failed = Set(notNamed.map(\.0))
@@ -65,6 +70,11 @@ final class FailingRun {
         if let added = text.adding(unlisted: entries.filter { !placed.contains($0.test) }.map(listed)) { (text, changed) = (added, true) }
         for entry in entries { resolutions[entry.test] = .found(entry.id) }
         return changed ? text : nil
+    }
+
+    /// The bundle's id for each failing test `text` names.
+    private func resolving(_ text: MobileText) -> [TestID: TestLookup.Resolution] {
+        Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, lookup.resolution(of: $0)) }) { first, _ in first }
     }
 
     /// A run's failures in the order it reported them, and the note on those the text lists as failed that the bundle

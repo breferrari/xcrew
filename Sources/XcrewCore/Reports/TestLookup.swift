@@ -1,6 +1,6 @@
 /// The result bundle's test cases, and the one rule a test the run's text names is found among them by: its own id, a
 /// name from `(Unknown Suite)` as the top-level test of that name, else the one nested suite's test whose id ends with
-/// it, else the `System Failures` case its crash is filed under.
+/// it, else the one test whose display name it is, else the `System Failures` case its crash is filed under.
 /// Built once from a test list, so each name is found without reading every id again.
 struct TestLookup {
     /// The test list's cases under each test's id, as `ResultBundle.testCases(in:)` reads them.
@@ -10,13 +10,16 @@ struct TestLookup {
     /// Each nested id under its name and every ending of it after a `/` that still holds one, sorted: the ids a name can
     /// mean, the text's `Inner/fails` or `look`'s `B/Inner/fails` for `A/B/Inner/fails`.
     private let byEnding: [String: [TestID]]
+    /// Each Swift Testing test with a display name, as `@Test("Adds numbers")`, under the names MobileBuildMCP's text
+    /// gives it: its innermost suite's and `(Unknown Suite)`'s, sorted. A top-level test has only the second.
+    private let byDisplayName: [TestID: [TestID]]
 
     /// How a test the text names is found among the result bundle's ids.
     enum Resolution: Sendable, Equatable {
-        /// The bundle's id for it: its own, the one nested id that ends with it, or the `System Failures` case its crash is
-        /// filed under.
+        /// The bundle's id for it: its own, the one nested id that ends with it, the one test whose display name it is, or
+        /// the `System Failures` case its crash is filed under.
         case found(TestID)
-        /// Two or more nested ids end with it, so none is taken.
+        /// Two or more nested ids end with it, or two or more tests have it as their display name, so none is taken.
         case ambiguous([TestID])
         case missing
 
@@ -25,7 +28,7 @@ struct TestLookup {
             if case let .found(id) = self { id } else { nil }
         }
 
-        /// Whether two or more nested ids end with the name, so none is taken.
+        /// Whether two or more of the bundle's tests could be the name, so none is taken.
         var isAmbiguous: Bool {
             if case .ambiguous = self { true } else { false }
         }
@@ -44,6 +47,13 @@ struct TestLookup {
             }
         }
         self.byEnding = byEnding.mapValues { $0.sorted { $0.shown < $1.shown } }
+        var byDisplayName: [TestID: [TestID]] = [:]
+        for (id, nodes) in cases {
+            guard let shown = nodes.first?["name"] as? String, shown != id.function, shown != id.name else { continue }
+            let innermost = id.name.split(separator: "/").dropLast().last.map(String.init) ?? (id.suite.isEmpty ? nil : id.suite)
+            for suite in [innermost, TestID.unknownSuite].compactMap(\.self) { byDisplayName[TestID(suite: suite, name: shown), default: []].append(id) }
+        }
+        self.byDisplayName = byDisplayName.mapValues { $0.sorted { $0.shown < $1.shown } }
     }
 
     /// The test cases and the crash cases a test list's `nodes` hold.
@@ -57,9 +67,12 @@ struct TestLookup {
         if cases[test] != nil { return .found(test) }
         let suiteless = TestID(suite: "", name: test.name)
         if test.suite == TestID.unknownSuite, cases[suiteless] != nil { return .found(suiteless) }
-        let nested = byEnding[test.shown] ?? []
-        if nested.count == 1 { return .found(nested[0]) }
-        if !nested.isEmpty { return .ambiguous(nested) }
-        return crashCases[test].map { .found($0) } ?? .missing
+        return Self.pick(byEnding[test.shown]) ?? Self.pick(byDisplayName[test]) ?? crashCases[test].map { .found($0) } ?? .missing
+    }
+
+    /// The one id among `ids`, found; several, ambiguous; none, nil.
+    private static func pick(_ ids: [TestID]?) -> Resolution? {
+        guard let ids, !ids.isEmpty else { return nil }
+        return ids.count == 1 ? .found(ids[0]) : .ambiguous(ids)
     }
 }
