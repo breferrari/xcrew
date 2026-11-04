@@ -12,6 +12,8 @@ struct CaptureRunner: CommandRunning {
     let attachments: URL?
     let exportingAttachments: Set<String>
     let crashLog: URL?
+    /// For a capture kept as a folder of xcresulttool's answers, the folder every export copies whole.
+    let exportingAll: URL?
 
     /// The capture `name` in `folder`, its result bundle at `bundle`.
     init(_ name: String, in folder: URL, bundle: String) throws {
@@ -36,8 +38,30 @@ struct CaptureRunner: CommandRunning {
         attachments = FileManager.default.fileExists(atPath: attached.path) ? attached : nil
         let lookups = (try? JSONSerialization.jsonObject(with: Data(text("\(name).lookups.json").utf8))) as? [String: [String: Any]] ?? [:]
         exportingAttachments = Set(lookups.compactMap { id, answered in ((answered["export attachments"] as? Int) ?? 0) > 0 ? id : nil })
-        let crash = folder.appending(path: "\(name).crash.ips")
-        crashLog = FileManager.default.fileExists(atPath: crash.path) ? crash : nil
+        crashLog = ["\(name).crash.ips", "\(name).ips"].map { folder.appending(path: $0) }.first { FileManager.default.fileExists(atPath: $0.path) }
+        exportingAll = nil
+    }
+
+    /// A capture kept as a folder of xcresulttool's answers, as the UI-test and snapshot captures are: `tests.json`, each
+    /// test's `details-<test>.json` and `activities-<test>.json`, and its attachments, which every export copies whole.
+    init(folder: URL, bundle: String) throws {
+        func text(_ file: String) throws -> String { try String(contentsOf: folder.appending(path: file), encoding: .utf8) }
+        let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        var responses: [String: CommandResult] = [:]
+        if files.contains("tests.json") { responses["xcrun xcresulttool get test-results tests --path \(bundle) --compact"] = .init(status: 0, stdout: try text("tests.json")) }
+        for (prefix, command) in [("details-", "test-details"), ("activities-", "activities")] {
+            for file in files.sorted() where file.hasPrefix(prefix) && file.hasSuffix(".json") {
+                let answer = try text(file)
+                guard let id = (try? JSONSerialization.jsonObject(with: Data(answer.utf8)) as? [String: Any])?["testIdentifier"] as? String else { continue }
+                responses["xcrun xcresulttool get test-results \(command) --test-id \(id) --path \(bundle) --compact"] = .init(status: 0, stdout: answer)
+            }
+        }
+        self.responses = responses
+        self.bundle = bundle
+        attachments = nil
+        exportingAttachments = []
+        crashLog = nil
+        exportingAll = folder
     }
 
     func which(_ name: String) -> String? { nil }
@@ -56,6 +80,11 @@ struct CaptureRunner: CommandRunning {
             }
         }
         if let crashLog { try? manager.copyItem(at: crashLog, to: URL(fileURLWithPath: output).appending(path: "crash.ips")) }
+        if let exportingAll {
+            for file in (try? manager.contentsOfDirectory(atPath: exportingAll.path)) ?? [] where !file.hasSuffix(".json") || file == "manifest.json" {
+                try? manager.copyItem(at: exportingAll.appending(path: file), to: URL(fileURLWithPath: output).appending(path: file))
+            }
+        }
         return .init(status: 0)
     }
 }
