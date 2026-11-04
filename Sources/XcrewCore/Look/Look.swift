@@ -21,12 +21,12 @@ public enum Look {
         return await report(bundle: bundle, test: nil, cases: ResultBundle.testCases(in: listing.nodes), failed: failed, keptIn: folder, now: now)
     }
 
-    /// The test a name means, among the bundle's: the name as given, `()` or not, a top-level test's by its function's name
-    /// alone, else the name without its first part,
-    /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way; else, as
-    /// the run's text names a test, the one nested id that ends with it, or the `System Failures` case a crash of it is
-    /// filed under. When the bundle lists none, a name ending as an id does, `()` or its arguments' labels, is taken as
-    /// the bundle's own and one without as `-only-testing:`'s.
+    /// The test a name means, among the bundle's: the name as given, `()` or not, a top-level test's by its function's
+    /// name alone, else the name without its first part, which `-only-testing:` spells as the target
+    /// (`Target/Suite/test`), a nested suite's `/` kept either way; else, as the run's text names a test, the one
+    /// nested id that ends with it, or the `System Failures` case a crash of it is filed under. When the bundle lists
+    /// none, a name ending as an id does, `()` or its arguments' labels, is taken as the bundle's own and one without
+    /// as `-only-testing:`'s.
     static func test(_ named: String, among lookup: TestLookup) -> TestID {
         let exact = TestID(xcresultID: named)
         let parts = named.split(separator: "/", maxSplits: 1)
