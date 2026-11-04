@@ -363,10 +363,10 @@ struct MobileText: Sendable {
     /// The text with each test Test Failures lists under a name other than the bundle's, as a Swift Testing test under its
     /// display name, named as the bundle's id `id` gives for the name. Its entries under more than one name, as from the
     /// bundle and from the log, are one: the first one's message, then every line below any of them, and another's message
-    /// where it differs, each once, before the first's place; the section's count lowered by those folded in. A name the
-    /// id ends with, as a nested suite's `Inner / fails()`, stays; a `System Failures` entry, whose name is its process's,
-    /// and an entry whose id is its process's crash case, which names no test, stay; a test's own failure and its crash stay apart, and a test listed twice under one name, as a repeated run's,
-    /// is left as it is. Nil when nothing changes.
+    /// where it differs, each once, before the first's place; the section's count lowered by those folded in. A name the id
+    /// ends with, as a nested suite's `Inner / fails()`, stays; a `System Failures` entry, whose name is its process's, and
+    /// an entry whose id is its process's crash case, which names no test, stay; a test's own failure and its crash stay
+    /// apart, and a test listed twice under one name, as a repeated run's, is left as it is. Nil when nothing changes.
     func folding(by id: (TestID) -> TestID?) -> MobileText? {
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
         let keyed = failureEntries(after: heading).compactMap { entry -> (key: FailureNotes.FailedLine, entry: FailureEntry)? in
