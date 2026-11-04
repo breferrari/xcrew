@@ -23,16 +23,11 @@ public enum RunLog {
         let before = file.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(LogReading.self, from: $0) }
         guard let reading = LogReading.reading(url, after: before) else { return nil }
         if let file, reading != before, let encoded = try? JSONEncoder().encode(reading) {
-            if before == nil, let readings { pruneReadings(in: readings.folder, now: readings.now) }
+            if before == nil, let readings { LogReading.prune(in: readings.folder, now: readings.now) }
             try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? encoded.write(to: file, options: .atomic)
         }
         return (reading.phase(expectedTests: expectedTests), reading.scheme, reading.verdict.flatMap { outcome(ofVerdict: $0, kind: kind) })
-    }
-
-    /// Removes the readings no one has kept for a day before `now`: a run's log is followed only while it runs.
-    static func pruneReadings(in folder: URL, now: Date) {
-        AgedEntries.removing(olderThan: 24 * 3600, in: folder, now: now)
     }
 
     /// Where a log's reading is kept between the band's asks, one file a log, with the machine's time now, before which

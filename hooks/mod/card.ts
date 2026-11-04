@@ -1,5 +1,7 @@
+import type { Head } from './cli'
 import { average, stopwatch } from './format'
-import { covers, flakyLabel, isWholeScope, type LedgerEntry } from './ledger'
+import { covers, flakyLabel, isWholeScope, label, type LedgerEntry } from './ledger'
+import { isStale } from './timing'
 
 /**
  * The project card: what earlier runs in this folder say about the project, saved after each run and at session start
@@ -18,6 +20,20 @@ const RED_LINE_MAX = 360
 
 /** A run scope's stored history: its durations, and its test total when it's a test run. */
 export type ScopeHistory = { scope: string; runs: readonly number[]; tests?: number }
+
+/**
+ * The card as the CLI keeps it, for `folder` on `head` at `now`: its folder and branch, the time of its newest data and
+ * of its oldest, and its text, if it has any. It's read at every session start, so it drops what no run has written for
+ * as long as the history is kept: the ledger's `entries` when the ledger was last `updated` that long ago, else each red
+ * entry no run has touched for that long.
+ */
+export function savedCard(folder: string, head: Head, scopes: readonly (ScopeHistory & { updated: unknown })[], entries: readonly LedgerEntry[], updated: unknown, now: number): SavedCard {
+  const red = isStale(updated, now) ? [] : entries.filter(entry => !entry.green && !isStale(entry.last, now))
+  const text = cardText(scopes, red, label(head, true))
+  const times = [...scopes.map(entry => entry.updated), ...red.map(entry => entry.last)].filter((time): time is number => typeof time === 'number')
+  const [newest, oldest] = times.length > 0 ? [Math.max(...times), Math.min(...times)] : [now, now]
+  return { version: CARD_VERSION, folder, branch: label(head, false), updated: newest, oldest, ...(text ? { text } : {}) }
+}
 
 /** The scopes with runs, longest usual time first, each with its usual time. */
 function timedScopes(history: readonly ScopeHistory[]): (ScopeHistory & { usual: number })[] {

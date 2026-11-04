@@ -40,6 +40,34 @@ export function isStale(updated: unknown, now: number): boolean {
 export const testsKey = (key: string) => `tests.${key}`
 /** Every prefix a scope's keys carry, `where.` an earlier version's, for dropping a scope whole. */
 export const SCOPE_PREFIXES = [DURATIONS_PREFIX, FAILED_PREFIX, 'updated.', 'tests.', 'where.']
+
+/** The scopes the store holds a key of, each once, by the key without its prefix. */
+export function storedScopes(keys: readonly string[]): Set<string> {
+  const scopes = new Set<string>()
+  for (const stored of keys) {
+    const prefix = SCOPE_PREFIXES.find(candidate => stored.startsWith(candidate))
+    if (prefix) scopes.add(stored.slice(prefix.length))
+  }
+  return scopes
+}
+
+/** The scopes the store holds runs of under this version's keys, each once, with its root and scope. */
+export function historyScopes(keys: readonly string[]): { key: string; root: string; scope: string }[] {
+  const scoped = [...new Set([DURATIONS_PREFIX, FAILED_PREFIX].flatMap(prefix => keys.filter(key => key.startsWith(prefix)).map(key => key.slice(prefix.length))))]
+  return scoped.flatMap(key => {
+    const parts = keyParts(key)
+    return parts ? [{ key, ...parts }] : []
+  })
+}
+
+/**
+ * Whether a scope's history is kept: this version's key, holding runs a run wrote lately. One stored before keys held
+ * their root, one no run has updated for as long as the history is kept, and one with no runs, all go.
+ */
+export function keepsScope(key: string, runs: unknown, failed: unknown, updated: unknown, now: number): boolean {
+  const isEmpty = (!Array.isArray(runs) || runs.length === 0) && (!Array.isArray(failed) || failed.length === 0)
+  return keyParts(key) !== undefined && !isEmpty && !isStale(updated, now)
+}
 /** Whether a tool has written a log before: those say they're preparing until this run's appears; `clean` writes none. */
 export const logsKey = (tool: string) => `logs.${tool}`
 export const PREPARING = 'preparing'
