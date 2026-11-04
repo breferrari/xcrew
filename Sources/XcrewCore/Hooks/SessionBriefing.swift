@@ -1,8 +1,9 @@
 import Foundation
 
-/// What a Claude Code session in an Apple-platform project starts with: the routing rules, the
-/// profiles this project's config defines, the Xcode it pins, the simulators booted now, the test plans that run each
-/// test under several configurations, then whatever this Mac or project still lacks.
+/// What a Claude Code session in an Apple-platform project starts with: the routing rules, the profiles this project's
+/// config defines, the Xcode it pins, the simulators booted now, whatever this Mac or project still lacks, the project
+/// card, then the test plans that run each test under several configurations. Claude Code passes on 10,000 characters
+/// of a session-start hook's context, so what can run long comes last and names a few.
 /// Silent in any other project.
 public struct SessionBriefing: Sendable {
     let project: Project
@@ -25,10 +26,11 @@ public struct SessionBriefing: Sendable {
         async let simulatorApp = simulatorApp()
         let mobileBuildMCP = await status
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
-        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), await simulatorApp, bootedNote(await bootedNow)].compactMap { $0 } + (await plans) + [await offer].compactMap { $0 }
+        let notes = [failover, failover == nil ? profiles() : nil, pinnedXcode(), await simulatorApp, bootedNote(await bootedNow), await offer].compactMap { $0 }
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), on: machine)
-        return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "")
+        let planned = (await plans).map { "- **xcrew:** \($0)" }
+        return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "") + (planned.isEmpty ? "" : "\n\nTest plans here:\n" + planned.joined(separator: "\n"))
     }
 
     /// The Xcode the project pins, read from its file alone: whether the server started with it is the doctor's to say,
@@ -60,7 +62,7 @@ public struct SessionBriefing: Sendable {
         }
         let more = plans.count - named.count
         if more == 0 { return named }
-        return named + ["and \(more) more test \(more == 1 ? "plan runs" : "plans run") each test under several configurations (\(ResultBundle.noList))."]
+        return named + ["and \(more) more test \(more == 1 ? "plan runs" : "plans run") each test under several configurations (\(TestPlans.listedBy))."]
     }
 
     /// Said at the start, and by the mod with the session's first MobileBuildMCP build or test, while MobileBuildMCP has

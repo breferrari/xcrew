@@ -23,6 +23,7 @@ public enum CLI {
         WhyCommand(),
         SpaceCommand(),
         LookCommand(),
+        PlansCommand(),
         HookCommand(),
     ]
 

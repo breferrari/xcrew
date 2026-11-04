@@ -213,21 +213,21 @@ struct ChangedLineCoverage: Sendable, Equatable {
         if total > 0 {
             let counted = ran == total ? (total == 1 ? "the 1 changed line that can run" : "all \(total) changed lines that can run") : "\(ran) of \(total) changed lines that can run"
             let named = notRun.flatMap { file in Self.ranges(file.lines).map { "\(ToolOutput.basename(file.path)):\($0)" } }
-            sentences.append("\(counted) ran in \(runs == 1 ? "this test run" : "these test runs")." + (named.isEmpty ? "" : " Not run\(ResultBundle.listed(named, rest: ResultBundle.noList))."))
+            sentences.append("\(counted) ran in \(runs == 1 ? "this test run" : "these test runs")." + (named.isEmpty ? "" : " Not run\(ResultBundle.listed(named, rest: nil))."))
         }
         if !unreached.isEmpty {
             let files = unreached.reduce(0) { $0 + $1.files }
-            let named = ResultBundle.joined(unreached.map(\.target), or: true, rest: ResultBundle.noList)
+            let named = ResultBundle.joined(unreached.map(\.target), or: true, rest: nil)
             let these = runs == 1 ? "test run" : "test runs"
             sentences.append("\(sentences.isEmpty ? (runs == 1 ? "this" : "these") : (runs == 1 ? "This" : "These")) \(these) ran nothing in \(named), where \(files == 1 ? "1 changed file is" : "\(files) changed files are").")
         }
         if !outside.isEmpty {
             let files = outside.count == 1 ? "1 changed file isn't" : "\(outside.count) changed files aren't"
-            sentences.append("\(files) in \(runs == 1 ? "this run's" : "these runs'") coverage\(ResultBundle.listed(outside.map(ToolOutput.basename), rest: ResultBundle.noList)).")
+            sentences.append("\(files) in \(runs == 1 ? "this run's" : "these runs'") coverage\(ResultBundle.listed(outside.map(ToolOutput.basename), rest: nil)).")
         }
         if !stale.isEmpty {
             let files = stale.count == 1 ? "1 changed file" : "\(stale.count) changed files"
-            sentences.append("\(files) changed after every run that covered \(stale.count == 1 ? "it" : "them")\(ResultBundle.listed(stale.map(ToolOutput.basename), rest: ResultBundle.noList)).")
+            sentences.append("\(files) changed after every run that covered \(stale.count == 1 ? "it" : "them")\(ResultBundle.listed(stale.map(ToolOutput.basename), rest: nil)).")
         }
         return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }

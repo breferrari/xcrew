@@ -100,7 +100,7 @@ struct BranchCoverage: Sendable {
     func line(lastCommit: Date?) -> String {
         guard !finished.isEmpty else { return "- No test run here speaks for the changed lines: each started before their last change." }
         let runs = finished.count == 1 ? "the test run" : "the test runs"
-        let stamps = ResultBundle.joined(finished.map(EvidencePack.stamp), rest: ResultBundle.noList)
+        let stamps = ResultBundle.joined(finished.map(EvidencePack.stamp), rest: nil)
         let dated = EvidencePack.when(runs, of: stamps, at: finished.max() ?? .distantPast, lastCommit: lastCommit)
         return "- \(dated): \(sentence)"
     }

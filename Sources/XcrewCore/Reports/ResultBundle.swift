@@ -346,23 +346,20 @@ public struct ResultBundle: Sendable {
         return "xcrew: \(tests). They count as neither passed nor failed in the result\(total)."
     }
 
-    /// What a counted list says when nothing else holds the rest: said, so the list doesn't read as whole.
-    static let noList = "no list of them is kept"
-
     /// Where a run's tests are all listed: its result bundle.
     static let inTheBundle = "the run's result bundle lists them all"
 
-    /// `: A, B and C`, or `: A, B, C, D, E and 2 more (rest)`; nothing without names.
-    static func listed(_ names: [String], separator: String = ", ", rest: String) -> String {
+    /// `: A, B and C`, or `: A, B, C, D, E and 2 more (rest)`, every name without `rest`; nothing without names.
+    static func listed(_ names: [String], separator: String = ", ", rest: String?) -> String {
         names.isEmpty ? "" : ": " + joined(names, separator: separator, rest: rest)
     }
 
-    /// Names one after another, `a, b and c`, a few at most and the rest counted with `rest`, which says where they all
-    /// are, or that no list of them is kept (`noList`); with `or`, `a, b or c`.
-    static func joined(_ names: [String], separator: String = ", ", or: Bool = false, rest: String) -> String {
+    /// Names one after another, `a, b and c`: with `rest`, which says where they all are, a few at most and the rest
+    /// counted; without it, every one, as for a list kept nowhere else; with `or`, `a, b or c`.
+    static func joined(_ names: [String], separator: String = ", ", or: Bool = false, rest: String?) -> String {
         guard let last = names.last else { return "" }
         let conjunction = or ? " or " : " and "
-        if names.count > mostNamed { return names.prefix(mostNamed).joined(separator: separator) + conjunction + "\(names.count - mostNamed) more (\(rest))" }
+        if let rest, names.count > mostNamed { return names.prefix(mostNamed).joined(separator: separator) + conjunction + "\(names.count - mostNamed) more (\(rest))" }
         return names.count == 1 ? last : names.dropLast().joined(separator: separator) + conjunction + last
     }
 

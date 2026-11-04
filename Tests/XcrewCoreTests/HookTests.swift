@@ -125,8 +125,7 @@ import XcrewTestSupport
             project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "\(name).xctestplan")
         }
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
-        // 80 schemes read: 5 named, 75 counted.
-        #expect(text.contains("- **xcrew:** and 75 more test plans run each test under several configurations (no list of them is kept)."), "\(text)")
+        #expect(text.contains("- **xcrew:** and 75 more test plans run each test under several configurations (`xcrew plans` lists them all)."), "\(text)")
     }
 
     /// With every scheme read and one plan to name, nothing more is said.
@@ -154,12 +153,12 @@ import XcrewTestSupport
             project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "P\(plan).xctestplan")
         }
         project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "Shared.xctestplan")
-        let notes = (await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? "").components(separatedBy: "\n").filter { $0.contains("Test plan") || $0.contains("test plans") }
+        let notes = (await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? "").components(separatedBy: "\n").filter { $0.hasPrefix("- **xcrew:**") && ($0.contains("Test plan") || $0.contains("test plans")) }
         // In the order the schemes sort: `Shared` comes with `A`.
         #expect(notes.first == "- **xcrew:** Test plan `Shared`, the default of schemes `A`, `B` and `C`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which.", "\(notes)")
         #expect(notes.contains("- **xcrew:** Test plan `P1`, the default of scheme `P1`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which."), "\(notes)")
         #expect(notes.count == 6, "\(notes)")
-        #expect(notes.last == "- **xcrew:** and 2 more test plans run each test under several configurations (no list of them is kept).", "\(notes)")
+        #expect(notes.last == "- **xcrew:** and 2 more test plans run each test under several configurations (`xcrew plans` lists them all).", "\(notes)")
     }
 
     /// MobileBuildMCP writes a config of its own when Claude saves session defaults: one without a profile naming a
@@ -186,6 +185,29 @@ import XcrewTestSupport
         ProjectCard.save(.init(folder: project.canonicalRoot, branch: "feat/card", updated: machine.now().timeIntervalSince1970 * 1000 - 5 * 60_000, text: "Notes:\n- a"), on: machine)
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n")
         #expect(text?.hasSuffix("\n\nNotes, as of the run 5 min ago:\n- a") == true)
+    }
+
+    /// A large app's briefing stays under the 10,000 characters Claude Code passes on from a session-start hook, with the
+    /// real routing rules, the project card whole and before any test plan: 80 plans of several configurations, one of
+    /// them the default of 200 schemes.
+    @Test func aLargeAppsBriefingStaysUnderTheCapWithTheCardFirst() async throws {
+        let project = Project.temporary(containing: ["App.xcodeproj"])
+        for index in 1...80 {
+            let name = "Plan" + String(repeating: "0", count: 3 - String(index).count) + String(index)
+            project.writeScheme(name, plan: "\(name).xctestplan")
+            project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "\(name).xctestplan")
+        }
+        for index in 1...200 { project.writeScheme("Module\(index)", plan: "Plan001.xctestplan") }
+        let machine = Self.machine(project, version: "2.7.1", branch: "feat/card")
+        let card = "Notes:\n" + (1...12).map { "- line \($0) of the card, as long as a card's lines run when they name a scheme and its runs" }.joined(separator: "\n")
+        ProjectCard.save(.init(folder: project.canonicalRoot, branch: "feat/card", updated: machine.now().timeIntervalSince1970 * 1000 - 5 * 60_000, text: card), on: machine)
+        let routing = try String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../context/routing.md").standardized, encoding: .utf8)
+        let text = try #require(await SessionBriefing(project: project, machine: machine).text(routing: routing))
+        #expect(text.count < 10_000, "\(text.count)")
+        let cardAt = try #require(text.range(of: "Notes, as of the run 5 min ago:\n- line 1 of the card"))
+        #expect(text.contains("- line 12 of the card, as long as a card's lines run when they name a scheme and its runs"), "\(text)")
+        let planAt = try #require(text.range(of: "\n\nTest plans here:\n- **xcrew:** Test plan `"))
+        #expect(cardAt.lowerBound < planAt.lowerBound, "\(text)")
     }
 
     /// A project that pins its Xcode says so, and that the Xcode MCP works through the open one, which no pin changes; it
