@@ -32,12 +32,12 @@ struct ReportCommand: Command {
         let log = given ?? found
         if invocation.arguments.has("notification") {
             let text = String(decoding: await invocation.standardInput(), as: UTF8.self)
-            report = await Report.make(kind: kind, notification: text, log: log, launches: invocation.arguments.has("launches"), server: server, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
+            report = await Report.make(kind: kind, notification: text, log: log, launches: invocation.arguments.has("launches"), server: server, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         } else if let given {
-            report = await Report.make(kind: kind, log: RunLog.text(ofLogAt: given), runner: machine.runner, repeated: repeated, listsPassed: listsPassed)
+            report = await Report.make(kind: kind, log: RunLog.text(ofLogAt: given), machine: machine, repeated: repeated, listsPassed: listsPassed)
         } else {
             let output = ToolOutput(text: String(decoding: await invocation.standardInput(), as: UTF8.self), server: server, isError: invocation.arguments.has("error"))
-            report = await Report.make(kind: kind, output: output, home: machine.home.path, runner: machine.runner, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
+            report = await Report.make(kind: kind, output: output, repeated: repeated, listsPassed: listsPassed, project: invocation.context.project, machine: machine)
         }
         if let log { report.scheme = RunLog.scheme(ofLogAt: URL(fileURLWithPath: log)) }
         let encoded = try JSONEncoder.sorted.encode(report)
