@@ -13,29 +13,36 @@ import XcrewTestSupport
         return plugin
     }
 
+    /// A Mac whose Xcode's plugin is `plugin`, as `runner` names it.
+    func machine(_ runner: FakeRunner, _ plugin: Project) -> Machine {
+        Machine(environment: [:], home: plugin.root.appending(path: "home"), runner: runner, files: RootedFiles(roots: [plugin.root]))
+    }
+
     func runner(for plugin: Project) -> FakeRunner {
         FakeRunner(responses: ["xcrun mcpbridge run-agent plugin path --plugin-format claude": .init(status: 0, stdout: "note\n\(plugin.root.path)\n")])
     }
 
     @Test func findsTheSkillsTheInstalledXcodeShips() async throws {
         let plugin = xcodePlugin()
-        let skills = try #require(await XcodeSkills.locate(using: runner(for: plugin)))
+        let skills = try #require(await XcodeSkills.locate(on: machine(runner(for: plugin), plugin)))
         #expect(skills.available == ["device-interaction", "swiftui-specialist"])
     }
 
     @Test func noPluginBeforeXcode27() async {
-        #expect(await XcodeSkills.locate(using: FakeRunner()) == nil)
+        #expect(await XcodeSkills.locate(on: machine(FakeRunner(), Project.temporary())) == nil)
     }
 
     @Test func copiesAllOrTheNamedOnes() async throws {
-        let skills = try #require(await XcodeSkills.locate(using: runner(for: xcodePlugin())))
+        let plugin = xcodePlugin()
+        let skills = try #require(await XcodeSkills.locate(on: machine(runner(for: plugin), plugin)))
         let project = Project.temporary()
         #expect(try skills.copy(["swiftui-specialist", "not-shipped"], to: project.skillsFolder) == .init(copied: ["swiftui-specialist"]))
         #expect(try skills.copy(to: project.skillsFolder) == .init(copied: ["device-interaction"], kept: ["swiftui-specialist"]))
     }
 
     @Test func aSkillAlreadyInTheProjectIsKeptUnlessReplaced() async throws {
-        let skills = try #require(await XcodeSkills.locate(using: runner(for: xcodePlugin())))
+        let plugin = xcodePlugin()
+        let skills = try #require(await XcodeSkills.locate(on: machine(runner(for: plugin), plugin)))
         let project = Project.temporary()
         project.write("the team's own", to: ".claude/skills/swiftui-specialist/SKILL.md")
         let skill = project.skillsFolder.appending(path: "swiftui-specialist/SKILL.md")

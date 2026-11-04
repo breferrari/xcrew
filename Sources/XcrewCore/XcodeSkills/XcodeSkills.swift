@@ -4,25 +4,20 @@ import Foundation
 /// the source folder is named after the Xcode build and moves with every Xcode update.
 public struct XcodeSkills: Sendable {
     public let source: URL
+    /// How the Xcode's files are read: the machine's.
+    let files: any FileReading
 
-    /// The skills folder of Xcode's plugin, or nil before Xcode 27.
-    public static func locate(using runner: any CommandRunning) async -> XcodeSkills? {
-        let output = await runner.run("xcrun", "mcpbridge", "run-agent", "plugin", "path", "--plugin-format", "claude")
-        guard output.succeeded, let last = output.stdout.split(separator: "\n").last else { return nil }
-        let skills = URL(fileURLWithPath: String(last)).appending(path: "skills")
-        return FileManager.default.fileExists(atPath: skills.path) ? XcodeSkills(source: skills) : nil
-    }
-
-    /// The skills folder of Xcode's plugin on `machine`, or nil before Xcode 27.
+    /// The skills folder of Xcode's plugin on `machine`, inside the Xcode as the machine has it, or nil before Xcode 27.
     public static func locate(on machine: Machine) async -> XcodeSkills? {
-        await locate(using: machine.runner)
+        let output = await machine.runner.run("xcrun", "mcpbridge", "run-agent", "plugin", "path", "--plugin-format", "claude")
+        guard output.succeeded, let last = output.stdout.split(separator: "\n").last else { return nil }
+        let skills = machine.onThisMachine(URL(fileURLWithPath: String(last))).appending(path: "skills")
+        return machine.files.exists(skills) ? XcodeSkills(source: skills, files: machine.files) : nil
     }
 
     /// Every skill this Xcode ships: a folder holding a `SKILL.md`.
     public var available: [String] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: source.path)) ?? []).sorted().filter {
-            FileManager.default.fileExists(atPath: source.appending(path: "\($0)/SKILL.md").path)
-        }
+        (files.names(in: source) ?? []).sorted().filter { files.exists(source.appending(path: "\($0)/SKILL.md")) }
     }
 
     public struct CopyReport: Sendable, Equatable {

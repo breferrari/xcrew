@@ -21,6 +21,7 @@ struct DirectReadsTests {
         "Sources/XcrewCLI/PhaseCommand.swift": [.input],
         "Sources/XcrewCLI/ProjectCommand.swift": [.project],
         "Sources/XcrewCLI/SetupCommand.swift": [.project],
+        "Sources/XcrewCLI/WhyCommand.swift": [.input, .machineFolder],
         "Sources/XcrewCore/Affected/ProjectGraph.swift": [.project],
         "Sources/XcrewCore/Concurrency/LogLines.swift": [.input],
         "Sources/XcrewCore/Doctor/Checks/ConfigLoadedCheck.swift": [.project],
@@ -68,9 +69,10 @@ struct DirectReadsTests {
     static func reads() throws -> [String: [(line: Int, text: String)]] {
         let sources = root.appending(path: "Sources")
         var found: [String: [(Int, String)]] = [:]
+        let pattern = read
         for case let file as URL in FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)! where file.pathExtension == "swift" {
             let path = String(file.path.dropFirst(root.path.count + 1))
-            let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: "\n").enumerated().filter { $0.element.firstMatch(of: read) != nil }
+            let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: "\n").enumerated().filter { $0.element.firstMatch(of: pattern) != nil }
             if !lines.isEmpty { found[path] = lines.map { ($0.offset + 1, $0.element) } }
         }
         return found
@@ -84,11 +86,23 @@ struct DirectReadsTests {
         #expect(stale.isEmpty, "listed but reads nothing directly: \(stale)")
     }
 
-    /// A file listed for the project's files or its input's never reads a path of the machine's own in the same line.
+    /// What a read is given: its call's arguments, up to the parenthesis that closes them.
+    static func arguments(of line: String) -> Substring {
+        guard let call = line.firstMatch(of: read) else { return "" }
+        var depth = 0
+        var end = call.range.upperBound
+        for index in line[call.range.lowerBound...].indices {
+            if line[index] == "(" { depth += 1 }
+            if line[index] == ")" { depth -= 1; if depth == 0 { end = index; break } }
+        }
+        return line[call.range.lowerBound..<end]
+    }
+
+    /// A file listed for the project's files or its input's never gives a read a path of the machine's own.
     @Test func aProjectOrInputReadNamesNoMachinePath() throws {
         let reads = try Self.reads()
         for (file, reasons) in Self.allowed where !reasons.contains(.machineFolder) {
-            for read in reads[file] ?? [] where read.text.firstMatch(of: Self.machinePath) != nil {
+            for read in reads[file] ?? [] where Self.arguments(of: read.text).firstMatch(of: Self.machinePath) != nil {
                 Issue.record("\(file):\(read.line) reads a path of the machine's own: \(read.text.trimmingCharacters(in: .whitespaces))")
             }
         }
@@ -96,7 +110,11 @@ struct DirectReadsTests {
 
     /// The files whose reads below the Machine's home or cache this check can't follow to the Machine, and why: their
     /// path comes from a value made in another function.
-    static let unseen: [String: String] = [:]
+    static let unseen: [String: String] = [
+        "Sources/XcrewCore/Hooks/ProjectCard.swift": "`read(_:)` is given a card file `folder(on:)` makes from the Machine's cache",
+        "Sources/XcrewCore/Storage/AgedEntries.swift": "its pruner is given the cache folder its callers make from the Machine",
+        "Sources/XcrewCore/Storage/ProjectWorkspaces.swift": "a workspace's logs are read in a folder `origins` makes from the Machine's home",
+    ]
 
     /// A file listed for the Machine's home or cache reads in a function that builds its path from the Machine: one that
     /// names `machine`, `home` or `cacheFolder`, or a folder made from them.

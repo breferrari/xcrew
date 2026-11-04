@@ -9,6 +9,12 @@ public protocol FileReading: Sendable {
     func names(in folder: URL) -> [String]?
     /// Whether anything is there.
     func exists(_ url: URL) -> Bool
+    /// Whether nothing is there, as opposed to a folder that can't be looked at.
+    func isMissing(_ url: URL) -> Bool
+    /// When the file was last changed; nil when it can't be read.
+    func modified(_ url: URL) -> Date?
+    /// Takes up the Machine it reads for, as it's made: a test's checks the folders the Machine names are its own.
+    func admit(_ machine: Machine)
 }
 
 extension FileReading {

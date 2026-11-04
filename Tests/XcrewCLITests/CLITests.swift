@@ -609,7 +609,7 @@ import XcrewTestSupport
         let plugin = Project.temporary()
         plugin.write("## Routing\n", to: "context/routing.md")
         let app = Project.temporary(containing: ["App.xcworkspace"])
-        let context = CheckContext.fake(project: app, environment: ["CLAUDE_PLUGIN_ROOT": plugin.root.path])
+        let context = CheckContext.fake(project: app, environment: ["CLAUDE_PLUGIN_ROOT": plugin.root.path], reading: [plugin.root])
         let run = await Run("hook", "session-start", context: context, stdin: #"{"hook_event_name":"SessionStart","cwd":"\#(app.root.path)"}"#)
         let reply = try JSONSerialization.jsonObject(with: Data(run.text.utf8)) as? [String: [String: String]]
         #expect(reply?["hookSpecificOutput"]?["additionalContext"]?.hasPrefix("## Routing\n- **xcrew:**") == true)
@@ -620,7 +620,7 @@ import XcrewTestSupport
         plugin.write("## Routing\n", to: "context/routing.md")
         let app = Project.temporary(containing: ["App.xcworkspace"])
         let runner = FakeRunner(responses: ["pgrep -x com.apple.CoreSimulator.CoreSimulatorService": .init(status: 0, stdout: "2216\n"), "xcrun simctl list devices booted --json": .init(status: 0, stdout: #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-2":[{"udid":"A1","state":"Booted","name":"iPhone 17","isAvailable":true}]}}"#)])
-        let context = CheckContext.fake(runner, project: app, environment: ["CLAUDE_PLUGIN_ROOT": plugin.root.path])
+        let context = CheckContext.fake(runner, project: app, environment: ["CLAUDE_PLUGIN_ROOT": plugin.root.path], reading: [plugin.root])
         let run = await Run("hook", "session-start", context: context, stdin: #"{"hook_event_name":"SessionStart","cwd":"\#(app.root.path)"}"#)
         let reply = try JSONSerialization.jsonObject(with: Data(run.text.utf8)) as? [String: [String: String]]
         #expect(reply?["hookSpecificOutput"]?["additionalContext"]?.contains("Simulators booted now: iPhone 17 (iOS 27.2, A1).") == true)
@@ -637,7 +637,7 @@ import XcrewTestSupport
         let plugin = Project.temporary()
         plugin.write("# A", to: "skills/swiftui-specialist/SKILL.md")
         let runner = FakeRunner(responses: ["xcrun mcpbridge run-agent plugin path --plugin-format claude": .init(status: 0, stdout: plugin.root.path)])
-        return .fake(runner, project: project)
+        return .fake(runner, project: project, reading: [plugin.root])
     }
 
     @Test func listsAndCopies() async {

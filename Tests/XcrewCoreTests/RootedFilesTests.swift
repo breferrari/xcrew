@@ -24,4 +24,17 @@ struct RootedFilesTests {
         #expect(files.names(in: project.root) == ["a.txt"])
         #expect(files.exists(project.root.appending(path: "a.txt")))
     }
+
+    /// A test's Machine whose home is the Mac's own, or whose cache is in the Mac's own caches, fails the test as it's
+    /// made: what the Machine's home and cache hold is read directly, so they must be folders the test made.
+    @Test func aTestMachineWithTheMacsHomeOrCachesFailsTheTest() {
+        let mine = FileManager.default.homeDirectoryForCurrentUser
+        withKnownIssue("the Mac's own home") {
+            _ = Machine(environment: [:], home: mine, runner: FakeRunner(), files: RootedFiles(roots: []))
+        }
+        withKnownIssue("the Mac's own caches") {
+            _ = Machine(environment: ["XCREW_CACHE": mine.appending(path: "Library/Caches/xcrew").path], home: Project.temporary().root, runner: FakeRunner(), files: RootedFiles(roots: []))
+        }
+        _ = Machine(environment: [:], home: Project.temporary().root, runner: FakeRunner(), files: RootedFiles(roots: []))
+    }
 }

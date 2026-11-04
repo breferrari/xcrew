@@ -41,8 +41,9 @@ public enum ProjectWorkspaces {
     static let readAtOnce = 8
 
     /// Each workspace's origin, its logs read a few workspaces at a time.
-    public static func origins(of report: StorageReport, live: [Checkout], home: URL) async -> [String: Origin] {
-        await withTaskGroup(of: (String, Origin).self) { group in
+    public static func origins(of report: StorageReport, live: [Checkout], machine: Machine) async -> [String: Origin] {
+        let (home, files) = (machine.home, machine.files)
+        return await withTaskGroup(of: (String, Origin).self) { group in
             var pending = report.workspaces.makeIterator()
             func next() {
                 guard let workspace = pending.next() else { return }
@@ -50,10 +51,9 @@ public enum ProjectWorkspaces {
                     if let checkout = live.first(where: { $0.key == workspace.key }) { return (workspace.key, .live(checkout)) }
                     let folder = workspace.folder.hasPrefix("~/") ? home.appending(path: String(workspace.folder.dropFirst(2))) : URL(fileURLWithPath: workspace.folder)
                     guard let root = root(ofWorkspace: folder) else { return (workspace.key, .unknown) }
-                    let files = FileManager.default
-                    if files.fileExists(atPath: root) { return (workspace.key, .elsewhere(root)) }
-                    let above = URL(fileURLWithPath: root).deletingLastPathComponent().path
-                    return (workspace.key, files.fileExists(atPath: above) ? .gone(root) : .unknown)
+                    if files.exists(URL(fileURLWithPath: root)) { return (workspace.key, .elsewhere(root)) }
+                    let above = URL(fileURLWithPath: root).deletingLastPathComponent()
+                    return (workspace.key, files.exists(above) ? .gone(root) : .unknown)
                 }
             }
             for _ in 0..<readAtOnce { next() }

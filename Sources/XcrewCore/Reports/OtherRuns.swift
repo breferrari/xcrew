@@ -24,7 +24,7 @@ public enum OtherRuns {
     public static func going(project: Project, machine: Machine) async -> [Run] {
         let now = machine.now()
         return await others(of: project, machine: machine).compactMap { root, top -> Run? in
-            guard FileManager.default.fileExists(atPath: root),
+            guard machine.files.exists(URL(fileURLWithPath: root)),
                   let log = RunLog.find(since: now.addingTimeInterval(-quietFor), project: URL(fileURLWithPath: root), home: machine.home, named: { $0.firstMatch(of: runLog) != nil }),
                   let tool = log.lastPathComponent.firstMatch(of: runLog).map({ String($0.1) }) else { return nil }
             let followed = RunLog.follow(logAt: log, expectedTests: nil, kind: tool.hasPrefix("test") ? .test : .build, keptIn: RunLog.readingsKept(on: machine))

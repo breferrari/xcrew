@@ -21,23 +21,13 @@ struct GoneCommand: Command {
     /// not gone, and anything else is on the startup volume. A removed worktree leaves the folder that held it, where an
     /// unmounted share's folders go with their mount. A folder that can't be looked at, as one macOS's privacy rules
     /// refuse, isn't gone, nor is a name that isn't an absolute path.
-    static func gone(_ folders: [String], mounted: Set<String>) -> [String] {
+    static func gone(_ folders: [String], mounted: Set<String>, files: any FileReading) -> [String] {
         folders.filter { folder in
             let parent = (folder as NSString).deletingLastPathComponent
-            guard folder.hasPrefix("/"), isMissing(folder), mounted.contains(parent) || !isMissing(parent) else { return false }
+            guard folder.hasPrefix("/"), files.isMissing(URL(fileURLWithPath: folder)), mounted.contains(parent) || !files.isMissing(URL(fileURLWithPath: parent)) else { return false }
             let parts = folder.split(separator: "/")
             guard parts.first == "Volumes", parts.count > 1 else { return true }
             return mounted.contains("/Volumes/\(parts[1])")
-        }
-    }
-
-    /// Whether looking the folder up fails because nothing is there, not for any other reason.
-    static func isMissing(_ folder: String) -> Bool {
-        do {
-            _ = try FileManager.default.attributesOfItem(atPath: folder)
-            return false
-        } catch {
-            return (error as? CocoaError)?.code == .fileReadNoSuchFile
         }
     }
 
@@ -47,7 +37,7 @@ struct GoneCommand: Command {
     }
 
     func run(_ invocation: Invocation) async throws -> Int32 {
-        let gone = Self.gone(invocation.arguments.positional, mounted: Self.mounted)
+        let gone = Self.gone(invocation.arguments.positional, mounted: Self.mounted, files: invocation.context.machine.files)
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(Answer(gone: gone)), as: UTF8.self))
         return 0
     }

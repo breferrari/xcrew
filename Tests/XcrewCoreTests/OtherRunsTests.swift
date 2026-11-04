@@ -29,7 +29,7 @@ import XcrewTestSupport
         for name in worktrees where !missing.contains(name) { try FileManager.default.createDirectory(at: worktree(name).appending(path: prefix), withIntermediateDirectories: true) }
         let project = Project(root: here)
         let responses = FakeRunner.worktreeResponses(project: project, main: main.path, linked: worktrees.map { worktree($0).path }, prefix: prefix)
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(responses: responses), now: { Self.now }, files: RootedFiles(roots: [home]))
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(responses: responses), now: { Self.now }, files: RootedFiles(roots: [base]))
         return await OtherRuns.going(project: project, machine: machine)
     }
 
@@ -39,7 +39,7 @@ import XcrewTestSupport
         try FileManager.default.createDirectory(at: here, withIntermediateDirectories: true)
         for name in worktrees { try FileManager.default.createDirectory(at: worktree(name).appending(path: prefix), withIntermediateDirectories: true) }
         let project = Project(root: here)
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(responses: FakeRunner.worktreeResponses(project: project, main: main.path, linked: worktrees.map { worktree($0).path }, prefix: prefix)), now: { Self.now }, files: RootedFiles(roots: [home]))
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(responses: FakeRunner.worktreeResponses(project: project, main: main.path, linked: worktrees.map { worktree($0).path }, prefix: prefix)), now: { Self.now }, files: RootedFiles(roots: [base]))
         return await OtherRuns.overlapped(project: project, machine: machine, from: Self.now.addingTimeInterval(-from), to: Self.now.addingTimeInterval(-to))
     }
 
@@ -134,7 +134,7 @@ import XcrewTestSupport
     }
 
     @Test func outsideGitNoneIsListed() async {
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), now: { Self.now }, files: RootedFiles(roots: [home]))
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), now: { Self.now }, files: RootedFiles(roots: [base]))
         #expect(await OtherRuns.going(project: Project(root: main), machine: machine).isEmpty)
     }
 }

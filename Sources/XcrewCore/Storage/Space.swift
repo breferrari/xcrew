@@ -99,7 +99,7 @@ public enum Space {
     static func mobileBuildMCP(live: Task<[ProjectWorkspaces.Checkout], Never>, machine: Machine, now: Date) async -> SpaceReport.Part {
         let title = "MobileBuildMCP"
         guard let report = await StorageReport.read(.all, using: machine.runner) else { return SpaceReport.notRead(title, by: "mobilebuildmcp purge --report") }
-        let grouped = ProjectWorkspaces.grouped(report, origins: await ProjectWorkspaces.origins(of: report, live: await live.value, home: machine.home))
+        let grouped = ProjectWorkspaces.grouped(report, origins: await ProjectWorkspaces.origins(of: report, live: await live.value, machine: machine))
         let processes = grouped.live.isEmpty ? ProcessList(ps: "") : await ProcessList.load(using: machine.runner)
         var lines: [SpaceReport.Line] = grouped.live.isEmpty ? [] : [.init(text: ProjectStorage.line(grouped.live, machine: machine, processes: processes))]
         lines += grouped.live.flatMap { workspace, checkout in

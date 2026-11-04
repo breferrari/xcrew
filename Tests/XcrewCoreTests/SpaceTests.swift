@@ -146,7 +146,7 @@ import XcrewTestSupport
         let awayKey = RunLog.workspaceKey(root: away)
         let report = try #require(StorageReport(json: Data(Self.purgeReport(key: key, renamed: ["field-09f4495eb86d": awayKey]).utf8)))
         try Self.writeLog(home: home, key: awayKey, root: away)
-        let origins = await ProjectWorkspaces.origins(of: report, live: [], home: home)
+        let origins = await ProjectWorkspaces.origins(of: report, live: [], machine: Machine(environment: [:], home: home, runner: FakeRunner(), files: LocalFiles()))
         #expect(origins[awayKey] == .unknown)
     }
 

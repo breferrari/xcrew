@@ -43,7 +43,7 @@ enum MobileBuildMCPStatus: Sendable, Equatable {
     static func version(at path: String, machine: Machine) async -> String {
         let cache = machine.cacheFolder.appending(path: "mobilebuildmcp-version")
         let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-        let key = (try? FileManager.default.attributesOfItem(atPath: resolved)[.modificationDate] as? Date).map { "\(resolved) \($0.timeIntervalSince1970)" }
+        let key = machine.files.modified(URL(fileURLWithPath: resolved)).map { "\(resolved) \($0.timeIntervalSince1970)" }
         if let key, let saved = try? String(contentsOf: cache, encoding: .utf8), saved.hasPrefix(key + "\n") {
             return String(saved.dropFirst(key.count + 1))
         }

@@ -23,6 +23,7 @@ public struct Machine: Sendable {
         self.applications = applications
         self.now = now
         self.files = files
+        files.admit(self)
     }
 
     /// An app a text or a command names, as this machine has it: one in `/Applications` is in its applications folder,
