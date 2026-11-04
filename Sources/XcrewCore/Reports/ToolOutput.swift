@@ -97,6 +97,16 @@ public struct ToolOutput: Sendable {
             self.target = target
         }
 
+        /// An error with no place, `Failed to build workspace App with scheme App.: Tests in the target …`: what comes before
+        /// its first `: ` is its title, the rest its message; all of it the title when it has none.
+        init(error text: String) {
+            if let split = text.range(of: ": "), split.lowerBound > text.startIndex {
+                self.init(title: String(text[..<split.lowerBound]), message: String(text[split.upperBound...]))
+            } else {
+                self.init(title: text, message: "")
+            }
+        }
+
         /// This failure, its empty message and missing place filled in from `other`, a listing of the same test.
         func filling(from other: Failure) -> Failure {
             Failure(title: title, message: message.isEmpty ? other.message : message, where: self.where ?? other.where, isTest: isTest, images: images, moreImages: moreImages, target: target)

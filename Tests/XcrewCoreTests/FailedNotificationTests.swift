@@ -6,9 +6,9 @@ import XcrewTestSupport
 /// A test run moved to the background that failed: MobileBuildMCP returns an error result, so Claude Code marks the task
 /// `failed`, and its notification carries the server's whole text. Field shape, names neutralised: two runs on
 /// November 2, 2026 (xcrew 0.13.0) came back as "Task failed: 🧪 Test … Warnings (380): ⚠ …", the whole result, with no
-/// note. Which tag holds that text isn't known yet: Claude Code 2.1.316's executable has a "Task failed: " prefix beside
-/// its MCP task code. So both shapes are read, each composed from the test bed's failing `serial` run, its one warning
-/// made 300: the text after "Task failed: " in `<summary>`, and a `<result>` block after a short summary.
+/// note. Both tags are read, each composed from the test bed's failing `serial` run on its own lines, its one warning
+/// made 300: the text after "Task failed: " in `<summary>`, and a `<result>` block after a short summary. The field's
+/// own shape, the text on one line in `<result>` after that prefix, is `OneLineNotificationTests`'.
 @Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
 struct FailedNotificationTests {
     static let warningCount = 300

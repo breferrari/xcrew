@@ -253,9 +253,13 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// A finished run told from its MobileBuildMCP log, for a task whose result couldn't be read: the log's last verdict,
     /// and for a test run each failing test from the result bundle the log names, with each repeated test's runs when
-    /// `repeated`. Without a bundle `xcresulttool` reads, the verdict alone, said to be so; without a verdict, no outcome.
+    /// `repeated`. Without a bundle `xcresulttool` reads, the verdict alone, said to be so. Without a verdict, a log that
+    /// xcodebuild ended with its own error failed with that error; any other, no outcome.
     public static func make(kind: Kind, log: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false) async -> Report {
-        guard let ok = RunLog.outcome(of: log, kind: kind) else { return unread }
+        guard let ok = RunLog.outcome(of: log, kind: kind) else {
+            guard let error = RunLog.lastError(in: log) else { return unread }
+            return Report(ok: false, failures: [ToolOutput.Failure(error: error)], notes: [], isVerdictOnly: true)
+        }
         let path = kind == .test ? RunLog.resultBundle(in: log) : nil
         if let path {
             let listing = TestList(await ResultBundle(path: path, runner: runner).tests())
@@ -267,17 +271,22 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// A call moved to the background, from its task's notification: the server's text, of a task that completed or
-    /// failed, read as the call's own, its shorter result put back in the notification Claude reads; else the run's log at
+    /// failed, read as the call's own, its shorter result put back in the notification Claude reads. MobileBuildMCP's text
+    /// on one line, as a failed task's comes, is read on its own lines, and goes back on them. Else the run's log at
     /// `log`, when there is one, read with `launches` as a call's that installs and launches after its build, whose
     /// build's success is no outcome; else no outcome.
     public static func make(kind: Kind, notification text: String, log: String?, launches: Bool = false, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
         let notification = TaskNotification(text)
         // A failed task's text is the run's only when it's in MobileBuildMCP's own forms: "the server went away" is no run.
-        if let notification, let output = notification.serverOutput, !(output.isError && ToolOutput(text: output.text, server: server, isError: true).isNotTheServers) {
-            var read = await make(kind: kind, output: ToolOutput(text: output.text, server: server, isError: output.isError), home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine)
-            if read.isUnread != true {
-                if let shorter = read.result { read.result = notification.replacingResult(with: shorter) }
-                return read
+        if let notification, let output = notification.serverOutput {
+            let unfolded = server == .mobileBuildMCP ? OneLineText.unfolded(output.text) : nil
+            let text = unfolded ?? output.text
+            if !(output.isError && ToolOutput(text: text, server: server, isError: true).isNotTheServers) {
+                var read = await make(kind: kind, output: ToolOutput(text: text, server: server, isError: output.isError), home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine)
+                if read.isUnread != true {
+                    if let shorter = read.result ?? unfolded { read.result = notification.replacingResult(with: shorter) }
+                    return read
+                }
             }
         }
         guard let log else { return unread }
