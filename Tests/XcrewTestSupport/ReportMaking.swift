@@ -2,8 +2,8 @@ import Foundation
 import XcrewCore
 
 /// A report made as a test gives it: a home's path and a runner, and a Machine only where the test has one. Without one,
-/// the Machine is that home's, with no environment, its apps under that home and a fixed clock, so no test reads the
-/// Mac's own Xcode or the wall clock.
+/// the Machine is that home's, its apps under that home, its cache in no folder there is and a fixed clock, so no test
+/// reads the Mac's own Xcode or the wall clock, or keeps or prunes images in a real cache, whatever home it names.
 extension Report {
     /// When a report made without a Machine says it's now.
     static let testNow = Date(timeIntervalSince1970: 1_793_750_400)
@@ -11,7 +11,7 @@ extension Report {
     /// The Machine a report is made on: `given`, with the test's home and runner in place of its own, or that home's.
     static func machine(home: String, runner: any CommandRunning, given: Machine?) -> Machine {
         let home = URL(fileURLWithPath: home)
-        guard let given else { return Machine(environment: [:], home: home, runner: runner, applications: home.appending(path: "Applications"), now: { testNow }) }
+        guard let given else { return Machine(environment: ["XCREW_CACHE": "/nonexistent/xcrew-cache"], home: home, runner: runner, applications: home.appending(path: "Applications"), now: { testNow }) }
         return Machine(environment: given.environment, home: home, runner: runner, processID: given.processID, applications: given.applications, now: given.now)
     }
 
