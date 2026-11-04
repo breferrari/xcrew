@@ -80,15 +80,18 @@ public enum ProjectCard {
         return lines.joined(separator: "\n")
     }
 
-    /// The mod's `isStale`, for the card's oldest line: more than the kept days before now.
+    /// The mod's `isStale`, for the card's oldest line: more than the kept days before now, in whole milliseconds as
+    /// the mod counts them.
     static func isStale(_ entry: Entry, now: Date) -> Bool {
-        now.timeIntervalSince1970 - (entry.oldest ?? entry.updated) / 1000 > TimeInterval(keptDays * 24 * 3600)
+        milliseconds(now.timeIntervalSince1970 * 1000) - milliseconds(entry.oldest ?? entry.updated) > Int64(keptDays) * 86_400_000
     }
 
     /// A time in milliseconds since 1970 as a whole number of them, the fraction dropped, so ages are counted in whole
-    /// milliseconds: in seconds, `now - updated / 1000` can come out a fraction short of a whole minute.
+    /// milliseconds: in seconds, `now - updated / 1000` can come out a fraction short of a whole minute. It's held
+    /// within 9e15 either side of 1970, about 285,000 years, so no time a card holds traps the conversion or a
+    /// difference of two.
     static func milliseconds(_ time: Double) -> Int64 {
-        Int64(time.rounded(.down))
+        Int64(min(max(time.rounded(.down), -9e15), 9e15))
     }
 
     /// How long ago, in whole units, each truncated: "5 min" is at least five minutes.
