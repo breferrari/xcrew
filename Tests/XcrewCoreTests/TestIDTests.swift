@@ -13,10 +13,13 @@ import Testing
         #expect(test.xcresultID == "PaymentsTests/test_refund()")
     }
 
-    @Test func anIdentifierWithoutASlashIsKeptWhole() {
+    /// An id with no `/` is a crash's case, kept whole as the suite, or a top-level Swift Testing test, with no suite.
+    @Test func anIdentifierWithoutASlashIsACrashsCaseOrATestWithNoSuite() {
         #expect(TestID(xcresultID: "xctest (80341) encountered an error").shown == "xctest (80341) encountered an error/")
         #expect(TestID(xcresultID: "seededFailure()") == TestID(suite: "", name: "seededFailure"))
-        #expect(TestID(xcresultID: "seededFailure()").shown == "seededFailure")
+        #expect(TestID(xcresultID: "seededFailure()").shown == "seededFailure()")
+        #expect(TestID(xcresultID: TestID(xcresultID: "seededFailure()").shown) == TestID(xcresultID: "seededFailure()"))
+        #expect(TestID(xcresultID: "AppUITests-Runner (4242) encountered an error").xcresultID == "AppUITests-Runner (4242) encountered an error")
         #expect(TestID(xcresultID: "Suite/Nested/test()") == TestID(suite: "Suite", name: "Nested/test"))
     }
 
@@ -35,5 +38,12 @@ import Testing
     @Test func theLineOnATestSeveralIDsEndWithNamesFiveAtMost() {
         let ids = (1...7).map { TestID(xcresultID: "Module\($0)/Loading/showsSpinner()") }
         #expect(FailureNotes.severalByThatName(ids) == "the result bundle has more than one test by that name: Module1/Loading/showsSpinner, Module2/Loading/showsSpinner, Module3/Loading/showsSpinner, Module4/Loading/showsSpinner, Module5/Loading/showsSpinner and 2 more (in the result bundle's test list)")
+    }
+
+    /// A line added for a top-level test names it from `(Unknown Suite)`, as MobileBuildMCP names one.
+    @Test func aLineAddedForATestWithNoSuiteNamesItFromTheUnknownSuite() {
+        let text = MobileText("\n🧪 Test\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        let added = text.adding(unlisted: [(test: TestID(xcresultID: "seededFailure()"), message: "it failed", place: nil)])
+        #expect(added?.text.contains("  ✗ (Unknown Suite) / seededFailure(): it failed\n") == true, "\(added?.text ?? "")")
     }
 }

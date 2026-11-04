@@ -152,14 +152,16 @@ public struct Report: Sendable, Equatable, Codable {
         return (ordered + pending.map(\.failure), disagreeing)
     }
 
-    /// Whether `text` lists a failure the bundle records, by its message and place: a failure the text lists under a name
-    /// that matches no id, as a display name, is still the text's, so it gets no line of its own. An entry's message is
-    /// what follows its `Suite / name: `, and its place the first its lines name, a path or a file alone, up to the blank
-    /// line that ends it. A failure with no place matches none.
-    static func listedByText(_ text: MobileText) -> (ToolOutput.Failure) -> Bool {
-        var listed: Set<String> = []
+    /// Of `failures`, the bundle's, those `text` doesn't list, by message and place, `exempt` kept whatever the text lists:
+    /// a failure the text lists under a name that matched none of the bundle's ids, as a display name, is still the
+    /// text's, so it gets no line of its own. Only an entry whose name `unresolved` says matched no id counts, each for one
+    /// failure. An entry's message is what follows its `Suite / name: `, and its place the first its lines name, a path or
+    /// a file alone, up to the blank line that ends it. A failure with no place is never the text's.
+    static func notListedByText(_ failures: [(TestID, ToolOutput.Failure)], in text: MobileText, exempt: Set<TestID>, unresolved: (TestID) -> Bool) -> [(TestID, ToolOutput.Failure)] {
+        var listed: [String: Int] = [:]
         for (index, line) in text.lines.enumerated() {
-            guard case let .entry(entry) = line.kind, let named = entry.text.range(of: " / "), let colon = entry.text[named.upperBound...].range(of: ": ") else { continue }
+            guard case let .entry(entry) = line.kind, entry.failing.map({ unresolved($0.test) }) ?? true,
+                  let named = entry.text.range(of: " / "), let colon = entry.text[named.upperBound...].range(of: ": ") else { continue }
             let below = text.lines[(index + 1)...].prefix { line in
                 if case .entry = line.kind { return false }
                 return !line.isBlank
@@ -168,9 +170,15 @@ public struct Report: Sendable, Equatable, Codable {
                 line.location.map { "\(ToolOutput.basename($0.path)):\($0.line)" }
                     ?? line.text.trimmingCharacters(in: .whitespaces).wholeMatch(of: /[^\s\/]+\.\w+:\d+/).map { String($0.output) }
             }.first
-            if let place { listed.insert("\(entry.text[colon.upperBound...])\n\(place)") }
+            if let place { listed["\(entry.text[colon.upperBound...])\n\(place)", default: 0] += 1 }
         }
-        return { failure in failure.where.map { listed.contains("\(failure.message)\n\($0)") } ?? false }
+        return failures.filter { test, failure in
+            guard !exempt.contains(test), let place = failure.where else { return true }
+            let key = "\(failure.message)\n\(place)"
+            guard let count = listed[key], count > 0 else { return true }
+            listed[key] = count - 1
+            return false
+        }
     }
 
     /// The note on each failed test a name MobileBuildMCP's text gives can mean, when several can.
@@ -381,9 +389,8 @@ public struct Report: Sendable, Equatable, Codable {
                 let reported = bundleIDs.compactMapValues { resolution -> [TestID]? in
                     if case let .ambiguous(ids) = resolution, ids.contains(where: failed.contains) { ids } else { nil }
                 }
-                let candidates = Set(reported.values.joined())
-                let listedByText = Self.listedByText(text)
-                let unlisted = notNamed.filter { candidates.contains($0.0) || !listedByText($0.1) }
+                let ambiguousIDs = Set(reported.values.joined())
+                let unlisted = Self.notListedByText(notNamed, in: text, exempt: ambiguousIDs) { bundleIDs[$0]?.found == nil }
                 let entries = unlisted.map { test, failure in (test: test, message: failure.message, id: lookup.resolution(of: test).found ?? test) }
                 let listed = { (entry: (test: TestID, message: String, id: TestID)) -> MobileText.FailureLine in
                     (test: entry.test, message: entry.message, place: ResultBundle.place(of: entry.id, in: lookup.cases))

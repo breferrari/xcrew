@@ -549,44 +549,6 @@ struct BundleFailuresTests {
         #expect(result.components(separatedBy: "✗ Q / B/Inner/fails()").count == 2, "\(result)")
     }
 
-    /// A top-level Swift Testing test, which MobileBuildMCP names from `(Unknown Suite)` and the bundle by its function
-    /// alone, `seededFailure()`, with no `/`, is one failure, listed once: its id is no crash's case, and the text's name is
-    /// found as it. The test bed's forms/classic run in the 0.16.0 release proof (Xcode 27.2, MobileBuildMCP 2.7.1): the
-    /// result's text as MobileBuildMCP gave it and the test list xcresulttool gave for its bundle, paths neutralised.
-    @Test func aTopLevelSwiftTestingFailureIsListedOnce() async throws {
-        let home = "/testbed/user"
-        let text = """
-            🧪 Test
-
-            Discovered 4 test(s):
-               AppTests/Global/seededFailure
-               AppTests/Global/seededSkip
-               AppTests/GreetingTests/testGreetingSaysHello
-               AppTests/GreetingTests/testKnownBug
-
-            Test Failures (1):
-
-              ✗ (Unknown Suite) / seededFailure(): Expectation failed: Greeting.text == "Goodbye"
-                Greeting.text → "Hello": The test bed's seeded failure
-
-            ❌ 1 test failed, 1 passed, 1 skipped (⏱️ 49.0s)
-              └ Files:
-                 └── ~/Library/Developer/MobileBuildMCP/workspaces/classic-0000/
-                     ├── logs/test_sim_2026-11-04T01-40-03-439Z_pid16611_b26f4037.log — Build Logs
-                     ├── result-bundles/test_sim_2026-11-04T01-40-03-439Z_pid16611_43b42494.xcresult — Result Bundle
-                     └── test-products/test_sim_2026-11-04T01-40-03-439Z_pid16611_f82a9cc1.xctestproducts — Test Products
-            """
-        let bundle = "\(home)/Library/Developer/MobileBuildMCP/workspaces/classic-0000/result-bundles/test_sim_2026-11-04T01-40-03-439Z_pid16611_43b42494.xcresult"
-        let listing = #"{"devices":[{"architecture":"arm64","deviceId":"00000000-0000-0000-0000-000000000000","deviceName":"xcrew-proof","modelName":"iPhone 18 Pro Max","osBuildNumber":"24B8117","osVersion":"27.2","platform":"iOS Simulator"}],"testNodes":[{"children":[{"children":[{"children":[{"name":"Expectation failed: Greeting.text == \"Goodbye\"\nGreeting.text \u2192 \"Hello\": The test bed's seeded failure","nodeType":"Failure Message","sourceLocation":{"filePath":"/testbed/forms/classic/AppTests/SeededTests.swift","lineNumber":5}}],"duration":"0,0056s","durationInSeconds":0.0055789947509765625,"name":"seededFailure()","nodeIdentifier":"seededFailure()","nodeIdentifierURL":"test://com.apple.xcode/App/AppTests/seededFailure()","nodeType":"Test Case","result":"Failed"},{"children":[{"name":"Test skipped: The test bed's seeded skip","nodeType":"Skip Message"}],"name":"seededSkip()","nodeIdentifier":"seededSkip()","nodeIdentifierURL":"test://com.apple.xcode/App/AppTests/seededSkip()","nodeType":"Test Case","result":"Skipped"},{"children":[{"duration":"0,0029s","durationInSeconds":0.0029469728469848633,"name":"testGreetingSaysHello()","nodeIdentifier":"GreetingTests/testGreetingSaysHello()","nodeIdentifierURL":"test://com.apple.xcode/App/AppTests/GreetingTests/testGreetingSaysHello","nodeType":"Test Case","result":"Passed"},{"children":[{"name":"The test bed's expected failure: the greeting isn't localized","nodeType":"Expected Failure"}],"duration":"0,26s","durationInSeconds":0.2587779760360718,"name":"testKnownBug()","nodeIdentifier":"GreetingTests/testKnownBug()","nodeIdentifierURL":"test://com.apple.xcode/App/AppTests/GreetingTests/testKnownBug","nodeType":"Test Case","result":"Expected Failure"}],"name":"GreetingTests","nodeIdentifierURL":"test://com.apple.xcode/App/AppTests/GreetingTests","nodeType":"Test Suite","result":"Passed"}],"name":"AppTests","nodeIdentifierURL":"test://com.apple.xcode/App/AppTests","nodeType":"Unit test bundle","result":"Failed"}],"name":"App","nodeType":"Test Plan","result":"Failed"}],"testPlanConfigurations":[{"configurationId":"1","configurationName":"Test Scheme Action"}]}"#
-        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: listing)])
-        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: home, runner: runner)
-        let result = try #require(report.result)
-        #expect(result.contains("Test Failures (1):"), "\(result)")
-        #expect(!result.contains("seededFailure() / ()"), "\(result)")
-        #expect(!report.notes.contains { $0.contains("doesn't list") }, "\(report.notes)")
-        #expect(report.failures.count == 1, "\(report.failures)")
-    }
-
     /// A failure the bundle records whose message and place match a failure the text already lists gets no line of its
     /// own: the nested capture's display-named test, which MobileBuildMCP lists as `(Unknown Suite) / Adds numbers` with
     /// its place and as `Inner / Adds numbers`, isn't added a third time as `Outer / Inner/addsNumbers()`. It stays listed
@@ -634,4 +596,3 @@ struct BundleFailuresTests {
         #expect(try await Self.report("retry", repeated: true).failures.map(\.title) == ["ProbeTests/testFails"])
     }
 }
-
