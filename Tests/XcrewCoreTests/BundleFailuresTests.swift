@@ -77,11 +77,13 @@ struct BundleFailuresTests {
     }
 
     /// A crash under `System Failures` whose message names its test without an `in`, as a crash in a test's own body
-    /// does, is its test's failure once; one whose message names no test is no test's, and stays the text's own line,
-    /// once, out of the ledger. Field shape as above, the message composed.
+    /// does, is its test's failure once; one whose message names no test, as a helper's frame, is no test's, and stays
+    /// the text's own line, once, out of the ledger, where Claude reads it with its message and frame. Field shape as
+    /// above, the message composed.
     @Test(arguments: [
         ("Crash: xctest at AssertCrashTests.test_crash()", ["AssertCrashTests/test_crash | Crash: xctest at AssertCrashTests.test_crash() | -"]),
         ("Crash: xctest at Model.load(from:)", []),
+        ("Crash: xctest at Cache.reset()", []),
     ])
     func aCrashUnderSystemFailuresIsATestsOnlyWhenItsMessageNamesOne(message: String, tests expected: [String]) async throws {
         let bundle = try Raw.bundle("system-failure-crash")
@@ -94,6 +96,9 @@ struct BundleFailuresTests {
         #expect(report.failures.filter(\.isTest).map { "\($0.title) | \($0.message) | \($0.where ?? "-")" } == expected)
         // The crash is said once: as its test's failure, or as the text's own line when it names none.
         #expect(report.failures.filter { $0.message == message }.count == 1)
+        if expected.isEmpty {
+            #expect((report.result ?? fieldText).contains("  ✗ System Failures / xctest (80341) encountered an error: \(message)"))
+        }
     }
 
     /// A test the text lists as failed that the bundle counts as passed, as one a retry passed, is no failure, and a
