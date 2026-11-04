@@ -57,7 +57,7 @@ import XcrewTestSupport
         FakeXcode.install(in: apps, "Xcode-27.2.app", version: "27.2", build: "27C5")
         for app in bundled { try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-27.2.app/\(app)"), withIntermediateDirectories: true) }
         let base = Self.machine(project, version: "2.7.1")
-        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now, files: RootedFiles(roots: [base.home, apps]))
+        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now, files: RootedFiles(roots: [base.home.deletingLastPathComponent(), apps]))
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
         #expect(text.contains("- **xcrew:** Xcode 27.2 shows simulators in DeviceHub (`open -a DeviceHub`); no Xcode here has Simulator.app.") == named, "\(text)")
     }
@@ -71,7 +71,7 @@ import XcrewTestSupport
         try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-27.2.app/Contents/Applications/DeviceHub.app"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-26.4.app/Contents/Developer/Applications/Simulator.app"), withIntermediateDirectories: true)
         let base = Self.machine(project, version: "2.7.1")
-        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now, files: RootedFiles(roots: [base.home, apps]))
+        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now, files: RootedFiles(roots: [base.home.deletingLastPathComponent(), apps]))
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
         #expect(!text.contains("DeviceHub"), "\(text)")
     }

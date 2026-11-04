@@ -36,4 +36,14 @@ struct MachineReadsTests {
         }
         #expect(report?.groupsFromDocs == false)
     }
+
+    /// Xcode's skills, in the plugin folder `xcrun` names inside the Xcode, are read from the Machine's own applications.
+    @Test func xcodesSkillsAreReadFromTheMachinesApplications() async throws {
+        let project = Project.temporary()
+        let plugin = "Xcode-Fake.app/Contents/SharedFrameworks/Plugins/claude"
+        let base = CheckContext.fake(FakeRunner(responses: ["xcrun mcpbridge run-agent plugin path --plugin-format claude": .init(status: 0, stdout: "/Applications/\(plugin)\n")]), project: project).machine
+        project.write("# A", to: "Applications/\(plugin)/skills/device-interaction/SKILL.md")
+        let skills = try #require(await XcodeSkills.locate(on: base))
+        #expect(skills.available == ["device-interaction"])
+    }
 }

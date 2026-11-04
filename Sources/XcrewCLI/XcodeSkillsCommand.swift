@@ -12,7 +12,7 @@ struct XcodeSkillsCommand: Command {
     ]
 
     func run(_ invocation: Invocation) async throws -> Int32 {
-        guard let skills = await XcodeSkills.locate(using: invocation.context.runner) else {
+        guard let skills = await XcodeSkills.locate(on: invocation.context.machine) else {
             throw UsageError(description: "Xcode's agent plugin not found (needs Xcode 27 or later)")
         }
         if invocation.arguments.has("list") {

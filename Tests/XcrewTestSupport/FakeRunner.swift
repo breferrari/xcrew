@@ -36,8 +36,10 @@ public struct FakeRunner: CommandRunning {
 
 extension CheckContext {
     /// Apps live in the project's `Applications` folder unless `applications` names another, never the Mac's own.
-    public static func fake(_ runner: FakeRunner = FakeRunner(), project: Project = .temporary(), environment: [String: String] = [:], processID: Int32 = 1, applications: URL? = nil, now: Date? = nil) -> CheckContext {
+    /// Its files are read below the project, its applications and the other folders the test made it `reading`; `files`,
+    /// as `LocalFiles()` for a test about the real disk, replaces all of them.
+    public static func fake(_ runner: FakeRunner = FakeRunner(), project: Project = .temporary(), environment: [String: String] = [:], processID: Int32 = 1, applications: URL? = nil, now: Date? = nil, reading: [URL] = [], files: (any FileReading)? = nil) -> CheckContext {
         let apps = applications ?? project.root.appending(path: "Applications")
-        return CheckContext(project: project, machine: Machine(environment: environment, home: project.root.appending(path: "home"), runner: runner, processID: processID, applications: apps, now: { now ?? Date() }, files: RootedFiles(roots: [project.root, apps])))
+        return CheckContext(project: project, machine: Machine(environment: environment, home: project.root.appending(path: "home"), runner: runner, processID: processID, applications: apps, now: { now ?? Date() }, files: files ?? RootedFiles(roots: [project.root, apps] + reading)))
     }
 }
