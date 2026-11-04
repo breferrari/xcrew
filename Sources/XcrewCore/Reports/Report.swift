@@ -26,7 +26,8 @@ public struct Report: Sendable, Equatable {
     public var reading: Reading
     /// A test run's result bundle, which the ledger keeps for a test's first red run.
     public var bundle: String?
-    /// The note on another Xcode than the pin's: apart from the notes, since the mod shows it once a session for each pin.
+    /// The note on another Xcode than the pin's, for a failure whose errors another SDK or toolchain gives: apart from the
+    /// notes, since the mod shows it once a session for each pin.
     public var xcodePinNote: PinNote?
     /// Why the run failed when the cause is the Mac, with its fix (`Why`): the note that leads `notes`, apart, so the
     /// failures pane can open with it.
