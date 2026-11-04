@@ -351,6 +351,61 @@ struct MobileText: Sendable {
         return (MobileText(lines: replaced), max(entries.count - failures.count, 0))
     }
 
+    /// The text with each test Test Failures lists under more than one name, as a Swift Testing test under its display
+    /// name from the bundle and from the log, folded into one entry under the bundle's id `id` gives the names: the first
+    /// entry's message, then every line below any of them, and another's message where it differs, each once, before the
+    /// first's place; the section's count lowered by those folded in. A test's own failure and its crash stay apart, and
+    /// a test listed twice under one name, as a repeated run's, is left as it is. Nil when nothing folds.
+    func folding(by id: (TestID) -> TestID?) -> MobileText? {
+        guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
+        let ending = failuresEnd(after: heading)
+        var entries: [(range: Range<Int>, failing: (test: TestID, message: String))] = []
+        var index = heading + 1
+        while index < ending {
+            guard let failing = lines[index].failing else { index += 1; continue }
+            var end = index + 1
+            while end < ending, lines[end].failing == nil, !lines[end].isBlank, lines[end].location != nil || lines[end].text.hasPrefix(Self.entryIndent) { end += 1 }
+            entries.append((index..<end, failing))
+            index = end
+        }
+        let keyed = entries.indices.compactMap { entry in id(entries[entry].failing.test).map { (FailureNotes.FailedLine(test: $0, isCrash: FailureNotes.isCrash(entries[entry].failing.message)), entry) } }
+        let groups = Dictionary(grouping: keyed, by: \.0).filter { _, group in group.count > 1 && Set(group.map { entries[$0.1].failing.test }).count == group.count }
+        guard !groups.isEmpty else { return nil }
+        // Each folded test's entry, by where its first one starts; the others it folds in, by where each starts.
+        var foldedInto: [Int: [Line]] = [:], dropped: Set<Int> = []
+        for (key, group) in groups {
+            let (first, rest) = (entries[group[0].1], group.dropFirst().map { entries[$0.1] })
+            var below = Array(lines[first.range.dropFirst()])
+            var seen = Set(below.map { $0.text.trimmingCharacters(in: .whitespaces) } + [first.failing.message])
+            let added = rest.flatMap { other in [Line(Self.entryIndent + other.failing.message)] + lines[other.range.dropFirst()] }
+                .filter { seen.insert($0.text.trimmingCharacters(in: .whitespaces)).inserted }
+            below.insert(contentsOf: added, at: below.last.map(Self.isPlace) == true ? below.count - 1 : below.count)
+            let title = Line("  ✗ \(key.test.suite.isEmpty ? TestID.unknownSuite : key.test.suite) / \(key.test.function): \(first.failing.message)")
+            foldedInto[first.range.lowerBound] = [title] + below
+            dropped.formUnion(rest.map(\.range.lowerBound))
+        }
+        var replaced = Array(lines[...heading])
+        replaced[heading] = Self.counting(lines[heading], by: -dropped.count)
+        var line = heading + 1
+        while line < lines.count {
+            guard let entry = entries.first(where: { $0.range.lowerBound == line }), foldedInto[line] != nil || dropped.contains(line) else {
+                replaced.append(lines[line])
+                line += 1
+                continue
+            }
+            replaced += foldedInto[line] ?? []
+            line = entry.range.upperBound
+            // A dropped entry goes with the blank line that ends it.
+            if dropped.contains(entry.range.lowerBound), line < lines.count, lines[line].isBlank { line += 1 }
+        }
+        return MobileText(lines: replaced)
+    }
+
+    /// Whether a line below a failure's `✗` line is its place: a path with its line, or a file alone, `File.swift:12`.
+    static func isPlace(_ line: Line) -> Bool {
+        line.location != nil || line.text.trimmingCharacters(in: .whitespaces).wholeMatch(of: /[^\s\/]+\.\w+:\d+/) != nil
+    }
+
     /// How MobileBuildMCP indents the lines below a failure's `✗` line, its place among them.
     static let entryIndent = "    "
 

@@ -295,6 +295,14 @@ func failingRunText(passing: Int) -> String {
 
     static let crash = "✗ CrashTests / testOutOfRange(): Crash: xctest at CrashTests.testOutOfRange()\n    ProbeTests.swift:35\n"
 
+    /// A Swift Testing test's display name is its name in a failure line, spaces and all: the nested capture's
+    /// `Inner / Adds numbers: Expectation failed: 1 + 1 == 3`, its message from the first `: ` after the name.
+    @Test func aDisplayNameWithSpacesIsATestsName() throws {
+        let failing = try #require(MobileBuildMCPLine.test(in: "Inner / Adds numbers: Expectation failed: 1 + 1 == 3"))
+        #expect(failing.test == TestID(suite: "Inner", name: "Adds numbers"))
+        #expect(failing.message == "Expectation failed: 1 + 1 == 3")
+    }
+
     @Test func aFailureGetsTheLocationTheBundleRecorded() async throws {
         let bundle = "\(Captured.workspace)/result-bundles/test_sim_1.xcresult"
         let runner = FakeRunner(responses: [

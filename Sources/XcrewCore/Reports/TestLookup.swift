@@ -1,6 +1,6 @@
 /// The result bundle's test cases, and the one rule a test the run's text names is found among them by: its own id, a
 /// name from `(Unknown Suite)` as the top-level test of that name, else the one nested suite's test whose id ends with
-/// it, else the `System Failures` case its crash is filed under.
+/// it, else the one test whose display name it is, else the `System Failures` case its crash is filed under.
 /// Built once from a test list, so each name is found without reading every id again.
 struct TestLookup {
     /// The test list's cases under each test's id, as `ResultBundle.testCases(in:)` reads them.
@@ -10,6 +10,9 @@ struct TestLookup {
     /// Each nested id under its name and every ending of it after a `/` that still holds one, sorted: the ids a name can
     /// mean, the text's `Inner/fails` or `look`'s `B/Inner/fails` for `A/B/Inner/fails`.
     private let byEnding: [String: [TestID]]
+    /// Each Swift Testing test with a display name, as `@Test("Adds numbers")`, under the names MobileBuildMCP's text
+    /// gives it: its innermost suite's and `(Unknown Suite)`'s, sorted. A top-level test has only the second.
+    private let byDisplayName: [TestID: [TestID]]
 
     /// How a test the text names is found among the result bundle's ids.
     enum Resolution: Sendable, Equatable {
@@ -44,6 +47,13 @@ struct TestLookup {
             }
         }
         self.byEnding = byEnding.mapValues { $0.sorted { $0.shown < $1.shown } }
+        var byDisplayName: [TestID: [TestID]] = [:]
+        for (id, nodes) in cases {
+            guard let shown = nodes.first?["name"] as? String, shown != id.function, shown != id.name else { continue }
+            let suites = (id.suite.isEmpty ? [] : [id.suite]) + id.name.split(separator: "/").dropLast().map(String.init)
+            for suite in [suites.last, TestID.unknownSuite].compactMap(\.self) { byDisplayName[TestID(suite: suite, name: shown), default: []].append(id) }
+        }
+        self.byDisplayName = byDisplayName.mapValues { $0.sorted { $0.shown < $1.shown } }
     }
 
     /// The test cases and the crash cases a test list's `nodes` hold.
@@ -60,6 +70,9 @@ struct TestLookup {
         let nested = byEnding[test.shown] ?? []
         if nested.count == 1 { return .found(nested[0]) }
         if !nested.isEmpty { return .ambiguous(nested) }
+        let displayed = byDisplayName[test] ?? []
+        if displayed.count == 1 { return .found(displayed[0]) }
+        if !displayed.isEmpty { return .ambiguous(displayed) }
         return crashCases[test].map { .found($0) } ?? .missing
     }
 }

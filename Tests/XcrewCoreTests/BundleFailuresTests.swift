@@ -704,16 +704,27 @@ struct BundleFailuresTests {
         #expect(result.components(separatedBy: "✗ Q / B/Inner/fails()").count == 2, "\(result)")
     }
 
-    /// A failure the bundle records whose message and place match a failure the text already lists gets no line of its
-    /// own: the nested capture's display-named test, which MobileBuildMCP lists as `(Unknown Suite) / Adds numbers` with
-    /// its place and as `Inner / Adds numbers`, isn't added a third time as `Outer / Inner/addsNumbers()`. It stays listed
-    /// twice, as MobileBuildMCP lists it, until display names are read as the bundle's.
-    @Test func aFailureTheTextListsByItsMessageAndPlaceGetsNoLineOfItsOwn() async throws {
+    /// A display-named test is listed once, under the bundle's name: the nested capture's `@Test("Adds numbers")`, which
+    /// MobileBuildMCP lists as `(Unknown Suite) / Adds numbers` with its place and as `Inner / Adds numbers`, is one entry
+    /// as `Outer / Inner/addsNumbers()`, every distinct line below either kept before its place, and the heading counts it
+    /// once. The report has it once, under that name, with no note that the bundle disagrees.
+    @Test func aDisplayNamedTestIsListedOnceUnderTheBundlesName() async throws {
         let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("nested")) --compact": .init(status: 0, stdout: try Raw.file("nested.tests.json"))])
         let report = await Report.make(kind: .test, output: try Raw.output("nested"), home: Captured.home, runner: runner)
-        let result = try report.result ?? Raw.text("nested")
-        #expect(!result.contains("✗ Outer / Inner/addsNumbers()"), "\(result)")
-        #expect(result.contains("✗ (Unknown Suite) / Adds numbers:") && result.contains("✗ Inner / Adds numbers:"), "\(result)")
+        let result = try #require(report.result)
+        #expect(result.contains("Test Failures (4):"), "\(result)")
+        #expect(!result.contains("Adds numbers"), "\(result)")
+        #expect(result.contains("""
+              ✗ Outer / Inner/addsNumbers(): Expectation failed: 1 + 1 == 3
+                one and one
+                1 + 1 == 3 → false
+                  1 + 1 → 2
+                1 + 1 → 2: one and one
+                NestedTests.swift:29
+
+            """), "\(result)")
+        #expect(report.failures.filter(\.isTest).map(\.title).filter { $0.contains("ddsNumbers") || $0.contains("Adds numbers") } == ["Outer/Inner/addsNumbers"])
+        #expect(report.failures.allSatisfy { !$0.message.contains("no entry for under that name") }, "\(report.failures)")
     }
 
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
