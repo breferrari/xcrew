@@ -46,6 +46,54 @@ import XcrewTestSupport
         }
     }
 
+    // MARK: The plugin directory
+
+    /// The directory's rule read on snippets, so the test below holds the mod to what the rule says, not to what the
+    /// reader happens to do. A call `$` goes to whole is read as a plain call too, with nothing chained on it: the
+    /// directory refused `await build($).catch(…)`, though the rule's words allow it.
+    @Test func theDirectoryRuleReadsEachUseOfDollarAndOn() {
+        let module = #"""
+        import { read, update } from 'claude-code'
+        export const register: Register = (on) => {
+          on('session.start', async ($, e, next) => {
+            await $.ui.status('x') // $.plugin.root in a comment
+            const said = `${$.plugin.name} and '$.x'`
+            return helper($, read($, state), /\$.plugin/)
+          })
+          on('tool.call', { tool: 'a' }, async $ => ({ result: await helper($) }))
+          const root = $.plugin.root
+          other.helper($)
+          imported($)
+          const alias = $
+          void on
+          void helper($).catch(() => undefined)
+          await update($, state, () => 1).then(() => true)
+        }
+        async function helper($: EngineInterface, n?: number): Promise<void> { return update($, state, () => n) }
+        """#
+        #expect(DirectoryRule.breaches(in: module).map(\.description) == [
+            "5: const said = `${$.plugin.name} and '$.x'`",
+            "9: const root = $.plugin.root",
+            "10: other.helper($)",
+            "11: imported($)",
+            "12: const alias = $",
+            "13: void on",
+            "14: void helper($).catch(() => undefined)",
+            "15: await update($, state, () => 1).then(() => true)",
+        ])
+    }
+
+    /// Every mod file meets the plugin directory's rule, which blocks a plugin whose hooks module breaks it.
+    @Test func everyModFileMeetsTheDirectoryRule() throws {
+        let folder = Self.repository.appending(path: "hooks/mod")
+        let files = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasSuffix(".ts") && !$0.hasSuffix(".test.ts") }.sorted()
+        #expect(files.contains("register.ts"))
+        for file in files {
+            let breaches = DirectoryRule.breaches(in: try text("hooks/mod/\(file)"))
+            #expect(breaches.isEmpty, "\(file): \(breaches)")
+        }
+    }
+
     // MARK: Plugin hooks
 
     /// The spinner text reads like the rest of Claude Code; the hook's name already says it's Xcrew's.

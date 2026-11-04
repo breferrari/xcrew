@@ -270,9 +270,9 @@ export const register: Register = on => {
     // meanwhile, a test run asks for them, which the report reads within its own time.
     const writesAtStart = ledgerWritesQueued
     let knownPassed: boolean | undefined
-    void asksForPassed($, kind).then(asks => {
-      knownPassed = asks
-    })
+    void (async () => {
+      knownPassed = await asksForPassed($, kind)
+    })()
     const listsPassed = () => kind === 'test' && ((knownPassed ?? true) || ledgerWritesQueued !== writesAtStart)
     // However the call ends, the run stops counting, unless it goes on in the background; one that failed beneath leaves
     // the band too.
@@ -452,8 +452,8 @@ export const register: Register = on => {
   }).catch(async ($, e, next) => ({ text: `/xcrew ${(e.args ?? '').trim()} couldn't answer: ${next.error?.message ?? 'it failed'}` }))
   on('ui.render', { component: 'Pane', requestId: FAILURES_PANE }, async ($, e) => paneTree($.ui.resolve(e), await read($, failuresState)))
   on('ui.render', { component: 'Pane', requestId: SETUP_PANE }, async ($, e) => formTree($.ui.resolve(e) as unknown as FormElements, await read($, formState), {
-    pick: (key, value) => void pickInForm($, key, value).catch(() => undefined),
-    write: () => void writeFromForm($).catch(() => undefined),
+    pick: (key, value) => void quietly(() => pickInForm($, key, value)),
+    write: () => void quietly(() => writeFromForm($)),
     close: () => void $.ui.close({ id: SETUP_PANE }).catch(() => undefined),
   }))
   // The one unmatched session start hook: offers `/xcrew`, and looks for problems without holding the session up.
@@ -463,7 +463,7 @@ export const register: Register = on => {
     for (const tool of [LEDGER_TOOL, AFFECTED_TOOL, LOOK_TOOL, EVIDENCE_TOOL]) await quietly(() => $.tool.register(tool))
     startOver()
     void quietly(() => buildInBackground($))
-    void loadProblems($).catch(() => undefined)
+    void quietly(() => loadProblems($))
     void quietly(() => readXcodeStart($))
     // The card is saved from the history as it's left: fresh, and this version's.
     void quietly(() => pruneHistory($)).then(() => saveCard($))
@@ -490,7 +490,7 @@ export const register: Register = on => {
     }
     if (doctorOnNextPrompt) {
       doctorOnNextPrompt = false
-      void loadProblems($).catch(() => undefined)
+      void quietly(() => loadProblems($))
     }
     void (async () => {
       if (!drawsBand((await quietly(() => $.session.surfaces())) ?? [])) return
@@ -636,7 +636,10 @@ async function dropUndone($: EngineInterface, stale: StaleProject): Promise<{ st
 
 /** Changes the marks of a stale project; false when the state couldn't be written. */
 function markStale($: EngineInterface, change: (stale: StaleProject | null) => StaleProject | null): Promise<boolean> {
-  return quietly(() => update($, staleState, change).then(() => true)).then(Boolean)
+  return quietly(async () => {
+    await update($, staleState, change)
+    return true
+  }).then(Boolean)
 }
 
 /** The person's answer to `question`, or nothing when there's nobody to ask: a run without a person, or a dismissed dialog. */
@@ -702,7 +705,7 @@ async function askForBuild($: EngineInterface, at?: number): Promise<string | Fa
  * this build through the shim's lock.
  */
 function buildInBackground($: EngineInterface): void {
-  void askForBuild($).catch(() => undefined)
+  void quietly(() => askForBuild($))
 }
 
 /**
@@ -711,7 +714,7 @@ function buildInBackground($: EngineInterface): void {
  * it couldn't be built, the call ends with why, as the shim would only build again.
  */
 async function xcrew($: EngineInterface, args: string[], stdin?: string, waitsOn?: WaitsOn): Promise<Ran> {
-  const binary = await build($).catch(() => undefined)
+  const binary = await quietly(() => build($))
   if (typeof binary === 'object') return { stdout: '', stderr: binary.failed, exitCode: 1 }
   if (binary) {
     try {
@@ -755,10 +758,12 @@ async function showEndingOf($: EngineInterface, startedAt: number, ending: NonNu
  * couldn't run, or gave no answer xcrew could read.
  */
 async function asked($: EngineInterface, args: string[], stdin?: string, waitsOn?: WaitsOn): Promise<{ answer: unknown } | { failed: string }> {
-  const ran = await xcrew($, args, stdin, waitsOn).then(
-    done => done,
-    (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
-  )
+  let ran: Ran | Error
+  try {
+    ran = await xcrew($, args, stdin, waitsOn)
+  } catch (error) {
+    ran = error instanceof Error ? error : new Error(String(error))
+  }
   if (ran instanceof Error) return { failed: couldntRun(args, ran) }
   if (endedQuietly(ran)) return { answer: undefined }
   const answered = answerOf(ran)
@@ -808,8 +813,8 @@ function readWent($: EngineInterface, question: string, failed: string | undefin
   if (change === 'new') void quietly(() => $.clock.after(WARNING_FOR_MS + 1, () => void quietly(() => showVisibleProblems($))))
 }
 
-function runPhase($: EngineInterface, tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined) {
-  return answerInBackground($, phaseArgs(tool, launches, since, expectedTests, log)).then(phaseOf)
+async function runPhase($: EngineInterface, tool: string, launches: boolean, since: number, expectedTests: number | undefined, log: string | undefined) {
+  return phaseOf(await answerInBackground($, phaseArgs(tool, launches, since, expectedTests, log)))
 }
 
 /**
@@ -830,9 +835,15 @@ async function isGeneratedProject($: EngineInterface): Promise<boolean> {
 }
 
 /** A CLI command's own text, or why it couldn't run. */
-function cliText($: EngineInterface, args: string[]): Promise<string> {
+async function cliText($: EngineInterface, args: string[]): Promise<string> {
   // With nothing printed and an ending that wasn't well, how it ended is the answer.
-  return xcrew($, args).then(ran => printedOr(args, ran, `${ran.stdout}${ran.stderr}`), error => couldntRun(args, error))
+  let ran: Ran
+  try {
+    ran = await xcrew($, args)
+  } catch (error) {
+    return couldntRun(args, error)
+  }
+  return printedOr(args, ran, `${ran.stdout}${ran.stderr}`)
 }
 
 /** Opens the setup form and reads its choices behind it; where nothing draws pickers, names the skill. */
@@ -842,7 +853,7 @@ async function openForm($: EngineInterface): Promise<string> {
   const opened = await $.ui.open({ id: SETUP_PANE, title: 'xcrew setup' })
   if (!opened.isPlaced) return `The setup form couldn't be placed${'reason' in opened && opened.reason ? `: ${opened.reason}` : ''}. /xcrew:setup, the skill, sets xcrew up from here.`
   // The pane says it's reading meanwhile; the command's own line waits for the choices.
-  await readChoices($).catch(() => undefined)
+  await quietly(() => readChoices($))
   return 'The setup form is open in a pane: pick, then Write config.'
 }
 
@@ -881,14 +892,14 @@ async function writeFromForm($: EngineInterface): Promise<void> {
     await quietly(() => update($, wroteConfigState, () => true))
     afterSetup($)
     // The config is xcrew's now: the form says so, and a second write needs no --force.
-    await readChoices($, taken.picks.container, written).catch(() => undefined)
+    await quietly(() => readChoices($, taken.picks.container, written))
   }
 }
 
 /** Setup may have written the profiles: their scheme is read again, and whether MobileBuildMCP needs a restart. */
 function afterSetup($: EngineInterface): void {
   sessionProfileSchemes = new Map()
-  void loadProblems($).catch(() => undefined)
+  void quietly(() => loadProblems($))
 }
 
 /** A run has the band while it shows; the problems wait beneath it. */
@@ -939,7 +950,13 @@ async function evidenceNow($: EngineInterface): Promise<string> {
   if (!head) return EVIDENCE_UNAVAILABLE
   // Its stdout alone: the block is pasted into a pull request as it is, and stderr is the shim's and the tools' own.
   // With nothing printed, what it wrote instead, or how it ended, is the answer.
-  return xcrew($, ['evidence'], evidenceInput(entries)).then(ran => printedOr(['evidence'], ran, ran.stdout), error => couldntRun(['evidence'], error))
+  let ran: Ran
+  try {
+    ran = await xcrew($, ['evidence'], evidenceInput(entries))
+  } catch (error) {
+    return couldntRun(['evidence'], error)
+  }
+  return printedOr(['evidence'], ran, ran.stdout)
 }
 
 /**
