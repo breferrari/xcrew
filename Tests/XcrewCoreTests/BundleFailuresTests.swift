@@ -101,6 +101,156 @@ struct BundleFailuresTests {
         }
     }
 
+    /// The System Failures capture's crash message, naming its test.
+    static let crash = "Crash: xctest at implicit closure #1 in AssertCrashTests.test_crash()"
+
+    /// The System Failures capture's test list with its test's own failure `own`, and its crash filed under `System
+    /// Failures` beside it, as `xctest (80341) encountered an error`.
+    static func ownAndCrashListing(own: String) throws -> String {
+        var json = try #require(try JSONSerialization.jsonObject(with: Data(Raw.file("system-failure-crash.tests.json").utf8)) as? [String: Any])
+        var plans = try #require(json["testNodes"] as? [[String: Any]])
+        var bundles = try #require(plans[0]["children"] as? [[String: Any]])
+        var suites = try #require(bundles[0]["children"] as? [[String: Any]])
+        var cases = try #require(suites[0]["children"] as? [[String: Any]])
+        cases[0]["children"] = [["nodeType": "Failure Message", "name": own]]
+        suites[0]["children"] = cases
+        suites.append(["nodeType": "Test Suite", "name": "System Failures", "result": "Failed", "children": [
+            ["nodeType": "Test Case", "name": "xctest (80341) encountered an error", "nodeIdentifier": "xctest (80341) encountered an error", "result": "Failed",
+             "children": [["nodeType": "Failure Message", "name": Self.crash]]],
+        ]])
+        bundles[0]["children"] = suites
+        plans[0]["children"] = bundles
+        json["testNodes"] = plans
+        return String(decoding: try JSONSerialization.data(withJSONObject: json), as: UTF8.self)
+    }
+
+    /// A test with a failure of its own and a crash the bundle files under `System Failures` keeps both, each said once:
+    /// neither stands for the other. Composed from the System Failures capture: its test given an assertion's failure,
+    /// and its crash filed under `System Failures` beside it, the text listing both.
+    @Test func aTestsOwnFailureAndItsSystemFailuresCrashAreBothKept() async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let crash = Self.crash
+        let own = #"XCTAssertEqual failed: ("1") is not equal to ("2")"#
+        let filed = "  ✗ AssertCrashTests / test_crash(): \(crash)"
+        let text = try Raw.text("system-failure-crash").replacingOccurrences(of: "Test Failures (1):", with: "Test Failures (2):")
+            .replacingOccurrences(of: filed, with: "  ✗ AssertCrashTests / test_crash(): \(own)\n\n  ✗ System Failures / xctest (80341) encountered an error: \(crash)")
+        let composed = try Self.ownAndCrashListing(own: own)
+        #expect(composed.contains("XCTAssertEqual failed") && composed.contains("System Failures"))
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: composed)])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(report.failures.filter(\.isTest).map { "\($0.title) | \($0.message)" } == [
+            "AssertCrashTests/test_crash | \(own)",
+            "AssertCrashTests/test_crash | \(crash)",
+        ])
+    }
+
+    /// xcresulttool as `answers` has it, and exporting the capture's crash log for the `System Failures` case alone, as the
+    /// bundle keeps a crash's log with the case it files the crash under.
+    struct CrashCaseRunner: CommandRunning {
+        let answers: FakeRunner
+        let crashLog: String
+        var exportedFor = "xctest (80341) encountered an error"
+
+        func which(_ name: String) -> String? { answers.which(name) }
+
+        func run(_ argv: [String], stdin: Data?) async -> CommandResult {
+            if argv.starts(with: ["xcrun", "xcresulttool", "export", "attachments"]), let output = argv.firstIndex(of: "--output-path").map({ argv[$0 + 1] }) {
+                if argv.firstIndex(of: "--test-id").map({ argv[$0 + 1] }) == exportedFor {
+                    try? crashLog.write(toFile: output + "/crash.ips", atomically: true, encoding: .utf8)
+                }
+                return .init(status: 0)
+            }
+            return await answers.run(argv, stdin: stdin)
+        }
+    }
+
+    /// A test with an assertion's failure and a crash under `System Failures` has each one's notes under its own line:
+    /// the crash's exception and frames, from the log the bundle keeps with its `System Failures` case, under the crash,
+    /// and no line saying no crash log came. Composed as above.
+    @Test func eachFailuresNotesGoUnderItsOwnLine() async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let own = #"XCTAssertEqual failed: ("1") is not equal to ("2")"#
+        let filed = "  ✗ AssertCrashTests / test_crash(): \(Self.crash)"
+        let text = try Raw.text("system-failure-crash").replacingOccurrences(of: "Test Failures (1):", with: "Test Failures (2):")
+            .replacingOccurrences(of: filed, with: "  ✗ AssertCrashTests / test_crash(): \(own)\n    /work/App/Tests/AssertCrashTests.swift:7\n\n  ✗ System Failures / xctest (80341) encountered an error: \(Self.crash)")
+        let answers = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Self.ownAndCrashListing(own: own))])
+        let runner = CrashCaseRunner(answers: answers, crashLog: try Raw.file("system-failure-crash.crash.ips"))
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        let lines = try #require(report.result).components(separatedBy: "\n")
+        let assertion = try #require(lines.firstIndex { $0.contains(own) })
+        let crash = try #require(lines.firstIndex { $0.contains("System Failures / xctest (80341)") })
+        let crashed = try #require(lines.firstIndex { $0.hasPrefix("      crashed: ") }, "\(lines)")
+        #expect(assertion < crash && crash < crashed, "\(lines)")
+        #expect(!lines.contains { $0.contains("no crash log came") }, "\(lines)")
+    }
+
+    /// Where the bundle keeps the crash's log with the test instead, the crash is looked up there next: its note still
+    /// gives the exception and frames, not that no log came.
+    @Test func aCrashsLogKeptWithItsTestIsFoundThere() async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let own = #"XCTAssertEqual failed: ("1") is not equal to ("2")"#
+        let filed = "  ✗ AssertCrashTests / test_crash(): \(Self.crash)"
+        let text = try Raw.text("system-failure-crash").replacingOccurrences(of: "Test Failures (1):", with: "Test Failures (2):")
+            .replacingOccurrences(of: filed, with: "  ✗ AssertCrashTests / test_crash(): \(own)\n    /work/App/Tests/AssertCrashTests.swift:7\n\n  ✗ System Failures / xctest (80341) encountered an error: \(Self.crash)")
+        let answers = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Self.ownAndCrashListing(own: own))])
+        var runner = CrashCaseRunner(answers: answers, crashLog: try Raw.file("system-failure-crash.crash.ips"))
+        runner.exportedFor = "AssertCrashTests/test_crash()"
+        let report = await Report.make(kind: .test, output: ToolOutput(text: text, server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        let lines = try #require(report.result).components(separatedBy: "\n")
+        #expect(lines.contains { $0.hasPrefix("      crashed: ") }, "\(lines)")
+        #expect(!lines.contains { $0.contains("no crash log came") }, "\(lines)")
+    }
+
+    /// One crash the bundle lists both under its test and under `System Failures` is one failure: it's a crash either
+    /// way.
+    @Test func oneCrashFiledBothWaysIsOneFailure() async throws {
+        let bundle = try Raw.bundle("system-failure-crash")
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Self.ownAndCrashListing(own: Self.crash))])
+        let report = await Report.make(kind: .test, output: ToolOutput(text: try Raw.text("system-failure-crash"), server: .mobileBuildMCP, isError: true), home: Captured.home, runner: runner)
+        #expect(report.failures.filter(\.isTest).map { "\($0.title) | \($0.message)" } == ["AssertCrashTests/test_crash | \(Self.crash)"])
+    }
+
+    /// A test whose name matches several of the bundle's tests, with a failure of its own and a crash, says so once,
+    /// under its first line.
+    @Test func anAmbiguousTestsTwoLinesSayItOnce() async throws {
+        let test = TestID(suite: "Inner", name: "testX")
+        let text = MobileText("\n🧪 Test\n\nTest Failures (2):\n\n  ✗ Inner / testX(): XCTAssertEqual failed\n\n  ✗ System Failures / xctest (9) encountered an error: Crash: xctest at Inner.testX()\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        let ids = [TestID(xcresultID: "A/Inner/testX()"), TestID(xcresultID: "B/Inner/testX()")]
+        let pending = try #require(await FailureNotes.lookingUp(text, from: ResultBundle(path: "/b.xcresult", runner: FakeRunner()), bundleIDs: [test: .ambiguous(ids)]))
+        let annotated = try #require(pending.adding(skips: [])).text.text
+        #expect(annotated.components(separatedBy: "more than one test by that name").count == 2, "\(annotated)")
+    }
+
+    /// An ambiguous test whose crash comes first and has a `System Failures` case of its own is looked up under that
+    /// case: its crash's place, then the note, said once; the test's bare name is asked of nothing.
+    @Test(arguments: [("xctest (80341) encountered an error", true), ("AssertCrashTests/test_crash()", false)])
+    func anAmbiguousTestsCrashIsLookedUpUnderItsCaseAlone(keptUnder: String, isFound: Bool) async throws {
+        let test = TestID(suite: "AssertCrashTests", name: "test_crash")
+        let text = MobileText("\n🧪 Test\n\nTest Failures (2):\n\n  ✗ System Failures / xctest (80341) encountered an error: \(Self.crash)\n\n  ✗ AssertCrashTests / test_crash(): XCTAssertEqual failed\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        var runner = CrashCaseRunner(answers: FakeRunner(), crashLog: try Raw.file("system-failure-crash.crash.ips"))
+        runner.exportedFor = keptUnder
+        let ids = [TestID(xcresultID: "A/AssertCrashTests/test_crash()"), TestID(xcresultID: "B/AssertCrashTests/test_crash()")]
+        let pending = try #require(await FailureNotes.lookingUp(text, from: ResultBundle(path: try Raw.bundle("system-failure-crash"), runner: runner), bundleIDs: [test: .ambiguous(ids)], crashCases: [test: TestID(xcresultID: "xctest (80341) encountered an error")]))
+        let lines = try #require(pending.adding(skips: [])).text.text.components(separatedBy: "\n")
+        let note = try #require(lines.firstIndex { $0.contains("more than one test by that name") }, "\(lines)")
+        #expect(lines.filter { $0.contains("more than one test by that name") }.count == 1, "\(lines)")
+        #expect(lines.contains { $0.hasPrefix("      crashed: ") } == isFound, "\(lines)")
+        if isFound { #expect(lines[note - 1] == "    ProbeTests.swift:42" && lines[note - 2].contains("System Failures"), "\(lines)") }
+    }
+
+    /// A repeated test's crash line is no other run of its assertion: with neither placed, the crash stays, with its
+    /// notes, and only a later run's line of the same kind goes.
+    @Test func aRepeatedTestsCrashIsNoOtherRunOfItsAssertion() throws {
+        let test = TestID(suite: "Suite", name: "testPop")
+        let text = MobileText("\n🧪 Test\n\nTest Failures (3):\n\n  ✗ Suite / testPop(): XCTAssertEqual failed\n\n  ✗ Suite / testPop(): XCTAssertEqual failed\n\n  ✗ System Failures / xctest (9) encountered an error: Crash: xctest at Suite.testPop()\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        var notes = FailureNotes.Notes()
+        notes.repeated = [test]
+        notes.failures[.init(test: test, isCrash: true)] = ["      crashed: EXC_BREAKPOINT (SIGTRAP)"]
+        let annotated = try #require(FailureNotes.annotate(text, with: notes)).text
+        #expect(annotated.contains("Test Failures (2):"), "\(annotated)")
+        #expect(annotated.contains("encountered an error: Crash: xctest at Suite.testPop()\n      crashed: EXC_BREAKPOINT (SIGTRAP)"), "\(annotated)")
+    }
+
     /// A test the text lists as failed that the bundle counts as passed, as one a retry passed, is no failure, and a
     /// note says the two disagree; the repeated run's note says how its runs went, once.
     @Test func aTestTheTextFailsAndTheBundlePassesIsSaidSo() async throws {
