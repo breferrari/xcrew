@@ -272,7 +272,8 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// A call moved to the background, from its task's notification: the server's text, of a task that completed or
     /// failed, read as the call's own, its shorter result put back in the notification Claude reads. MobileBuildMCP's text
-    /// on one line, as a failed task's comes, is read on its own lines, and goes back on them. Else the run's log at
+    /// on one line, as a failed task's comes, is read on its own lines, and goes back on them; cut before the files that
+    /// name its result bundle, it reads the bundle its log names. Else the run's log at
     /// `log`, when there is one, read with `launches` as a call's that installs and launches after its build, whose
     /// build's success is no outcome; else no outcome.
     public static func make(kind: Kind, notification text: String, log: String?, launches: Bool = false, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
@@ -281,8 +282,10 @@ public struct Report: Sendable, Equatable, Codable {
         if let notification, let output = notification.serverOutput {
             let unfolded = server == .mobileBuildMCP ? OneLineText.unfolded(output.text) : nil
             let text = unfolded ?? output.text
-            if !(output.isError && ToolOutput(text: text, server: server, isError: true).isNotTheServers) {
-                var read = await make(kind: kind, output: ToolOutput(text: text, server: server, isError: output.isError), home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine)
+            let given = ToolOutput(text: text, server: server, isError: output.isError)
+            if !(output.isError && given.isNotTheServers) {
+                let logged = unfolded != nil && given.xcresultPath == nil ? log.flatMap { RunLog.resultBundle(in: RunLog.text(ofLogAt: $0)) } : nil
+                var read = await make(kind: kind, output: given, home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine, bundle: logged)
                 if read.isUnread != true {
                     if let shorter = read.result ?? unfolded { read.result = notification.replacingResult(with: shorter) }
                     return read
@@ -293,13 +296,14 @@ public struct Report: Sendable, Equatable, Codable {
         return await make(kind: launches ? .run : kind, log: RunLog.text(ofLogAt: log), runner: runner, repeated: repeated, listsPassed: listsPassed)
     }
 
-    /// A result Claude Code saved to a file is read back from it.
-    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
+    /// A result Claude Code saved to a file is read back from it. A test run's result bundle is the one its text names,
+    /// else `logged`, the one its log names, for a text cut before it names one.
+    public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil, bundle logged: String? = nil) async -> Report {
         let saved = savedPath(output.text)
         let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, server: output.server, isError: output.isError) } ?? output
         let isTest = kind == .test
         // MobileBuildMCP's text omits what its result bundle knows; the Xcode MCP's results carry their own.
-        let bundle = isTest ? ResultBundle.path(in: read, home: home).map { ResultBundle(path: $0, runner: runner) } : nil
+        let bundle = isTest ? (ResultBundle.path(in: read, home: home) ?? logged).map { ResultBundle(path: $0, runner: runner) } : nil
         // The summary is needed whatever the run came to, so it's asked for while the failures are looked up.
         async let bundleSummary: String? = { await bundle?.summary() }()
         // MobileBuildMCP writes "Test succeeded" with no count when no test ran and when it couldn't count them alike: the

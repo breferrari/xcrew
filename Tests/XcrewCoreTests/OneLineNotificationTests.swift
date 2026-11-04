@@ -98,3 +98,43 @@ struct OneLineTextTests {
         }
     }
 }
+
+/// A one-line notification of a run with a result bundle: the failures are the bundle's, whole, as in the foreground,
+/// though one line joins a Swift Testing failure's detail lines to its message. The test bed's `shapes` run, folded as
+/// Claude Code folds a failed task's text: whole, and cut before its summary and the files that name the bundle, whose
+/// log names it.
+@Suite(.enabled(if: Testbed.isCheckedOut, "no test bed"))
+struct OneLineBundleTests {
+    static func runner() throws -> FakeRunner {
+        let bundle = try Raw.bundle("shapes")
+        var responses = ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": CommandResult(status: 0, stdout: try Raw.file("shapes.tests.json"))]
+        for test in ["fails", "knownIssue"] {
+            responses["xcrun xcresulttool get test-results test-details --test-id ShapesTests/\(test)() --path \(bundle) --compact"] = .init(status: 0, stdout: try Raw.file("shapes.details.ShapesTests.\(test).json"))
+        }
+        return FakeRunner(responses: responses)
+    }
+
+    static func notification(_ text: String) -> String {
+        "<task-notification>\n<task-id>k5dse2p6c</task-id>\n<status>failed</status>\n<summary>MCP task k5dse2p6c (plugin:xcrew:MobileBuildMCP/test_sim) failed.</summary>\n<result>\nTask failed: \(text)\n</result>\n</task-notification>"
+    }
+
+    /// `fails()`'s failure as the bundle records it, as the foreground report gives it.
+    static let fails = ToolOutput.Failure(title: "ShapesTests/fails", message: #"Expectation failed: Kit.name == "Other""#, where: "ShapesTests.swift:10", isTest: true, target: "KitTests")
+
+    static let folded: String = (try? Raw.text("shapes"))?.trimmingCharacters(in: .whitespacesAndNewlines).replacing(#/\s+/#, with: " ") ?? ""
+
+    @Test func aOneLineNotificationsFailuresAreTheBundles() async throws {
+        let report = await Report.make(kind: .test, notification: Self.notification(Self.folded), log: nil, server: .mobileBuildMCP, home: Captured.home, runner: try Self.runner())
+        #expect(report.failures == [Self.fails], "\(report.failures)")
+    }
+
+    @Test func aCutNotificationsFailuresAreTheBundleItsLogNames() async throws {
+        let cut = String(Self.folded[..<(Self.folded.range(of: " ❌ ")?.lowerBound ?? Self.folded.endIndex)]) + "… [truncated]"
+        let log = FileManager.default.temporaryDirectory.appending(path: "xcrew-shapes-\(UUID().uuidString).log")
+        defer { try? FileManager.default.removeItem(at: log) }
+        try "Test session results, code coverage, and logs:\n\t\(try Raw.bundle("shapes"))\n\n** TEST EXECUTE FAILED **\n".write(to: log, atomically: true, encoding: .utf8)
+        let report = await Report.make(kind: .test, notification: Self.notification(cut), log: log.path, server: .mobileBuildMCP, home: Captured.home, runner: try Self.runner())
+        #expect(report.failures == [Self.fails], "\(report.failures)")
+        #expect(report.bundle == (try Raw.bundle("shapes")))
+    }
+}
