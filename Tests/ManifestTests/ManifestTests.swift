@@ -50,14 +50,15 @@ import XcrewTestSupport
 
     /// The directory's rule read on snippets, so the test below holds the mod to what the rule says, not to what the
     /// reader happens to do. A call `$` goes to whole is read as a plain call too, with nothing chained on it: the
-    /// directory refused `await build($).catch(…)`, though the rule's words allow it.
+    /// directory refused `await build($).catch(…)`, though the rule's words allow it. The plugin's own documented
+    /// properties, as `$.plugin.root`, are read as they are; a method read without its call is not.
     @Test func theDirectoryRuleReadsEachUseOfDollarAndOn() {
         let module = #"""
         import { read, update } from 'claude-code'
         export const register: Register = (on) => {
           on('session.start', async ($, e, next) => {
             await $.ui.status('x') // $.plugin.root in a comment
-            const said = `${$.plugin.name} and '$.x'`
+            const said = `${$.session.cwd} and '$.x'`
             return helper($, read($, state), /\$.plugin/)
           })
           on('tool.call', { tool: 'a' }, async $ => ({ result: await helper($) }))
@@ -68,18 +69,19 @@ import XcrewTestSupport
           void on
           void helper($).catch(() => undefined)
           await update($, state, () => 1).then(() => true)
+          const surfaces = $.session.surfaces
         }
         async function helper($: EngineInterface, n?: number): Promise<void> { return update($, state, () => n) }
         """#
         #expect(DirectoryRule.breaches(in: module).map(\.description) == [
-            "5: const said = `${$.plugin.name} and '$.x'`",
-            "9: const root = $.plugin.root",
+            "5: const said = `${$.session.cwd} and '$.x'`",
             "10: other.helper($)",
             "11: imported($)",
             "12: const alias = $",
             "13: void on",
             "14: void helper($).catch(() => undefined)",
             "15: await update($, state, () => 1).then(() => true)",
+            "16: const surfaces = $.session.surfaces",
         ])
     }
 
@@ -1701,7 +1703,7 @@ import XcrewTestSupport
         #expect(start.contains("$.process.spawn("))
         let programs = Set(register.matches(of: /start\(\$, ([^,]+),/).map { String($0.1) })
         #expect(programs == ["shimPath($.plugin.root)", "binary"])
-        #expect(register.contains("const binary = await build("))
+        #expect(register.contains("const binary = await quietly(() => build($))"))
     }
 
     @Test func onlyToolNamesAreMatchedByPattern() throws {

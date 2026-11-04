@@ -51,9 +51,9 @@ const SETUP_PANE = 'xcrew-setup'
 
 /**
  * xcrew's mod: the only file that touches `$` or registers a hook. The plugin directory reads `$`
- * only where a hooks module passes it, whole, to a function declared at the top of the same file,
- * so every `$` call is here and every other file is plain data in, data out. docs/architecture.md
- * has the rule and the docs it comes from.
+ * only where a hooks module passes it, whole, to a function declared at the top of the same file, in a
+ * plain call with nothing chained on what it returns, so every `$` call is here and every other file is
+ * plain data in, data out. docs/architecture.md has the rule and the docs it comes from.
  *
  * Hooks on one event run in the order registered, each wrapping the ones after it: the guard
  * refuses before anything starts, so timing never counts a refused call.

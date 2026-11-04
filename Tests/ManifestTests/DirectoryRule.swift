@@ -9,6 +9,12 @@ import Foundation
 /// directory refused `await build($).catch(…)`, a call to a function declared at the top of the file, though the rule's
 /// words allow it.
 struct DirectoryRule {
+    /// The plugin's own properties, which the API declares as values, not methods: `CoreEngineInterface.plugin` in the
+    /// API types (`claude-code.d.ts`), "This plugin, as loaded: its manifest name and its directory", `name` and `root`.
+    /// A plugin can read its own directory no other way, so the rule's "each call" doesn't reach them, and the directory
+    /// didn't flag the mod's reads of `$.plugin.root`.
+    static let documentedProperties: Set = ["name", "root"]
+
     /// A use the rule refuses: its line, counted from 1, and the line's code.
     struct Breach: Equatable, CustomStringConvertible {
         let line: Int
@@ -50,6 +56,7 @@ struct DirectoryRule {
         // A property named `on` in an object, `{ on: … }`, is no use of the function.
         if name == "on", after.firstMatch(of: /^\s*:/) != nil, before.firstMatch(of: /[{,]\s*$/) != nil, !isParameter(at: index, name: name, code: code) { return true }
         if name == "$", after.firstMatch(of: /^\.[A-Za-z_]\w*\.[A-Za-z_]\w*\s*(?:<[^()]*>)?\(/) != nil { return true }
+        if name == "$", let property = after.firstMatch(of: /^\.plugin\.(\w+)\b(?!\s*\()/), documentedProperties.contains(String(property.1)) { return true }
         if name == "on", after.firstMatch(of: /^\s*\(/) != nil {
             // A registration, on a line of its own.
             return before.firstMatch(of: /(?:^|\n)[ \t]*$/) != nil
