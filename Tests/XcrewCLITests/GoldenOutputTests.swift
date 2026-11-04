@@ -47,9 +47,11 @@ struct GoldenOutputTests {
         }
 
         /// What `argv` printed, its exit status and what it wrote to standard error, with this run's folders and the test
-        /// bed's written as placeholders; the folders removed.
+        /// bed's written as placeholders; the folders removed. A command it ran that names a path outside them fails it.
         func run(_ argv: [String], _ runner: any CommandRunning = FakeRunner(), project: Project? = nil, stdin: String = "") async -> String {
-            let run = await Run(argv: argv, context: CheckContext(project: project ?? self.project, machine: machine(runner)), stdin: stdin)
+            let guarded = GuardedRunner(base: runner)
+            let run = await Run(argv: argv, context: CheckContext(project: project ?? self.project, machine: machine(guarded)), stdin: stdin)
+            GoldenOutputTests.expectWithin(guarded, [root.path] + (project.map { [$0.root.path] } ?? []))
             return neutral(run.text + "\n--- exit \(run.status)" + run.errors.map { "\nstderr: \($0)" }.joined())
         }
 
@@ -66,6 +68,24 @@ struct GoldenOutputTests {
             return neutral
         }
     }
+
+    /// The folders every run may name besides its own: the test bed; `/testbed`, where its captures say their runs were,
+    /// as they were neutralised; and the made-up bundle paths a look case gives. Neither of the last two is on a Mac.
+    static let reachable = [Testbed.root.path, "/testbed", "/runs"]
+    /// The start of each folder a result bundle's attachments are exported to, a new one for each export.
+    static let exports = FileManager.default.temporaryDirectory.appending(path: "xcrew-attachments-").path
+
+    /// A run's commands named no path outside `folders` and `reachable`, and its home isn't the Mac's own.
+    static func expectWithin(_ runner: GuardedRunner, _ folders: [String], sourceLocation: SourceLocation = #_sourceLocation) {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        #expect(!folders.contains { $0 == home || $0.hasPrefix(home + "/") }, "a run's own folder is in the Mac's home", sourceLocation: sourceLocation)
+        let outside = runner.outside(folders + reachable).filter { !$0.hasPrefix(exports) }
+        #expect(outside.isEmpty, "the run reached paths outside its folders: \(outside)", sourceLocation: sourceLocation)
+    }
+
+    /// The outputs whose report may carry a concurrency summary: one reads the docs of the Xcode its build log names from
+    /// the Mac's disk, so none may until those reads go through `Machine`.
+    static let concurrencyOutputs: Set<String> = []
 
     /// A raw capture's result text and whether it was an error, as the mod gets them.
     static func capture(_ name: String) throws -> (text: String, isError: Bool) {
@@ -200,8 +220,12 @@ struct GoldenOutputTests {
             let suffix = test.map { "-" + $0.replacingOccurrences(of: "/", with: "-") } ?? ""
             outputs.append(Output(name: "look-uitests-xcodebuild" + suffix) {
                 let place = try Place()
-                let bundle = try TestbedLookTests.bundle("xcodebuild", root: place.root)
-                return place.neutral(await Look.report(bundle: bundle, named: test, keptIn: place.home.appending(path: "images"), now: now))
+                let given = try TestbedLookTests.bundle("xcodebuild", root: place.root)
+                let guarded = GuardedRunner(base: given.runner)
+                let bundle = ResultBundle(path: given.path, runner: guarded, exportFolder: given.exportFolder)
+                let text = await Look.report(bundle: bundle, named: test, keptIn: place.home.appending(path: "images"), now: now)
+                expectWithin(guarded, [place.root.path])
+                return place.neutral(text)
             })
             outputs.append(Output(name: "look-uitests-mobilebuildmcp" + suffix) {
                 let bundle = "/runs/UITests.xcresult"
@@ -224,7 +248,9 @@ struct GoldenOutputTests {
             outputs.append(Output(name: name) {
                 let (project, context) = try TestbedEvidenceTests.project(committed: ran.addingTimeInterval(-3600), ran: ran, earlier: earlier ? ran.addingTimeInterval(-7200) : nil, earlierTests: earlier ? 3 : nil, outsideChanged: outside)
                 defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
-                let run = await Run(argv: ["evidence"], context: context, stdin: TestbedEvidenceTests.input)
+                let guarded = GuardedRunner(base: context.machine.runner)
+                let run = await Run(argv: ["evidence"], context: CheckContext(project: project, machine: context.machine.running(guarded)), stdin: TestbedEvidenceTests.input)
+                expectWithin(guarded, [project.root.deletingLastPathComponent().path])
                 let text = run.text + "\n--- exit \(run.status)" + run.errors.map { "\nstderr: \($0)" }.joined()
                 return text.replacingOccurrences(of: project.root.path, with: "<project>").replacingOccurrences(of: ProjectLayout.canonicalPath(project.root.path), with: "<project>")
             })
@@ -234,6 +260,7 @@ struct GoldenOutputTests {
 
     @Test(arguments: outputs) func eachOutputIsItsGolden(_ output: Output) async throws {
         let made = try await output.make()
+        #expect(Self.concurrencyOutputs.contains(output.name) || !made.contains("\"concurrency\":"), "\(output.name)'s report carries a concurrency summary, read from the Mac's own Xcode")
         let golden = Self.goldens.appending(path: "\(output.name).txt")
         if Self.isRecording {
             try FileManager.default.createDirectory(at: Self.goldens, withIntermediateDirectories: true)
