@@ -33,7 +33,7 @@ let package = Package(
             swiftSettings: swiftSettings
         ),
         .testTarget(name: "ShimTests", dependencies: ["XcrewTestSupport"], swiftSettings: swiftSettings),
-        .testTarget(name: "ManifestTests", dependencies: ["XcrewCLI", "XcrewCore"], swiftSettings: swiftSettings),
+        .testTarget(name: "ManifestTests", dependencies: ["XcrewCLI", "XcrewCore", "XcrewTestSupport"], swiftSettings: swiftSettings),
         .testTarget(name: "XcrewCLITests", dependencies: ["XcrewCLI", "XcrewCore", "XcrewTestSupport"], exclude: ["Goldens"], swiftSettings: swiftSettings),
     ]
 )

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import XcrewCLI
 @testable import XcrewCore
+import XcrewTestSupport
 
 /// The plugin, the mcs techpack and the Swift code each name the same things: hooks, tools,
 /// checks, prompts. These tests keep them in step, so a change in one place can't leave another
@@ -186,6 +187,16 @@ import Testing
     @Test func theModsReportTypeNamesEachFieldTheCLIWrites() throws {
         var report = Report(ok: false, detail: "d", durationMs: 1, tests: 1, failures: [], result: "r", notes: ["n"], repeated: [], passed: [], isUnread: true, bundle: "/b.xcresult", pinNote: "p", pin: "26.5 (.xcode-version)", cause: "c")
         report.scheme = "App"
+        let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any]).keys
+        let type = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export type Report = \{([\s\S]*?)\n\}/)?.1)
+        for key in keys { #expect(type.contains("  \(key)?:") || type.contains("  \(key):"), "cli.ts's Report doesn't name `\(key)`") }
+    }
+
+    /// Every key a report's reading or pin note is written under is one the mod's type for a report names: the states
+    /// exclude each other, so no one report writes them all.
+    @Test(arguments: [Report.Reading.unread(task: "k4q5tm9v2"), .verdictOnly])
+    func theModsReportTypeNamesEachStatesKeys(reading: Report.Reading) throws {
+        let report = Report(ok: false, failures: [], notes: [], reading: reading, xcodePinNote: .init(note: "p", pin: "26.5 (.xcode-version)"))
         let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any]).keys
         let type = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export type Report = \{([\s\S]*?)\n\}/)?.1)
         for key in keys { #expect(type.contains("  \(key)?:") || type.contains("  \(key):"), "cli.ts's Report doesn't name `\(key)`") }
