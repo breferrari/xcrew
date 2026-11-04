@@ -352,7 +352,6 @@ public struct Report: Sendable, Equatable, Codable {
         }
         // A repeated run's tests, each with how many of its runs failed: the notes count them, and the verdicts read them.
         let repetitions = if repeated, bundle != nil { ResultBundle.repetitions(listing: await testList()) } else { [ResultBundle.Repeated]() }
-        /// A failing test run's failures against its test list, made once, when the first question needs them.
         var failing: FailingRun?
         func failingRun() async -> FailingRun {
             if let failing { return failing }
@@ -425,7 +424,7 @@ public struct Report: Sendable, Equatable, Codable {
         // A failing test run's failed tests are its result bundle's, each failing test's target too, and the text's that
         // the bundle doesn't count as no failure; all the text's without a test list to read. Its other failures, the
         // build's and the process's, are the text's.
-        let order = if bundle != nil, isTest, !summary.ok { await failingRun().ordering(final.failures) } else { nil as (failures: [ToolOutput.Failure], note: String?)? }
+        let order = if bundle != nil, isTest, !summary.ok { await failingRun().ordering(final.failures) } else { nil as FailingRun.Ordered? }
         let failures = order?.failures ?? final.failures
         if let note = order?.note { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its

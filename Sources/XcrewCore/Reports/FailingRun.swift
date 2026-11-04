@@ -25,7 +25,8 @@ final class FailingRun {
     }
 
     /// `text` with the bundle's failed tests it doesn't list: a name's candidates where the name matches several of the
-    /// bundle's tests, the rest after its failures, each labelled. Nil when nothing changes.
+    /// bundle's tests, the rest after its failures, each labelled. Nil when nothing changes. It sets `resolutions` from
+    /// the text, so it comes before `ordering`, which adds to them.
     func placing(in text: MobileText) -> MobileText? {
         var text = text
         var changed = false
@@ -66,10 +67,14 @@ final class FailingRun {
         return changed ? text : nil
     }
 
+    /// A run's failures in the order it reported them, and the note on those the text lists as failed that the bundle
+    /// doesn't.
+    typealias Ordered = (failures: [ToolOutput.Failure], note: String?)
+
     /// `failures`, the text's, in the order the run reported them with the bundle's failed tests (`Report.inRunOrder`),
     /// and the note on those the text lists as failed that the bundle doesn't; nil when the test list can't be read, and
     /// the text's stand. Each failed test the text names gets its id in `resolutions`.
-    func ordering(_ failures: [ToolOutput.Failure]) -> (failures: [ToolOutput.Failure], note: String?)? {
+    func ordering(_ failures: [ToolOutput.Failure]) -> Ordered? {
         guard let bundled else { return nil }
         for test in failures.filter(\.isTest).map({ TestID(xcresultID: $0.title) }) where resolutions[test] == nil { resolutions[test] = lookup.resolution(of: test) }
         let recorded = ResultBundle.results(in: listing.nodes)
