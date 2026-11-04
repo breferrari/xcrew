@@ -75,11 +75,11 @@ struct GoldenOutputTests {
     /// The start of each folder a result bundle's attachments are exported to, a new one for each export.
     static let exports = FileManager.default.temporaryDirectory.appending(path: "xcrew-attachments-").path
 
-    /// A run's commands named no path outside `folders` and `reachable`, and neither its `home` nor its folders are in the
-    /// Mac's own home.
+    /// A run's commands named no path outside `folders` and `reachable`, and its `home` isn't in the Mac's own. The folders
+    /// it's given may be: a checkout, and the test bed in it, sit in a CI runner's home.
     static func expectWithin(_ runner: GuardedRunner, _ folders: [String], home: URL, sourceLocation: SourceLocation = #_sourceLocation) {
         let mine = FileManager.default.homeDirectoryForCurrentUser.path
-        #expect(!([home.path] + folders).contains { $0 == mine || $0.hasPrefix(mine + "/") }, "a run's home or folder is in the Mac's home", sourceLocation: sourceLocation)
+        #expect(home.path != mine && !home.path.hasPrefix(mine + "/"), "a run's home is in the Mac's home", sourceLocation: sourceLocation)
         let outside = runner.outside(folders + reachable).filter { !$0.hasPrefix(exports) }
         #expect(outside.isEmpty, "the run reached paths outside its folders: \(outside)", sourceLocation: sourceLocation)
     }
