@@ -2,7 +2,10 @@ import Foundation
 
 /// The test plans a project's shared schemes run by default that test under more than one configuration, so a test can
 /// fail under one and pass under another. Read from the schemes `TestSchemes` reads, never by walking the whole tree.
-enum TestPlans {
+public enum TestPlans {
+    /// Where every plan of several configurations, and every scheme it's the default of, is listed.
+    static let listedBy = "`xcrew plans` lists them all"
+
     struct Configured: Sendable, Equatable {
         let plan: String
         /// The plan's file.
@@ -11,11 +14,23 @@ enum TestPlans {
         let schemes: [String]
         let configurations: [String]
 
-        /// The plan, the schemes it's the default of, and its configurations, in a sentence.
-        var sentence: String {
-            let named = String(ResultBundle.listed(schemes.map { "`\($0)`" }, rest: ResultBundle.noList).dropFirst(2))
+        /// The plan, the schemes it's the default of, a few and the rest counted with where they're listed, and its
+        /// configurations, in a sentence: what a hook's context, which has a cap, and a test result say.
+        var sentence: String { sentence(schemesRest: TestPlans.listedBy) }
+
+        /// The sentence with every scheme it's the default of, as `xcrew plans` gives it; a few and the rest counted with
+        /// `schemesRest` when one is given.
+        func sentence(schemesRest: String?) -> String {
+            let named = String(ResultBundle.listed(schemes.map { "`\($0)`" }, rest: schemesRest).dropFirst(2))
             return "Test plan `\(plan)`, the default of \(schemes.count == 1 ? "scheme" : "schemes") \(named), runs each test under each of its configurations\(ResultBundle.listed(configurations, rest: "`\(file)` lists them all"))."
         }
+    }
+
+    /// Every plan of several configurations the project's schemes run by default, a line each with every scheme it's the
+    /// default of, as `xcrew plans` prints them; nil when there's none.
+    public static func listing(for project: Project) -> String? {
+        let plans = configured(containers: project.repositoryContainers)
+        return plans.isEmpty ? nil : plans.map { $0.sentence(schemesRest: nil) }.joined(separator: "\n")
     }
 
     /// The plan of several configurations a scheme runs by default, if any, from the project's containers.

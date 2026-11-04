@@ -346,10 +346,6 @@ public struct ResultBundle: Sendable {
         return "xcrew: \(tests). They count as neither passed nor failed in the result\(total)."
     }
 
-    /// What a counted list says when nothing else holds the rest: said, so the list doesn't read as whole. Only the
-    /// briefing's test plans and the schemes that share one still count past a few, until #525's ruling on them.
-    static let noList = "no list of them is kept"
-
     /// Where a run's tests are all listed: its result bundle.
     static let inTheBundle = "the run's result bundle lists them all"
 

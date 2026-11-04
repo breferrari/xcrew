@@ -54,6 +54,13 @@ import Testing
         #expect(!coverage.contains("more"), "\(coverage)")
     }
 
+    /// The schemes sharing a plan, in the briefing and in the note on a run of no tests, name a few and point to the command
+    /// that lists every one: a hook's context has a cap, and a large app's schemes would pass it.
+    @Test func theSchemesSharingAPlanPointToTheCommandListingThem() {
+        let plan = TestPlans.Configured(plan: "App", file: "/p/App.xctestplan", schemes: Self.sixty, configurations: ["A", "B"])
+        #expect(plan.sentence.contains("schemes `T001`, `T002`, `T003`, `T004`, `T005` and 55 more (`xcrew plans` lists them all), runs"), "\(plan.sentence)")
+    }
+
     @Test func theRunsFinishTimesAreEachNamed() {
         let finished = (1...60).map { Date(timeIntervalSince1970: 1_800_000_000 + Double($0) * 3_600) }
         let line = BranchCoverage(sentence: "all 3 changed lines that can run ran in these test runs.", finished: finished).line(lastCommit: nil)
