@@ -34,6 +34,20 @@ import XcrewTestSupport
         #expect(Look.elements(of: runs) == [more("/images/run/A.txt"), ["on screen: the same as under Plan A · iPhone 18, iOS 27.2"]])
     }
 
+    /// The line on a system alert is said under the run whose screenshot shows it, and isn't part of the elements: a
+    /// configuration with a screenshot and those without, on the same screen, list the elements once (field, 0.16.0).
+    @Test func theSystemAlertLineIsNoPartOfTheElements() {
+        let alerted = [Look.appsOnly] + Self.elements
+        let runs: [(String, [String]?)] = [("Plan A · iPhone 18, iOS 27.2", alerted), ("Plan B · iPhone 18, iOS 27.2", Self.elements), ("Plan C · iPhone 18, iOS 27.2", Self.elements)]
+        #expect(Look.elements(of: runs) == [
+            alerted,
+            ["on screen: the same as under Plan A · iPhone 18, iOS 27.2"],
+            ["on screen: the same as under Plan A · iPhone 18, iOS 27.2"],
+        ])
+        let later: [(String, [String]?)] = [("Plan A · iPhone 18, iOS 27.2", Self.elements), ("Plan B · iPhone 18, iOS 27.2", alerted)]
+        #expect(Look.elements(of: later) == [Self.elements, [Look.appsOnly, "on screen: the same as under Plan A · iPhone 18, iOS 27.2"]])
+    }
+
     /// A run that kept no hierarchy lists no element, so it says so under each run rather than "the same as" another.
     @Test func noHierarchyKeptIsSaidUnderEachRun() {
         let none = ["on screen: no hierarchy kept; XCTest attaches one when a query fails"]
