@@ -1585,23 +1585,106 @@ import XcrewTestSupport
         #expect(try Self.offenders(/\$\.[a-z]+|EngineInterface|[(,]\s*\$\s*[,)]/, allowed: ["register.ts"]) == [])
     }
 
-    /// Every hook is registered in the hooks module, one `on(` call to a line, so the directory finds each.
+    /// Every hook is registered in the hooks module.
     @Test func onlyTheHooksModuleRegistersHooks() throws {
         #expect(try Self.offenders(/(?:^|[^\w.$])on\(['"`]|: On\b/, allowed: ["register.ts"]) == [])
         let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
-        let registrations = register.split(separator: "\n").filter { $0.contains(/(?:^|[^\w.$])on\(['"`]/) }
-        #expect(!registrations.isEmpty)
-        #expect(registrations.allSatisfy { $0.trimmingCharacters(in: .whitespaces).hasPrefix("on(") })
+        #expect(register.contains(/(?m)^[ \t]*on\(['"]/))
     }
 
-    /// `$` goes only to the helpers `register.ts` declares at its top level, and to `claude-code`'s `read` and `update`.
-    @Test func theHooksModulePassesTheModsAPIOnlyToItsOwnTopLevelFunctions() throws {
-        let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
-        let topLevel = Set(register.matches(of: /(?m)^(?:export )?(?:async )?function (\w+)\(/).map { String($0.1) })
-        // `$` in any argument position, to a function or to a method.
-        let given = Set(register.matches(of: /(?:^|[^\w$])(\w+)\((?:[^()]*?,\s*)?\$\s*[,)]/).map { String($0.1) })
-        #expect(given.subtracting(topLevel).subtracting(["read", "update"]).isEmpty, "$ passed to \(given.subtracting(topLevel).subtracting(["read", "update"]).sorted())")
-        #expect(!register.contains(/\.\w+\((?:[^()]*?,\s*)?\$\s*[,)]/), "$ passed to a method")
+    /// The directory's rule (`DirectoryRule`) read on snippets, so the test below holds the mod to what the rule says,
+    /// not to what the reader happens to do.
+    @Test func theDirectoryRuleReadsEachUseOfDollarAndOn() {
+        let module = #"""
+        import { atom, read, update } from 'claude-code'
+        export const register: Register = (on) => {
+          on('session.start', async ($, e, next) => {
+            await $.ui.status('x') // $.plugin.root in a comment
+            const said = `${$.session.cwd} and '$.x'`
+            return helper($, read($, state), /\$.plugin/)
+          })
+          on('tool.call', { tool: 'a' }, async $ => ({ result: await helper($) }))
+          const root = $.plugin.root
+          other.helper($)
+          imported($)
+          const alias = $
+          void on
+          void helper($).catch(() => undefined)
+          await update($, state, () => 1).then(() => true)
+          const surfaces = $.session.surfaces
+          const half = margin / 2; imported($)
+          imported($)
+          on('x', async ($, e, next) => next(e))
+          return ok ? imported($) : undefined
+          void helper($)['catch'](() => undefined)
+          void helper($)(1)
+          on('tool.call', async (engine, e, next) => next(e))
+          on('y', async ({ ui }, e, next) => next(e))
+          void (await helper($)).x
+          void helper($)!.x
+          const pick = ok ? imported($) : y => y
+          atom($)
+          on('z', { tool: { name: 'a' } }, async (engine, e, next) => next(e))
+          on("w", matcher, async engine => next(e))
+          on('v', function (engine, e, next) { return next(e) })
+          on('u', async ($, e, next) => next(e)).catch(async (engine, e, next) => next(e))
+          void quietly(() => helper($)).then(() => 1)
+          void next(e).catch(async (error: unknown) => error)
+          void (helper($) || fallback).y
+          void g<T>(() => helper($)).then(() => 1)
+          on('t', async (engine, e, next) => next(e),
+          )
+        }
+        async function helper($: EngineInterface, n?: number): Promise<void> { return update($, state, () => n) }
+        async function other(engine: EngineInterface) { return 1 }
+        async function third(engine?: EngineInterface) { return 1 }
+        async function fourth(x: CoreEngineInterface) { return 1 }
+        """#
+        #expect(DirectoryRule.breaches(in: module).map(\.description) == [
+            "5: const said = `${$.session.cwd} and '$.x'`",
+            "10: other.helper($)",
+            "11: imported($)",
+            "12: const alias = $",
+            "13: void on",
+            "14: void helper($).catch(() => undefined)",
+            "15: await update($, state, () => 1).then(() => true)",
+            "16: const surfaces = $.session.surfaces",
+            "17: const half = margin / 2; imported($)",
+            "18: imported($)",
+            "20: return ok ? imported($) : undefined",
+            "21: void helper($)['catch'](() => undefined)",
+            "22: void helper($)(1)",
+            "23: on('tool.call', async (engine, e, next) => next(e))",
+            "24: on('y', async ({ ui }, e, next) => next(e))",
+            "25: void (await helper($)).x",
+            "26: void helper($)!.x",
+            "27: const pick = ok ? imported($) : y => y",
+            "28: atom($)",
+            "29: on('z', { tool: { name: 'a' } }, async (engine, e, next) => next(e))",
+            "30: on(\"w\", matcher, async engine => next(e))",
+            "31: on('v', function (engine, e, next) { return next(e) })",
+            "32: on('u', async ($, e, next) => next(e)).catch(async (engine, e, next) => next(e))",
+            "35: void (helper($) || fallback).y",
+            "37: on('t', async (engine, e, next) => next(e),",
+            "41: async function other(engine: EngineInterface) { return 1 }",
+            "42: async function third(engine?: EngineInterface) { return 1 }",
+            "43: async function fourth(x: CoreEngineInterface) { return 1 }",
+        ])
+        // A registration the reader can't find the end of is one it can't read.
+        #expect(DirectoryRule.breaches(in: "on('x', async ($) => {").map(\.line) == [1])
+        // A file with Windows line endings is read line by line all the same.
+        #expect(DirectoryRule.breaches(in: "imported($)\r\n// a comment\r\nimported($)").map(\.line) == [1, 3])
+    }
+
+    /// Every mod source meets the plugin directory's rule, which blocks a plugin whose hooks module breaks it. The
+    /// directory reads the hooks module and the files it imports; tests and their helpers are none of them.
+    @Test func everyModSourceMeetsTheDirectoryRule() throws {
+        let sources = try Self.sources()
+        #expect(sources.contains { $0.name == "register.ts" })
+        for source in sources {
+            let breaches = DirectoryRule.breaches(in: source.text)
+            #expect(breaches.isEmpty, "\(source.name): \(breaches)")
+        }
     }
 
     /// Reading named fields of a server's JSON answer is fine where the mod keeps what it learns; parsing text isn't.
@@ -1653,7 +1736,7 @@ import XcrewTestSupport
         #expect(start.contains("$.process.spawn("))
         let programs = Set(register.matches(of: /start\(\$, ([^,]+),/).map { String($0.1) })
         #expect(programs == ["shimPath($.plugin.root)", "binary"])
-        #expect(register.contains("const binary = await build("))
+        #expect(register.contains("const binary = await quietly(() => build($))"))
     }
 
     @Test func onlyToolNamesAreMatchedByPattern() throws {
