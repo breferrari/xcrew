@@ -270,9 +270,9 @@ export const register: Register = on => {
     // meanwhile, a test run asks for them, which the report reads within its own time.
     const writesAtStart = ledgerWritesQueued
     let knownPassed: boolean | undefined
-    void (async () => {
+    void quietly(async () => {
       knownPassed = await asksForPassed($, kind)
-    })()
+    })
     const listsPassed = () => kind === 'test' && ((knownPassed ?? true) || ledgerWritesQueued !== writesAtStart)
     // However the call ends, the run stops counting, unless it goes on in the background; one that failed beneath leaves
     // the band too.
@@ -758,13 +758,12 @@ async function showEndingOf($: EngineInterface, startedAt: number, ending: NonNu
  * couldn't run, or gave no answer xcrew could read.
  */
 async function asked($: EngineInterface, args: string[], stdin?: string, waitsOn?: WaitsOn): Promise<{ answer: unknown } | { failed: string }> {
-  let ran: Ran | Error
+  let ran: Ran
   try {
     ran = await xcrew($, args, stdin, waitsOn)
   } catch (error) {
-    ran = error instanceof Error ? error : new Error(String(error))
+    return { failed: couldntRun(args, error) }
   }
-  if (ran instanceof Error) return { failed: couldntRun(args, ran) }
   if (endedQuietly(ran)) return { answer: undefined }
   const answered = answerOf(ran)
   return answered === undefined ? { failed: readLine(args, ran) } : { answer: answered }
@@ -835,15 +834,22 @@ async function isGeneratedProject($: EngineInterface): Promise<boolean> {
 }
 
 /** A CLI command's own text, or why it couldn't run. */
-async function cliText($: EngineInterface, args: string[]): Promise<string> {
-  // With nothing printed and an ending that wasn't well, how it ended is the answer.
+function cliText($: EngineInterface, args: string[]): Promise<string> {
+  return printedText($, args, undefined, ran => `${ran.stdout}${ran.stderr}`)
+}
+
+/**
+ * What a CLI command printed, as `printed` reads it from the run, or why it couldn't run. With nothing printed, what it
+ * wrote instead, or how it ended, is the answer.
+ */
+async function printedText($: EngineInterface, args: string[], stdin: string | undefined, printed: (ran: Ran) => string): Promise<string> {
   let ran: Ran
   try {
-    ran = await xcrew($, args)
+    ran = await xcrew($, args, stdin)
   } catch (error) {
     return couldntRun(args, error)
   }
-  return printedOr(args, ran, `${ran.stdout}${ran.stderr}`)
+  return printedOr(args, ran, printed(ran))
 }
 
 /** Opens the setup form and reads its choices behind it; where nothing draws pickers, names the skill. */
@@ -949,14 +955,7 @@ async function evidenceNow($: EngineInterface): Promise<string> {
   const { head, entries } = await branchState($)
   if (!head) return EVIDENCE_UNAVAILABLE
   // Its stdout alone: the block is pasted into a pull request as it is, and stderr is the shim's and the tools' own.
-  // With nothing printed, what it wrote instead, or how it ended, is the answer.
-  let ran: Ran
-  try {
-    ran = await xcrew($, ['evidence'], evidenceInput(entries))
-  } catch (error) {
-    return couldntRun(['evidence'], error)
-  }
-  return printedOr(['evidence'], ran, ran.stdout)
+  return printedText($, ['evidence'], evidenceInput(entries), ran => ran.stdout)
 }
 
 /**
