@@ -26,9 +26,8 @@ public struct Report: Sendable, Equatable {
     public var reading: Reading
     /// A test run's result bundle, which the ledger keeps for a test's first red run.
     public var bundle: String?
-    /// That another Xcode than the project's pin built, for a failure whose errors another SDK or toolchain gives: apart
-    /// from the notes, since the mod shows it once a session for each pin.
-    public var pinned: PinNote?
+    /// The note on another Xcode than the pin's: apart from the notes, since the mod shows it once a session for each pin.
+    public var xcodePinNote: PinNote?
     /// Why the run failed when the cause is the Mac, with its fix (`Why`): the note that leads `notes`, apart, so the
     /// failures pane can open with it.
     public var cause: String?
@@ -38,10 +37,10 @@ public struct Report: Sendable, Equatable {
     /// The scheme the run's log names, when the report was read with its log: what the mod keys a backgrounded run by.
     public var scheme: String?
 
-    /// A report of what `reading` says was read.
-    public init(ok: Bool, detail: String? = nil, durationMs: Int? = nil, tests: Int? = nil, failures: [ToolOutput.Failure], result: String? = nil, notes: [String], repeated: [ResultBundle.Repeated]? = nil, passed: [PassedTest]? = nil, reading: Reading, bundle: String? = nil, pinned: PinNote? = nil, cause: String? = nil, concurrency: ConcurrencySummary? = nil, scheme: String? = nil) {
+    /// A report. `reading` has no default: every report says what it could read.
+    public init(ok: Bool, detail: String? = nil, durationMs: Int? = nil, tests: Int? = nil, failures: [ToolOutput.Failure], result: String? = nil, notes: [String], repeated: [ResultBundle.Repeated]? = nil, passed: [PassedTest]? = nil, reading: Reading, bundle: String? = nil, xcodePinNote: PinNote? = nil, cause: String? = nil, concurrency: ConcurrencySummary? = nil, scheme: String? = nil) {
         (self.ok, self.detail, self.durationMs, self.tests, self.failures, self.result, self.notes) = (ok, detail, durationMs, tests, failures, result, notes)
-        (self.repeated, self.passed, self.reading, self.bundle, self.pinned, self.cause, self.concurrency, self.scheme) = (repeated, passed, reading, bundle, pinned, cause, concurrency, scheme)
+        (self.repeated, self.passed, self.reading, self.bundle, self.xcodePinNote, self.cause, self.concurrency, self.scheme) = (repeated, passed, reading, bundle, xcodePinNote, cause, concurrency, scheme)
     }
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
@@ -453,7 +452,7 @@ public struct Report: Sendable, Equatable {
             passed: passedTests,
             reading: isUnread ? .unread(task: Self.backgroundTask(in: final.text)) : .result,
             bundle: bundle?.path,
-            pinned: await xcodeFacts.pinNote.map { PinNote(note: $0, pin: project?.xcodePin.map { "\($0.version) (\($0.file))" }) },
+            xcodePinNote: await xcodeFacts.pinNote.map { PinNote(note: $0, pin: project?.xcodePin.map { "\($0.version) (\($0.file))" }) },
             cause: await why,
             concurrency: await concurrency
         )

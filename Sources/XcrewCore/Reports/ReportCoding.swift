@@ -1,7 +1,7 @@
 import Foundation
 
 /// A report as the mod reads it (`Report` in hooks/mod/cli.ts): each field under its own key, absent when it's nil, and
-/// `reading` and `pinned` as the keys they always had, so the JSON is the same whatever the type holds them as.
+/// `reading` and `xcodePinNote` as the keys they always had, so the JSON is the same whatever the type holds them as.
 extension Report: Codable {
     enum CodingKeys: String, CodingKey {
         case ok, detail, durationMs, tests, failures, result, notes, repeated, passed, isUnread, bundle, pinNote, pin, backgroundTask, isVerdictOnly, cause, concurrency, scheme
@@ -16,7 +16,7 @@ extension Report: Codable {
         } else {
             .result
         }
-        let pinned = try values.decodeIfPresent(String.self, forKey: .pinNote).map { PinNote(note: $0, pin: try values.decodeIfPresent(String.self, forKey: .pin)) }
+        let xcodePinNote = try values.decodeIfPresent(String.self, forKey: .pinNote).map { PinNote(note: $0, pin: try values.decodeIfPresent(String.self, forKey: .pin)) }
         self.init(
             ok: try values.decode(Bool.self, forKey: .ok),
             detail: try values.decodeIfPresent(String.self, forKey: .detail),
@@ -29,7 +29,7 @@ extension Report: Codable {
             passed: try values.decodeIfPresent([PassedTest].self, forKey: .passed),
             reading: reading,
             bundle: try values.decodeIfPresent(String.self, forKey: .bundle),
-            pinned: pinned,
+            xcodePinNote: xcodePinNote,
             cause: try values.decodeIfPresent(String.self, forKey: .cause),
             concurrency: try values.decodeIfPresent(ConcurrencySummary.self, forKey: .concurrency),
             scheme: try values.decodeIfPresent(String.self, forKey: .scheme)
@@ -56,8 +56,8 @@ extension Report: Codable {
             try values.encode(true, forKey: .isVerdictOnly)
         }
         try values.encodeIfPresent(bundle, forKey: .bundle)
-        try values.encodeIfPresent(pinned?.note, forKey: .pinNote)
-        try values.encodeIfPresent(pinned?.pin, forKey: .pin)
+        try values.encodeIfPresent(xcodePinNote?.note, forKey: .pinNote)
+        try values.encodeIfPresent(xcodePinNote?.pin, forKey: .pin)
         try values.encodeIfPresent(cause, forKey: .cause)
         try values.encodeIfPresent(concurrency, forKey: .concurrency)
         try values.encodeIfPresent(scheme, forKey: .scheme)

@@ -192,6 +192,16 @@ import XcrewTestSupport
         for key in keys { #expect(type.contains("  \(key)?:") || type.contains("  \(key):"), "cli.ts's Report doesn't name `\(key)`") }
     }
 
+    /// Every key a report's reading or pin note is written under is one the mod's type for a report names: the states
+    /// exclude each other, so no one report writes them all.
+    @Test(arguments: [Report.Reading.unread(task: "k4q5tm9v2"), .verdictOnly])
+    func theModsReportTypeNamesEachStatesKeys(reading: Report.Reading) throws {
+        let report = Report(ok: false, failures: [], notes: [], reading: reading, xcodePinNote: .init(note: "p", pin: "26.5 (.xcode-version)"))
+        let keys = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any]).keys
+        let type = try #require(try text("hooks/mod/cli.ts").firstMatch(of: /export type Report = \{([\s\S]*?)\n\}/)?.1)
+        for key in keys { #expect(type.contains("  \(key)?:") || type.contains("  \(key):"), "cli.ts's Report doesn't name `\(key)`") }
+    }
+
     /// Every field of a passed test the CLI lists is one the mod's type for it names: the ledger matches a red by them.
     @Test func theModsPassedTypeNamesEachFieldTheCLIReports() throws {
         let passed = PassedTest(test: "Suite/test", target: "AppTests")
