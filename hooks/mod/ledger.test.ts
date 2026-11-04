@@ -79,6 +79,15 @@ test('a test that fails and then passes in the same scope is listed red, then gr
   expect(text).not.toContain('Still red')
 })
 
+test('a test with two failures in one run, its own and a crash, is red with its first', async ($, on) => {
+  const crashed: Partial<Report> = { ok: false, failures: [...FAILED.failures!, { title: TEST, message: 'Crash: xctest at GreetingTests.testHello()', isTest: true }] }
+  project(on, [crashed])
+  await run($, 'AppTests')
+  const text = await ledgerText($)
+  expect(text).toMatch(new RegExp(`- ${TEST}: red .* in test_sim › AppTests: XCTAssertEqual failed`))
+  expect(text).not.toContain('Crash: xctest')
+})
+
 test('a test run asks the CLI for its passed tests only while its branch has a red waiting', async ($, on) => {
   const { calls } = project(on, [FAILED, PASSED, PASSED])
   const asked = () => calls.filter(call => call.args[0] === 'report').map(call => call.args.includes('--passed'))

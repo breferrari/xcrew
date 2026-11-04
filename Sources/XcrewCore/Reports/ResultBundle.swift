@@ -64,17 +64,18 @@ public struct ResultBundle: Sendable {
         return nil
     }
 
-    /// Each failed test in `xcresulttool get test-results tests` output, once whatever configurations it failed under,
-    /// with its first failure's message as MobileBuildMCP's text words it, its first line without XCTest's `failed - `,
-    /// its place as `File.swift:line` and its test bundle, the target. A crash filed under `System Failures` is the
-    /// failure of the test its message names, and no failure when it names none. Nil when the output isn't a listing,
-    /// as when `xcresulttool` couldn't read the bundle.
+    /// Each failed test in `xcresulttool get test-results tests` output, once for each kind of failure, whatever
+    /// configurations it failed under, with its first failure's message as MobileBuildMCP's text words it, its first
+    /// line without XCTest's `failed - `, its place as `File.swift:line` and its test bundle, the target. A crash filed
+    /// under `System Failures` is the failure of the test its message names, and no failure when it names none. A test
+    /// keeps one failure of each kind, its own and a crash, however the bundle files them: neither stands for the
+    /// other. Nil when the output isn't a listing, as when `xcresulttool` couldn't read the bundle.
     static func failedTests(listing: TestList) -> [ToolOutput.Failure]? {
         guard listing.isListing else { return nil }
         let found = listing.nodes
         let cases = testCases(in: found)
         let targets = Self.targets(listing: listing)
-        var listed: Set<TestID> = []
+        var listed: Set<FailureNotes.FailedLine> = []
         return failedTests(in: found).compactMap { test in
             let first = cases[test].flatMap(firstFailureMessage)
             let parsed = first.map(Self.failure)
@@ -89,7 +90,7 @@ public struct ResultBundle: Sendable {
                 guard let crashed = MobileBuildMCPLine.crashedTest(message: line) else { return nil }
                 named = crashed
             }
-            guard listed.insert(named).inserted else { return nil }
+            guard listed.insert(FailureNotes.FailedLine(test: named, isCrash: FailureNotes.isCrash(line))).inserted else { return nil }
             return ToolOutput.Failure(title: named.shown, message: line, where: place, isTest: true, target: targets[test])
         }
     }

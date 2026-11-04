@@ -121,11 +121,13 @@ public struct Report: Sendable, Equatable {
     /// message and place where the bundle gives none. A test is matched by its own name among `bundled`, else by
     /// `resolutions`, the bundle's id for it by the rule `TestLookup` keeps, as a nested suite's test from
     /// its outermost suite; a test with none is matched by its own name alone. A test only the bundle lists comes after;
-    /// the text's other failures stay where they were. A test the text lists that matches none of the bundle's failures,
-    /// as one several ids end with, disagrees with the bundle, and is returned once as disagreeing: one among `cleared`,
-    /// which the bundle counts as passed, skipped or an expected failure in every entry, configuration and device under
-    /// that name, as a retry it passed, is none of the run's failures; any other stays a failure in its place as the text
-    /// gives it, since no entry, an entry with no result, or another result is no sign it passed.
+    /// the text's other failures stay where they were. A test the bundle and the text each list twice, its own failure
+    /// and a crash, pairs each line with the bundle's failure of the same message, else of the same kind. A test the text
+    /// lists that matches none of the bundle's failures, as one several ids end with, disagrees with the bundle, and is
+    /// returned once as disagreeing: one among `cleared`, which the bundle counts as passed, skipped or an expected
+    /// failure in every entry, configuration and device under that name, as a retry it passed, is none of the run's
+    /// failures; any other stays a failure in its place as the text gives it, since no entry, an entry with no result,
+    /// or another result is no sign it passed.
     static func inRunOrder(_ bundled: [ToolOutput.Failure], text: [ToolOutput.Failure], cleared: Set<TestID>, resolutions: [TestID: TestLookup.Resolution] = [:]) -> (failures: [ToolOutput.Failure], disagreeing: [TestID]) {
         var pending = bundled.map { (test: TestID(xcresultID: $0.title), failure: $0) }
         let named = Set(pending.map(\.test))
@@ -139,7 +141,10 @@ public struct Report: Sendable, Equatable {
             let test = TestID(xcresultID: failure.title)
             let resolution = named.contains(test) ? .found(test) : resolutions[test] ?? .missing
             let found = resolution.found
-            if let found, let index = pending.firstIndex(where: { $0.test == found }) {
+            let isCrash = FailureNotes.isCrash(failure.message)
+            let candidates = pending.indices.filter { pending[$0].test == found }
+            if found != nil, let index = candidates.first(where: { pending[$0].failure.message == failure.message })
+                ?? candidates.first(where: { FailureNotes.isCrash(pending[$0].failure.message) == isCrash }) ?? candidates.first {
                 ordered.append(pending.remove(at: index).failure.filling(from: failure))
             } else if found.map(named.contains) != true {
                 if !disagreeing.contains(test) {
@@ -371,7 +376,7 @@ public struct Report: Sendable, Equatable {
             if bundle != nil, text.isTestRun, !final.summary.ok {
                 if let placed = await failingRun().placing(in: text) { (text, changed) = (placed, true) }
             }
-            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: (machine.cacheFolder.appending(path: "images"), machine.now()), repetitions: repetitions, bundleIDs: failing?.resolutions ?? [:], labels: failing?.labels ?? [:]),
+            if let bundle, text.isTestRun, let pending = await FailureNotes.lookingUp(text, from: bundle, keepingImagesIn: (machine.cacheFolder.appending(path: "images"), machine.now()), repetitions: repetitions, bundleIDs: failing?.resolutions ?? [:], crashCases: failing?.lookup.crashCases ?? [:], labels: failing?.labels ?? [:]),
                let annotated = pending.adding(skips: pending.readsSkips ? ResultBundle.skippedTests(listing: await testList()) : []) {
                 (final, edited, images) = (ToolOutput(annotated.text, isError: output.isError), true, annotated.images)
             } else if changed {

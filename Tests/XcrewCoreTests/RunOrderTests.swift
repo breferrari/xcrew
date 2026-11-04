@@ -16,6 +16,22 @@ struct RunOrderTests {
         #expect(Report.inRunOrder(bundled, text: text, cleared: [TestID(suite: "Suite", name: "retried")]).failures.map(\.title) == ["App.swift:3", "Suite/test"])
     }
 
+    /// A test the text lists twice, an assertion and a crash, takes each of the bundle's failures by its message, however
+    /// the bundle orders them: the crash isn't given the assertion's place.
+    @Test func aTestsTwoFailuresArePairedByTheirMessages() {
+        let crash = "Crash: xctest at Suite.testPop()", own = "XCTAssertEqual failed"
+        let bundled = [ToolOutput.Failure(title: "Suite/testPop", message: crash, isTest: true), ToolOutput.Failure(title: "Suite/testPop", message: own, isTest: true)]
+        let text = [ToolOutput.Failure(title: "Suite/testPop", message: own, where: "A.swift:3", isTest: true), ToolOutput.Failure(title: "Suite/testPop", message: crash, isTest: true)]
+        #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map { "\($0.message) | \($0.where ?? "-")" } == ["\(own) | A.swift:3", "\(crash) | -"])
+    }
+
+    /// A test's two failures whose wording differs from the text's are still paired by kind: the crash with the crash.
+    @Test func aTestsTwoFailuresArePairedByKindWhenTheWordingDiffers() {
+        let bundled = [ToolOutput.Failure(title: "Suite/testPop", message: "Crash: xctest at Suite.testPop()", isTest: true), ToolOutput.Failure(title: "Suite/testPop", message: "XCTAssertEqual failed: 1 != 2", isTest: true)]
+        let text = [ToolOutput.Failure(title: "Suite/testPop", message: "XCTAssertEqual failed", where: "A.swift:3", isTest: true), ToolOutput.Failure(title: "Suite/testPop", message: "Crash: xctest at Suite.testPop() + 4", isTest: true)]
+        #expect(Report.inRunOrder(bundled, text: text, cleared: []).failures.map { "\($0.message) | \($0.where ?? "-")" } == ["XCTAssertEqual failed: 1 != 2 | A.swift:3", "Crash: xctest at Suite.testPop() | -"])
+    }
+
     /// A test only the text lists that the bundle has no entry for stays a failure in its place, with the text's
     /// message and place, and is returned as disagreeing.
     @Test func anUnlistedTestStaysAFailureWithTheTextsMessage() {

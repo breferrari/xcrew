@@ -3,6 +3,7 @@
 ## Unreleased
 
 - A test's crash is filed under the test that crashed, or under none: never under a helper the crash happened in, as `Cache.reset()`. Its message is read through an `@objc` thunk, an async test's resume function or an offset after the frame. The crash note's line is the test's own frame, never a frame in another suite whose name ends the same or in another overload, and a parameterised test's frame is found.
+- A test with a failure of its own and a crash filed under `System Failures` keeps both in the run's failures, each with its own notes: the crash's exception and frames sit under the crash, from the crash log the result bundle keeps for it. Before, whichever the bundle listed first stood for the other, and the crash's note could say no crash log came. The ledger keeps such a test red with its first failure.
 
 ## 0.17.0 — 2026-11-04
 

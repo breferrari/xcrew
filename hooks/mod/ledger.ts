@@ -120,9 +120,11 @@ export function isWholeScope(scope: string): boolean {
  * - A run turns green each red test its results list as passed (`passes`), a failing run included. A run whose
  *   results the CLI couldn't read turns nothing green.
  * - An entry no run has written for as long as the history is kept is dropped.
+ * A test the run failed twice, as its own failure and a crash, is red with the first the run lists.
  */
 export function afterTestRun(ledger: Ledger | undefined, run: TestRun, marks?: readonly FlakyMark[]): Ledger {
-  const failed = new Map(run.failures.filter(failure => failure.isTest).map(failure => [failure.title, failure]))
+  const failed = new Map<string, Failure>()
+  for (const failure of run.failures) if (failure.isTest && !failed.has(failure.title)) failed.set(failure.title, failure)
   const repeated = new Map((run.repeated ?? []).map(test => [test.test, test]))
   const marked = new Map((marks ?? []).map(mark => [mark.test, mark]))
   const failing = new Set([...failed.keys(), ...[...repeated.values()].filter(test => test.verdict === 'flaky' || test.verdict === 'real').map(test => test.test)])
