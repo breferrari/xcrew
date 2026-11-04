@@ -359,7 +359,7 @@ struct MobileText: Sendable {
     /// A failure's entry under Test Failures, as MobileBuildMCP writes one: `✗ Suite / test(): message`, its place, and
     /// the blank line that ends it.
     static func entry(_ failure: FailureLine) -> [Line] {
-        [Line("  ✗ \(failure.test.suite) / \(failure.test.function): \(failure.message)")] + (failure.place.map { [Line(entryIndent + $0)] } ?? []) + [Line("")]
+        [Line("  ✗ \(failure.test.suite.isEmpty ? TestID.unknownSuite : failure.test.suite) / \(failure.test.function): \(failure.message)")] + (failure.place.map { [Line(entryIndent + $0)] } ?? []) + [Line("")]
     }
 
     /// Where the Test Results section starts, nil when the text has none.

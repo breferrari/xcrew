@@ -236,13 +236,14 @@ struct BundleFailuresTests {
 
     /// Each failure the bundle records that the text doesn't list gets its line in the text Claude reads, under Test
     /// Failures, as MobileBuildMCP writes one: the retried nested capture, whose text lists only the display-named
-    /// failure from the log.
+    /// failure from the log, which is that failure's line, by its message and place.
     @Test func aFailureOnlyTheBundleRecordsIsListedInTheText() async throws {
         let bundle = try Raw.bundle("nested-retry")
         let runner = RecordingRunner(FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("nested-retry.tests.json"))]))
         let report = await Report.make(kind: .test, output: try Raw.output("nested-retry"), home: Captured.home, runner: runner, repeated: true)
         let text = try #require(report.result)
-        #expect(text.contains("Test Failures (4):"), "\(text)")
+        #expect(text.contains("Test Failures (3):"), "\(text)")
+        #expect(!text.contains("Inner/addsNumbers()"), "\(text)")
         // With its place as the text writes one, the whole path, so it isn't looked up again.
         #expect(text.contains("✗ Outer / Inner/fails(): Expectation failed: Kit.name == \"Other\"\n    /testbed/swift-testing/NestedTests/NestedTests.swift:8\n"), "\(text)")
         #expect(!runner.asked.contains { $0.contains("test-details --test-id Outer/Inner/fails()") }, "\(runner.asked)")
@@ -546,6 +547,18 @@ struct BundleFailuresTests {
         let result = try #require(report.result)
         #expect(result.components(separatedBy: "✗ P / B/Inner/fails()").count == 2, "\(result)")
         #expect(result.components(separatedBy: "✗ Q / B/Inner/fails()").count == 2, "\(result)")
+    }
+
+    /// A failure the bundle records whose message and place match a failure the text already lists gets no line of its
+    /// own: the nested capture's display-named test, which MobileBuildMCP lists as `(Unknown Suite) / Adds numbers` with
+    /// its place and as `Inner / Adds numbers`, isn't added a third time as `Outer / Inner/addsNumbers()`. It stays listed
+    /// twice, as MobileBuildMCP lists it, until display names are read as the bundle's.
+    @Test func aFailureTheTextListsByItsMessageAndPlaceGetsNoLineOfItsOwn() async throws {
+        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("nested")) --compact": .init(status: 0, stdout: try Raw.file("nested.tests.json"))])
+        let report = await Report.make(kind: .test, output: try Raw.output("nested"), home: Captured.home, runner: runner)
+        let result = try report.result ?? Raw.text("nested")
+        #expect(!result.contains("✗ Outer / Inner/addsNumbers()"), "\(result)")
+        #expect(result.contains("✗ (Unknown Suite) / Adds numbers:") && result.contains("✗ Inner / Adds numbers:"), "\(result)")
     }
 
     /// A failed test the text names that ends two of the bundle's nested ids is looked up under neither: its line says the
