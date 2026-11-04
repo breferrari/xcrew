@@ -209,6 +209,23 @@ struct GoldenOutputTests {
                 return try await Place().run(["look"] + (test.map { [$0] } ?? []) + ["--bundle", bundle], runner)
             })
         }
+        outputs.append(Output(name: "report-concurrency-build_sim") {
+            let text = try String(contentsOf: captures.appending(path: "concurrency/build_sim.txt"), encoding: .utf8)
+            return try await report(text, isError: false, kind: "build", flags: []) { _ in FakeRunner() }
+        })
+        for log in ["build_sim", "xcodebuild-warnings", "xcodebuild-errors"] {
+            for flags in [[], ["--json"]] {
+                outputs.append(Output(name: named(["concurrency", log], flags)) {
+                    try await Place().run(["concurrency", "--log", captures.appending(path: "concurrency/\(log).log").path] + flags)
+                })
+            }
+        }
+        outputs.append(Output(name: "look-snapshots-mobilebuildmcp") {
+            let bundle = "/runs/Snapshots.xcresult"
+            return try await Place().run(["look", "--bundle", bundle], try CaptureRunner(folder: captures.appending(path: "snapshots/mobilebuildmcp"), bundle: bundle))
+        })
+        outputs.append(Output(name: "report-usage-error") { try await Place().run(["report", "--server", "MobileBuildMCP"]) })
+        outputs.append(Output(name: "look-no-bundle") { try await Place().run(["look"]) })
         let ran = TestbedEvidenceTests.ran
         for (name, earlier, outside) in [("evidence-coverage", false, false), ("evidence-coverage-two-runs-outside", true, true)] {
             outputs.append(Output(name: name) {
@@ -238,6 +255,24 @@ struct GoldenOutputTests {
     @Test(.disabled(if: isRecording, "the goldens are being written")) func everyGoldenIsAnOutputs() throws {
         let recorded = Set(try FileManager.default.contentsOfDirectory(atPath: Self.goldens.path).filter { $0.hasSuffix(".txt") })
         #expect(recorded == Set(Self.outputs.map { "\($0.name).txt" }))
+    }
+
+    /// The test bed's capture folders the goldens hold, and those they don't with why: `repetitions` holds a test list
+    /// with no result text (its tests compose one), and `simctl` an answer the field's two-display capture replays.
+    static let heldFolders: Set = ["concurrency", "coverage", "environment", "field", "raw", "snapshots", "uitests"]
+    static let notHeldFolders: Set = ["repetitions", "simctl"]
+
+    /// Every capture folder the test bed has is held or named as not held: a folder added to the test bed can't pass
+    /// unheld, whatever the outputs list.
+    @Test func everyCaptureFolderIsHeldOrNamed() {
+        let folders = Set(Self.listing(Self.captures).filter { name in
+            (try? Self.captures.appending(path: name).resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        })
+        #expect(folders == Self.heldFolders.union(Self.notHeldFolders), "\(folders.subtracting(Self.heldFolders.union(Self.notHeldFolders)))")
+        let names = Self.outputs.map(\.name)
+        for folder in Self.heldFolders where !["raw", "field"].contains(folder) {
+            #expect(names.contains { $0.contains(folder) || (folder == "environment" && $0.hasPrefix("why-")) }, "\(folder) has no output")
+        }
     }
 
     /// Every raw and field capture is read by an output, or named as no report's: a capture added to the test bed can't

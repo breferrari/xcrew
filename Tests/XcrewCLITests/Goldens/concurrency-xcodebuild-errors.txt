@@ -1,0 +1,5 @@
+1 Swift concurrency diagnostic (1 error) in 1 module:
+  MutableGlobalVariable 1 (Unsafe mutable global and static variables): App 1
+Which groups are about concurrency comes from the group docs of the Xcode that built it (/Applications/Xcode-27.2.0.app).
+A build that compiled only some files logs only theirs.
+--- exit 0

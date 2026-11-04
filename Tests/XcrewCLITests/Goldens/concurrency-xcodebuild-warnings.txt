@@ -1,0 +1,8 @@
+5 Swift concurrency diagnostics in 2 modules:
+  MutableGlobalVariable 2 (Unsafe mutable global and static variables): Feature 1, Kit 1
+  SendingClosureRisksDataRace 2 (Sending closure risks causing data races): Feature 1, Kit 1
+  SendingRisksDataRace 1 (Sending value risks causing data races): Kit 1
+1 Swift diagnostic carries no compiler group, so it isn't counted: only its text would say what it's about.
+Which groups are about concurrency comes from the group docs of the Xcode that built it (/Applications/Xcode-27.2.0.app).
+A build that compiled only some files logs only theirs.
+--- exit 0
