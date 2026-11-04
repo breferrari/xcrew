@@ -12,14 +12,25 @@ public struct TestID: Sendable, Hashable {
         self.name = name.hasSuffix("()") ? String(name.dropLast(2)) : String(name)
     }
 
-    /// A test from `xcresulttool`'s `Suite/test()`: split at the first `/`, the whole of it the suite when there's none.
+    /// A test from `xcresulttool`'s `Suite/test()`, split at the first `/`. An id with no `/` is a top-level Swift
+    /// Testing test, its function alone, `seededFailure()`, with no suite; or, as `xctest (<pid>) encountered an error`,
+    /// the case a crash under `System Failures` is filed as, the whole of it the suite.
     public init(xcresultID: some StringProtocol) {
         let parts = xcresultID.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
-        self.init(suite: parts.first ?? "", name: parts.count > 1 ? parts[1] : "")
+        if parts.count > 1 {
+            self.init(suite: parts[0], name: parts[1])
+        } else if MobileBuildMCPLine.isProcessCrash(String(xcresultID)) {
+            self.init(suite: xcresultID, name: "")
+        } else {
+            self.init(suite: "", name: xcresultID)
+        }
     }
 
-    /// `Suite/test`, as Xcrew shows a test.
-    public var shown: String { "\(suite)/\(name)" }
+    /// What MobileBuildMCP names a test with no suite from, a top-level Swift Testing test's.
+    static let unknownSuite = "(Unknown Suite)"
+
+    /// `Suite/test`, as Xcrew shows a test; a test with no suite by its name alone.
+    public var shown: String { suite.isEmpty ? name : "\(suite)/\(name)" }
 
     /// `test()`, or a test that takes arguments as the bundle lists it, with its labels: `parameterised(value:)`.
     public var function: String { name.hasSuffix(")") ? name : "\(name)()" }
@@ -37,8 +48,8 @@ public struct TestID: Sendable, Hashable {
     /// The `xcrew look` command naming a test as `test` gives it, a word or a placeholder, in `bundle`.
     static func lookCommand(naming test: String, bundle: String) -> String { "xcrew look \(test) --bundle \(ShellWord.word(bundle))" }
 
-    /// `Suite/test()`, as `xcresulttool` names one; an id it read with no `/`, as the case a crash under `System Failures`
-    /// is filed as, by itself.
-    public var xcresultID: String { name.isEmpty ? suite : "\(suite)/\(function)" }
+    /// `Suite/test()`, as `xcresulttool` names one; a test with no suite by its function, and the case a crash under
+    /// `System Failures` is filed as by itself.
+    public var xcresultID: String { name.isEmpty ? suite : suite.isEmpty ? function : "\(suite)/\(function)" }
 
 }

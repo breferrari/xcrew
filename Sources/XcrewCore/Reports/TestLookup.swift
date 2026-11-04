@@ -1,5 +1,6 @@
-/// The result bundle's test cases, and the one rule a test the run's text names is found among them by: its own id,
-/// else the one nested suite's test whose id ends with it, else the `System Failures` case its crash is filed under.
+/// The result bundle's test cases, and the one rule a test the run's text names is found among them by: its own id, a
+/// name from `(Unknown Suite)` as the top-level test of that name, else the one nested suite's test whose id ends with
+/// it, else the `System Failures` case its crash is filed under.
 /// Built once from a test list, so each name is found without reading every id again.
 struct TestLookup {
     /// The test list's cases under each test's id, as `ResultBundle.testCases(in:)` reads them.
@@ -53,6 +54,8 @@ struct TestLookup {
     /// so a nested suite's path is in its name, and the text's `Inner/fails` is the end of `Outer/Inner/fails`'s.
     func resolution(of test: TestID) -> Resolution {
         if cases[test] != nil { return .found(test) }
+        let suiteless = TestID(suite: "", name: test.name)
+        if test.suite == TestID.unknownSuite, cases[suiteless] != nil { return .found(suiteless) }
         let nested = byEnding[test.shown] ?? []
         if nested.count == 1 { return .found(nested[0]) }
         if !nested.isEmpty { return .ambiguous(nested) }

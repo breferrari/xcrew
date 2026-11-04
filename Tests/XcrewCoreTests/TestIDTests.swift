@@ -14,7 +14,9 @@ import Testing
     }
 
     @Test func anIdentifierWithoutASlashIsKeptWhole() {
-        #expect(TestID(xcresultID: "Plain").shown == "Plain/")
+        #expect(TestID(xcresultID: "xctest (80341) encountered an error").shown == "xctest (80341) encountered an error/")
+        #expect(TestID(xcresultID: "seededFailure()") == TestID(suite: "", name: "seededFailure"))
+        #expect(TestID(xcresultID: "seededFailure()").shown == "seededFailure")
         #expect(TestID(xcresultID: "Suite/Nested/test()") == TestID(suite: "Suite", name: "Nested/test"))
     }
 
