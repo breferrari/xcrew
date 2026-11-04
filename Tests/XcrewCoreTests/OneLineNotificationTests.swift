@@ -3,7 +3,7 @@ import Testing
 @testable import XcrewCore
 import XcrewTestSupport
 
-/// A failed test run moved to the background, as Claude Code 2.1.316 delivered it in the field (November 4, 2026, xcrew
+/// A failed test run moved to the background, as Claude Code delivered it in the field (November 4, 2026, xcrew
 /// 0.16.0; docs/findings.md, *A call moved to the background*): the summary names the task, and the `<result>` block holds
 /// MobileBuildMCP's text after "Task failed: ", all on one line, cut at about 10 KB. Field shape, names neutralised: a
 /// module's test target asked for under a scheme that doesn't test it, two errors and 289 warnings; its log ends with
@@ -35,6 +35,20 @@ struct OneLineNotificationTests {
         #expect(result.hasPrefix("<task-notification>\n<task-id>k5dse2p6c</task-id>\n<status>failed</status>"))
         #expect(result.count(where: { $0 == "⚠" }) <= 10, "\(result)")
         #expect(result.count < Self.notification.count / 4, "\(result.count) of \(Self.notification.count) characters")
+    }
+
+    /// An error's place is the path at its end, spaces and all, and nothing else: a message ending in a version or a
+    /// file's name keeps it.
+    @Test func aPlaceIsTheWholePathAtTheEnd() {
+        #expect(OneLineText.unfolded("🧪 Test Errors (2): ✗ cannot open the file /work/My App/File.swift:12 ✗ needs version 1.2:3") == "\n🧪 Test\n\nErrors (2):\n\n  ✗ cannot open the file\n    /work/My App/File.swift:12\n\n  ✗ needs version 1.2:3\n")
+    }
+
+    /// xcodebuild's error with lines under it, as one naming a destination no simulator matches, ends the log too.
+    @Test func aLogEndingInXcodebuildsErrorAndItsDetailIsAFailedRun() async {
+        let log = "Command line invocation:\n    xcodebuild build -scheme App\n\nxcodebuild: error: Unable to find a device matching the provided destination specifier:\n\t\t{ platform:iOS Simulator, OS:latest, name:iPhone 1 }\n\n\tThe requested device could not be found because no available devices matched the request.\n\n"
+        let report = await Report.make(kind: .build, log: log, runner: FakeRunner())
+        #expect(!report.ok && report.isUnread == nil)
+        #expect(report.failures == [ToolOutput.Failure(title: "Unable to find a device matching the provided destination specifier:", message: "")])
     }
 
     /// A run whose log ends with xcodebuild's own error, and no verdict, failed with that error.

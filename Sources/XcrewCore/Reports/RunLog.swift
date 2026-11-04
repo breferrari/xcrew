@@ -259,11 +259,12 @@ extension RunLog {
         return outcome(ofVerdict: verdict, kind: kind)
     }
 
-    /// The error xcodebuild ended the log with, when its last line is one, `xcodebuild: error: Failed to build workspace …`:
-    /// a run it stopped before any verdict, as one whose `-only-testing:` target its scheme doesn't test.
+    /// The error xcodebuild ended the log with, when its last line that isn't indented is one, `xcodebuild: error: Failed
+    /// to build workspace …`, the lines under it its detail: a run it stopped before any verdict, as one whose
+    /// `-only-testing:` target its scheme doesn't test, or whose destination no simulator matches.
     static func lastError(in log: String) -> String? {
-        guard let last = log.split(separator: "\n").last(where: { !$0.allSatisfy(\.isWhitespace) }) else { return nil }
-        return last.trimmingCharacters(in: .whitespaces).firstMatch(of: #/^xcodebuild: error: (.+)$/#).map { String($0.1) }
+        guard let last = log.split(separator: "\n").last(where: { $0.first.map { !$0.isWhitespace } ?? false }) else { return nil }
+        return last.firstMatch(of: #/^xcodebuild: error: (.+)$/#).map { String($0.1) }
     }
 
     /// Whether a verdict, `** TEST EXECUTE FAILED **`, says `kind`'s run succeeded, by `outcome(of:kind:)`'s rule.

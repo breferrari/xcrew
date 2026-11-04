@@ -21,9 +21,9 @@ enum OneLineText {
     static var step: Regex<Substring> { #/ (?=\d+\. )/# }
     /// The summary under the sections, `❌ 2 tests failed, 1 passed (⏱️ 14.2s)` or `✅ Test succeeded.`.
     static var summary: Regex<Substring> { #/^[✅❌] (?:Test |Build |\d+ tests? )/# }
-    /// An error's, warning's or failure's place at its end, `/…/File.swift:99`, which MobileBuildMCP puts on a line below.
-    /// A place whose path holds a space reads from its last.
-    static var place: Regex<(Substring, Substring, Substring)> { #/^(.+) (\S*[\/.]\S*:\d+)$/# }
+    /// An error's, warning's or failure's place at its end, `/…/File.swift:99`, which MobileBuildMCP puts on a line below:
+    /// an absolute path, spaces and all, from the last ` /` before its line, or a file's name alone, `NestedTests.swift:29`.
+    static var place: Regex<(Substring, Substring, Substring)> { #/^(.+) (\/.*:\d+(?::\d+)?|[^\s\/]+\.[A-Za-z]\w*:\d+(?::\d+)?)$/# }
 
     /// `text` on the lines MobileBuildMCP wrote it on; nil when it's already on several, or isn't a build's or test
     /// run's text.
@@ -53,6 +53,7 @@ enum OneLineText {
             } else if part.firstMatch(of: summary) != nil {
                 lines += "\n\n" + part
             } else if part.hasPrefix("└ Files:") {
+                filesRoot = true
                 lines += "\n  " + part
             } else if part.hasPrefix("└── ") || part.hasPrefix("├── ") {
                 lines += (filesRoot ? "\n     " : "\n         ") + part

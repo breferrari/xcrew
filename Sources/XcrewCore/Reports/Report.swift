@@ -34,7 +34,8 @@ public struct Report: Sendable, Equatable, Codable {
     public var pin: String?
     /// The task a call Claude Code moved to the background answers with, from its handle: the id its notification names.
     public var backgroundTask: String?
-    /// The outcome comes from a run log's last verdict alone, with no result or bundle read: no test's own result.
+    /// The outcome comes from a run log alone, its last verdict or the error xcodebuild ended it with, with no result or
+    /// bundle read: no test's own result.
     public var isVerdictOnly: Bool?
     /// Why the run failed when the cause is the Mac, with its fix (`Why`): the note that leads `notes`, apart, so the
     /// failures pane can open with it.
