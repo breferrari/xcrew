@@ -365,12 +365,13 @@ struct MobileText: Sendable {
     /// bundle and from the log, are one: the first one's message, then every line below any of them, and another's message
     /// where it differs, each once, before the first's place; the section's count lowered by those folded in. A name the
     /// id ends with, as a nested suite's `Inner / fails()`, stays; a `System Failures` entry, whose name is its process's,
-    /// stays; a test's own failure and its crash stay apart, and a test listed twice under one name, as a repeated run's,
+    /// and an entry whose id is its process's crash case, which names no test, stay; a test's own failure and its crash stay apart, and a test listed twice under one name, as a repeated run's,
     /// is left as it is. Nil when nothing changes.
     func folding(by id: (TestID) -> TestID?) -> MobileText? {
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
         let keyed = failureEntries(after: heading).compactMap { entry -> (key: FailureNotes.FailedLine, entry: FailureEntry)? in
-            guard lines[entry.body.lowerBound].entry?.text.hasPrefix("System Failures / ") != true, let found = id(entry.failing.test) else { return nil }
+            guard lines[entry.body.lowerBound].entry?.text.hasPrefix("System Failures / ") != true, let found = id(entry.failing.test),
+                  !MobileBuildMCPLine.isProcessCrash(found.suite), !MobileBuildMCPLine.isProcessCrash(found.name) else { return nil }
             return (FailureNotes.FailedLine(test: found, isCrash: FailureNotes.isCrash(entry.failing.message)), entry)
         }
         let groups = Dictionary(grouping: keyed, by: \.key).values.filter { group in

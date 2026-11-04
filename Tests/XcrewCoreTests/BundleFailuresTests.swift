@@ -238,6 +238,13 @@ struct BundleFailuresTests {
         if isFound { #expect(lines[note - 1] == "    ProbeTests.swift:42" && lines[note - 2].contains("System Failures"), "\(lines)") }
     }
 
+    /// A crash the text names under its test, which the bundle files only under `System Failures`, keeps its test's
+    /// name: the bundle's id for it is the process's case, no name to give the test.
+    @Test func aCrashFoundOnlyAsItsProcessesCaseKeepsItsTestsName() {
+        let text = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ AssertCrashTests / test_crash(): \(Self.crash)\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        #expect(text.folding { _ in TestID(xcresultID: "xctest (80341) encountered an error") } == nil)
+    }
+
     /// The bundle's whole path for a failure stands for the text's bare place of the same file and line, so the entry has
     /// one place; a bare place of another file or line is another fact, and both stay.
     @Test(arguments: [("/work/App/NestedTests.swift:29", false), ("/work/App/Other.swift:3", true)])
