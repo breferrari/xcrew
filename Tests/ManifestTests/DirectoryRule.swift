@@ -52,7 +52,10 @@ struct DirectoryRule {
         var misnamed: [Int] = []
         for registration in text.matches(of: /(?m)^[ \t]*on\(/) {
             let open = text.distance(from: text.startIndex, to: registration.range.upperBound) - 1
-            guard let close = enclosingCallClose(after: open + 1, in: code) else { continue }
+            guard let close = enclosingCallClose(after: open + 1, in: code) else {
+                misnamed.append(open)
+                continue
+            }
             // The hook is the last argument; a `.catch` on the registration takes a handler of the same shape.
             var handlers = [lastArgument(of: open, to: close, in: code)]
             if let caught = window(code, after: close + 1).firstMatch(of: /^\s*\.catch\(/) {
@@ -67,18 +70,19 @@ struct DirectoryRule {
         return typed + misnamed
     }
 
-    /// Where the last argument of the call whose brackets run from `open` to `close` starts.
+    /// Where the last argument of the call whose brackets run from `open` to `close` starts, past a trailing comma.
     static func lastArgument(of open: Int, to close: Int, in code: [Character]) -> Int {
-        var depth = 0, start = open + 1
+        var depth = 0, starts = [open + 1]
         for position in (open + 1)..<close {
             switch code[position] {
             case "(", "[", "{": depth += 1
             case ")", "]", "}": depth -= 1
-            case "," where depth == 0: start = position + 1
+            case "," where depth == 0: starts.append(position + 1)
             default: continue
             }
         }
-        return start
+        let last = starts[starts.count - 1]
+        return code[last..<close].allSatisfy(\.isWhitespace) && starts.count > 1 ? starts[starts.count - 2] : last
     }
 
     /// Where `name` stands as a whole identifier in `code`, not part of a longer one or a property after a `.`.
@@ -120,7 +124,12 @@ struct DirectoryRule {
         while position < code.count {
             let next = window(code, after: position)
             if next.firstMatch(of: /^\s*(?:\??\.|\[|\(|`)/) != nil { return true }
-            guard let skipped = next.firstMatch(of: /^\s*(!|\))/) else { return false }
+            guard let skipped = next.firstMatch(of: /^\s*(!|\))/) else {
+                // Inside parentheses that only group it, as `(f($) || x).y`, the chain is read after them.
+                guard let group = enclosingCallClose(after: position, in: code), let open = matchingOpen(of: group, in: code), !isCall(opening: open, in: code) else { return false }
+                position = group + 1
+                continue
+            }
             position += skipped.output.0.count
             // A parenthesis that closes another call's arguments ends the chain the call could be part of.
             if skipped.output.1 == ")", let open = matchingOpen(of: position - 1, in: code), isCall(opening: open, in: code) { return false }
@@ -132,7 +141,7 @@ struct DirectoryRule {
     /// call's or an index's close.
     static func isCall(opening open: Int, in code: [Character]) -> Bool {
         let before = window(code, before: open)
-        return before.firstMatch(of: /[\w$)\]]\s*$/) != nil
+        return before.firstMatch(of: /(?:[\w$)\]>]|\?\.)\s*$/) != nil
             && before.firstMatch(of: /(?:^|[^\w$])(?:void|await|return|typeof|in|of|case|new|delete|yield|throw|else|do|async)\s*$/) == nil
     }
 

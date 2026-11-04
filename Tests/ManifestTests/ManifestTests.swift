@@ -1630,6 +1630,10 @@ import XcrewTestSupport
           on('u', async ($, e, next) => next(e)).catch(async (engine, e, next) => next(e))
           void quietly(() => helper($)).then(() => 1)
           void next(e).catch(async (error: unknown) => error)
+          void (helper($) || fallback).y
+          void g<T>(() => helper($)).then(() => 1)
+          on('t', async (engine, e, next) => next(e),
+          )
         }
         async function helper($: EngineInterface, n?: number): Promise<void> { return update($, state, () => n) }
         async function other(engine: EngineInterface) { return 1 }
@@ -1660,10 +1664,14 @@ import XcrewTestSupport
             "30: on(\"w\", matcher, async engine => next(e))",
             "31: on('v', function (engine, e, next) { return next(e) })",
             "32: on('u', async ($, e, next) => next(e)).catch(async (engine, e, next) => next(e))",
-            "37: async function other(engine: EngineInterface) { return 1 }",
-            "38: async function third(engine?: EngineInterface) { return 1 }",
-            "39: async function fourth(x: CoreEngineInterface) { return 1 }",
+            "35: void (helper($) || fallback).y",
+            "37: on('t', async (engine, e, next) => next(e),",
+            "41: async function other(engine: EngineInterface) { return 1 }",
+            "42: async function third(engine?: EngineInterface) { return 1 }",
+            "43: async function fourth(x: CoreEngineInterface) { return 1 }",
         ])
+        // A registration the reader can't find the end of is one it can't read.
+        #expect(DirectoryRule.breaches(in: "on('x', async ($) => {").map(\.line) == [1])
         // A file with Windows line endings is read line by line all the same.
         #expect(DirectoryRule.breaches(in: "imported($)\r\n// a comment\r\nimported($)").map(\.line) == [1, 3])
     }
