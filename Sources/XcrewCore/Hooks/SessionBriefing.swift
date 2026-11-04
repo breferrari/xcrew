@@ -30,7 +30,7 @@ public struct SessionBriefing: Sendable {
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), on: machine)
         let planned = (await plans).map { "- **xcrew:** \($0)" }
-        return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "") + (planned.isEmpty ? "" : "\n\n" + planned.joined(separator: "\n"))
+        return lines.joined(separator: "\n") + (card.map { "\n\n" + $0 } ?? "") + (planned.isEmpty ? "" : "\n\nTest plans here:\n" + planned.joined(separator: "\n"))
     }
 
     /// The Xcode the project pins, read from its file alone: whether the server started with it is the doctor's to say,

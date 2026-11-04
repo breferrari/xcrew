@@ -125,7 +125,6 @@ import XcrewTestSupport
             project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "\(name).xctestplan")
         }
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
-        // 80 schemes read: 5 named, 75 counted, with the command that lists them all.
         #expect(text.contains("- **xcrew:** and 75 more test plans run each test under several configurations (`xcrew plans` lists them all)."), "\(text)")
     }
 
@@ -154,7 +153,7 @@ import XcrewTestSupport
             project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "P\(plan).xctestplan")
         }
         project.write(#"{"configurations":[{"name":"Light"},{"name":"Dark"}],"testTargets":[],"version":1}"#, to: "Shared.xctestplan")
-        let notes = (await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? "").components(separatedBy: "\n").filter { $0.contains("Test plan") || $0.contains("test plans") }
+        let notes = (await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? "").components(separatedBy: "\n").filter { $0.hasPrefix("- **xcrew:**") && ($0.contains("Test plan") || $0.contains("test plans")) }
         // In the order the schemes sort: `Shared` comes with `A`.
         #expect(notes.first == "- **xcrew:** Test plan `Shared`, the default of schemes `A`, `B` and `C`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which.", "\(notes)")
         #expect(notes.contains("- **xcrew:** Test plan `P1`, the default of scheme `P1`, runs each test under each of its configurations: Light and Dark. A test can fail under one and pass under another; `look` names which."), "\(notes)")
@@ -207,7 +206,7 @@ import XcrewTestSupport
         #expect(text.count < 10_000, "\(text.count)")
         let cardAt = try #require(text.range(of: "Notes, as of the run 5 min ago:\n- line 1 of the card"))
         #expect(text.contains("- line 12 of the card, as long as a card's lines run when they name a scheme and its runs"), "\(text)")
-        let planAt = try #require(text.range(of: "Test plan `"))
+        let planAt = try #require(text.range(of: "\n\nTest plans here:\n- **xcrew:** Test plan `"))
         #expect(cardAt.lowerBound < planAt.lowerBound, "\(text)")
     }
 
