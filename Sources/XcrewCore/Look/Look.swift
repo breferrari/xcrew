@@ -157,17 +157,20 @@ public enum Look {
 
     /// Each run's elements on screen, as `hierarchyLines` lists them, nil for a run whose aren't listed: a list the same as
     /// an earlier run's is said once, by that run's label, as under a test plan's configurations whose screens hold the
-    /// same elements. Two lists are the same though each names its own file for the elements past those listed; a run
-    /// whose screen lists no element, as one that kept no hierarchy, says so itself.
+    /// same elements. Two lists are the same though each names its own file for the elements past those listed, and
+    /// though only one has a screenshot that may show a system alert: that line stays under its own run, and isn't part of
+    /// the elements. A run whose screen lists no element, as one that kept no hierarchy, says so itself.
     static func elements(of runs: [(label: String, lines: [String]?)]) -> [[String]?] {
         var listedUnder: [[String]: String] = [:]
         return runs.map { run in
-            guard let lines = run.lines else { return nil }
-            guard lines.count > 1 else { return lines }
+            guard let given = run.lines else { return nil }
+            let alert = given.first == appsOnly ? [appsOnly] : []
+            let lines = Array(given.dropFirst(alert.count))
+            guard lines.count > 1 else { return given }
             let same = lines.map { $0.firstMatch(of: #/^(  and \d+ more) in /#).map { String($0.1) } ?? $0 }
-            if let first = listedUnder[same] { return ["on screen: the same as under \(first)"] }
+            if let first = listedUnder[same] { return alert + ["on screen: the same as under \(first)"] }
             listedUnder[same] = run.label
-            return lines
+            return given
         }
     }
 
