@@ -193,19 +193,41 @@ export function staleLedgers(stored: Readonly<Record<string, unknown>>, now: num
 type GreenEntry = LedgerEntry & { green: LedgerRun }
 type FlakyEntry = LedgerEntry & { flaky: Flakiness }
 
-/** The ledger as Claude reads it for a test plan, and the person through `/xcrew ledger`. */
+/**
+ * The ledger as Claude reads it for a test plan, and the person through `/xcrew ledger`. Tests whose runs share a scope
+ * are listed under it, named once, as a run of many suites turns many tests red and green together: each entry naming
+ * it made one ledger of 12 tests 10.7 KB (a field report, xcrew 0.16.0). A test alone in its scopes is one line.
+ */
 export function ledgerText(ledger: Ledger | undefined, head: Head): string {
   const name = label(head, true)
   const entries = ledger?.entries ?? []
   if (entries.length === 0) return `No test has failed on ${name} yet.`
   const green = entries.filter((entry): entry is GreenEntry => entry.green !== undefined)
   const red = entries.filter(entry => !entry.green)
-  const redPart = (entry: LedgerEntry) => `red ${dayAndTime(entry.red.at)} in ${entry.red.scope}: ${shownMessage(entry.red.message)}${entry.unseen ? `; ${NOT_IN_NEWEST}, ${dayAndTime(entry.unseen.at)}` : ''}`
+  const unseen = (entry: LedgerEntry) => (entry.unseen ? `; ${NOT_IN_NEWEST}, ${dayAndTime(entry.unseen.at)}` : '')
+  const redPart = (entry: LedgerEntry, scope: string) => `red ${dayAndTime(entry.red.at)}${scope}: ${shownMessage(entry.red.message)}${unseen(entry)}`
   const named = (entry: LedgerEntry) => `${entry.test}${flakyLabel(entry)}`
+  const greenLine = (entry: GreenEntry, alone: boolean) =>
+    `${named(entry)}: ${redPart(entry, alone ? ` in ${entry.red.scope}` : '')}; green ${dayAndTime(entry.green.at)}${alone ? ` in ${entry.green.scope}` : ''}`
+  const greenHead = (entry: GreenEntry, tests: number) =>
+    entry.red.scope === entry.green.scope ? `${count(tests)} red, then green, in ${entry.red.scope}:` : `${count(tests)} red in ${entry.red.scope}, then green in ${entry.green.scope}:`
   return [
-    ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...green.map(entry => `- ${named(entry)}: ${redPart(entry)}; green ${dayAndTime(entry.green.at)} in ${entry.green.scope}`)] : []),
-    ...(red.length > 0 ? [`Still red (${red.length}):`, ...red.map(entry => `- ${named(entry)}: ${redPart(entry)}`)] : []),
+    ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...grouped(green, entry => `${entry.red.scope}\n${entry.green.scope}`, greenLine, greenHead)] : []),
+    ...(red.length > 0 ? [`Still red (${red.length}):`, ...grouped(red, entry => entry.red.scope, (entry, alone) => `${named(entry)}: ${redPart(entry, alone ? ` in ${entry.red.scope}` : '')}`, (entry, tests) => `${count(tests)} red in ${entry.red.scope}:`)] : []),
   ].join('\n')
+}
+
+/**
+ * `entries` as lines, those sharing a `key` together where the first of them stood: one alone as `- <line>`, with its
+ * scopes; several under `- <head>`, which names their scopes once, each as `  - <line>` without them.
+ */
+function grouped<Entry>(entries: Entry[], key: (entry: Entry) => string, line: (entry: Entry, alone: boolean) => string, head: (first: Entry, tests: number) => string): string[] {
+  const groups = new Map<string, Entry[]>()
+  for (const entry of entries) groups.set(key(entry), [...(groups.get(key(entry)) ?? []), entry])
+  return [...groups.values()].flatMap(group => {
+    const first = group[0]!
+    return group.length === 1 ? [`- ${line(first, true)}`] : [`- ${head(first, group.length)}`, ...group.map(entry => `  - ${line(entry, false)}`)]
+  })
 }
 
 /**
