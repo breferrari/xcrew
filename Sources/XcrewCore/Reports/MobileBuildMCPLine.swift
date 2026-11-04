@@ -86,10 +86,21 @@ enum MobileBuildMCPLine {
         message.replacing(#/^failed\s*-\s*/#, with: "")
     }
 
-    /// The test a crash's message names last, `Crash: xctest at implicit closure #1 in Suite.test()` or `Crash: xctest at
-    /// Suite.test()`, a test taking no arguments; nil when the frame it ends on is no such test, as `Model.load(from:)`.
+    /// The test a crash's message names, the frame it ends on, `Crash: xctest at implicit closure #1 in Suite.test()`, read
+    /// through what wraps it: an `@objc` thunk, an async test's `(1) suspend resume partial function for`, an offset
+    /// after it, `+ 40`. The frame is a test when it's an XCTest method: no arguments, and a name beginning with `test`, as
+    /// XCTest requires. Any other frame, a helper as `Cache.reset()` or `Model.load(from:)`, or a Swift Testing test,
+    /// which can take any name, names no test: nil (docs/findings.md, *A crash under System Failures*).
     static func crashedTest(message: String) -> TestID? {
-        message.wholeMatch(of: #/Crash: .* (?:in|at) (?:\S+\.)?([^.\s]+)\.([^.\s(]+\(\))/#).map { TestID(suite: $0.1, name: $0.2) }
+        guard message.hasPrefix("Crash: ") else { return nil }
+        var frame = Substring(message)
+        for wrapper in [" at ", " in ", " for "] {
+            if let last = frame.ranges(of: wrapper).last { frame = frame[last.upperBound...] }
+        }
+        if frame.hasPrefix("@objc ") { frame = frame.dropFirst("@objc ".count) }
+        if let offset = frame.firstMatch(of: #/ \+ \d+$/#) { frame = frame[..<offset.range.lowerBound] }
+        guard let parts = frame.wholeMatch(of: #/(?:\S+\.)?([^.\s]+)\.(test[^.\s(]*\(\))/#) else { return nil }
+        return TestID(suite: parts.1, name: parts.2)
     }
 
     /// `    /path/File.swift:12`, the line after a failure, an error or a warning that says where it happened.

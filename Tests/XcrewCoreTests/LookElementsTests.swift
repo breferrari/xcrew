@@ -88,13 +88,13 @@ import XcrewTestSupport
     /// `look` takes the name the run's text gives a test: a nested suite's, `Inner/fails()`, means the one nested id that
     /// ends with it, and a crash's filed under `System Failures` means the `xctest (<pid>)` case its message names.
     @Test func lookTakesTheTextsNameForANestedTestOrACrashCase() {
-        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"Outer/Inner/fails()","result":"Failed"},{"nodeType":"Test Suite","name":"System Failures","children":[{"nodeType":"Test Case","name":"xctest (1) encountered an error","nodeIdentifier":"xctest (1) encountered an error","result":"Failed","children":[{"nodeType":"Failure Message","name":"Crash: xctest at Suite.crashes()"}]}]}]}"#)
+        let listing = TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"fails()","nodeIdentifier":"Outer/Inner/fails()","result":"Failed"},{"nodeType":"Test Suite","name":"System Failures","children":[{"nodeType":"Test Case","name":"xctest (1) encountered an error","nodeIdentifier":"xctest (1) encountered an error","result":"Failed","children":[{"nodeType":"Failure Message","name":"Crash: xctest at Suite.testCrashes()"}]}]}]}"#)
         let lookup = TestLookup(nodes: listing.nodes)
         #expect(Look.test("Inner/fails()", among: lookup) == TestID(xcresultID: "Outer/Inner/fails()"))
-        #expect(Look.test("Suite/crashes()", among: lookup) == TestID(xcresultID: "xctest (1) encountered an error"))
+        #expect(Look.test("Suite/testCrashes()", among: lookup) == TestID(xcresultID: "xctest (1) encountered an error"))
         // As MobileBuildMCP's Discovered list names them, from the target.
         #expect(Look.test("NestedTests/Inner/fails", among: lookup) == TestID(xcresultID: "Outer/Inner/fails()"))
-        #expect(Look.test("Target/Suite/crashes()", among: lookup) == TestID(xcresultID: "xctest (1) encountered an error"))
+        #expect(Look.test("Target/Suite/testCrashes()", among: lookup) == TestID(xcresultID: "xctest (1) encountered an error"))
     }
 
     /// `look` takes a nested suite's test as the bundle names it, so its suite's `/` isn't read as a target's.

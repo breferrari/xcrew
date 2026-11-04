@@ -270,8 +270,8 @@ public struct ResultBundle: Sendable {
         let images = report["usedImages"] as? [[String: Any]] ?? []
         let exception = report["exception"] as? [String: Any]
         let crashed = (exception?["type"] as? String).map { type in "crashed: \(type)\((exception?["signal"] as? String).map { " (\($0))" } ?? "")" }
-        let named = test.map { $0.suite.isEmpty ? "." + String($0.name.prefix { $0 != "(" }) + "(" : $0.shown.replacingOccurrences(of: "/", with: ".") + "(" }
-        let ownIndex = frames.firstIndex { frame in named.map { (frame["symbol"] as? String)?.contains($0) == true } == true && ownFrame(frame) != nil }
+        let named = test.map { (($0.suite.isEmpty ? "" : $0.suite + ".") + $0.function).replacingOccurrences(of: "/", with: ".") }
+        let ownIndex = frames.firstIndex { frame in named.map { names(frame["symbol"] as? String ?? "", $0) } == true && ownFrame(frame) != nil }
             ?? frames.firstIndex { ownFrame($0) != nil }
         let own = ownIndex.map { min($0 + 1, mostFrames) } ?? topFrames
         let top = frames.prefix(own).map { frame in
@@ -280,6 +280,16 @@ public struct ResultBundle: Sendable {
             return "\(image)  \(frame["symbol"] as? String ?? "?")"
         }
         return ((crashed.map { [$0] } ?? []) + top, ownIndex.flatMap { ownFrame(frames[$0]) })
+    }
+
+    /// Whether a frame's symbol names `key`, `Suite.test(value:)`, the test's whole name: not inside a longer one, as
+    /// `NotSuite.test(value:)`, and not another overload, as `Suite.test(other:)`.
+    static func names(_ symbol: String, _ key: String) -> Bool {
+        symbol.ranges(of: key).contains { range in
+            guard range.lowerBound > symbol.startIndex else { return true }
+            let before = symbol[symbol.index(before: range.lowerBound)]
+            return !before.isLetter && !before.isNumber && before != "_"
+        }
     }
 
     /// A frame's `File.swift:12`, when the crash log names a source file of the project's own for it.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A test's crash is filed under the test that crashed, or under none: never under a helper the crash happened in, as `Cache.reset()`. Its message is read through an `@objc` thunk, an async test's resume function or an offset after the frame. The crash note's line is the test's own frame, never a frame in another suite whose name ends the same or in another overload, and a parameterised test's frame is found.
+
 ## 0.17.0 — 2026-11-04
 
 - A failed test run that Claude Code moved to the background now reaches Claude as short as the same run in the foreground, with xcrew's notes. Its notification holds MobileBuildMCP's text on one line, cut at about 10 KB; xcrew couldn't read it, so it came whole. When only the run's log is left, a log that xcodebuild ended with its own error, as one refusing a test target the scheme doesn't test, reads as a failed run with that error.
