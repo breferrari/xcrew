@@ -13,6 +13,11 @@ public struct XcodeSkills: Sendable {
         return FileManager.default.fileExists(atPath: skills.path) ? XcodeSkills(source: skills) : nil
     }
 
+    /// The skills folder of Xcode's plugin on `machine`, or nil before Xcode 27.
+    public static func locate(on machine: Machine) async -> XcodeSkills? {
+        await locate(using: machine.runner)
+    }
+
     /// Every skill this Xcode ships: a folder holding a `SKILL.md`.
     public var available: [String] {
         ((try? FileManager.default.contentsOfDirectory(atPath: source.path)) ?? []).sorted().filter {
