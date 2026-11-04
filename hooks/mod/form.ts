@@ -39,6 +39,24 @@ export function startingPicks(choices: SetupChoices): SetupPicks {
   return { ...choices.picks, ...(choices.container ? { container: choices.container } : {}), debuggerBackend: choices.config?.debuggerBackend === 'lldb-cli' ? 'lldb-cli' : 'dap', worktreeSimulator: 'clone' }
 }
 
+/**
+ * The form once `xcrew setup --choices` answered `answered`, for `container` when the person picked one, and with what
+ * the last write said when it was `written`: its picks start from the choices. An answer that holds no choices keeps the
+ * picks and says why, `failed` when the CLI couldn't answer.
+ */
+export function formWithChoices(form: SetupForm | null, answered: unknown, failed: string | undefined, container?: string, written?: string[]): SetupForm {
+  const choices = answered !== null && typeof answered === 'object' && Array.isArray((answered as SetupChoices).containers) ? (answered as SetupChoices) : undefined
+  return choices
+    ? { choices, picks: { ...startingPicks(choices), ...(container ? { container } : {}) }, ...(written ? { written } : {}) }
+    : { choices: null, picks: form?.picks ?? {}, unread: `${failed ?? 'xcrew setup --choices gave no choices xcrew could read'}. /xcrew:setup, the skill, sets xcrew up instead.` }
+}
+
+/** The form with `pick` set to `value`, an empty one clearing it: the bundle ID is the app scheme's, so another app scheme drops it, for the person to give the new one. */
+export function formWithPick(form: SetupForm | null, pick: keyof SetupPicks, value: string): SetupForm | null {
+  const dropped = pick === 'appScheme' ? { bundleID: undefined } : {}
+  return form ? { ...form, picks: { ...form.picks, ...dropped, [pick]: value === '' ? undefined : value } as SetupPicks } : form
+}
+
 /** Whether writing replaces a config setup would otherwise keep: one xcrew didn't write, or one edited since. */
 function replaces(choices: SetupChoices): boolean {
   return choices.config !== undefined && choices.config.owner !== 'xcrew'

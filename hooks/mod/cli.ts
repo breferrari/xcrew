@@ -130,6 +130,17 @@ export function reportOf(answer: unknown, isError: boolean): Report {
   return { ...parsed, ok: parsed.ok ?? !isError, failures: parsed.failures ?? [], notes: parsed.notes ?? [] }
 }
 
+/**
+ * Adds the pin's note with the first failure it may explain, and not again: `named` holds the pins Claude has read this
+ * session, which it updates.
+ */
+export function withPinNamedOnce(outcome: Report, named: Set<string>): Report {
+  const pin = outcome.pin ?? outcome.pinNote
+  if (!outcome.pinNote || !pin || named.has(pin)) return outcome
+  named.add(pin)
+  return { ...outcome, notes: [...outcome.notes, outcome.pinNote] }
+}
+
 /** The running call's log, once it appears, and the phase read from it. */
 export function phaseOf(answer: unknown): Phase {
   return (answer as Phase | undefined) ?? {}
