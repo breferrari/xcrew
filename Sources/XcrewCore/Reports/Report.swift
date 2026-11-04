@@ -3,7 +3,7 @@ import Foundation
 /// Everything the mod shows and hands on for one finished build, test or run call, worked out from
 /// the server's output: the outcome for the band, the failures for the pane, the duration and test
 /// count for the history, and the shorter result and notes Claude reads.
-public struct Report: Sendable, Equatable, Codable {
+public struct Report: Sendable, Equatable {
     public enum Kind: String, Sendable { case build, test, run }
 
     public var ok: Bool
@@ -22,21 +22,13 @@ public struct Report: Sendable, Equatable, Codable {
     /// With `--passed`: the tests the run's results list as passed, for the ledger; nil when not asked for or when they
     /// can't be read.
     public var passed: [PassedTest]?
-    /// A build or test call whose result holds nothing in its server's own forms, and isn't an error: a call Claude moved
-    /// to the background answers with Claude Code's handle, not the server's result. Absent otherwise.
-    public var isUnread: Bool?
+    /// What the report could read of the call: its result, nothing, or a run log's verdict alone.
+    public var reading: Reading
     /// A test run's result bundle, which the ledger keeps for a test's first red run.
     public var bundle: String?
     /// That another Xcode than the project's pin built, for a failure whose errors another SDK or toolchain gives: apart
     /// from the notes, since the mod shows it once a session for each pin.
-    public var pinNote: String?
-    /// The pin `pinNote` names, `26.5 (.xcode-version)`: the mod names each pin once a session, however the note is worded.
-    public var pin: String?
-    /// The task a call Claude Code moved to the background answers with, from its handle: the id its notification names.
-    public var backgroundTask: String?
-    /// The outcome comes from a run log alone, its last verdict or the error xcodebuild ended it with, with no result or
-    /// bundle read: no test's own result.
-    public var isVerdictOnly: Bool?
+    public var pinned: PinNote?
     /// Why the run failed when the cause is the Mac, with its fix (`Why`): the note that leads `notes`, apart, so the
     /// failures pane can open with it.
     public var cause: String?
@@ -45,6 +37,12 @@ public struct Report: Sendable, Equatable, Codable {
     public var concurrency: ConcurrencySummary?
     /// The scheme the run's log names, when the report was read with its log: what the mod keys a backgrounded run by.
     public var scheme: String?
+
+    /// A report of what `reading` says was read.
+    public init(ok: Bool, detail: String? = nil, durationMs: Int? = nil, tests: Int? = nil, failures: [ToolOutput.Failure], result: String? = nil, notes: [String], repeated: [ResultBundle.Repeated]? = nil, passed: [PassedTest]? = nil, reading: Reading, bundle: String? = nil, pinned: PinNote? = nil, cause: String? = nil, concurrency: ConcurrencySummary? = nil, scheme: String? = nil) {
+        (self.ok, self.detail, self.durationMs, self.tests, self.failures, self.result, self.notes) = (ok, detail, durationMs, tests, failures, result, notes)
+        (self.repeated, self.passed, self.reading, self.bundle, self.pinned, self.cause, self.concurrency, self.scheme) = (repeated, passed, reading, bundle, pinned, cause, concurrency, scheme)
+    }
 
     /// The warnings in lines the branch changed, a few named, marked as xcrew's; nothing when there are none.
     static func warningsNote(_ inChanged: [ToolOutput.Warning], of total: Int) -> String? {
@@ -219,7 +217,7 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// No outcome: what a call moved to the background answers with, or a task that ended with no result to read.
-    public static let unread = Report(ok: false, failures: [], notes: [], isUnread: true)
+    public static let unread = Report(ok: false, failures: [], notes: [], reading: .unread(task: nil))
 
     /// A finished run told from its MobileBuildMCP log, for a task whose result couldn't be read: the log's last verdict,
     /// and for a test run each failing test from the result bundle the log names, with each repeated test's runs when
@@ -228,16 +226,16 @@ public struct Report: Sendable, Equatable, Codable {
     public static func make(kind: Kind, log: String, machine: Machine, repeated: Bool = false, listsPassed: Bool = false) async -> Report {
         guard let ok = RunLog.outcome(of: log, kind: kind) else {
             guard let error = RunLog.lastError(in: log) else { return unread }
-            return Report(ok: false, failures: [ToolOutput.Failure(error: error)], notes: [], isVerdictOnly: true)
+            return Report(ok: false, failures: [ToolOutput.Failure(error: error)], notes: [], reading: .verdictOnly)
         }
         let path = kind == .test ? RunLog.resultBundle(in: log) : nil
         if let path {
             let listing = TestList(await ResultBundle(path: path, runner: machine.runner).tests())
             if let failed = ResultBundle.failedTests(listing: listing) {
-                return Report(ok: ok, failures: ok ? [] : failed, notes: [], repeated: repeated ? ResultBundle.repetitions(listing: listing) : nil, passed: listsPassed ? ResultBundle.passed(listing: listing) : nil, bundle: path)
+                return Report(ok: ok, failures: ok ? [] : failed, notes: [], repeated: repeated ? ResultBundle.repetitions(listing: listing) : nil, passed: listsPassed ? ResultBundle.passed(listing: listing) : nil, reading: .result, bundle: path)
             }
         }
-        return Report(ok: ok, failures: [], notes: [], bundle: path, isVerdictOnly: true)
+        return Report(ok: ok, failures: [], notes: [], reading: .verdictOnly, bundle: path)
     }
 
     /// A call moved to the background, from its task's notification: the server's text, of a task that completed or
@@ -256,7 +254,7 @@ public struct Report: Sendable, Equatable, Codable {
             if !(output.isError && given.isNotTheServers) {
                 let logged = kind == .test && unfolded != nil && given.xcresultPath == nil ? log.flatMap { RunLog.resultBundle(in: RunLog.text(ofLogAt: $0)) } : nil
                 var read = await make(kind: kind, output: given, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine, bundle: logged)
-                if read.isUnread != true {
+                if !read.reading.isUnread {
                     if let shorter = read.result ?? unfolded { read.result = notification.replacingResult(with: shorter) }
                     return read
                 }
@@ -306,7 +304,7 @@ public struct Report: Sendable, Equatable, Codable {
         }()
         // Which Xcode builds, for a failed MobileBuildMCP build or test whose errors another SDK or toolchain gives: the pin's
         // note, which the mod names once a session, and the notes on CI's Xcode, a pin to suggest, and the open Xcode.
-        async let xcodeFacts: (pin: String?, notes: [String]) = {
+        async let xcodeFacts: (pinNote: String?, notes: [String]) = {
             // MobileBuildMCP builds with the Xcode the pin decides; the Xcode MCP, with whichever is open.
             guard read.server == .mobileBuildMCP, let project, !readSummary.ok else { return (nil, []) }
             let errors = read.reportedErrors.map(\.message)
@@ -453,11 +451,9 @@ public struct Report: Sendable, Equatable, Codable {
             notes: notes,
             repeated: repeatedTests,
             passed: passedTests,
-            isUnread: isUnread ? true : nil,
+            reading: isUnread ? .unread(task: Self.backgroundTask(in: final.text)) : .result,
             bundle: bundle?.path,
-            pinNote: await xcodeFacts.pin,
-            pin: await xcodeFacts.pin == nil ? nil : project?.xcodePin.map { "\($0.version) (\($0.file))" },
-            backgroundTask: isUnread ? Self.backgroundTask(in: final.text) : nil,
+            pinned: await xcodeFacts.pinNote.map { PinNote(note: $0, pin: project?.xcodePin.map { "\($0.version) (\($0.file))" }) },
             cause: await why,
             concurrency: await concurrency
         )

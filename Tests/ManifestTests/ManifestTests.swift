@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import XcrewCLI
 @testable import XcrewCore
+import XcrewTestSupport
 
 /// The plugin, the mcs techpack and the Swift code each name the same things: hooks, tools,
 /// checks, prompts. These tests keep them in step, so a change in one place can't leave another
