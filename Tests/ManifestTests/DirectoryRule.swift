@@ -20,16 +20,21 @@ struct DirectoryRule {
     /// directory". A plugin can read its own directory no other way, so the rule's "each call" doesn't reach them.
     static let pluginProperties: Set = ["name", "root"]
 
+    /// The API's own helpers that take `$` whole, as `$.state` uses them.
+    static let apiHelpers: Set = ["read", "update"]
+
     /// How far around a use the checks here look.
     static let reach = 200
 
     /// Each use of `$` or `on` in `source` that the rule refuses, and each parameter that takes the API under another name.
-    static func breaches(in source: String) -> [Breach] {
+    static func breaches(in written: String) -> [Breach] {
+        let source = written.replacingOccurrences(of: "\r\n", with: "\n")
         let text = blanked(source)
         let code = Array(text)
         let lines = source.components(separatedBy: "\n")
         let topLevel = Set(text.matches(of: /(?m)^(?:export\s+)?(?:async\s+)?function\*?\s+([A-Za-z_]\w*)/).map { String($0.1) })
         let fromAPI = Set(source.matches(of: /import\s*\{([^}]*)\}\s*from\s*'claude-code'/).flatMap { $0.1.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } })
+            .intersection(apiHelpers)
         let refused = ["$", "on"].flatMap { name in
             occurrences(of: name, in: code).filter { !isAllowed(name, at: $0, in: code, callees: topLevel.union(fromAPI)) }
         } + misnamedAPI(in: text)
@@ -38,12 +43,42 @@ struct DirectoryRule {
     }
 
     /// Where a hook or a function takes the mods API under a name other than `$`: a parameter typed `EngineInterface`,
-    /// or a registration's hook whose first parameter is another name or destructured.
+    /// or the first parameter of a registration's hook, or of the `.catch` handler chained on it, that's another name
+    /// or destructured.
     static func misnamedAPI(in text: String) -> [Int] {
-        let typed = text.matches(of: /([A-Za-z_$][\w$]*|\})\s*:\s*EngineInterface\b/).filter { $0.1 != "$" }.map(\.range.lowerBound)
-        let hooks = text.matches(of: /(?m)^[ \t]*on\(\s*'[^']*'\s*,(?:\s*\{[^{}]*\}\s*,)?\s*(?:async\s+)?(?:\(\s*([^\s,):]*)|([A-Za-z_$][\w$]*)\s*=>)/)
-            .filter { match in (match.1 ?? match.2).map { !$0.isEmpty && $0 != "$" } ?? false }.map(\.range.lowerBound)
-        return (typed + hooks).map { text.distance(from: text.startIndex, to: $0) }
+        let code = Array(text)
+        let typed = text.matches(of: /([A-Za-z_$][\w$]*|\})\s*\??\s*:\s*(?:Core)?EngineInterface\b/).filter { $0.1 != "$" }
+            .map { text.distance(from: text.startIndex, to: $0.range.lowerBound) }
+        var misnamed: [Int] = []
+        for registration in text.matches(of: /(?m)^[ \t]*on\(/) {
+            let open = text.distance(from: text.startIndex, to: registration.range.upperBound) - 1
+            guard let close = enclosingCallClose(after: open + 1, in: code) else { continue }
+            // The hook is the last argument; a `.catch` on the registration takes a handler of the same shape.
+            var handlers = [lastArgument(of: open, to: close, in: code)]
+            if let caught = window(code, after: close + 1).firstMatch(of: /^\s*\.catch\(/) {
+                let catchOpen = close + 1 + caught.output.count - 1
+                if let catchClose = enclosingCallClose(after: catchOpen + 1, in: code) { handlers.append(lastArgument(of: catchOpen, to: catchClose, in: code)) }
+            }
+            for handler in handlers {
+                let first = String(code[handler..<min(handler + reach, code.count)]).firstMatch(of: /^\s*(?:async\s+)?(?:function\s*\*?\s*[\w$]*\s*)?(?:\(\s*([^\s,):]*)|([A-Za-z_$][\w$]*)\s*=>)/)
+                if let name = first.flatMap({ $0.1 ?? $0.2 }), !name.isEmpty, name != "$" { misnamed.append(open) }
+            }
+        }
+        return typed + misnamed
+    }
+
+    /// Where the last argument of the call whose brackets run from `open` to `close` starts.
+    static func lastArgument(of open: Int, to close: Int, in code: [Character]) -> Int {
+        var depth = 0, start = open + 1
+        for position in (open + 1)..<close {
+            switch code[position] {
+            case "(", "[", "{": depth += 1
+            case ")", "]", "}": depth -= 1
+            case "," where depth == 0: start = position + 1
+            default: continue
+            }
+        }
+        return start
     }
 
     /// Where `name` stands as a whole identifier in `code`, not part of a longer one or a property after a `.`.
@@ -75,7 +110,35 @@ struct DirectoryRule {
         guard before.firstMatch(of: /[(,]\s*$/) != nil, after.firstMatch(of: /^\s*[,)]/) != nil,
               let open = enclosingCallOpen(before: index, in: code), let close = enclosingCallClose(after: index, in: code),
               let callee = window(code, before: open).firstMatch(of: /(?:^|[^.\w$])([A-Za-z_$][\w$]*)\s*$/), callees.contains(String(callee.1)) else { return false }
-        return window(code, after: close + 1).firstMatch(of: /^\s*(?:\??\.|\[|\(|`)/) == nil
+        return !isChained(after: close, in: code)
+    }
+
+    /// Whether anything is chained on the call that ends at `close`: a member, an index, a call or a tag, read past a
+    /// `!` and past parentheses that only group it, as `(await f($)).x`.
+    static func isChained(after close: Int, in code: [Character]) -> Bool {
+        var position = close + 1
+        while position < code.count {
+            let next = window(code, after: position)
+            if next.firstMatch(of: /^\s*(?:\??\.|\[|\(|`)/) != nil { return true }
+            guard let skipped = next.firstMatch(of: /^\s*(!|\))/) else { return false }
+            position += skipped.output.0.count
+            // A parenthesis that closes another call's arguments ends the chain the call could be part of.
+            if skipped.output.1 == ")", let open = matchingOpen(of: position - 1, in: code), isCall(opening: open, in: code) { return false }
+        }
+        return false
+    }
+
+    /// Whether the `(` at `open` starts a call's arguments: it follows a name, other than a keyword as `await`, or a
+    /// call's or an index's close.
+    static func isCall(opening open: Int, in code: [Character]) -> Bool {
+        let before = window(code, before: open)
+        return before.firstMatch(of: /[\w$)\]]\s*$/) != nil
+            && before.firstMatch(of: /(?:^|[^\w$])(?:void|await|return|typeof|in|of|case|new|delete|yield|throw|else|do|async)\s*$/) == nil
+    }
+
+    /// The `(` that `close`, a `)`, closes.
+    static func matchingOpen(of close: Int, in code: [Character]) -> Int? {
+        enclosingCallOpen(before: close, in: code)
     }
 
     /// Whether `name` at `index` is a parameter: the one of an arrow, `$ =>`, or one in the list an arrow or a function
@@ -85,8 +148,11 @@ struct DirectoryRule {
         if after.firstMatch(of: /^\s*=>/) != nil { return true }
         guard before.firstMatch(of: /[(,]\s*$/) != nil, after.firstMatch(of: /^\s*[:,)]/) != nil,
               let open = enclosingCallOpen(before: index, in: code), let close = enclosingCallClose(after: index, in: code) else { return false }
-        if window(code, after: close + 1).firstMatch(of: /^\s*(?::[^;{}()\n?]*)?=>/) != nil { return true }
-        return window(code, before: open).firstMatch(of: /function\s*\*?\s*[\w$]*\s*$/) != nil
+        let opener = window(code, before: open)
+        if opener.firstMatch(of: /function\s*\*?\s*[\w$]*\s*$/) != nil { return true }
+        // A list after a name is a call's arguments, unless the name is `async`, an arrow's.
+        if opener.firstMatch(of: /[\w$)\]]\s*$/) != nil, opener.firstMatch(of: /(?:^|[^\w$])async\s*$/) == nil { return false }
+        return window(code, after: close + 1).firstMatch(of: /^\s*(?::[^;{}()\n?]*)?=>/) != nil
     }
 
     /// The code just before `index`, or just after it, as far as `reach`.

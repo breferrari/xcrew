@@ -142,7 +142,8 @@ export const register: Register = on => {
     if (!(await markStale($, stale => marked(stale, edit, { path, before: before ?? null })))) return result
     // An edit that puts the manifests back clears the app's mark, and needs no generate.
     const after = await quietly(() => read($, staleState))
-    const isCleared = after && !marksOf((await dropUndone($, after)).stale).some(mark => mark.app === edit.app)
+    const dropped = after ? await dropUndone($, after) : undefined
+    const isCleared = dropped !== undefined && !marksOf(dropped.stale).some(mark => mark.app === edit.app)
     return withContext(result, isCleared ? UNDONE_NOTE : editedNote(edit.generate))
   }).catch(async ($, e, next) => next(e))
   on('tool.call', async ($, e, next) => {
@@ -939,7 +940,8 @@ async function branchState($: EngineInterface) {
   await ledgerWrites
   const [folder, now] = await Promise.all([$.session.cwd(), $.clock.now()])
   const root = await sessionRoot($)
-  const scopes = (await storedHistory($)).filter(entry => entry.root === root && !isStale(entry.updated, now))
+  const kept = await storedHistory($)
+  const scopes = kept.filter(entry => entry.root === root && !isStale(entry.updated, now))
   const { head, ledger } = await branchLedger($)
   return { folder, now, head, scopes, entries: ledger?.entries ?? [], updated: ledger?.updated }
 }
@@ -978,7 +980,8 @@ let sessionRootRead: string | undefined
 
 async function sessionRoot($: EngineInterface): Promise<string> {
   if (sessionRootRead !== undefined) return sessionRootRead
-  const named = (await currentHead($))?.root
+  const current = await currentHead($)
+  const named = current?.root
   // Only a root the CLI named is kept: one it couldn't name yet, as while it builds, is asked for again.
   if (named !== undefined) sessionRootRead = named
   return named ?? (await quietly(() => $.session.cwd())) ?? ''
@@ -1362,7 +1365,8 @@ async function ledgerNow($: EngineInterface, text: (ledger: Ledger | undefined, 
 /** `/xcrew history`: this repository's scopes, those a run updated within the history's time; an undated one is dated now. */
 async function history($: EngineInterface): Promise<string> {
   const root = await sessionRoot($)
-  const stored = (await storedHistory($)).filter(entry => entry.root === root)
+  const everyScope = await storedHistory($)
+  const stored = everyScope.filter(entry => entry.root === root)
   const keys = stored.map(entry => entry.key)
   const updated = Object.fromEntries(stored.map(entry => [entry.key, entry.updated]))
   // Dating and dropping lines is bookkeeping: without a clock the history still shows, all of it.

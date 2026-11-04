@@ -1588,13 +1588,15 @@ import XcrewTestSupport
     /// Every hook is registered in the hooks module.
     @Test func onlyTheHooksModuleRegistersHooks() throws {
         #expect(try Self.offenders(/(?:^|[^\w.$])on\(['"`]|: On\b/, allowed: ["register.ts"]) == [])
+        let register = try #require(try Self.sources().first { $0.name == "register.ts" }).text
+        #expect(register.contains(/(?m)^[ \t]*on\(['"]/))
     }
 
     /// The directory's rule (`DirectoryRule`) read on snippets, so the test below holds the mod to what the rule says,
     /// not to what the reader happens to do.
     @Test func theDirectoryRuleReadsEachUseOfDollarAndOn() {
         let module = #"""
-        import { read, update } from 'claude-code'
+        import { atom, read, update } from 'claude-code'
         export const register: Register = (on) => {
           on('session.start', async ($, e, next) => {
             await $.ui.status('x') // $.plugin.root in a comment
@@ -1618,9 +1620,21 @@ import XcrewTestSupport
           void helper($)(1)
           on('tool.call', async (engine, e, next) => next(e))
           on('y', async ({ ui }, e, next) => next(e))
+          void (await helper($)).x
+          void helper($)!.x
+          const pick = ok ? imported($) : y => y
+          atom($)
+          on('z', { tool: { name: 'a' } }, async (engine, e, next) => next(e))
+          on("w", matcher, async engine => next(e))
+          on('v', function (engine, e, next) { return next(e) })
+          on('u', async ($, e, next) => next(e)).catch(async (engine, e, next) => next(e))
+          void quietly(() => helper($)).then(() => 1)
+          void next(e).catch(async (error: unknown) => error)
         }
         async function helper($: EngineInterface, n?: number): Promise<void> { return update($, state, () => n) }
         async function other(engine: EngineInterface) { return 1 }
+        async function third(engine?: EngineInterface) { return 1 }
+        async function fourth(x: CoreEngineInterface) { return 1 }
         """#
         #expect(DirectoryRule.breaches(in: module).map(\.description) == [
             "5: const said = `${$.session.cwd} and '$.x'`",
@@ -1638,8 +1652,20 @@ import XcrewTestSupport
             "22: void helper($)(1)",
             "23: on('tool.call', async (engine, e, next) => next(e))",
             "24: on('y', async ({ ui }, e, next) => next(e))",
-            "27: async function other(engine: EngineInterface) { return 1 }",
+            "25: void (await helper($)).x",
+            "26: void helper($)!.x",
+            "27: const pick = ok ? imported($) : y => y",
+            "28: atom($)",
+            "29: on('z', { tool: { name: 'a' } }, async (engine, e, next) => next(e))",
+            "30: on(\"w\", matcher, async engine => next(e))",
+            "31: on('v', function (engine, e, next) { return next(e) })",
+            "32: on('u', async ($, e, next) => next(e)).catch(async (engine, e, next) => next(e))",
+            "37: async function other(engine: EngineInterface) { return 1 }",
+            "38: async function third(engine?: EngineInterface) { return 1 }",
+            "39: async function fourth(x: CoreEngineInterface) { return 1 }",
         ])
+        // A file with Windows line endings is read line by line all the same.
+        #expect(DirectoryRule.breaches(in: "imported($)\r\n// a comment\r\nimported($)").map(\.line) == [1, 3])
     }
 
     /// Every mod source meets the plugin directory's rule, which blocks a plugin whose hooks module breaks it. The
