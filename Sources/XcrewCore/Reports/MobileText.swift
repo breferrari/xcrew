@@ -323,24 +323,33 @@ struct MobileText: Sendable {
         lines[(heading + 1)...].firstIndex { if case .heading = $0.kind { true } else { $0.isSummary } } ?? lines.endIndex
     }
 
-    /// The text with `name`'s first entries under Test Failures replaced, in their places, by `failures`, one each, in
-    /// MobileBuildMCP's shape; failures beyond its entries follow its last, the section's count raised by them, and its
-    /// entries beyond the failures stay. Each entry is its `✗` line and the lines below it, its place and those
-    /// `entryIndent` indents, up to the blank one that ends it. With the text, how many of `name`'s entries stay; nil
-    /// when the section lists none.
-    func replacing(_ name: TestID, with failures: [FailureLine]) -> (text: MobileText, left: Int)? {
-        guard !failures.isEmpty, let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
+    /// A failure's entry under Test Failures: its `✗` line and the lines below it, its place and those `entryIndent`
+    /// indents, as `body`, and with the blank line that ends it, as `whole`.
+    typealias FailureEntry = (body: Range<Int>, whole: Range<Int>, failing: (test: TestID, message: String))
+
+    /// The entries of the Test Failures section headed at `heading`.
+    func failureEntries(after heading: Int) -> [FailureEntry] {
         let ending = failuresEnd(after: heading)
-        var entries: [Range<Int>] = []
+        var entries: [FailureEntry] = []
         var index = heading + 1
         while index < ending {
-            guard lines[index].failing?.test == name else { index += 1; continue }
+            guard let failing = lines[index].failing else { index += 1; continue }
             var end = index + 1
             while end < ending, lines[end].failing == nil, !lines[end].isBlank, lines[end].location != nil || lines[end].text.hasPrefix(Self.entryIndent) { end += 1 }
-            if end < ending, lines[end].isBlank { end += 1 }
-            entries.append(index..<end)
-            index = end
+            let whole = end < ending && lines[end].isBlank ? index..<(end + 1) : index..<end
+            entries.append((index..<end, whole, failing))
+            index = whole.upperBound
         }
+        return entries
+    }
+
+    /// The text with `name`'s first entries under Test Failures replaced, in their places, by `failures`, one each, in
+    /// MobileBuildMCP's shape; failures beyond its entries follow its last, the section's count raised by them, and its
+    /// entries beyond the failures stay. With the text, how many of `name`'s entries stay; nil when the section lists
+    /// none.
+    func replacing(_ name: TestID, with failures: [FailureLine]) -> (text: MobileText, left: Int)? {
+        guard !failures.isEmpty, let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
+        let entries = failureEntries(after: heading).filter { $0.failing.test == name }.map(\.whole)
         guard !entries.isEmpty else { return nil }
         var replaced = lines
         for (offset, entry) in entries.enumerated().reversed() where offset < failures.count {
@@ -351,59 +360,54 @@ struct MobileText: Sendable {
         return (MobileText(lines: replaced), max(entries.count - failures.count, 0))
     }
 
-    /// The text with each test Test Failures lists under more than one name, as a Swift Testing test under its display
-    /// name from the bundle and from the log, folded into one entry under the bundle's id `id` gives the names: the first
-    /// entry's message, then every line below any of them, and another's message where it differs, each once, before the
-    /// first's place; the section's count lowered by those folded in. A test's own failure and its crash stay apart, and
-    /// a test listed twice under one name, as a repeated run's, is left as it is. Nil when nothing folds.
+    /// The text with each test Test Failures lists under a name other than the bundle's, as a Swift Testing test under its
+    /// display name, named as the bundle's id `id` gives for the name. Its entries under more than one name, as from the
+    /// bundle and from the log, are one: the first one's message, then every line below any of them, and another's message
+    /// where it differs, each once, before the first's place; the section's count lowered by those folded in. A name the
+    /// id ends with, as a nested suite's `Inner / fails()`, stays; a `System Failures` entry, whose name is its process's,
+    /// stays; a test's own failure and its crash stay apart, and a test listed twice under one name, as a repeated run's,
+    /// is left as it is. Nil when nothing changes.
     func folding(by id: (TestID) -> TestID?) -> MobileText? {
         guard let heading = lines.firstIndex(where: { $0.isHeading(.testFailures) }) else { return nil }
-        let ending = failuresEnd(after: heading)
-        var entries: [(range: Range<Int>, failing: (test: TestID, message: String))] = []
-        var index = heading + 1
-        while index < ending {
-            guard let failing = lines[index].failing else { index += 1; continue }
-            var end = index + 1
-            while end < ending, lines[end].failing == nil, !lines[end].isBlank, lines[end].location != nil || lines[end].text.hasPrefix(Self.entryIndent) { end += 1 }
-            entries.append((index..<end, failing))
-            index = end
+        let keyed = failureEntries(after: heading).compactMap { entry -> (key: FailureNotes.FailedLine, entry: FailureEntry)? in
+            guard lines[entry.body.lowerBound].entry?.text.hasPrefix("System Failures / ") != true, let found = id(entry.failing.test) else { return nil }
+            return (FailureNotes.FailedLine(test: found, isCrash: FailureNotes.isCrash(entry.failing.message)), entry)
         }
-        let keyed = entries.indices.compactMap { entry in id(entries[entry].failing.test).map { (FailureNotes.FailedLine(test: $0, isCrash: FailureNotes.isCrash(entries[entry].failing.message)), entry) } }
-        let groups = Dictionary(grouping: keyed, by: \.0).filter { _, group in group.count > 1 && Set(group.map { entries[$0.1].failing.test }).count == group.count }
+        let groups = Dictionary(grouping: keyed, by: \.key).values.filter { group in
+            Set(group.map(\.entry.failing.test)).count == group.count && (group.count > 1 || !Self.names(group[0].key.test, endingWith: group[0].entry.failing.test))
+        }
         guard !groups.isEmpty else { return nil }
-        // Each folded test's entry, by where its first one starts; the others it folds in, by where each starts.
-        var foldedInto: [Int: [Line]] = [:], dropped: Set<Int> = []
-        for (key, group) in groups {
-            let (first, rest) = (entries[group[0].1], group.dropFirst().map { entries[$0.1] })
-            var below = Array(lines[first.range.dropFirst()])
+        var edits: [(range: Range<Int>, lines: [Line])] = []
+        for group in groups {
+            let (first, rest) = (group[0].entry, group.dropFirst().map(\.entry))
+            var below = Array(lines[first.body.dropFirst()])
             var seen = Set(below.map { $0.text.trimmingCharacters(in: .whitespaces) } + [first.failing.message])
-            let added = rest.flatMap { other in [Line(Self.entryIndent + other.failing.message)] + lines[other.range.dropFirst()] }
+            let added = rest.flatMap { other in [Line(Self.entryIndent + other.failing.message)] + lines[other.body.dropFirst()] }
                 .filter { seen.insert($0.text.trimmingCharacters(in: .whitespaces)).inserted }
             below.insert(contentsOf: added, at: below.last.map(Self.isPlace) == true ? below.count - 1 : below.count)
-            let title = Line("  ✗ \(key.test.suite.isEmpty ? TestID.unknownSuite : key.test.suite) / \(key.test.function): \(first.failing.message)")
-            foldedInto[first.range.lowerBound] = [title] + below
-            dropped.formUnion(rest.map(\.range.lowerBound))
+            edits.append((first.body, [Self.title(group[0].key.test, first.failing.message)] + below))
+            edits += rest.map { ($0.whole, []) }
         }
-        var replaced = Array(lines[...heading])
-        replaced[heading] = Self.counting(lines[heading], by: -dropped.count)
-        var line = heading + 1
-        while line < lines.count {
-            guard let entry = entries.first(where: { $0.range.lowerBound == line }), foldedInto[line] != nil || dropped.contains(line) else {
-                replaced.append(lines[line])
-                line += 1
-                continue
-            }
-            replaced += foldedInto[line] ?? []
-            line = entry.range.upperBound
-            // A dropped entry goes with the blank line that ends it.
-            if dropped.contains(entry.range.lowerBound), line < lines.count, lines[line].isBlank { line += 1 }
-        }
+        var replaced = lines
+        for edit in edits.sorted(by: { $0.range.lowerBound > $1.range.lowerBound }) { replaced.replaceSubrange(edit.range, with: edit.lines) }
+        replaced[heading] = Self.counting(lines[heading], by: -groups.reduce(0) { $0 + $1.count - 1 })
         return MobileText(lines: replaced)
     }
 
+    /// Whether `test`, a name the text gives, is the end of the bundle's `id`, as a nested suite's `Inner/fails` is of
+    /// `Outer/Inner/fails`, or a top-level test the text files under `(Unknown Suite)`.
+    static func names(_ id: TestID, endingWith test: TestID) -> Bool {
+        id.shown == test.shown || id.shown.hasSuffix("/\(test.shown)") || (test.suite == TestID.unknownSuite && id.suite.isEmpty && id.name == test.name)
+    }
+
     /// Whether a line below a failure's `✗` line is its place: a path with its line, or a file alone, `File.swift:12`.
-    static func isPlace(_ line: Line) -> Bool {
+    private static func isPlace(_ line: Line) -> Bool {
         line.location != nil || line.text.trimmingCharacters(in: .whitespaces).wholeMatch(of: /[^\s\/]+\.\w+:\d+/) != nil
+    }
+
+    /// A failure's `✗` line, as MobileBuildMCP writes one: `✗ Suite / test(): message`.
+    static func title(_ test: TestID, _ message: String) -> Line {
+        Line("  ✗ \(test.suite.isEmpty ? TestID.unknownSuite : test.suite) / \(test.function): \(message)")
     }
 
     /// How MobileBuildMCP indents the lines below a failure's `✗` line, its place among them.
@@ -412,7 +416,7 @@ struct MobileText: Sendable {
     /// A failure's entry under Test Failures, as MobileBuildMCP writes one: `✗ Suite / test(): message`, its place, and
     /// the blank line that ends it.
     static func entry(_ failure: FailureLine) -> [Line] {
-        [Line("  ✗ \(failure.test.suite.isEmpty ? TestID.unknownSuite : failure.test.suite) / \(failure.test.function): \(failure.message)")] + (failure.place.map { [Line(entryIndent + $0)] } ?? []) + [Line("")]
+        [title(failure.test, failure.message)] + (failure.place.map { [Line(entryIndent + $0)] } ?? []) + [Line("")]
     }
 
     /// Where the Test Results section starts, nil when the text has none.

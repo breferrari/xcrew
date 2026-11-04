@@ -65,14 +65,16 @@ enum MobileBuildMCPLine {
         entry.hasPrefix("|")
     }
 
-    /// `Suite / test(): message`, the part of a failing test's line after its `✗`, a Swift Testing test's name its
-    /// display name where it has one, spaces and all, `Inner / Adds numbers: message`. A crash the result bundle files under
+    /// `Suite / test(): message`, the part of a failing test's line after its `✗`. A Swift Testing test is named by its
+    /// display name when it has one, spaces and all, `Inner / Adds numbers: message`. A crash the result bundle files under
     /// `System Failures`, as `xctest (<pid>) encountered an error`, is its test's when its message names one; else it's
     /// no test's failure (docs/findings.md, *A crash under System Failures*).
     static func test(in entry: String) -> (test: TestID, message: String)? {
         if let crash = entry.wholeMatch(of: #/System Failures \/ (.+?): (Crash: .*)/#), isProcessCrash(String(crash.1)) {
             return crashedTest(message: String(crash.2)).map { ($0, String(crash.2)) }
         }
+        // A process's crash in any other words names no test.
+        if let process = entry.firstMatch(of: #/^System Failures \/ (xctest \(\d+\) encountered an error):/#), isProcessCrash(String(process.1)) { return nil }
         return entry.firstMatch(of: #/^(.+?) \/ (.+?): (.*)$/#).map { (TestID(suite: $0.1, name: $0.2), String($0.3)) }
     }
 

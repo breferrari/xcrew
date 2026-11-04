@@ -732,6 +732,7 @@ struct BundleFailuresTests {
         let report = await Report.make(kind: .test, output: try Raw.output("nested"), home: Captured.home, runner: runner)
         let result = try #require(report.result)
         #expect(result.contains("Test Failures (4):"), "\(result)")
+        #expect(!result.contains("\n    NestedTests.swift:29\n"), "\(result)")
         #expect(!result.contains("Adds numbers"), "\(result)")
         #expect(result.contains("""
               ✗ Outer / Inner/addsNumbers(): Expectation failed: 1 + 1 == 3

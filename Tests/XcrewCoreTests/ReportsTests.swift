@@ -303,6 +303,12 @@ func failingRunText(passing: Int) -> String {
         #expect(failing.message == "Expectation failed: 1 + 1 == 3")
     }
 
+    /// A process's own crash under `System Failures` that names no test, as one worded `Test crashed with signal`, is no
+    /// test's failure, though a name may now hold spaces.
+    @Test func aProcessCrashNamingNoTestIsNoTests() {
+        #expect(MobileBuildMCPLine.test(in: "System Failures / xctest (9) encountered an error: Test crashed with signal SIGSEGV") == nil)
+    }
+
     @Test func aFailureGetsTheLocationTheBundleRecorded() async throws {
         let bundle = "\(Captured.workspace)/result-bundles/test_sim_1.xcresult"
         let runner = FakeRunner(responses: [
