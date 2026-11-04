@@ -177,8 +177,8 @@ import XcrewTestSupport
         #expect(text?.contains("/xcrew:setup") == false)
     }
 
-    /// The project card the mod saved for this folder and the branch checked out comes last, so it reaches Claude after a
-    /// /clear or a compaction as well, which start the hook again.
+    /// The project card the mod saved for this folder and the branch checked out comes after the notes, and last when no
+    /// test plan follows, so it reaches Claude after a /clear or a compaction as well, which start the hook again.
     @Test func briefingEndsWithTheProjectCardForThisBranch() async {
         let project = Project.temporary(containing: ["App.xcodeproj"])
         let machine = Self.machine(project, version: "2.7.1", branch: "feat/card")
@@ -266,15 +266,17 @@ import XcrewTestSupport
 
     static let failover = "Until it is, the routing rules' MobileBuildMCP rows don't apply: build with the Xcode MCP's `BuildProject` and test with `RunAllTests`. They work through Xcode itself, on the open project, its active scheme and destination, in Xcode's own DerivedData. Lost meanwhile: coverage reports, simulator control, UI automation and LLDB. Tell the person once that MobileBuildMCP is unavailable and what that loses, then carry on. If a build or test needs a scheme other than Xcode's active one, ask before switching it: that changes their open Xcode. If the Xcode MCP's tools refuse too, run `xcrew doctor`."
 
+    /// The briefing's time: a fixed one, never the wall clock, so a card's age reads the same on every run.
+    static let now = Date(timeIntervalSince1970: 1_793_750_400)
+
     /// A Mac whose `mobilebuildmcp` is a real file, answering `--version` with `version` (nil: no answer). The file is
-    /// written once, since the version's cache is keyed by its modification time. Its clock stands at the moment it's
-    /// made, so a test's dates and the briefing's "ago" agree however long the test takes.
+    /// written once, since the version's cache is keyed by its modification time. Its clock stands at `now`.
     static func machine(_ project: Project, version: String?, branch: String? = nil) -> Machine {
         if !FileManager.default.fileExists(atPath: project.root.appending(path: "bin/mobilebuildmcp").path) { project.write("#!/bin/sh\n", to: "bin/mobilebuildmcp") }
         var runner = FakeRunner(installed: ["mobilebuildmcp"], responses: version.map { ["mobilebuildmcp --version": CommandResult(status: 0, stdout: $0 + "\n")] } ?? [:])
         if let branch { runner.responses["git -C \(project.root.path) symbolic-ref --short -q HEAD"] = CommandResult(status: 0, stdout: branch + "\n") }
         runner.paths["mobilebuildmcp"] = project.root.appending(path: "bin/mobilebuildmcp").path
-        return CheckContext.fake(runner, project: project, now: Date()).machine
+        return CheckContext.fake(runner, project: project, now: Self.now).machine
     }
 
     @Test func aMissingMobileBuildMCPSendsBuildsAndTestsToTheXcodeMCP() async {

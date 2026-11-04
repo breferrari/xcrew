@@ -30,6 +30,8 @@ public enum ProjectCard {
     static let version = 1
     /// As long as the mod keeps its history (`HISTORY_KEPT_MS` in hooks/mod/timing.ts).
     static let keptDays = 14
+    /// A day in milliseconds, the unit every age here is counted in.
+    static let day: Int64 = 86_400_000
 
     static func folder(on machine: Machine) -> URL {
         machine.cacheFolder.appending(path: "cards")
@@ -74,23 +76,34 @@ public enum ProjectCard {
         guard let entry = read(file(folder: folder, branch: branch, on: machine)), (entry.version ?? version) <= version,
               entry.folder == folder, entry.branch == branch, !isStale(entry, now: now), let text = entry.text
         else { return nil }
-        let age = "as of the run \(ago(now.timeIntervalSince1970 - entry.updated / 1000))"
+        let age = "as of the run \(ago(milliseconds: Self.milliseconds(now.timeIntervalSince1970 * 1000) - Self.milliseconds(entry.updated)))"
         var lines = text.components(separatedBy: "\n")
         if let first = lines.first, first.hasSuffix(":") { lines[0] = "\(first.dropLast()), \(age):" } else { lines.insert("(\(age))", at: 0) }
         return lines.joined(separator: "\n")
     }
 
-    /// The mod's `isStale`, for the card's oldest line: more than the kept days before now.
+    /// The mod's `isStale`, for the card's oldest line: more than the kept days before now, in whole milliseconds as
+    /// the mod counts them.
     static func isStale(_ entry: Entry, now: Date) -> Bool {
-        now.timeIntervalSince1970 - (entry.oldest ?? entry.updated) / 1000 > TimeInterval(keptDays * 24 * 3600)
+        milliseconds(now.timeIntervalSince1970 * 1000) - milliseconds(entry.oldest ?? entry.updated) > Int64(keptDays) * day
     }
 
-    static func ago(_ seconds: TimeInterval) -> String {
-        switch seconds {
-        case ..<60: "just now"
-        case ..<3600: "\(Int(seconds / 60)) min ago"
-        case ..<(24 * 3600): "\(Int(seconds / 3600)) h ago"
-        default: "\(Int(seconds / (24 * 3600))) d ago"
+    /// A time in milliseconds since 1970 as a whole number of them, the fraction dropped, so ages are counted in whole
+    /// milliseconds: in seconds, `now - updated / 1000` can come out a fraction short of a whole minute. It's held
+    /// within 9e15 either side of 1970, about 285,000 years, so no time a card holds traps the conversion or a
+    /// difference of two.
+    static func milliseconds(_ time: Double) -> Int64 {
+        Int64(min(max(time.rounded(.down), -9e15), 9e15))
+    }
+
+    /// How long ago, in whole units, each truncated: "5 min" is at least five minutes.
+    static func ago(milliseconds: Int64) -> String {
+        let minute: Int64 = 60_000, hour = 60 * minute, day = Self.day
+        switch milliseconds {
+        case ..<minute: return "just now"
+        case ..<hour: return "\(milliseconds / minute) min ago"
+        case ..<day: return "\(milliseconds / hour) h ago"
+        default: return "\(milliseconds / day) d ago"
         }
     }
 
