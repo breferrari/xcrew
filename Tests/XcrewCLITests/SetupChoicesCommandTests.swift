@@ -80,7 +80,7 @@ import XcrewTestSupport
         home.writeScheme("App", folder: "App.xcworkspace/xcshareddata")
         let project = Project.temporary(containing: [])
         project.write("schemaVersion: 1\nsessionDefaults:\n  workspacePath: ~/App.xcworkspace\n  simulatorName: 'iPhone 18'\n", to: ".mobilebuildmcp/config.yaml")
-        let machine = Machine(environment: [:], home: home.root, runner: FakeRunner.simulators(["iPhone 18"]), processID: 1, applications: project.root.appending(path: "Applications"))
+        let machine = Machine(environment: [:], home: home.root, runner: FakeRunner.simulators(["iPhone 18"]), processID: 1, applications: project.root.appending(path: "Applications"), files: RootedFiles(roots: [home.root, project.root.appending(path: "Applications")]))
         let run = await Run("setup", "--choices", context: CheckContext(project: project, machine: machine))
         let choices = try JSONDecoder().decode(SetupChoices.self, from: Data(run.text.utf8))
         #expect(choices.schemes.map(\.name) == ["App"])

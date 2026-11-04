@@ -59,7 +59,7 @@ import XcrewTestSupport
     @Test func aSessionsFirstRecordRemovesTheStampsLeftTooLong() throws {
         let given = context(nil).machine
         let now = Date(timeIntervalSince1970: 1_767_225_600)
-        let machine = Machine(environment: given.environment, home: given.home, runner: given.runner, processID: given.processID, now: { now })
+        let machine = Machine(environment: given.environment, home: given.home, runner: given.runner, processID: given.processID, now: { now }, files: RootedFiles(roots: [given.home]))
         let sessions = machine.cacheFolder.appending(path: "sessions")
         SessionStamp.record("old", on: machine, .mod, version: "0.13.0")
         SessionStamp.record("recent", on: machine, .mod, version: "0.13.0")

@@ -5,7 +5,7 @@ import XcrewTestSupport
 
 @Suite struct ProjectTests {
     func machine(_ environment: [String: String]) -> Machine {
-        Machine(environment: environment, home: URL(fileURLWithPath: "/"), runner: FakeRunner())
+        Machine(environment: environment, home: URL(fileURLWithPath: "/"), runner: FakeRunner(), files: RootedFiles(roots: [URL(fileURLWithPath: "/")]))
     }
 
     @Test func mcsProjectWinsOverClaudeProjectDir() {

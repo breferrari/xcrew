@@ -11,12 +11,12 @@ public struct XcodeInstall: Sendable, Equatable {
 
     /// Whether it shows simulators in DeviceHub and has no Simulator.app, as from Xcode 27, read from the bundle through
     /// `files`.
-    func hasDeviceHubOnly(files: any FileReading = LocalFiles()) -> Bool {
+    func hasDeviceHubOnly(files: any FileReading) -> Bool {
         files.exists(URL(fileURLWithPath: "\(path)/Contents/Applications/DeviceHub.app")) && !hasSimulatorApp(files: files)
     }
 
     /// Whether it ships Simulator.app, which `open -a Simulator` opens, read through `files`.
-    func hasSimulatorApp(files: any FileReading = LocalFiles()) -> Bool {
+    func hasSimulatorApp(files: any FileReading) -> Bool {
         files.exists(URL(fileURLWithPath: "\(developerFolder)/Applications/Simulator.app"))
     }
 

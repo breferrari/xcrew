@@ -14,17 +14,6 @@ public protocol FileReading: Sendable {
 extension FileReading {
     /// The file as UTF-8 text; nil when it can't be read.
     public func text(at url: URL) -> String? {
-        data(at: url).map { String(decoding: $0, as: UTF8.self) }
+        data(at: url).flatMap { String(data: $0, encoding: .utf8) }
     }
-}
-
-/// The disk, as it is.
-public struct LocalFiles: FileReading {
-    public init() {}
-
-    public func data(at url: URL) -> Data? { try? Data(contentsOf: url) }
-
-    public func names(in folder: URL) -> [String]? { try? FileManager.default.contentsOfDirectory(atPath: folder.path) }
-
-    public func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
 }

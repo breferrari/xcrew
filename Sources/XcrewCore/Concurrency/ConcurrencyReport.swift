@@ -56,7 +56,7 @@ public struct ConcurrencyReport: Sendable, Equatable, Codable {
     /// only then. `readsChanges` false leaves git alone: the note after a build gives no changed-line count.
     public static func read(log: URL, project: Project, machine: Machine, onlyChanged: Bool = false, readsChanges: Bool = true) async throws -> ConcurrencyReport {
         try await read(log: log, project: project, groups: { named in
-            let xcode = if let named { machine.app(at: named) } else { await Xcodes.selected(on: machine).map { URL(fileURLWithPath: $0.path) } }
+            let xcode = if let named { machine.onThisMachine(named) } else { await Xcodes.selected(on: machine).map { URL(fileURLWithPath: $0.path) } }
             return .read(docs: xcode.map(ConcurrencyGroups.docs(in:)), files: machine.files)
         }, onlyChanged: onlyChanged, readsChanges: readsChanges, using: machine.runner)
     }

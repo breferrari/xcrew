@@ -58,7 +58,7 @@ Tests/
   XcrewTestSupport/     FakeRunner and temporary projects, shared by the suites
 ```
 
-Everything that touches the machine goes through `Machine` (environment, home folder, `CommandRunning`, the time, and `FileReading` for its own files: its Xcodes and their docs). Production passes `Machine.live`; tests pass a `FakeRunner`, a temporary home and `RootedFiles`, which reads only the folders a test made and fails the test on a read anywhere else, so no test depends on how the Mac running it is set up. An app a text names under `/Applications`, as a build log names its Xcode, is read from the Machine's own applications folder (`Machine.app(at:)`).
+Everything that touches the machine goes through `Machine` (environment, home folder, `CommandRunning`, the time, and `FileReading` for its own files: its Xcodes and their docs). Production passes `Machine.live`; tests pass a `FakeRunner`, a temporary home and `RootedFiles`, which reads only the folders a test made and fails the test on a read anywhere else, so no test depends on how the Mac running it is set up. Every Machine names how it reads, and a test that reads the installed Xcode on purpose says so with `LocalFiles`. An app a text or a command names under `/Applications`, as a build log names its Xcode or `xcode-select` its developer folder, is read from the Machine's own applications folder (`Machine.onThisMachine`).
 
 ## The mod
 

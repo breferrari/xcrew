@@ -14,7 +14,7 @@ public struct ConcurrencyGroups: Sendable, Equatable {
     var documented: Set<String> = []
 
     /// The groups the docs folder names, read through `files`, or the name rule alone when there's no folder.
-    public static func read(docs folder: URL?, files reading: any FileReading = LocalFiles()) -> ConcurrencyGroups {
+    public static func read(docs folder: URL?, files reading: any FileReading) -> ConcurrencyGroups {
         guard let folder, let names = reading.names(in: folder) else { return ConcurrencyGroups() }
         let docs = names.map { folder.appending(path: $0) }.filter { $0.pathExtension == "md" }.sorted { $0.path < $1.path }.compactMap { file -> (file: URL, text: String, title: Substring, group: Substring?)? in
             guard let text = reading.text(at: file),

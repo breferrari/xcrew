@@ -555,12 +555,12 @@ import XcrewTestSupport
         let cache = #"${XCREW_CACHE:-"$HOME/Library/Caches/xcrew"}"#
         #expect(shim.contains("cache=\(cache)\n") && launcher.contains("record=\"\(cache)/launches$(pwd -P).launch\""))
         let home = URL(fileURLWithPath: "/Users/someone")
-        #expect(Machine(environment: [:], home: home, runner: SystemCommandRunner()).cacheFolder.path == "/Users/someone/Library/Caches/xcrew")
+        #expect(Machine(environment: [:], home: home, runner: SystemCommandRunner(), files: RootedFiles(roots: [home])).cacheFolder.path == "/Users/someone/Library/Caches/xcrew")
 
         let folder = FileManager.default.temporaryDirectory.appending(path: "xcrew-record-\(UUID().uuidString)")
         let project = Project(root: folder.appending(path: "project"))
         try FileManager.default.createDirectory(at: project.root, withIntermediateDirectories: true)
-        let machine = Machine(environment: ["XCREW_CACHE": folder.appending(path: "cache").path], home: folder, runner: SystemCommandRunner())
+        let machine = Machine(environment: ["XCREW_CACHE": folder.appending(path: "cache").path], home: folder, runner: SystemCommandRunner(), files: RootedFiles(roots: [folder]))
         #expect(Xcodes.launchRecord(of: project, on: machine).path == folder.appending(path: "cache").path + "/launches" + project.canonicalRoot + ".launch")
         let written: [(String, Xcodes.Launch)] = [("applied $developer", .applied("/Apps/X.app/Contents/Developer")), ("no match", .noMatch), ("not built", .notBuilt), ("failed $status", .failed("1"))]
         for (outcome, launch) in written {

@@ -15,7 +15,7 @@ public struct Machine: Sendable {
     /// How its own files are read: the disk, or a test's folders.
     public let files: any FileReading
 
-    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications"), now: @escaping @Sendable () -> Date = { Date() }, files: any FileReading = LocalFiles()) {
+    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications"), now: @escaping @Sendable () -> Date = { Date() }, files: any FileReading) {
         self.environment = environment
         self.home = home
         self.runner = runner
@@ -25,9 +25,9 @@ public struct Machine: Sendable {
         self.files = files
     }
 
-    /// An app a text names, as this machine has it: one in `/Applications` is in its applications folder, which is that
-    /// folder on a Mac and a test's own on a test's Machine.
-    public func app(at url: URL) -> URL {
+    /// An app a text or a command names, as this machine has it: one in `/Applications` is in its applications folder,
+    /// which is that folder on a Mac and a test's own on a test's Machine.
+    public func onThisMachine(_ url: URL) -> URL {
         let parts = url.standardizedFileURL.pathComponents
         guard parts.count > 2, parts[0] == "/", parts[1] == "Applications" else { return url }
         return parts.dropFirst(2).reduce(applications) { $0.appending(path: $1) }
@@ -36,7 +36,8 @@ public struct Machine: Sendable {
     public static let live = Machine(
         environment: ProcessInfo.processInfo.environment,
         home: FileManager.default.homeDirectoryForCurrentUser,
-        runner: SystemCommandRunner()
+        runner: SystemCommandRunner(),
+        files: LocalFiles()
     )
 
     /// Whether MobileBuildMCP is on the PATH; the doctor and the session briefing both ask.

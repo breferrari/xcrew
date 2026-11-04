@@ -137,7 +137,7 @@ import XcrewTestSupport
     }
 
     static func machine(_ project: Project, underXcode: Bool) -> Machine {
-        Machine(environment: [:], home: project.root.appending(path: "home"), runner: FakeRunner.mobileBuildMCP(serving: project, underXcode: underXcode), processID: 40)
+        Machine(environment: [:], home: project.root.appending(path: "home"), runner: FakeRunner.mobileBuildMCP(serving: project, underXcode: underXcode), processID: 40, files: RootedFiles(roots: [project.root.appending(path: "home")]))
     }
 
     @Test func underXcodeTheSelectionIsReadAndFollowedUnlessTurnedOff() async throws {

@@ -60,7 +60,7 @@ public enum Xcodes {
 
     static func spotlight(on machine: Machine) async -> [URL] {
         let found = await machine.runner.run(["mdfind", "kMDItemCFBundleIdentifier == '\(bundleIdentifier)'"], stdin: nil)
-        return found.succeeded ? found.stdout.split(whereSeparator: \.isNewline).map { URL(fileURLWithPath: String($0)) } : []
+        return found.succeeded ? found.stdout.split(whereSeparator: \.isNewline).map { machine.onThisMachine(URL(fileURLWithPath: String($0))) } : []
     }
 
     private struct Info: Decodable {
@@ -73,7 +73,7 @@ public enum Xcodes {
     }
 
     /// The Xcode at `app`, read from its `Info.plist` and `version.plist` through `files`; nothing when the app isn't Xcode.
-    static func install(at app: URL, files: any FileReading = LocalFiles()) -> XcodeInstall? {
+    static func install(at app: URL, files: any FileReading) -> XcodeInstall? {
         let contents = app.appending(path: "Contents")
         guard let data = files.data(at: contents.appending(path: "Info.plist")),
               let info = try? PropertyListDecoder().decode(Info.self, from: data),
@@ -99,14 +99,14 @@ public enum Xcodes {
             let selected = await machine.runner.run(["xcode-select", "-p"], stdin: nil)
             developer = selected.succeeded ? GitHead.firstLine(selected.stdout) : nil
         }
-        return developer.flatMap(app(holding:)).flatMap { install(at: $0, files: machine.files) }
+        return developer.flatMap(app(holding:)).flatMap { install(at: machine.onThisMachine($0), files: machine.files) }
     }
 
     /// Each Xcode open, from the process list: the Xcode MCP works through it.
-    static func running(in list: ProcessList, files: any FileReading = LocalFiles()) -> [XcodeInstall] {
+    static func running(in list: ProcessList, on machine: Machine) -> [XcodeInstall] {
         let suffix = "/Contents/MacOS/Xcode"
         return list.processes.map(\.programPath).filter { $0.hasSuffix(".app" + suffix) }.sorted()
-            .compactMap { install(at: URL(fileURLWithPath: String($0.dropLast(suffix.count))), files: files) }
+            .compactMap { install(at: machine.onThisMachine(URL(fileURLWithPath: String($0.dropLast(suffix.count)))), files: machine.files) }
     }
 
     /// The app a developer folder is in: `/Applications/Xcode.app` for `/Applications/Xcode.app/Contents/Developer`.
