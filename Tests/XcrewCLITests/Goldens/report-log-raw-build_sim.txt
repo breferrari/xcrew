@@ -1,0 +1,2 @@
+{"failures":[],"isVerdictOnly":true,"notes":[],"ok":true,"scheme":"Warnings"}
+--- exit 0

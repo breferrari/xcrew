@@ -1,0 +1,3 @@
+
+--- exit 64
+stderr: report needs --kind build, test or run

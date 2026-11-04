@@ -1,0 +1,2 @@
+xcrew: this build failed because of the Mac, not the code: no simulator here is named iPhone 1, which the build asked for. /xcrew:setup writes the profiles again with simulators that are installed
+--- exit 0

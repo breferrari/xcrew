@@ -1,0 +1,2 @@
+{"bundle":"<home>/Library/Developer/MobileBuildMCP/workspaces/field-3d32f8cd53a2/result-bundles/test_sim_2026-10-31T02-58-52-105Z_pid20279_8eddb088.xcresult","detail":"1 passed","durationMs":7200,"failures":[],"notes":[],"ok":true,"tests":1}
+--- exit 0

@@ -1,0 +1,17 @@
+xcrew look: UITests/testFailsAfterTaps, in UITests.xcresult
+  Plan A · iPhone 18 Pro Max, iOS 27.2
+    Open dev.xcrew.testbed.App
+    Tap "continue" Button
+    Tap "continue" Button
+    Find the "title" StaticText
+    ✗ XCTAssertEqual failed: ("Done") is not equal to ("Welcome")
+    screen: <home>/images/UITests/UITests/testFailsAfterTaps/screen at failure, iPhone 18 Pro Max, iOS 27.2, Plan A.png
+    on screen: no hierarchy kept; XCTest attaches one when a query fails
+  Plan B · iPhone 18 Pro Max, iOS 27.2
+    Open dev.xcrew.testbed.App
+    Tap "continue" Button
+    Tap "continue" Button
+    Find the "title" StaticText
+    ✗ XCTAssertEqual failed: ("Done") is not equal to ("Welcome")
+    screen: <home>/images/UITests/UITests/testFailsAfterTaps/screen at failure, iPhone 18 Pro Max, iOS 27.2, Plan B.png
+    on screen: no hierarchy kept; XCTest attaches one when a query fails

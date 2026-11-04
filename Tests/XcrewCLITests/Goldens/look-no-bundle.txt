@@ -1,0 +1,2 @@
+xcrew: MobileBuildMCP has kept no test run for this project; pass --bundle <path> for another
+--- exit 1

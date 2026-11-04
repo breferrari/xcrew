@@ -1,0 +1,16 @@
+xcrew look: UITests/testPlanA, in UITests.xcresult
+  Plan B · iPhone 18 Pro Max, iOS 27.2
+    Set Up
+    Open dev.xcrew.testbed.App
+    Waiting 2.0s for "Plan A" StaticText to exist
+    Collecting debug information to assist test failure triage
+    ✗ XCTAssertTrue failed
+    screen: <home>/Library/Caches/xcrew/images/UITests/UITests/testPlanA/screen at failure, iPhone 18 Pro Max, iOS 27.2, Plan B.png
+    the elements below are the app's only; a system alert, as a permission request, shows only in the screenshot
+    on screen, nothing the query's "Plan A" StaticText matches:
+      Application "App"
+        StaticText "Welcome", identifier "title"
+        StaticText "Plan B", identifier "plan"
+        Button "Continue", identifier "continue"
+  passed under: Plan A · iPhone 18 Pro Max, iOS 27.2
+--- exit 0

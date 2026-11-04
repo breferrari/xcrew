@@ -1,0 +1,2 @@
+xcrew: this build failed because of the Mac, not the code: a module in its DerivedData's module cache is corrupt ("malformed or corrupted precompiled file"). Removing ModuleCache.noindex and SDKExplicitPrecompiledModules from the DerivedData this build used lets the next build rebuild them. That deletes part of DerivedData, so it's the person's to agree to.
+--- exit 0

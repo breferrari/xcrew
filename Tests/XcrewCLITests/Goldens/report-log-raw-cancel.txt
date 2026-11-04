@@ -1,0 +1,2 @@
+{"bundle":"/testbed/user/Library/Developer/MobileBuildMCP/workspaces/swift-testing-f137aa02c12d/result-bundles/test_sim_2026-10-31T05-26-36-723Z_pid12062_d4cd68cd.xcresult","failures":[],"notes":[],"ok":true,"scheme":"Cancel"}
+--- exit 0
