@@ -26,6 +26,16 @@ import XcrewTestSupport
         #expect(ProjectCard.text(folder: "/work/App", branch: "feat/card", on: machine) == "Xcrew's notes on this project, from earlier runs, as of the run 2 h ago:\n- Still red on feat/card: GreetingTests/testHello (test_sim · App)")
     }
 
+    /// A card exactly five minutes old reads "5 min ago" whatever fraction of a millisecond its times carry: its age is
+    /// counted in whole milliseconds, never a fraction short. At this `now`, `now - updated / 1000` in seconds came out
+    /// 299.99999976 and read "4 min ago".
+    @Test func aCardFiveMinutesOldReadsFiveMinutes() {
+        let now = Date(timeIntervalSince1970: 1_793_789_956.271764)
+        let machine = CheckContext.fake(project: .temporary(), now: now).machine
+        ProjectCard.save(.init(folder: "/work/App", branch: "feat/card", updated: now.timeIntervalSince1970 * 1000 - 5 * 60_000, text: "Notes:\n- a"), on: machine)
+        #expect(ProjectCard.text(folder: "/work/App", branch: "feat/card", on: machine) == "Notes, as of the run 5 min ago:\n- a")
+    }
+
     /// A branch switched since the last run must never show the old branch's red tests.
     @Test func anotherBranchOrFolderGetsNoCard() {
         let machine = machine()

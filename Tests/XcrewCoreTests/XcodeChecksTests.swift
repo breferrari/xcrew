@@ -18,7 +18,7 @@ import XcrewTestSupport
         var responses = FakeSession.responses(serving: server == nil ? nil : project, age: server ?? "", programs: running.map { [202: "\(apps.path)/\($0)/Contents/MacOS/Xcode"] } ?? [:])
         responses["xcode-select -p"] = .init(status: 0, stdout: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/Developer\n")
         if let mcpStatus { responses["xcrun mcp-server status"] = .init(status: 0, stdout: mcpStatus) }
-        let now = Date()
+        let now = Date(timeIntervalSince1970: 1_793_750_400)
         let context = CheckContext.fake(FakeRunner(installed: xcodesTool ? ["xcodes"] : [], responses: responses), project: project, processID: FakeSession.doctor, applications: apps, now: now)
         if let launch {
             let record = Xcodes.launchRecord(of: project, on: context.machine)
