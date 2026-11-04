@@ -1,0 +1,60 @@
+xcrew look: UITests/testFailsAfterTaps, in UITests.xcresult
+  Plan A · iPhone 18 Pro Max, iOS 27.2
+    Open dev.xcrew.testbed.App
+    Tap "continue" Button
+    Tap "continue" Button
+    Find the "title" StaticText
+    ✗ XCTAssertEqual failed: ("Done") is not equal to ("Welcome")
+    screen: <home>/images/UITests/UITests/testFailsAfterTaps/screen at failure, iPhone 18 Pro Max, iOS 27.2, Plan A.png
+    on screen: no hierarchy kept; XCTest attaches one when a query fails
+  Plan B · iPhone 18 Pro Max, iOS 27.2
+    Open dev.xcrew.testbed.App
+    Tap "continue" Button
+    Tap "continue" Button
+    Find the "title" StaticText
+    ✗ XCTAssertEqual failed: ("Done") is not equal to ("Welcome")
+    screen: <home>/images/UITests/UITests/testFailsAfterTaps/screen at failure, iPhone 18 Pro Max, iOS 27.2, Plan B.png
+    on screen: no hierarchy kept; XCTest attaches one when a query fails
+xcrew look: UITests/testMissingElement, in UITests.xcresult
+  Plan A · iPhone 18 Pro Max, iOS 27.2
+    Set Up
+    Open dev.xcrew.testbed.App
+    Tap "checkout" Button
+    Requesting snapshot of accessibility hierarchy for app with pid 25738
+    ✗ Failed to tap "checkout" Button: No matches found for Elements matching predicate '"checkout" IN identifiers' from input {(
+    screen: <home>/images/UITests/UITests/testMissingElement/screen at failure, iPhone 18 Pro Max, iOS 27.2, Plan A.png
+    the elements below are the app's only; a system alert, as a permission request, shows only in the screenshot
+    on screen, nothing the query's "checkout" Button matches:
+      Application "App"
+        StaticText "Welcome", identifier "title"
+        StaticText "Plan A", identifier "plan"
+        Button "Continue", identifier "continue"
+  Plan B · iPhone 18 Pro Max, iOS 27.2
+    Set Up
+    Open dev.xcrew.testbed.App
+    Tap "checkout" Button
+    Requesting snapshot of accessibility hierarchy for app with pid 26159
+    ✗ Failed to tap "checkout" Button: No matches found for Elements matching predicate '"checkout" IN identifiers' from input {(
+    screen: <home>/images/UITests/UITests/testMissingElement/screen at failure, iPhone 18 Pro Max, iOS 27.2, Plan B.png
+    the elements below are the app's only; a system alert, as a permission request, shows only in the screenshot
+    on screen, nothing the query's "checkout" Button matches:
+      Application "App"
+        StaticText "Welcome", identifier "title"
+        StaticText "Plan B", identifier "plan"
+        Button "Continue", identifier "continue"
+xcrew look: UITests/testPlanA, in UITests.xcresult
+  Plan B · iPhone 18 Pro Max, iOS 27.2
+    Set Up
+    Open dev.xcrew.testbed.App
+    Waiting 2.0s for "Plan A" StaticText to exist
+    Collecting debug information to assist test failure triage
+    ✗ XCTAssertTrue failed
+    screen: <home>/images/UITests/UITests/testPlanA/screen at failure, iPhone 18 Pro Max, iOS 27.2, Plan B.png
+    the elements below are the app's only; a system alert, as a permission request, shows only in the screenshot
+    on screen, nothing the query's "Plan A" StaticText matches:
+      Application "App"
+        StaticText "Welcome", identifier "title"
+        StaticText "Plan B", identifier "plan"
+        Button "Continue", identifier "continue"
+  passed under: Plan A · iPhone 18 Pro Max, iOS 27.2
+and 1 more failed test: `xcrew look UITests/testRenamedLabel --bundle /runs/UITests.xcresult`

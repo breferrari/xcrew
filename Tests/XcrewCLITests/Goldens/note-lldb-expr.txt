@@ -1,0 +1,2 @@
+{"notes":["xcrew: MobileBuildMCP's default debugger backend, DAP, doesn't run LLDB commands such as `expr`; its CLI backend does. `xcrew setup --debugger-backend lldb-cli` writes it into .mobilebuildmcp/config.yaml, read from the next start of Claude Code."]}
+--- exit 0

@@ -1,0 +1,2 @@
+{"bundle":"/testbed/user/Library/Developer/MobileBuildMCP/workspaces/swift-testing-a4e71ce5151c/result-bundles/test_sim_2026-11-02T07-59-35-356Z_pid25448_12376016.xcresult","failures":[{"isTest":true,"message":"Expectation failed: Kit.name == \"Other\"","target":"KitTests","title":"ShapesTests/fails","where":"ShapesTests.swift:10"}],"notes":[],"ok":false,"scheme":"KitPlans"}
+--- exit 0

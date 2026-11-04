@@ -1,0 +1,2 @@
+{"bundle":"/testbed/user/Library/Developer/MobileBuildMCP/workspaces/plans-52eecbef455d/result-bundles/test_sim_2026-10-31T05-25-57-255Z_pid9260_a2586b2a.xcresult","failures":[{"isTest":true,"message":"XCTAssertEqual failed: (\"Kit\") is not equal to (\"Other\") - the name is Kit","target":"KitTests","title":"ProbeTests/testFails","where":"ProbeTests.swift:10"}],"notes":[],"ok":false,"scheme":"Kit"}
+--- exit 0

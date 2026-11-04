@@ -109,13 +109,23 @@ struct GoldenOutputTests {
         listing(field).filter { $0.hasSuffix(".txt") }.map { String($0.dropLast(4)) }
     }
 
+    /// xcresulttool answering about `bundle` as `make` reads it, or answering nothing when there's no bundle.
+    static func answering(_ bundle: String?, _ make: (String) throws -> CaptureRunner) rethrows -> any CommandRunning {
+        guard let bundle else { return FakeRunner() }
+        return try make(bundle)
+    }
+
+    /// xcresulttool answering about a raw capture's bundle from the files beside it.
+    static func rawRunner(_ name: String) -> (String?) throws -> any CommandRunning {
+        { bundle in try answering(bundle) { try CaptureRunner(name, in: raw, bundle: $0) } }
+    }
+
     static func named(_ parts: [String], _ flags: [String]) -> String {
         (parts + flags.map { String($0.dropFirst(2)) }).joined(separator: "-")
     }
 
     static let outputs: [Output] = {
         var outputs: [Output] = []
-        let rawRunner = { (name: String) in { (bundle: String?) throws -> any CommandRunning in try bundle.map { try CaptureRunner(name, in: raw, bundle: $0) } ?? FakeRunner() } }
         for name in rawResults where !notReports.contains(name) {
             let flags = repeated.contains(name) ? ["--repeated"] : []
             outputs.append(Output(name: named(["report", name], flags)) {
@@ -134,7 +144,7 @@ struct GoldenOutputTests {
             outputs.append(Output(name: named(["report-log", folder.lastPathComponent, name], flags)) {
                 let path = folder.appending(path: "\(name).log").path
                 let bundle = RunLog.resultBundle(in: RunLog.text(ofLogAt: path))
-                let runner: any CommandRunning = try bundle.map { try CaptureRunner(name, in: folder, bundle: $0) } ?? FakeRunner()
+                let runner: any CommandRunning = try answering(bundle) { try CaptureRunner(name, in: folder, bundle: $0) }
                 return try await Place().run(["report", "--server", "MobileBuildMCP", "--kind", builds.contains(name) || name.hasPrefix("build") ? "build" : "test", "--log", path] + flags, runner)
             })
         }
@@ -143,7 +153,7 @@ struct GoldenOutputTests {
             outputs.append(Output(name: named(["report-field", name], flags)) {
                 let text = try String(contentsOf: field.appending(path: "\(name).txt"), encoding: .utf8)
                 return try await report(text, isError: text.contains("❌"), kind: builds.contains(name) ? "build" : "test", flags: flags) { bundle in
-                    try bundle.map { try CaptureRunner(name, in: field, bundle: $0) } ?? FakeRunner()
+                    try answering(bundle) { try CaptureRunner(name, in: field, bundle: $0) }
                 }
             })
         }
@@ -151,7 +161,7 @@ struct GoldenOutputTests {
             outputs.append(Output(name: "report-\(name)") {
                 let text = try String(contentsOf: captures.appending(path: "\(name)/test_sim.txt"), encoding: .utf8)
                 return try await report(text, isError: true, kind: "test", flags: []) { bundle in
-                    try bundle.map { try CaptureRunner(folder: captures.appending(path: "\(name)/mobilebuildmcp"), bundle: $0) } ?? FakeRunner()
+                    try answering(bundle) { try CaptureRunner(folder: captures.appending(path: "\(name)/mobilebuildmcp"), bundle: $0) }
                 }
             })
         }
@@ -163,7 +173,7 @@ struct GoldenOutputTests {
             let place = try Place()
             let (text, _) = try capture("serial")
             let bundle = ResultBundle.path(in: ToolOutput(text: text, server: .mobileBuildMCP), home: place.home.path)
-            let runner: any CommandRunning = try bundle.map { try CaptureRunner("serial", in: raw, bundle: $0) } ?? FakeRunner()
+            let runner: any CommandRunning = try answering(bundle) { try CaptureRunner("serial", in: raw, bundle: $0) }
             return await place.run(["report", "--server", "MobileBuildMCP", "--kind", "test", "--notification", "--passed"], runner, stdin: BackgroundReportTests.notification(text))
         })
         for name in noted.sorted() {
