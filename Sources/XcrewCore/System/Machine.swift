@@ -26,11 +26,11 @@ public struct Machine: Sendable {
     }
 
     /// An app a text or a command names, as this machine has it: one in `/Applications` is in its applications folder,
-    /// which is that folder on a Mac and a test's own on a test's Machine.
+    /// which is that folder on a Mac and a test's own on a test's Machine, at its real path, as listing it gives its apps.
     public func onThisMachine(_ url: URL) -> URL {
         let parts = url.standardizedFileURL.pathComponents
         guard parts.count > 2, parts[0] == "/", parts[1] == "Applications" else { return url }
-        return parts.dropFirst(2).reduce(applications) { $0.appending(path: $1) }
+        return parts.dropFirst(2).reduce(URL(fileURLWithPath: ProjectLayout.canonical(applications))) { $0.appending(path: $1) }
     }
 
     public static let live = Machine(

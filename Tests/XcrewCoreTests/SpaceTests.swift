@@ -211,7 +211,7 @@ import XcrewTestSupport
 
     /// A tool that doesn't answer is said not to have been read; the other parts stand.
     @Test func aToolThatDoesntAnswerIsSaidSo() async throws {
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: home, now: { Self.now }, files: RootedFiles(roots: [home, home]))
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: home, now: { Self.now }, files: RootedFiles(roots: [home]))
         let text = await Space.report(project: project, machine: machine).text
         #expect(text.contains("MobileBuildMCP\n  not read: `mobilebuildmcp purge --report` didn't answer\n"), "\(text)")
         #expect(text.contains("Simulator runtimes\n  not read: `xcrun simctl runtime list` didn't answer\n"), "\(text)")
