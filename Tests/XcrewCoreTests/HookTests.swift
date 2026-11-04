@@ -271,7 +271,6 @@ import XcrewTestSupport
 
     /// A Mac whose `mobilebuildmcp` is a real file, answering `--version` with `version` (nil: no answer). The file is
     /// written once, since the version's cache is keyed by its modification time. Its clock stands at `now`.
-
     static func machine(_ project: Project, version: String?, branch: String? = nil) -> Machine {
         if !FileManager.default.fileExists(atPath: project.root.appending(path: "bin/mobilebuildmcp").path) { project.write("#!/bin/sh\n", to: "bin/mobilebuildmcp") }
         var runner = FakeRunner(installed: ["mobilebuildmcp"], responses: version.map { ["mobilebuildmcp --version": CommandResult(status: 0, stdout: $0 + "\n")] } ?? [:])

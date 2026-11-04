@@ -30,6 +30,8 @@ public enum ProjectCard {
     static let version = 1
     /// As long as the mod keeps its history (`HISTORY_KEPT_MS` in hooks/mod/timing.ts).
     static let keptDays = 14
+    /// A day in milliseconds, the unit every age here is counted in.
+    static let day: Int64 = 86_400_000
 
     static func folder(on machine: Machine) -> URL {
         machine.cacheFolder.appending(path: "cards")
@@ -83,7 +85,7 @@ public enum ProjectCard {
     /// The mod's `isStale`, for the card's oldest line: more than the kept days before now, in whole milliseconds as
     /// the mod counts them.
     static func isStale(_ entry: Entry, now: Date) -> Bool {
-        milliseconds(now.timeIntervalSince1970 * 1000) - milliseconds(entry.oldest ?? entry.updated) > Int64(keptDays) * 86_400_000
+        milliseconds(now.timeIntervalSince1970 * 1000) - milliseconds(entry.oldest ?? entry.updated) > Int64(keptDays) * day
     }
 
     /// A time in milliseconds since 1970 as a whole number of them, the fraction dropped, so ages are counted in whole
@@ -96,7 +98,7 @@ public enum ProjectCard {
 
     /// How long ago, in whole units, each truncated: "5 min" is at least five minutes.
     static func ago(milliseconds: Int64) -> String {
-        let minute: Int64 = 60_000, hour = 60 * minute, day = 24 * hour
+        let minute: Int64 = 60_000, hour = 60 * minute, day = Self.day
         switch milliseconds {
         case ..<minute: return "just now"
         case ..<hour: return "\(milliseconds / minute) min ago"

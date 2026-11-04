@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- A project card five minutes old no longer reads "4 min ago" in the session briefing now and then, and a card exactly 14 days old is kept, as the mod keeps it: its age is counted in whole milliseconds.
+- A project card five minutes old no longer reads "4 min ago" in the session briefing now and then, and a card no longer disappears a moment before its 14 days are up: its age is counted in whole milliseconds.
 - The evidence block now lists everything it used to cut short with "no list of them is kept": every changed line not run, every unreached target, every file outside the coverage or changed after it, every run's finish time and every warning in changed lines. The session briefing names a few test plans and the schemes that share each, and the note on a test run that ran no tests names a few of its plan's schemes; `xcrew plans` lists every one. The briefing puts the project card before the plans, so a large app's plans can't push it out.
 
 ## 0.16.0 — 2026-11-04
