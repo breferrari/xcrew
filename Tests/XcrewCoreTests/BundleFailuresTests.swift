@@ -238,6 +238,19 @@ struct BundleFailuresTests {
         if isFound { #expect(lines[note - 1] == "    ProbeTests.swift:42" && lines[note - 2].contains("System Failures"), "\(lines)") }
     }
 
+    /// The bundle's whole path for a failure stands for the text's bare place of the same file and line, so the entry has
+    /// one place; a bare place of another file or line is another fact, and both stay.
+    @Test(arguments: [("/work/App/NestedTests.swift:29", false), ("/work/App/Other.swift:3", true)])
+    func theBundlesPathStandsForTheSameBarePlace(found: String, keepsBare: Bool) throws {
+        let text = MobileText("\n🧪 Test\n\nTest Failures (1):\n\n  ✗ Inner / addsNumbers(): Expectation failed\n    one and one\n    NestedTests.swift:29\n\n❌ 1 test failed, 0 passed, 0 skipped (⏱️ 1.0s)")
+        var notes = FailureNotes.Notes()
+        notes.failures[FailureNotes.FailedLine(test: TestID(suite: "Inner", name: "addsNumbers"), isCrash: false)] = ["    \(found)"]
+        let lines = try #require(FailureNotes.annotate(text, with: notes)).text.components(separatedBy: "\n")
+        #expect(lines.contains("    \(found)"), "\(lines)")
+        #expect(lines.contains("    NestedTests.swift:29") == keepsBare, "\(lines)")
+        #expect(lines.contains("    one and one"), "\(lines)")
+    }
+
     /// A repeated test's crash line is no other run of its assertion: with neither placed, the crash stays, with its
     /// notes, and only a later run's line of the same kind goes.
     @Test func aRepeatedTestsCrashIsNoOtherRunOfItsAssertion() throws {
@@ -398,7 +411,8 @@ struct BundleFailuresTests {
         let report = await Report.make(kind: .test, output: try Raw.output("nested-retry"), home: Captured.home, runner: runner, repeated: true)
         let text = try #require(report.result)
         #expect(text.contains("Test Failures (3):"), "\(text)")
-        #expect(!text.contains("Inner/addsNumbers()"), "\(text)")
+        // The display-named failure the text lists is the bundle's, under its name, once.
+        #expect(text.components(separatedBy: "✗ Outer / Inner/addsNumbers(): Expectation failed: 1 + 1 == 3").count == 2 && !text.contains("Adds numbers"), "\(text)")
         // With its place as the text writes one, the whole path, so it isn't looked up again.
         #expect(text.contains("✗ Outer / Inner/fails(): Expectation failed: Kit.name == \"Other\"\n    /testbed/swift-testing/NestedTests/NestedTests.swift:8\n"), "\(text)")
         #expect(!runner.asked.contains { $0.contains("test-details --test-id Outer/Inner/fails()") }, "\(runner.asked)")
@@ -706,21 +720,26 @@ struct BundleFailuresTests {
 
     /// A display-named test is listed once, under the bundle's name: the nested capture's `@Test("Adds numbers")`, which
     /// MobileBuildMCP lists as `(Unknown Suite) / Adds numbers` with its place and as `Inner / Adds numbers`, is one entry
-    /// as `Outer / Inner/addsNumbers()`, every distinct line below either kept before its place, and the heading counts it
-    /// once. The report has it once, under that name, with no note that the bundle disagrees.
+    /// as `Outer / Inner/addsNumbers()`, every distinct line below either kept, and the heading counts it once. Its place
+    /// is the bundle's whole path, which stands for the text's `NestedTests.swift:29`. The report has it once, under that
+    /// name, with no note that the bundle disagrees.
     @Test func aDisplayNamedTestIsListedOnceUnderTheBundlesName() async throws {
-        let runner = FakeRunner(responses: ["xcrun xcresulttool get test-results tests --path \(try Raw.bundle("nested")) --compact": .init(status: 0, stdout: try Raw.file("nested.tests.json"))])
+        let bundle = try Raw.bundle("nested")
+        let runner = FakeRunner(responses: [
+            "xcrun xcresulttool get test-results tests --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("nested.tests.json")),
+            "xcrun xcresulttool get test-results test-details --test-id Outer/Inner/addsNumbers() --path \(bundle) --compact": .init(status: 0, stdout: try Raw.file("nested.details.Outer.Inner.addsNumbers.json")),
+        ])
         let report = await Report.make(kind: .test, output: try Raw.output("nested"), home: Captured.home, runner: runner)
         let result = try #require(report.result)
         #expect(result.contains("Test Failures (4):"), "\(result)")
         #expect(!result.contains("Adds numbers"), "\(result)")
         #expect(result.contains("""
               ✗ Outer / Inner/addsNumbers(): Expectation failed: 1 + 1 == 3
+                /testbed/swift-testing/NestedTests/NestedTests.swift:29
                 one and one
                 1 + 1 == 3 → false
                   1 + 1 → 2
                 1 + 1 → 2: one and one
-                NestedTests.swift:29
 
             """), "\(result)")
         #expect(report.failures.filter(\.isTest).map(\.title).filter { $0.contains("ddsNumbers") || $0.contains("Adds numbers") } == ["Outer/Inner/addsNumbers"])
