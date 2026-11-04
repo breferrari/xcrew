@@ -57,7 +57,7 @@ import XcrewTestSupport
         FakeXcode.install(in: apps, "Xcode-27.2.app", version: "27.2", build: "27C5")
         for app in bundled { try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-27.2.app/\(app)"), withIntermediateDirectories: true) }
         let base = Self.machine(project, version: "2.7.1")
-        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now)
+        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now, files: RootedFiles(roots: [base.home, apps]))
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
         #expect(text.contains("- **xcrew:** Xcode 27.2 shows simulators in DeviceHub (`open -a DeviceHub`); no Xcode here has Simulator.app.") == named, "\(text)")
     }
@@ -71,7 +71,7 @@ import XcrewTestSupport
         try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-27.2.app/Contents/Applications/DeviceHub.app"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: apps.appending(path: "Xcode-26.4.app/Contents/Developer/Applications/Simulator.app"), withIntermediateDirectories: true)
         let base = Self.machine(project, version: "2.7.1")
-        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now)
+        let machine = Machine(environment: ["DEVELOPER_DIR": apps.path + "/Xcode-27.2.app/Contents/Developer"], home: base.home, runner: base.runner, applications: apps, now: base.now, files: RootedFiles(roots: [base.home, apps]))
         let text = await SessionBriefing(project: project, machine: machine).text(routing: "rules\n") ?? ""
         #expect(!text.contains("DeviceHub"), "\(text)")
     }
@@ -80,12 +80,12 @@ import XcrewTestSupport
     @Test(.enabled(if: (Version.major(of: Self.installedXcode?.version ?? "") ?? 0) >= 27, "no Xcode 27 or later selected"))
     func theSelectedXcodeKeepsDeviceHubWhereTheBriefingLooks() async throws {
         let xcode = try #require(Self.installedXcode)
-        #expect(xcode.hasDeviceHubOnly, "\(xcode.path) moved DeviceHub.app or ships Simulator.app again")
+        #expect(xcode.hasDeviceHubOnly(files: LocalFiles()), "\(xcode.path) moved DeviceHub.app or ships Simulator.app again")
     }
 
     static let installedXcode: XcodeInstall? = {
         let developer = ProcessInfo.processInfo.environment["DEVELOPER_DIR"] ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
-        return developer.flatMap(Xcodes.app(holding:)).flatMap(Xcodes.install(at:))
+        return developer.flatMap(Xcodes.app(holding:)).flatMap { Xcodes.install(at: $0, files: LocalFiles()) }
     }()
 
     /// A worktree whose main checkout has a config is offered the worktree's setup, which copies it, not a fresh one.

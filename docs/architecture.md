@@ -34,7 +34,7 @@ One CLI keeps one implementation of each behaviour, tested with Swift Testing in
 ```
 Sources/
   XcrewCore/            the behaviour, no I/O beyond what Machine allows
-    System/             CommandRunning (the seam every process call goes through), Machine, Version, Once
+    System/             CommandRunning (the seam every process call goes through), FileReading (the seam the machine's own files are read through), Machine, Version, Once
     Project/            the project root, the files xcrew reads or writes there, git exclusion
     MobileBuildMCP/     profile answers, config rendering and writing, the simulator catalog, and what the setup form offers
     Doctor/             the Check protocol, the registry, and one file per check in Checks/
@@ -58,7 +58,7 @@ Tests/
   XcrewTestSupport/     FakeRunner and temporary projects, shared by the suites
 ```
 
-Everything that touches the machine goes through `Machine` (environment, home folder, `CommandRunning`, the time). Production passes `Machine.live`; tests pass a `FakeRunner` and a temporary home, so no test depends on how the Mac running it is set up.
+Everything that touches the machine goes through `Machine` (environment, home folder, `CommandRunning`, the time, and `FileReading` for its own files: its Xcodes and their docs). Production passes `Machine.live`; tests pass a `FakeRunner`, a temporary home and `RootedFiles`, which reads only the folders a test made and fails the test on a read anywhere else, so no test depends on how the Mac running it is set up. Every Machine names how it reads, and a test that reads the installed Xcode on purpose says so with `LocalFiles`. An app a text or a command names under `/Applications`, as a build log names its Xcode or `xcode-select` its developer folder, is read from the Machine's own applications folder (`Machine.onThisMachine`).
 
 ## The mod
 

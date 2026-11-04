@@ -44,7 +44,7 @@ struct TestbedReplayTests {
         let text = parts.compactMap { $0["text"] as? String }.joined()
         let isError = capture["isError"] as? Bool ?? false
         let project = Project.temporary()
-        let machine = Machine(environment: [:], home: URL(filePath: home), runner: try runner(answering: name, text: text), processID: 1, applications: project.root.appending(path: "Applications"))
+        let machine = Machine(environment: [:], home: URL(filePath: home), runner: try runner(answering: name, text: text), processID: 1, applications: project.root.appending(path: "Applications"), files: RootedFiles(roots: [URL(filePath: home), project.root.appending(path: "Applications")]))
         let run = await Run(argv: ["report", "--server", "MobileBuildMCP", "--kind", "test"] + (isError ? ["--error"] : []), context: CheckContext(project: project, machine: machine), stdin: text)
         let report = try JSONSerialization.jsonObject(with: Data(run.text.utf8))
         return ["isError": isError, "text": text, "report": report]

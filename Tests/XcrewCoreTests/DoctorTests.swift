@@ -29,7 +29,7 @@ import XcrewTestSupport
     @Test func theDoctorReachesNoNetwork() async {
         let project = Project.temporary(containing: ["App.xcworkspace"])
         let runner = RecordingRunner(FakeRunner(responses: [:]))
-        _ = await Doctor.run(in: CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner)))
+        _ = await Doctor.run(in: CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner, applications: project.root.appending(path: "Applications"), files: RootedFiles(roots: [project.root]))))
         #expect(!runner.asked.contains { $0.hasPrefix("curl ") }, "\(runner.asked)")
     }
 
@@ -45,7 +45,7 @@ import XcrewTestSupport
         let project = Project.temporary(containing: ["A.xcworkspace"])
         project.write("26.4\n", to: ".xcode-version")
         let runner = RecordingRunner(FakeRunner(installed: ["mobilebuildmcp", "xcodes"], responses: [:]))
-        _ = await Doctor.run(in: CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner)))
+        _ = await Doctor.run(in: CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner, applications: project.root.appending(path: "Applications"), files: RootedFiles(roots: [project.root]))))
         #expect(runner.asked.filter { $0 == "xcode-select -p" }.count == 1, "\(runner.asked)")
         let reports = runner.asked.filter { $0.hasPrefix("mobilebuildmcp purge --report") }
         #expect(reports.isEmpty, "\(reports)")
@@ -554,7 +554,7 @@ import XcrewTestSupport
     @Test func oneDoctorRunAsksTheXcodeMCPForItsStatusOnce() async {
         let runner = CountingRunner()
         let project = Project.temporary()
-        let context = CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner))
+        let context = CheckContext(project: project, machine: Machine(environment: [:], home: project.root, runner: runner, applications: project.root.appending(path: "Applications"), files: RootedFiles(roots: [project.root])))
         let entries = await Doctor.run(Doctor.checks.filter { $0.id.hasPrefix("xcode-mcp/headless") || $0.id.hasPrefix("xcode-mcp/claude") }, in: context)
         #expect(entries.map(\.result.status) == [.pass, .pass])
         #expect(runner.statusCalls == 1)

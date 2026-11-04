@@ -89,7 +89,7 @@ import XcrewTestSupport
         responses["du -sk \(dd)/Old-def"] = .init(status: 0, stdout: "3000\t\(dd)/Old-def\n")
         let archives = home.appending(path: "Library/Developer/Xcode/Archives").path
         responses["du -sk \(archives)"] = .init(status: 0, stdout: "52000\t\(archives)\n")
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(installed: xcodes ? ["xcodes"] : [], responses: responses), applications: apps, now: { Self.now })
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(installed: xcodes ? ["xcodes"] : [], responses: responses), applications: apps, now: { Self.now }, files: RootedFiles(roots: [home, apps]))
         return await Space.report(project: project, machine: machine)
     }
 
@@ -197,7 +197,7 @@ import XcrewTestSupport
     /// Xcode's DerivedData kept beside each workspace, a relative location, can't be listed from one folder: said so.
     @Test func aRelativeDerivedDataLocationIsSaidNotRead() async {
         let runner = FakeRunner(responses: ["defaults read com.apple.dt.Xcode IDECustomDerivedDataLocation": .init(status: 0, stdout: "DerivedData\n")])
-        let machine = Machine(environment: [:], home: home, runner: runner, now: { Self.now })
+        let machine = Machine(environment: [:], home: home, runner: runner, now: { Self.now }, files: RootedFiles(roots: [home]))
         let part = await Space.xcodeDerivedData(in: await Space.derivedDataFolder(machine: machine), live: Task { [] }, machine: machine)
         #expect(part?.lines.map(\.text) == ["not read: Xcode keeps DerivedData in each workspace's folder (`DerivedData`)"])
     }
@@ -211,7 +211,7 @@ import XcrewTestSupport
 
     /// A tool that doesn't answer is said not to have been read; the other parts stand.
     @Test func aToolThatDoesntAnswerIsSaidSo() async throws {
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: home, now: { Self.now })
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: home, now: { Self.now }, files: RootedFiles(roots: [home]))
         let text = await Space.report(project: project, machine: machine).text
         #expect(text.contains("MobileBuildMCP\n  not read: `mobilebuildmcp purge --report` didn't answer\n"), "\(text)")
         #expect(text.contains("Simulator runtimes\n  not read: `xcrun simctl runtime list` didn't answer\n"), "\(text)")

@@ -31,7 +31,7 @@ import XcrewTestSupport
     }
 
     func line(environment: [String: String] = [:], ps: String = "") throws -> String {
-        ProjectStorage.line(try live(), machine: Machine(environment: environment, home: home, runner: FakeRunner()), processes: ProcessList(ps: ps))
+        ProjectStorage.line(try live(), machine: Machine(environment: environment, home: home, runner: FakeRunner(), files: RootedFiles(roots: [home])), processes: ProcessList(ps: ps))
     }
 
     /// The main checkout's and the worktree's together, in both units, and the class that takes the most: what takes the

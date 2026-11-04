@@ -11,8 +11,8 @@ extension Report {
     /// The Machine a report is made on: `given`, with the test's home and runner in place of its own, or that home's.
     static func machine(home: String, runner: any CommandRunning, given: Machine?) -> Machine {
         let home = URL(fileURLWithPath: home)
-        guard let given else { return Machine(environment: ["XCREW_CACHE": "/nonexistent/xcrew-cache"], home: home, runner: runner, applications: home.appending(path: "Applications"), now: { testNow }) }
-        return Machine(environment: given.environment, home: home, runner: runner, processID: given.processID, applications: given.applications, now: given.now)
+        guard let given else { return Machine(environment: ["XCREW_CACHE": "/nonexistent/xcrew-cache"], home: home, runner: runner, applications: home.appending(path: "Applications"), now: { testNow }, files: RootedFiles(roots: [home])) }
+        return Machine(environment: given.environment, home: home, runner: runner, processID: given.processID, applications: given.applications, now: given.now, files: given.files)
     }
 
     /// A finished run told from its log, as `make(kind:log:machine:)`, xcresulttool answering from `runner`.

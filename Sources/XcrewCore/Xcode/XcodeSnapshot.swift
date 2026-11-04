@@ -38,7 +38,7 @@ public struct XcodeSnapshot: Sendable {
         // The launcher writes its record and then becomes the server, so the server's record is no older than its start.
         let started = server.map { machine.now().addingTimeInterval(-TimeInterval($0.elapsed) - ageSlack) }
         let launch = Xcodes.lastLaunch(of: project, on: machine).flatMap { record in started.flatMap { record.written >= $0 ? record.launch : nil } }
-        return XcodeSnapshot(installed: await installed, selected: await selected, open: Xcodes.running(in: list), pin: project.xcodePin, launch: launch, isServing: server != nil, ci: CIXcodes.named(in: project))
+        return XcodeSnapshot(installed: await installed, selected: await selected, open: Xcodes.running(in: list, on: machine), pin: project.xcodePin, launch: launch, isServing: server != nil, ci: CIXcodes.named(in: project))
     }
 
     /// The Xcode MobileBuildMCP builds with: the pinned one when its server started with it or hasn't started yet, else

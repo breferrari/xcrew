@@ -36,7 +36,7 @@ import XcrewTestSupport
             // A title naming `Sendable` counts; a `Sendable` in an example's code doesn't.
             "explicit-sendable-annotations": "# Explicit `Sendable` annotations on public type declarations (ExplicitSendable)\n\nAdds a warning for any public types without a `Sendable` annotation.\n",
             "implicit-strong-capture": "# Implicit strong captures of weak capture list items (ImplicitStrongCapture)\n\n```swift\nfinal class DataService: Sendable {}\n```\n",
-        ]))
+        ]), files: LocalFiles())
         #expect(groups.isFromDocs)
         #expect(groups.titles == ["MutableGlobalVariable": "Unsafe mutable global and static variables", "SendableClosureCaptures": "Captures in a `@Sendable` closure", "ExplicitSendable": "Explicit `Sendable` annotations on public type declarations"])
         #expect(!groups.counts(["ImplicitStrongCapture"]))
@@ -50,7 +50,7 @@ import XcrewTestSupport
     @Test func aDocHeadedWithItsTitleAloneIsNamedByItsFile() {
         let groups = ConcurrencyGroups.read(docs: docs([
             "sendable-closure-captures": "# Captures in a `@Sendable` closure\n\n`@Sendable` closures can be called multiple times concurrently.\n",
-        ]))
+        ]), files: LocalFiles())
         #expect(groups.titles == ["SendableClosureCaptures": "Captures in a `@Sendable` closure"])
     }
 
@@ -59,12 +59,12 @@ import XcrewTestSupport
     @Test func aGroupsNameCountsWhereItsDocIsSilent() {
         let groups = ConcurrencyGroups.read(docs: docs([
             "isolated-conformances": "# Global-actor isolated conformances\n\nA protocol conformance can be isolated to a specific global actor.\n",
-        ]))
+        ]), files: LocalFiles())
         #expect(groups.counts(["IsolatedConformances"]))
     }
 
     @Test func withoutDocsTheGroupsNameDecides() {
-        let groups = ConcurrencyGroups.read(docs: nil)
+        let groups = ConcurrencyGroups.read(docs: nil, files: LocalFiles())
         #expect(!groups.isFromDocs)
         for name in ["SendableClosureCaptures", "SendingRisksDataRace", "ActorIsolatedCall", "MutableGlobalVariable", "NonisolatedNonsendingByDefault", "PreconcurrencyImport"] {
             #expect(groups.counts([name]), "\(name)")
@@ -110,7 +110,7 @@ import XcrewTestSupport
 
     @Test func eachDiagnosticCountsOnceByGroupAndModule() async throws {
         let project = project()
-        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil) }, using: FakeRunner())
+        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil, files: LocalFiles()) }, using: FakeRunner())
         #expect(report.count == 5)
         #expect(report.errors == 1)
         #expect(report.ungrouped == 1)
@@ -125,11 +125,11 @@ import XcrewTestSupport
         let padding = String(repeating: "note: nothing to see here\n", count: 80_000)
         let root = ProjectLayout.canonical(project.root)
         project.write(padding + Self.log.replacing("/p/", with: root + "/") + padding, to: "build.log")
-        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil) }, using: FakeRunner())
+        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil, files: LocalFiles()) }, using: FakeRunner())
         #expect(report.count == 5)
     }
 
-    func read(_ log: String, in project: Project, docs: @escaping @Sendable (URL?) -> ConcurrencyGroups = { _ in .read(docs: nil) }) async throws -> ConcurrencyReport {
+    func read(_ log: String, in project: Project, docs: @escaping @Sendable (URL?) -> ConcurrencyGroups = { _ in .read(docs: nil, files: LocalFiles()) }) async throws -> ConcurrencyReport {
         project.write(log, to: "build.log")
         return try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: docs, using: FakeRunner())
     }
@@ -179,7 +179,7 @@ import XcrewTestSupport
 
             """, in: project()) { xcode in
             asked.withLock { $0 = xcode }
-            return .read(docs: nil)
+            return .read(docs: nil, files: LocalFiles())
         }
         #expect(asked.withLock { $0 } == URL(fileURLWithPath: "/Applications/Xcode-26.4.app"))
     }
@@ -188,7 +188,7 @@ import XcrewTestSupport
     @Test func changedLinesGitCantReadAreSaid() async throws {
         let project = project()
         project.write(Self.log.replacing("/p/", with: project.canonicalRoot + "/"), to: "build.log")
-        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil) }, onlyChanged: true, using: FakeRunner())
+        let report = try await ConcurrencyReport.read(log: project.root.appending(path: "build.log"), project: project, groups: { _ in .read(docs: nil, files: LocalFiles()) }, onlyChanged: true, using: FakeRunner())
         #expect(report.inChangedLines == nil)
         #expect(report.changeUnread != nil)
     }

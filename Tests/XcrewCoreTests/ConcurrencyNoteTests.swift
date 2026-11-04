@@ -24,7 +24,7 @@ import XcrewTestSupport
         let text = json
             ? #"{"schema":"mobilebuildmcp.output.build-result","schemaVersion":"3","didError":false,"error":null,"data":{"summary":{"status":"SUCCEEDED","durationMs":3400},"artifacts":{"buildLogPath":"~/logs/build.log"},"diagnostics":{"warnings":[\#(listedJSON)],"errors":[]}}}"#
             : "\n🔨 Build\n\nWarnings (\(listed)):\n\n\(warnings)\n✅ Build succeeded. (⏱️ 3.4s)\n  └ Files:\n     └── ~/logs/build.log — Build Logs\n"
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: project.root.appending(path: "Applications"))
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(), applications: project.root.appending(path: "Applications"), files: RootedFiles(roots: [home, project.root.appending(path: "Applications")]))
         return await Report.make(kind: .build, output: ToolOutput(text: text, server: .mobileBuildMCP), home: home.path, runner: FakeRunner(), project: project, machine: machine)
     }
 

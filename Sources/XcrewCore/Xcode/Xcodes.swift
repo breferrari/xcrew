@@ -42,23 +42,25 @@ public enum Xcodes {
         async let elsewhere = spotlight(on: machine)
         var seen = Set<String>()
         let apps = (applications(on: machine) + (await elsewhere)).filter { seen.insert(ProjectLayout.canonicalPath($0.path)).inserted }
-        return apps.compactMap(install).sorted { Version($0.version) > Version($1.version) }
+        return apps.compactMap { install(at: $0, files: machine.files) }.sorted { Version($0.version) > Version($1.version) }
     }
 
     public static func pinned(in project: Project, on machine: Machine) async -> Pinned {
         guard let pin = project.xcodePin else { return .none }
-        let listed = applications(on: machine).compactMap(install)
+        let listed = applications(on: machine).compactMap { install(at: $0, files: machine.files) }
         if let match = matching(pin.version, in: listed) { return .installed(match) }
-        return matching(pin.version, in: (await spotlight(on: machine)).compactMap(install)).map(Pinned.installed) ?? .notInstalled
+        return matching(pin.version, in: (await spotlight(on: machine)).compactMap { install(at: $0, files: machine.files) }).map(Pinned.installed) ?? .notInstalled
     }
 
+    /// The apps in the machine's applications folder, each at the folder's real path, as listing a folder gives it.
     static func applications(on machine: Machine) -> [URL] {
-        ((try? FileManager.default.contentsOfDirectory(at: machine.applications, includingPropertiesForKeys: nil)) ?? []).filter { $0.pathExtension == "app" }
+        let folder = URL(fileURLWithPath: ProjectLayout.canonical(machine.applications))
+        return (machine.files.names(in: folder) ?? []).sorted().map { folder.appending(path: $0) }.filter { $0.pathExtension == "app" }
     }
 
     static func spotlight(on machine: Machine) async -> [URL] {
         let found = await machine.runner.run(["mdfind", "kMDItemCFBundleIdentifier == '\(bundleIdentifier)'"], stdin: nil)
-        return found.succeeded ? found.stdout.split(whereSeparator: \.isNewline).map { URL(fileURLWithPath: String($0)) } : []
+        return found.succeeded ? found.stdout.split(whereSeparator: \.isNewline).map { machine.onThisMachine(URL(fileURLWithPath: String($0))) } : []
     }
 
     private struct Info: Decodable {
@@ -70,14 +72,14 @@ public enum Xcodes {
         let ProductBuildVersion: String?
     }
 
-    /// The Xcode at `app`, read from its `Info.plist` and `version.plist`; nothing when the app isn't Xcode.
-    static func install(at app: URL) -> XcodeInstall? {
+    /// The Xcode at `app`, read from its `Info.plist` and `version.plist` through `files`; nothing when the app isn't Xcode.
+    static func install(at app: URL, files: any FileReading) -> XcodeInstall? {
         let contents = app.appending(path: "Contents")
-        guard let data = try? Data(contentsOf: contents.appending(path: "Info.plist")),
+        guard let data = files.data(at: contents.appending(path: "Info.plist")),
               let info = try? PropertyListDecoder().decode(Info.self, from: data),
               info.CFBundleIdentifier == bundleIdentifier, let version = info.CFBundleShortVersionString
         else { return nil }
-        let build = (try? Data(contentsOf: contents.appending(path: "version.plist"))).flatMap { try? PropertyListDecoder().decode(VersionInfo.self, from: $0) }?.ProductBuildVersion
+        let build = files.data(at: contents.appending(path: "version.plist")).flatMap { try? PropertyListDecoder().decode(VersionInfo.self, from: $0) }?.ProductBuildVersion
         return XcodeInstall(path: app.path, version: version, build: build ?? "")
     }
 
@@ -97,14 +99,14 @@ public enum Xcodes {
             let selected = await machine.runner.run(["xcode-select", "-p"], stdin: nil)
             developer = selected.succeeded ? GitHead.firstLine(selected.stdout) : nil
         }
-        return developer.flatMap(app(holding:)).flatMap(install)
+        return developer.flatMap(app(holding:)).flatMap { install(at: machine.onThisMachine($0), files: machine.files) }
     }
 
     /// Each Xcode open, from the process list: the Xcode MCP works through it.
-    static func running(in list: ProcessList) -> [XcodeInstall] {
+    static func running(in list: ProcessList, on machine: Machine) -> [XcodeInstall] {
         let suffix = "/Contents/MacOS/Xcode"
         return list.processes.map(\.programPath).filter { $0.hasSuffix(".app" + suffix) }.sorted()
-            .compactMap { install(at: URL(fileURLWithPath: String($0.dropLast(suffix.count)))) }
+            .compactMap { install(at: machine.onThisMachine(URL(fileURLWithPath: String($0.dropLast(suffix.count)))), files: machine.files) }
     }
 
     /// The app a developer folder is in: `/Applications/Xcode.app` for `/Applications/Xcode.app/Contents/Developer`.

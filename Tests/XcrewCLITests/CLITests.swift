@@ -790,7 +790,7 @@ import XcrewTestSupport
         home.write("SwiftCompile normal arm64 /w/B.swift (in target 'Theirs' from project 'App')\n", to: "Library/Developer/MobileBuildMCP/workspaces/App-720d05200789/logs/test_sim_2_pid500_b.log")
         let logs = home.root.appending(path: "Library/Developer/MobileBuildMCP/workspaces/App-720d05200789/logs")
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -5)], ofItemAtPath: logs.appending(path: "test_sim_1_pid200_a.log").path)
-        let context = CheckContext(project: Project(root: URL(fileURLWithPath: "/work/one/App")), machine: Machine(environment: [:], home: home.root, runner: runner, processID: 300))
+        let context = CheckContext(project: Project(root: URL(fileURLWithPath: "/work/one/App")), machine: Machine(environment: [:], home: home.root, runner: runner, processID: 300, files: RootedFiles(roots: [home.root])))
         let run = await Run("phase", "--tool", "test_sim", "--since", "0", context: context)
         #expect(run.text.contains(#""phase":"compiling Mine""#))
     }

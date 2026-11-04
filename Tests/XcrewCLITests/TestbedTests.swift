@@ -618,7 +618,7 @@ struct TestbedEvidenceTests {
         var fake = try #require(context.machine.runner as? FakeRunner)
         fake.responses["sysctl -n hw.perflevel0.physicalcpu"] = .init(status: 0, stdout: "8\n")
         let slow = SlowRunner(fake)
-        let machine = Machine(environment: context.machine.environment, home: context.machine.home, runner: slow, processID: context.machine.processID, applications: context.machine.applications, now: context.machine.now)
+        let machine = Machine(environment: context.machine.environment, home: context.machine.home, runner: slow, processID: context.machine.processID, applications: context.machine.applications, now: context.machine.now, files: RootedFiles(roots: [context.machine.home, context.machine.applications]))
         let run = await Run("evidence", context: CheckContext(project: project, machine: machine), stdin: Self.input)
         #expect(run.text.contains("these test runs"), "\(run.text)")
         #expect(slow.peakArchiveReads >= 2)
@@ -849,7 +849,7 @@ struct TestbedConcurrencyTests {
         let log = try String(contentsOf: Testbed.root.appending(path: "captures/concurrency/\(capture)"), encoding: .utf8)
         let copy = root.appending(path: "build.log")
         try log.replacing("/testbed/concurrency", with: ProjectLayout.canonical(root)).write(to: copy, atomically: true, encoding: .utf8)
-        return try await ConcurrencyReport.read(log: copy, project: Project(root: root), groups: { _ in .read(docs: nil) }, using: FakeRunner())
+        return try await ConcurrencyReport.read(log: copy, project: Project(root: root), groups: { _ in .read(docs: nil, files: LocalFiles()) }, using: FakeRunner())
     }
 
     @Test(arguments: ["xcodebuild-warnings.log", "build_sim.log"])
@@ -884,7 +884,7 @@ struct TestbedConcurrencyTests {
 @Suite(.enabled(if: InstalledGroupDocs.folder != nil, "no Xcode with Swift's diagnostic group docs"))
 struct InstalledGroupDocsTests {
     @Test func theNameRuleCatchesEveryGroupTheDocsSayIsConcurrencys() {
-        let docs = ConcurrencyGroups.read(docs: InstalledGroupDocs.folder)
+        let docs = ConcurrencyGroups.read(docs: InstalledGroupDocs.folder, files: LocalFiles())
         #expect(docs.isFromDocs)
         // Xcode 26.0 documents two groups, neither about concurrency; where the docs cover many, some must be.
         if docs.documented.count >= 20 {

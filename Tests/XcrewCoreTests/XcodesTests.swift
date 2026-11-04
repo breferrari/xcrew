@@ -17,7 +17,7 @@ import XcrewTestSupport
     }
 
     func machine(_ applications: URL, runner: FakeRunner = FakeRunner(), environment: [String: String] = [:]) -> Machine {
-        Machine(environment: environment, home: applications.deletingLastPathComponent(), runner: runner, applications: applications)
+        Machine(environment: environment, home: applications.deletingLastPathComponent(), runner: runner, applications: applications, files: RootedFiles(roots: [applications.deletingLastPathComponent(), applications]))
     }
 
     @Test func theInstalledXcodesAreTheBundlesThatAreXcode() async {
@@ -34,7 +34,8 @@ import XcrewTestSupport
         let elsewhere = apps.deletingLastPathComponent().appending(path: "elsewhere-\(UUID().uuidString)")
         FakeXcode.install(in: elsewhere, "Xcode-25.3.app", version: "25.3", build: "16E140")
         let runner = FakeRunner(responses: [Self.spotlight: .init(status: 0, stdout: "\(elsewhere.path)/Xcode-25.3.app\n")])
-        #expect(await Xcodes.installed(on: machine(apps, runner: runner)).map(\.version) == ["27.2", "26.4", "25.3"])
+        let machine = Machine(environment: [:], home: apps.deletingLastPathComponent(), runner: runner, applications: apps, files: RootedFiles(roots: [apps, elsewhere]))
+        #expect(await Xcodes.installed(on: machine).map(\.version) == ["27.2", "26.4", "25.3"])
     }
 
     /// `.xcode-version` holds one version, with or without a trailing newline; a beta's `b<n>` and trailing zeros don't
@@ -256,6 +257,6 @@ import XcrewTestSupport
     @Test func theRunningXcodeIsTheAppAroundItsProcess() async {
         let apps = Self.applications()
         let runner = FakeRunner(responses: FakeSession.responses(serving: nil, programs: [101: "/usr/sbin/cfprefsd", 202: "\(apps.path)/Xcode-27.2.0-Beta.3.app/Contents/MacOS/Xcode", 303: "/System/Applications/Mail.app/Contents/MacOS/Mail"]))
-        #expect(Xcodes.running(in: await ProcessList.load(using: runner)).map(\.version) == ["27.2"])
+        #expect(Xcodes.running(in: await ProcessList.load(using: runner), on: machine(apps, runner: runner)).map(\.version) == ["27.2"])
     }
 }

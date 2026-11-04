@@ -13,11 +13,11 @@ public struct ConcurrencyGroups: Sendable, Equatable {
     /// Every group the docs have a doc for, about concurrency or not.
     var documented: Set<String> = []
 
-    /// The groups the docs folder names, or the name rule alone when there's no folder.
-    public static func read(docs folder: URL?) -> ConcurrencyGroups {
-        guard let folder, let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { return ConcurrencyGroups() }
-        let docs = files.filter { $0.pathExtension == "md" }.sorted { $0.path < $1.path }.compactMap { file -> (file: URL, text: String, title: Substring, group: Substring?)? in
-            guard let text = try? String(contentsOf: file, encoding: .utf8),
+    /// The groups the docs folder names, read through `files`, or the name rule alone when there's no folder.
+    public static func read(docs folder: URL?, files reading: any FileReading) -> ConcurrencyGroups {
+        guard let folder, let names = reading.names(in: folder) else { return ConcurrencyGroups() }
+        let docs = names.map { folder.appending(path: $0) }.filter { $0.pathExtension == "md" }.sorted { $0.path < $1.path }.compactMap { file -> (file: URL, text: String, title: Substring, group: Substring?)? in
+            guard let text = reading.text(at: file),
                   let heading = text.firstMatch(of: #/^# (.+?)(?: \((\w+)\))?\s*$/#.anchorsMatchLineEndings()) else { return nil }
             return (file, text, heading.1, heading.2)
         }
