@@ -4,7 +4,8 @@ import type { BandProblems, BandRun, CliBuild, ElsewhereRuns, FailureList, FullR
 import { changedRun, elsewhereTree, endedRun, outcomeLine, problemsTree, promptLine, resultTree, runTree, shownFor, showsRun } from './band'
 import { shortDescription } from './agent'
 import { afterRead, ELSEWHERE_EVERY_MS } from './elsewhere'
-import { type Phase, answerOf, buildFailure, progressLines, type FailedBuild, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, endedQuietly, printedOr, readLine, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { type Phase, answerOf, buildFailure, progressLines, type FailedBuild, overlappedOf, couldntRun, flakyMarksOf, generatedOf, goneOf, type Head, hashOf, headOf, isGeneratedOf, knownBuild, readsYamlOf, manifestEditOf, namedBuild, notesOf, phaseArgs, profileSchemeOf, phaseOf, problemsOf, textAndProblemsOf, endedQuietly, printedOr, readLine, reportArgs, reportOf, elsewhereOf, sessionOf, setupOfferOf, shimPath, withPinNamedOnce, xcodeHostsServerOf, xcodeSelectionOf, type Failure, type Problem, type Ran, type Report } from './cli'
+import { withConcurrencyOnce } from './concurrency'
 import { COMMAND, historyText, keptHistory, USAGE } from './command'
 import { AFFECTED_TOOL, AFFECTED_TOOL_NAME, affectedArgs, affectedText } from './affected'
 import { savedCard, type SavedCard } from './card'
@@ -16,7 +17,6 @@ import { afterRun, paneTree, summary } from './failures'
 import { drawsForm, type FormElements, formTree, formWithChoices, formWithPick, NO_FORM, PICK_KEYS, setupArgs, setupFact, WROTE } from './form'
 import { afterFullRun, type Crossing, loopNote } from './loop'
 import { FailedReads } from './failedreads'
-import { withConcurrencyOnce, withPinNamedOnce } from './once'
 import { average } from './format'
 import { decided, describedForGenerated, editQuestion, editRefusal, type Question, XCODE_WRITE_QUESTION, xcodeWriteRefusal } from './guard'
 import { mostSerious, noticed, visible, WARNING_FOR_MS } from './problems'
@@ -930,7 +930,7 @@ async function branchState($: EngineInterface) {
 /** The card as the CLI keeps it: its folder and branch, the time of its newest data, and its text, if it has any. */
 async function cardNow($: EngineInterface): Promise<SavedCard | undefined> {
   const { folder, now, head, scopes, entries, updated } = await branchState($)
-  return head ? savedCard(folder, head, scopes, entries, updated, now) : undefined
+  return head ? savedCard({ folder, head, now, scopes, entries, updated }) : undefined
 }
 
 /** The evidence for this branch, as the CLI words it from the ledger. */
@@ -1107,9 +1107,9 @@ async function keepWait($: EngineInterface, tool: string, from: number | undefin
   const checked = id === undefined ? undefined : staleChecks.get(id)
   if (id !== undefined) staleChecks.delete(id)
   const to = await quietly(() => $.clock.now())
-  const merged = from === undefined || to === undefined ? undefined : waitOf(from, to, checked, steps)
-  if (from === undefined || !merged) return
-  const kept = keptTimings(await quietly(() => $.store.get(TIMINGS_KEY)), { tool, at: from, steps: merged })
+  const wait = waitOf(tool, from, to, checked, steps)
+  if (!wait) return
+  const kept = keptTimings(await quietly(() => $.store.get(TIMINGS_KEY)), wait)
   await quietly(() => $.store.set(TIMINGS_KEY, kept))
 }
 
@@ -1188,6 +1188,7 @@ async function applyProblems($: EngineInterface, problems: Problem[], at?: numbe
 async function showVisibleProblems($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   // A failed read shows as a warning does, for its first few minutes, and goes once it answers.
+  failedReads.expire(now)
   await update($, problemsState, () => mostSerious([...visible(found, seenAt, now), ...failedReads.shown(now)]))
 }
 

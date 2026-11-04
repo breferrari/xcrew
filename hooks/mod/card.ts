@@ -22,12 +22,18 @@ const RED_LINE_MAX = 360
 export type ScopeHistory = { scope: string; runs: readonly number[]; tests?: number }
 
 /**
- * The card as the CLI keeps it, for `folder` on `head` at `now`: its folder and branch, the time of its newest data and
- * of its oldest, and its text, if it has any. It's read at every session start, so it drops what no run has written for
- * as long as the history is kept: the ledger's `entries` when the ledger was last `updated` that long ago, else each red
- * entry no run has touched for that long.
+ * What the card is made from: this folder and the checkout on it, the time now, the run scopes of its repository still
+ * fresh, each with when a run last updated it, and the branch's ledger entries with when the ledger was last updated.
  */
-export function savedCard(folder: string, head: Head, scopes: readonly (ScopeHistory & { updated: unknown })[], entries: readonly LedgerEntry[], updated: unknown, now: number): SavedCard {
+export type CardState = { folder: string; head: Head; now: number; scopes: readonly (ScopeHistory & { updated: unknown })[]; entries: readonly LedgerEntry[]; updated: unknown }
+
+/**
+ * The card as the CLI keeps it: its folder and branch, the time of its newest data and of its oldest, and its text, if
+ * it has any. It's read at every session start, so it drops what no run has written for as long as the history is kept:
+ * the ledger's entries when the ledger was last updated that long ago, else each red entry no run has touched for that
+ * long.
+ */
+export function savedCard({ folder, head, now, scopes, entries, updated }: CardState): SavedCard {
   const red = isStale(updated, now) ? [] : entries.filter(entry => !entry.green && !isStale(entry.last, now))
   const text = cardText(scopes, red, label(head, true))
   const times = [...scopes.map(entry => entry.updated), ...red.map(entry => entry.last)].filter((time): time is number => typeof time === 'number')

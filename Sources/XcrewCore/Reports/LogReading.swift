@@ -32,8 +32,7 @@ struct LogReading: Codable, Equatable, Sendable {
     /// The latest `** … **` verdict xcodebuild wrote.
     var verdict: String?
 
-    /// Removes the readings kept in `folder` that no one has kept for a day before `now`: a run's log is followed only while
-    /// it runs.
+    /// Removes the readings in `folder` unread for a day before `now`: a run's log is followed only while it runs.
     static func prune(in folder: URL, now: Date) {
         AgedEntries.removing(olderThan: 24 * 3600, in: folder, now: now)
     }

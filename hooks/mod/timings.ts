@@ -16,15 +16,16 @@ export function keptTimings(stored: unknown, added: Timing): Timing[] {
 }
 
 /**
- * A call's wait before it reached its server, from `from` to `to`, when it came to `SLOW_PRECALL_MS` or more with the
+ * `tool`'s wait before it reached its server, from `from` to `to`, when it came to `SLOW_PRECALL_MS` or more with the
  * stale-build guard's `checked` time before it: the guard's check, the steps timed, each name once, and the rest as
- * `other`. Nothing for a shorter wait.
+ * `other`. Nothing for a shorter wait, or when either time couldn't be read.
  */
-export function waitOf(from: number, to: number, checked: number | undefined, steps: readonly Step[]): Step[] | undefined {
-  if (to - from + (checked ?? 0) < SLOW_PRECALL_MS) return undefined
+export function waitOf(tool: string, from: number | undefined, to: number | undefined, checked: number | undefined, steps: readonly Step[]): Timing | undefined {
+  if (from === undefined || to === undefined || to - from + (checked ?? 0) < SLOW_PRECALL_MS) return undefined
   const timed = steps.reduce((total, step) => total + step.ms, 0)
   const all = [...(checked ? [{ name: 'staleCheck', ms: checked }] : []), ...steps, ...(to - from > timed ? [{ name: 'other', ms: to - from - timed }] : [])]
-  return Object.entries(all.reduce<Record<string, number>>((byName, step) => ({ ...byName, [step.name]: (byName[step.name] ?? 0) + step.ms }), {})).map(([name, ms]) => ({ name, ms }))
+  const merged = Object.entries(all.reduce<Record<string, number>>((byName, step) => ({ ...byName, [step.name]: (byName[step.name] ?? 0) + step.ms }), {})).map(([name, ms]) => ({ name, ms }))
+  return { tool, at: from, steps: merged }
 }
 
 /** `/xcrew timings`: each slow call, newest first, with its steps, the slowest first. */

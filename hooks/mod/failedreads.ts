@@ -51,17 +51,20 @@ export class FailedReads {
   }
 
   /**
-   * The failed reads the band shows at `now`, as a warning shows, for its first few minutes. One kept failing stays
-   * recorded, hidden, so it isn't new again; one that hasn't failed again for that long goes, as a read whose arguments
-   * name a moment or a file may never be asked again.
+   * Drops the failed reads that haven't failed again for a warning's time before `now`, as a read whose arguments name a
+   * moment or a file may never be asked again. One kept failing stays recorded, hidden, so it isn't new again.
    */
-  shown(now: number): Problem[] {
+  expire(now: number): void {
     for (const [read, problem] of this.failing) {
       if (now - (this.lastFailedAt.get(read) ?? Number.NEGATIVE_INFINITY) < WARNING_FOR_MS) continue
       this.failing.delete(read)
       this.lastFailedAt.delete(read)
       delete this.failedAt[problem.id]
     }
+  }
+
+  /** The failed reads the band shows at `now`, as a warning shows, for its first few minutes; it changes nothing. */
+  shown(now: number): Problem[] {
     return visible([...this.failing.values()], this.failedAt, now)
   }
 
