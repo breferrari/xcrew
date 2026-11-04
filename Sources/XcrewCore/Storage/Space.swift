@@ -49,9 +49,9 @@ public enum Space {
     }
 
     /// The `.xctestproducts` bundles in a workspace's test products, one per test run; 0 when it can't be read.
-    static func bundles(in workspace: StorageReport.Workspace, home: URL) -> Int {
-        let folder = ToolOutput.expandingHome(workspace.folder, home: home.path) + "/test-products"
-        return ((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? []).count { $0.hasSuffix(".xctestproducts") }
+    static func bundles(in workspace: StorageReport.Workspace, machine: Machine) -> Int {
+        let folder = URL(fileURLWithPath: ToolOutput.expandingHome(workspace.folder, home: machine.home.path) + "/test-products")
+        return (machine.files.names(in: folder) ?? []).count { $0.hasSuffix(".xctestproducts") }
     }
 
     /// Whether an xcodebuild is writing to a workspace's DerivedData now: its figure is that build's too.
@@ -104,7 +104,7 @@ public enum Space {
         var lines: [SpaceReport.Line] = grouped.live.isEmpty ? [] : [.init(text: ProjectStorage.line(grouped.live, machine: machine, processes: processes))]
         lines += grouped.live.flatMap { workspace, checkout in
             workspaceLines(workspace, name: URL(fileURLWithPath: checkout.root).lastPathComponent, root: checkout.root, newest: workspace.classes.values.compactMap(\.newest).max().map { SpaceReport.age(of: $0, now: now) },
-                           bundles: bundles(in: workspace, home: machine.home), isBuilding: isBuilding(into: workspace, processes: processes, home: machine.home))
+                           bundles: bundles(in: workspace, machine: machine), isBuilding: isBuilding(into: workspace, processes: processes, home: machine.home))
         }
         lines += goneLines(grouped.gone, now: now)
         let (elsewhere, unknown) = (grouped.elsewhere, grouped.unknown)
@@ -154,8 +154,8 @@ public enum Space {
         struct Info: Decodable {
             let WorkspacePath: String
         }
-        let entries = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []).compactMap { entry -> (URL, String)? in
-            guard let data = FileManager.default.contents(atPath: entry.appending(path: "info.plist").path),
+        let entries = (machine.files.names(in: folder) ?? []).map { folder.appending(path: $0) }.compactMap { entry -> (URL, String)? in
+            guard let data = machine.files.data(at: entry.appending(path: "info.plist")),
                   let info = try? PropertyListDecoder().decode(Info.self, from: data)
             else { return nil }
             return (entry, info.WorkspacePath)
@@ -167,7 +167,7 @@ public enum Space {
         var others: [Int] = []
         for (entry, workspace) in entries {
             let size = sizes[entry.path].map(SpaceReport.size) ?? "not measured"
-            if !FileManager.default.fileExists(atPath: workspace) {
+            if !machine.files.exists(URL(fileURLWithPath: workspace)) {
                 lines.append(.init(text: "\(entry.lastPathComponent): \(size); its workspace, \(workspace), is gone", bytes: sizes[entry.path]))
             } else if roots.contains(where: { workspace == $0 || workspace.hasPrefix($0 + "/") }) {
                 lines.append(.init(text: "\(entry.lastPathComponent), for this project: \(size)", bytes: sizes[entry.path]))
@@ -290,7 +290,7 @@ public enum Space {
             ("Previews", developer.appending(path: "UserData/Previews")),
             ("SwiftPM's cache", machine.home.appending(path: "Library/Caches/org.swift.swiftpm")),
             ("xcrew's cache (its launcher removes a build unused for \(FailureImages.keptDays) days)", machine.cacheFolder),
-        ]).filter { FileManager.default.fileExists(atPath: $0.1.path) }
+        ]).filter { machine.files.exists($0.1) }
         guard !folders.isEmpty else { return nil }
         let sizes = await sizes(of: folders.map(\.1.path), using: machine.runner, measuring: du)
         return .init(title: "Other folders", lines: folders.map { name, folder in

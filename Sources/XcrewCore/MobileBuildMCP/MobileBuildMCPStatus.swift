@@ -42,7 +42,7 @@ enum MobileBuildMCPStatus: Sendable, Equatable {
     /// folder named for the version, so the resolved path and its modification time change with every upgrade.
     static func version(at path: String, machine: Machine) async -> String {
         let cache = machine.cacheFolder.appending(path: "mobilebuildmcp-version")
-        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        let resolved = machine.files.resolved(URL(fileURLWithPath: path)).path
         let key = machine.files.modified(URL(fileURLWithPath: resolved)).map { "\(resolved) \($0.timeIntervalSince1970)" }
         if let key, let saved = try? String(contentsOf: cache, encoding: .utf8), saved.hasPrefix(key + "\n") {
             return String(saved.dropFirst(key.count + 1))

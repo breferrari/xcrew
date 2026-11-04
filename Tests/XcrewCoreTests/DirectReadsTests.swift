@@ -51,8 +51,7 @@ struct DirectReadsTests {
         "Sources/XcrewCore/Reports/ResultBundle.swift": [.input],
         "Sources/XcrewCore/Reports/RunLog.swift": [.input, .machineFolder],
         "Sources/XcrewCore/Storage/AgedEntries.swift": [.machineFolder],
-        "Sources/XcrewCore/Storage/ProjectWorkspaces.swift": [.machineFolder],
-        "Sources/XcrewCore/Storage/Space.swift": [.machineFolder],
+        "Sources/XcrewCore/Storage/ProjectWorkspaces.swift": [.input],
         "Sources/XcrewCore/System/StandardInput.swift": [.input],
         "Sources/XcrewCore/System/TextFile.swift": [.input],
         "Sources/XcrewCore/Xcode/CIXcodes.swift": [.project],
@@ -61,9 +60,9 @@ struct DirectReadsTests {
     ]
 
     /// A read of a file, as Foundation offers one.
-    static var read: Regex<Substring> { #/(?:Data|String)\(contentsOf|contentsOfFile|contentsOfDirectory|fileExists\(|attributesOfItem|resourceValues\(|enumerator\(at|FileHandle\(forReading|contents\(atPath|destinationOfSymbolicLink|subpathsOfDirectory/# }
+    static var read: Regex<Substring> { #/(?:Data|String)\(contentsOf|contentsOfFile|contentsOfDirectory|fileExists\(|isExecutableFile|attributesOfItem|attributesOfFileSystem|resourceValues\(|enumerator\(at|FileHandle\(forReading|contents\(atPath|destinationOfSymbolicLink|subpathsOfDirectory|resolvingSymlinksInPath|copyItem|mountedVolumeURLs/# }
     /// A path of the machine's own, named in a line.
-    static var machinePath: Regex<Substring> { #/machine\.home|cacheFolder|homeDirectoryForCurrentUser|NSHomeDirectory|"\/Applications|Library\/(?:Caches|Developer)/# }
+    static var machinePath: Regex<Substring> { #/machine\.(?:home|applications)|\bhome\.|cacheFolder|homeDirectoryForCurrentUser|NSHomeDirectory|"\/(?:Applications|Library|opt|usr|System)|Library\/(?:Caches|Developer)/# }
 
     /// Each Swift file in Sources with the lines that read a file, numbered from 1.
     static func reads() throws -> [String: [(line: Int, text: String)]] {
@@ -82,20 +81,21 @@ struct DirectReadsTests {
         let reads = try Self.reads()
         let unlisted = reads.keys.filter { Self.allowed[$0] == nil && !Self.seams.contains($0) }.sorted()
         #expect(unlisted.isEmpty, "reads a file directly, not through Machine.files, and isn't listed with why: \(unlisted.map { "\($0): \(reads[$0]!.map(\.line))" })")
-        let stale = Self.allowed.keys.filter { reads[$0] == nil }.sorted()
+        let stale = (Array(Self.allowed.keys) + Self.seams).filter { reads[$0] == nil }.sorted()
         #expect(stale.isEmpty, "listed but reads nothing directly: \(stale)")
     }
 
-    /// What a read is given: its call's arguments, up to the parenthesis that closes them.
+    /// What a read is given: what it's called on and its call's arguments, up to the parenthesis that closes them.
     static func arguments(of line: String) -> Substring {
         guard let call = line.firstMatch(of: read) else { return "" }
+        let receiver = line[..<call.range.lowerBound].lastIndex { $0 == " " || $0 == "(" || $0 == "{" }.map { line.index(after: $0) } ?? line.startIndex
         var depth = 0
         var end = call.range.upperBound
         for index in line[call.range.lowerBound...].indices {
             if line[index] == "(" { depth += 1 }
             if line[index] == ")" { depth -= 1; if depth == 0 { end = index; break } }
         }
-        return line[call.range.lowerBound..<end]
+        return line[receiver..<end]
     }
 
     /// A file listed for the project's files or its input's never gives a read a path of the machine's own.
@@ -113,7 +113,6 @@ struct DirectReadsTests {
     static let unseen: [String: String] = [
         "Sources/XcrewCore/Hooks/ProjectCard.swift": "`read(_:)` is given a card file `folder(on:)` makes from the Machine's cache",
         "Sources/XcrewCore/Storage/AgedEntries.swift": "its pruner is given the cache folder its callers make from the Machine",
-        "Sources/XcrewCore/Storage/ProjectWorkspaces.swift": "a workspace's logs are read in a folder `origins` makes from the Machine's home",
     ]
 
     /// A file listed for the Machine's home or cache reads in a function that builds its path from the Machine: one that

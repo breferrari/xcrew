@@ -45,7 +45,7 @@ import XcrewTestSupport
 
     /// Foundation lists the startup volume as `/`, and a volume under `/Volumes` by its folder there, which the rule reads.
     @Test func theMountedVolumesListTheStartupVolume() {
-        #expect(GoneCommand.mounted.contains("/"))
+        #expect(LocalFiles().mountedVolumes().contains("/"))
     }
 
     /// A folder whose parent is gone too isn't counted: an unmounted share's or drive's folders go with their mount, where

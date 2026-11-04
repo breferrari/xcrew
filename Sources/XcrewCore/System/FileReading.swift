@@ -13,6 +13,10 @@ public protocol FileReading: Sendable {
     func isMissing(_ url: URL) -> Bool
     /// When the file was last changed; nil when it can't be read.
     func modified(_ url: URL) -> Date?
+    /// The path with every symbolic link in it followed, as the disk has them.
+    func resolved(_ url: URL) -> URL
+    /// The paths of the volumes mounted now.
+    func mountedVolumes() -> Set<String>
     /// Takes up the Machine it reads for, as it's made: a test's checks the folders the Machine names are its own.
     func admit(_ machine: Machine)
 }

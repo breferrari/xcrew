@@ -12,7 +12,7 @@ public struct LocalFiles: FileReading {
 
     public func isMissing(_ url: URL) -> Bool {
         do {
-            _ = try FileManager.default.attributesOfItem(atPath: url.path)
+            _ = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
             return false
         } catch {
             return (error as? CocoaError)?.code == .fileReadNoSuchFile
@@ -21,6 +21,12 @@ public struct LocalFiles: FileReading {
 
     public func modified(_ url: URL) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+    }
+
+    public func resolved(_ url: URL) -> URL { url.resolvingSymlinksInPath() }
+
+    public func mountedVolumes() -> Set<String> {
+        Set((FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []).map(\.path))
     }
 
     /// The live disk reads for any Machine.

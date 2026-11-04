@@ -31,13 +31,9 @@ struct GoneCommand: Command {
         }
     }
 
-    /// The mounted volumes' paths, as `FileManager` lists them; none when it can't.
-    static var mounted: Set<String> {
-        Set((FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []).map(\.path))
-    }
-
     func run(_ invocation: Invocation) async throws -> Int32 {
-        let gone = Self.gone(invocation.arguments.positional, mounted: Self.mounted, files: invocation.context.machine.files)
+        let files = invocation.context.machine.files
+        let gone = Self.gone(invocation.arguments.positional, mounted: files.mountedVolumes(), files: files)
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(Answer(gone: gone)), as: UTF8.self))
         return 0
     }

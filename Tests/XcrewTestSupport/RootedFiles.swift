@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import XcrewCore
 
-/// The disk as a test may read it: below its own folders, the test bed, this package's checkout, whose plugin files the
+/// The disk as a test may read it: below its own folders, the test bed, this package's `context`, the plugin's files the
 /// hooks read, and `/nonexistent`, where `FakeRunner` puts a tool it makes up, on no Mac. A read anywhere else records an
 /// issue, failing the test, and reads nothing: a test never reads the real Mac. A folder it's given that a test didn't make, one outside the temporary folder or the test
 /// bed, as `/Applications` or a made-up home, is none of its own. Paths are
@@ -13,9 +13,9 @@ public struct RootedFiles: FileReading {
 
     public init(roots: [URL]) {
         let checkout = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let bed = (Testbed.isCheckedOut ? [Self.resolved(Testbed.root)] : []) + [Self.resolved(checkout), "/nonexistent"]
+        let bed = (Testbed.isCheckedOut ? [Self.resolved(Testbed.root)] : []) + [Self.resolved(checkout.appending(path: "context")), "/nonexistent"]
         let temporary = Self.resolved(FileManager.default.temporaryDirectory) + "/"
-        self.roots = bed + roots.map(Self.resolved).filter { $0.hasPrefix(temporary) || bed.contains(where: $0.hasPrefix) }
+        self.roots = bed + roots.map(Self.resolved).filter { root in root.hasPrefix(temporary) || bed.contains { root == $0 || root.hasPrefix($0 + "/") } }
     }
 
     static func resolved(_ url: URL) -> String {
@@ -43,13 +43,21 @@ public struct RootedFiles: FileReading {
 
     public func modified(_ url: URL) -> Date? { allows(url) ? disk.modified(url) : nil }
 
-    /// Fails the test when the Machine's home is the Mac's own, or its cache is in the Mac's own caches: what those hold is
-    /// read directly, so they must be folders the test made.
+    public func resolved(_ url: URL) -> URL { allows(url) ? disk.resolved(url) : url }
+
+    /// None: which volumes the Mac has mounted is the Mac's, so asking fails the test.
+    public func mountedVolumes() -> Set<String> {
+        Issue.record("a test asked which volumes this Mac has mounted")
+        return []
+    }
+
+    /// Fails the test when the Machine's home is the Mac's own or a folder above it, as `/`, or its cache is in the Mac's own
+    /// caches: what those hold is read directly, so they must be folders the test made.
     public func admit(_ machine: Machine) {
         let mine = Self.resolved(FileManager.default.homeDirectoryForCurrentUser)
         let caches = mine + "/Library/Caches"
         let (home, cache) = (Self.resolved(machine.home), Self.resolved(machine.cacheFolder))
-        if home == mine {
+        if home == mine || home == "/" || mine.hasPrefix(home + "/") {
             Issue.record("a test's Machine has the Mac's own home, \(machine.home.path)")
         }
         if cache == caches || cache.hasPrefix(caches + "/") {

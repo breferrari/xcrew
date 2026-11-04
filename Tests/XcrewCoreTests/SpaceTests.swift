@@ -69,7 +69,7 @@ import XcrewTestSupport
         try Self.writeLog(home: home, key: goneKey, root: goneRoot)
         try FileManager.default.createDirectory(at: project.root.appending(path: "App.xcworkspace"), withIntermediateDirectories: true)
         try derivedData("App-abc", workspace: "\(root)/App.xcworkspace")
-        try derivedData("Old-def", workspace: "/work/Old/Old.xcodeproj")
+        try derivedData("Old-def", workspace: "\(home.path)/Old/Old.xcodeproj")
         try write("", to: "Library/Developer/Xcode/Archives/2026-10-30/App.xcarchive/Info.plist")
         let apps = home.appending(path: "Applications")
         FakeXcode.install(in: apps, "Xcode-27.2.app", version: "27.2", build: "27C5")
@@ -89,7 +89,7 @@ import XcrewTestSupport
         responses["du -sk \(dd)/Old-def"] = .init(status: 0, stdout: "3000\t\(dd)/Old-def\n")
         let archives = home.appending(path: "Library/Developer/Xcode/Archives").path
         responses["du -sk \(archives)"] = .init(status: 0, stdout: "52000\t\(archives)\n")
-        let machine = Machine(environment: [:], home: home, runner: FakeRunner(installed: xcodes ? ["xcodes"] : [], responses: responses), applications: apps, now: { Self.now }, files: RootedFiles(roots: [home, apps]))
+        let machine = Machine(environment: [:], home: home, runner: FakeRunner(installed: xcodes ? ["xcodes"] : [], responses: responses), applications: apps, now: { Self.now }, files: RootedFiles(roots: [home, apps, project.root]))
         return await Space.report(project: project, machine: machine)
     }
 
@@ -153,7 +153,7 @@ import XcrewTestSupport
     @Test func xcodesDerivedDataIsSplitByItsWorkspace() async throws {
         let text = try await report().text
         #expect(text.contains("  App-abc, for this project: 1.2 MB\n"), "\(text)")
-        #expect(text.contains("  Old-def: 3.1 MB; its workspace, /work/Old/Old.xcodeproj, is gone\n"), "\(text)")
+        #expect(text.contains("  Old-def: 3.1 MB; its workspace, \(home.path)/Old/Old.xcodeproj, is gone\n"), "\(text)")
         #expect(!text.contains("rm -"))
     }
 
