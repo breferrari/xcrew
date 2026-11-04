@@ -43,6 +43,11 @@ struct OneLineNotificationTests {
         #expect(OneLineText.unfolded("🧪 Test Errors (2): ✗ cannot open the file /work/My App/File.swift:12 ✗ needs version 1.2:3") == "\n🧪 Test\n\nErrors (2):\n\n  ✗ cannot open the file\n    /work/My App/File.swift:12\n\n  ✗ needs version 1.2:3\n")
     }
 
+    /// A failing test's line with no place keeps its suite, though its message ends in a host's port.
+    @Test func aFailureWithNoPlaceKeepsItsSuite() {
+        #expect(OneLineText.unfolded("🧪 Test Test Failures (1): ✗ NetTests / connects(): could not reach localhost:8080") == "\n🧪 Test\n\nTest Failures (1):\n\n  ✗ NetTests / connects(): could not reach localhost:8080\n")
+    }
+
     /// xcodebuild's error with lines under it, as one naming a destination no simulator matches, ends the log too.
     @Test func aLogEndingInXcodebuildsErrorAndItsDetailIsAFailedRun() async {
         let log = "Command line invocation:\n    xcodebuild build -scheme App\n\nxcodebuild: error: Unable to find a device matching the provided destination specifier:\n\t\t{ platform:iOS Simulator, OS:latest, name:iPhone 1 }\n\n\tThe requested device could not be found because no available devices matched the request.\n\n"

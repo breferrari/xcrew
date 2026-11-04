@@ -273,8 +273,8 @@ public struct Report: Sendable, Equatable, Codable {
 
     /// A call moved to the background, from its task's notification: the server's text, of a task that completed or
     /// failed, read as the call's own, its shorter result put back in the notification Claude reads. MobileBuildMCP's text
-    /// on one line, as a failed task's comes, is read on its own lines, and goes back on them; cut before the files that
-    /// name its result bundle, it reads the bundle its log names. Else the run's log at
+    /// on one line, as a failed task's comes, is read on its own lines, and goes back on them; a test run's that names no
+    /// result bundle, as one cut before the files that name it, reads the bundle its log names. Else the run's log at
     /// `log`, when there is one, read with `launches` as a call's that installs and launches after its build, whose
     /// build's success is no outcome; else no outcome.
     public static func make(kind: Kind, notification text: String, log: String?, launches: Bool = false, server: Server, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil) async -> Report {
@@ -285,7 +285,7 @@ public struct Report: Sendable, Equatable, Codable {
             let text = unfolded ?? output.text
             let given = ToolOutput(text: text, server: server, isError: output.isError)
             if !(output.isError && given.isNotTheServers) {
-                let logged = unfolded != nil && given.xcresultPath == nil ? log.flatMap { RunLog.resultBundle(in: RunLog.text(ofLogAt: $0)) } : nil
+                let logged = kind == .test && unfolded != nil && given.xcresultPath == nil ? log.flatMap { RunLog.resultBundle(in: RunLog.text(ofLogAt: $0)) } : nil
                 var read = await make(kind: kind, output: given, home: home, runner: runner, repeated: repeated, listsPassed: listsPassed, project: project, machine: machine, bundle: logged)
                 if read.isUnread != true {
                     if let shorter = read.result ?? unfolded { read.result = notification.replacingResult(with: shorter) }
@@ -298,7 +298,7 @@ public struct Report: Sendable, Equatable, Codable {
     }
 
     /// A result Claude Code saved to a file is read back from it. A test run's result bundle is the one its text names,
-    /// else `logged`, the one its log names, for a text cut before it names one.
+    /// else `logged`, the one its log names, for a text that names none, as one cut before it.
     public static func make(kind: Kind, output: ToolOutput, home: String, runner: any CommandRunning, repeated: Bool = false, listsPassed: Bool = false, project: Project? = nil, machine: Machine? = nil, bundle logged: String? = nil) async -> Report {
         let saved = savedPath(output.text)
         let read = saved.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }.map { ToolOutput(text: $0, server: output.server, isError: output.isError) } ?? output

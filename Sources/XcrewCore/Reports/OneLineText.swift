@@ -22,8 +22,9 @@ enum OneLineText {
     /// The summary under the sections, `❌ 2 tests failed, 1 passed (⏱️ 14.2s)` or `✅ Test succeeded.`.
     static var summary: Regex<Substring> { #/^[✅❌] (?:Test |Build |\d+ tests? )/# }
     /// An error's, warning's or failure's place at its end, `/…/File.swift:99`, which MobileBuildMCP puts on a line below:
-    /// an absolute path, spaces and all, from the last ` /` before its line, or a file's name alone, `NestedTests.swift:29`.
-    static var place: Regex<(Substring, Substring, Substring)> { #/^(.+) (\/.*:\d+(?::\d+)?|[^\s\/]+\.[A-Za-z]\w*:\d+(?::\d+)?)$/# }
+    /// an absolute path, spaces and all, from the last ` /` before its line that isn't a ` / ` as in `Suite / test`, or a
+    /// file's name alone, `NestedTests.swift:29`. A file whose own name holds a space reads from that space.
+    static var place: Regex<(Substring, Substring, Substring)> { #/^(.+) (\/[^\s\/].*:\d+(?::\d+)?|[^\s\/]+\.[A-Za-z]\w*:\d+(?::\d+)?)$/# }
 
     /// `text` on the lines MobileBuildMCP wrote it on; nil when it's already on several, or isn't a build's or test
     /// run's text.
