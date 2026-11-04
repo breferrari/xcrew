@@ -51,12 +51,16 @@ public struct SessionBriefing: Sendable {
     }
 
     /// Each test plan the schemes run by default that tests under several configurations, so Claude knows a test can fail
-    /// under one and pass under another, and that `look` says which; every one, as nothing else lists them.
-    /// Read beside the other checks, since a large workspace has many schemes to read.
+    /// under one and pass under another, and that `look` says which; a few at most, the rest counted. Read beside the
+    /// other checks, since a large workspace has many schemes to read.
     static func testPlans(in containers: [URL]) async -> [String] {
-        TestPlans.configured(containers: containers).map { found in
+        let plans = TestPlans.configured(containers: containers)
+        let named = plans.prefix(ResultBundle.mostNamed).map { found in
             "\(found.sentence) A test can fail under one and pass under another; `look` names which."
         }
+        let more = plans.count - named.count
+        if more == 0 { return named }
+        return named + ["and \(more) more test \(more == 1 ? "plan runs" : "plans run") each test under several configurations (\(ResultBundle.noList))."]
     }
 
     /// Said at the start, and by the mod with the session's first MobileBuildMCP build or test, while MobileBuildMCP has

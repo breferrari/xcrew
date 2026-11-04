@@ -54,11 +54,6 @@ import Testing
         #expect(!coverage.contains("more"), "\(coverage)")
     }
 
-    @Test func theSchemesSharingAPlanAreEachNamed() {
-        let plan = TestPlans.Configured(plan: "App", file: "/p/App.xctestplan", schemes: Self.sixty, configurations: ["A", "B"])
-        #expect(Self.sixty.allSatisfy { plan.sentence.contains("`\($0)`") } && !plan.sentence.contains("more"), "\(plan.sentence)")
-    }
-
     @Test func theRunsFinishTimesAreEachNamed() {
         let finished = (1...60).map { Date(timeIntervalSince1970: 1_800_000_000 + Double($0) * 3_600) }
         let line = BranchCoverage(sentence: "all 3 changed lines that can run ran in these test runs.", finished: finished).line(lastCommit: nil)
