@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A failed test run that Claude Code moved to the background now reaches Claude as short as the same run in the foreground, with xcrew's notes. Its notification holds MobileBuildMCP's text on one line, cut at about 10 KB, which xcrew couldn't read, so it came whole. When only the run's log is left, a log that xcodebuild ended with its own error, as one refusing a test target the scheme doesn't test, reads as a failed run with that error.
 - A project card five minutes old no longer reads "4 min ago" in the session briefing now and then, and a card no longer disappears a moment before its 14 days are up: its age is counted in whole milliseconds.
 - The evidence block now lists everything it used to cut short with "no list of them is kept": every changed line not run, every unreached target, every file outside the coverage or changed after it, every run's finish time and every warning in changed lines. The session briefing names a few test plans and the schemes that share each, and the note on a test run that ran no tests names a few of its plan's schemes; `xcrew plans` lists every one. The briefing puts the project card before the plans, so a large app's plans can't push it out.
 

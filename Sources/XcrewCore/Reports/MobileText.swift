@@ -243,10 +243,8 @@ struct MobileText: Sendable {
                 failures.append(ToolOutput.Failure(title: failing.test.shown, message: message, where: location, isTest: true))
             } else if let location {
                 failures.append(ToolOutput.Failure(title: location, message: entry.text))
-            } else if let split = entry.text.range(of: ": "), split.lowerBound > entry.text.startIndex {
-                failures.append(ToolOutput.Failure(title: String(entry.text[..<split.lowerBound]), message: String(entry.text[split.upperBound...])))
             } else {
-                failures.append(ToolOutput.Failure(title: entry.text, message: ""))
+                failures.append(ToolOutput.Failure(error: entry.text))
             }
         }
         return failures
