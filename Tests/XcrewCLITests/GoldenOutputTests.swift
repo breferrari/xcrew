@@ -75,11 +75,15 @@ struct GoldenOutputTests {
     /// The start of each folder a result bundle's attachments are exported to, a new one for each export.
     static let exports = FileManager.default.temporaryDirectory.appending(path: "xcrew-attachments-").path
 
-    /// A run's commands named no path outside `folders` and `reachable`, and its `home` isn't in the Mac's own. The folders
-    /// it's given may be: a checkout, and the test bed in it, sit in a CI runner's home.
+    /// A run's commands named no path outside `folders` and `reachable`, its `home` isn't in the Mac's own, and neither is
+    /// any folder it's given outside the test bed: a checkout, and the test bed in it, sit in a CI runner's home. Paths
+    /// are compared resolved, as `/tmp` and `/private/tmp` are one folder.
     static func expectWithin(_ runner: GuardedRunner, _ folders: [String], home: URL, sourceLocation: SourceLocation = #_sourceLocation) {
+        let resolved = { (path: String) in URL(fileURLWithPath: path).resolvingSymlinksInPath().path }
+        let within = { (path: String, folder: String) in resolved(path) == resolved(folder) || resolved(path).hasPrefix(resolved(folder) + "/") }
         let mine = FileManager.default.homeDirectoryForCurrentUser.path
-        #expect(home.path != mine && !home.path.hasPrefix(mine + "/"), "a run's home is in the Mac's home", sourceLocation: sourceLocation)
+        #expect(!within(home.path, mine), "a run's home is in the Mac's home", sourceLocation: sourceLocation)
+        #expect(!folders.contains { within($0, mine) && !within($0, Testbed.root.path) }, "a run's folder is in the Mac's home", sourceLocation: sourceLocation)
         let outside = runner.outside(folders + reachable).filter { !$0.hasPrefix(exports) }
         #expect(outside.isEmpty, "the run reached paths outside its folders: \(outside)", sourceLocation: sourceLocation)
     }
