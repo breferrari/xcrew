@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Report } from './cli'
 import { callTool, mapStore, runCommand, stubCli } from './testing'
-import { ledgerText as textOf } from './ledger'
+import { ledgerText as ledgerTextOf } from './ledger'
 
 const TEST = 'GreetingTests/testHello'
 const FAILED: Partial<Report> = { ok: false, failures: [{ title: TEST, message: 'XCTAssertEqual failed: ("Hi") is not equal to ("Hello")', where: 'GreetingTests.swift:9', isTest: true }] }
@@ -746,7 +746,7 @@ test('a scope its entries share is named once', () => {
   const scope = `test_sim · Module › ${['A', 'B', 'C', 'D', 'E', 'F'].map(name => `ModuleTests/${name}ViewModelTests`).join(', ')}`
   const at = Date.UTC(2026, 10, 3, 10, 5)
   const entries = Array.from({ length: 12 }, (_, index) => ({ test: `AViewModelTests/test_case${index}`, red: { scope, at, message: 'XCTAssertEqual failed: ("nil") is not equal to ("Optional(1)")' }, failing: scope, green: { scope, at: at + 180_000 }, last: at + 180_000 }))
-  const text = textOf({ entries, updated: at + 180_000 }, { root: '/work/App', branch: 'feat/module' })
+  const text = ledgerTextOf({ entries, updated: at + 180_000 }, { root: '/work/App', branch: 'feat/module' })
   expect(text.split(scope).length - 1).toBe(1)
   expect(text).toContain(`Red, then green, on feat/module (12 tests):\n- 12 tests red, then green, in ${scope}:\n`)
   for (let index = 0; index < 12; index++) {

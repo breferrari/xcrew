@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The ledger names a scope its tests share once, above them, so a run of many suites that turns many tests red, then green, no longer repeats the scope in every entry. Each test still has its red run, its message and its green run.
+- The ledger names once, above them, the scope its tests share, in "Red, then green" and in "Still red": a run of many suites that turns many tests red, then green, no longer repeats the scope in every entry. Each test still has its red time, its message and its green time.
 - `look` lists a failed UI test's elements once when only the first of its configurations kept a screenshot: the line "the elements below are the app's only; a system alert … shows only in the screenshot" stays under that configuration, and each of the others says its screen is the same as the first's. Before, that line made the first list differ, so the elements printed twice.
 - A failed test run that Claude Code moved to the background now reaches Claude as short as the same run in the foreground, with xcrew's notes. Its notification holds MobileBuildMCP's text on one line, cut at about 10 KB, which xcrew couldn't read, so it came whole. When only the run's log is left, a log that xcodebuild ended with its own error, as one refusing a test target the scheme doesn't test, reads as a failed run with that error.
 - A project card five minutes old no longer reads "4 min ago" in the session briefing now and then, and a card no longer disappears a moment before its 14 days are up: its age is counted in whole milliseconds.

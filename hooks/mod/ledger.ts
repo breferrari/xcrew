@@ -195,8 +195,8 @@ type FlakyEntry = LedgerEntry & { flaky: Flakiness }
 
 /**
  * The ledger as Claude reads it for a test plan, and the person through `/xcrew ledger`. Tests whose runs share a scope
- * are listed under it, named once, as a run of many suites turns many tests red and green together: each entry naming
- * it made one ledger of 12 tests 10.7 KB (a field report, xcrew 0.16.0). A test alone in its scopes is one line.
+ * are listed under it, named once, as a run of many suites turns many tests red and green together. A test alone in its
+ * scopes is one line.
  */
 export function ledgerText(ledger: Ledger | undefined, head: Head): string {
   const name = label(head, true)
@@ -212,7 +212,7 @@ export function ledgerText(ledger: Ledger | undefined, head: Head): string {
   const greenHead = (entry: GreenEntry, tests: number) =>
     entry.red.scope === entry.green.scope ? `${count(tests)} red, then green, in ${entry.red.scope}:` : `${count(tests)} red in ${entry.red.scope}, then green in ${entry.green.scope}:`
   return [
-    ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...grouped(green, entry => `${entry.red.scope}\n${entry.green.scope}`, greenLine, greenHead)] : []),
+    ...(green.length > 0 ? [`Red, then green, on ${name} (${count(green.length)}):`, ...grouped(green, entry => JSON.stringify([entry.red.scope, entry.green.scope]), greenLine, greenHead)] : []),
     ...(red.length > 0 ? [`Still red (${red.length}):`, ...grouped(red, entry => entry.red.scope, (entry, alone) => `${named(entry)}: ${redPart(entry, alone ? ` in ${entry.red.scope}` : '')}`, (entry, tests) => `${count(tests)} red in ${entry.red.scope}:`)] : []),
   ].join('\n')
 }
@@ -223,7 +223,10 @@ export function ledgerText(ledger: Ledger | undefined, head: Head): string {
  */
 function grouped<Entry>(entries: Entry[], key: (entry: Entry) => string, line: (entry: Entry, alone: boolean) => string, head: (first: Entry, tests: number) => string): string[] {
   const groups = new Map<string, Entry[]>()
-  for (const entry of entries) groups.set(key(entry), [...(groups.get(key(entry)) ?? []), entry])
+  for (const entry of entries) {
+    const shared = key(entry)
+    groups.set(shared, [...(groups.get(shared) ?? []), entry])
+  }
   return [...groups.values()].flatMap(group => {
     const first = group[0]!
     return group.length === 1 ? [`- ${line(first, true)}`] : [`- ${head(first, group.length)}`, ...group.map(entry => `  - ${line(entry, false)}`)]
