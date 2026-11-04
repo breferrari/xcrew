@@ -80,12 +80,12 @@ import XcrewTestSupport
     @Test(.enabled(if: (Version.major(of: Self.installedXcode?.version ?? "") ?? 0) >= 27, "no Xcode 27 or later selected"))
     func theSelectedXcodeKeepsDeviceHubWhereTheBriefingLooks() async throws {
         let xcode = try #require(Self.installedXcode)
-        #expect(xcode.hasDeviceHubOnly, "\(xcode.path) moved DeviceHub.app or ships Simulator.app again")
+        #expect(xcode.hasDeviceHubOnly(), "\(xcode.path) moved DeviceHub.app or ships Simulator.app again")
     }
 
     static let installedXcode: XcodeInstall? = {
         let developer = ProcessInfo.processInfo.environment["DEVELOPER_DIR"] ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
-        return developer.flatMap(Xcodes.app(holding:)).flatMap(Xcodes.install(at:))
+        return developer.flatMap(Xcodes.app(holding:)).flatMap { Xcodes.install(at: $0) }
     }()
 
     /// A worktree whose main checkout has a config is offered the worktree's setup, which copies it, not a fresh one.

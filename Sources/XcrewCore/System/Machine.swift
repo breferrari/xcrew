@@ -12,14 +12,25 @@ public struct Machine: Sendable {
     public let applications: URL
     /// The time now: the wall clock, or a test's own.
     public let now: @Sendable () -> Date
+    /// How its own files are read: the disk, or a test's folders.
+    public let files: any FileReading
 
-    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications"), now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(environment: [String: String], home: URL, runner: any CommandRunning, processID: Int32 = ProcessInfo.processInfo.processIdentifier, applications: URL = URL(fileURLWithPath: "/Applications"), now: @escaping @Sendable () -> Date = { Date() }, files: any FileReading = LocalFiles()) {
         self.environment = environment
         self.home = home
         self.runner = runner
         self.processID = processID
         self.applications = applications
         self.now = now
+        self.files = files
+    }
+
+    /// An app a text names, as this machine has it: one in `/Applications` is in its applications folder, which is that
+    /// folder on a Mac and a test's own on a test's Machine.
+    public func app(at url: URL) -> URL {
+        let parts = url.standardizedFileURL.pathComponents
+        guard parts.count > 2, parts[0] == "/", parts[1] == "Applications" else { return url }
+        return parts.dropFirst(2).reduce(applications) { $0.appending(path: $1) }
     }
 
     public static let live = Machine(
@@ -38,12 +49,12 @@ public struct Machine: Sendable {
 
     /// This machine with `name` set to `value` in its environment.
     public func setting(_ name: String, to value: String) -> Machine {
-        Machine(environment: environment.merging([name: value]) { $1 }, home: home, runner: runner, processID: processID, applications: applications, now: now)
+        Machine(environment: environment.merging([name: value]) { $1 }, home: home, runner: runner, processID: processID, applications: applications, now: now, files: files)
     }
 
     /// This machine with its commands run by `runner`.
     public func running(_ runner: any CommandRunning) -> Machine {
-        Machine(environment: environment, home: home, runner: runner, processID: processID, applications: applications, now: now)
+        Machine(environment: environment, home: home, runner: runner, processID: processID, applications: applications, now: now, files: files)
     }
 
     /// A variable's value, treating an empty one as unset.
