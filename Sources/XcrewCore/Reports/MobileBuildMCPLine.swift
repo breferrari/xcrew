@@ -88,27 +88,19 @@ enum MobileBuildMCPLine {
 
     /// The test a crash's message names, the frame it ends on, `Crash: xctest at implicit closure #1 in Suite.test()`, read
     /// through what wraps it: an `@objc` thunk, an async test's `(1) suspend resume partial function for`, an offset
-    /// after it, `+ 40`. The frame is a test when the run's test list (`nodes`) holds it, as a Swift Testing test of any
-    /// name, parameterised or not, or when it's an XCTest method: no arguments, and a name beginning with `test`, as
-    /// XCTest requires (docs/findings.md, *A crash under System Failures*). A crash filed under `System Failures` leaves
-    /// its own test out of the list, so the rule is what names it. Any other frame, a helper as `Cache.reset()` or
-    /// `Model.load(from:)`, names no test: nil.
-    static func crashedTest(message: String, in nodes: [[String: Any]]? = nil) -> TestID? {
-        guard let at = message.firstMatch(of: #/^Crash: .*? at (.+)$/#) else { return nil }
-        var frame = at.1
-        for wrapper in [" in ", " for "] {
+    /// after it, `+ 40`. The frame is a test when it's an XCTest method: no arguments, and a name beginning with `test`, as
+    /// XCTest requires. Any other frame, a helper as `Cache.reset()` or `Model.load(from:)`, or a Swift Testing test,
+    /// which can take any name, names no test: nil (docs/findings.md, *A crash under System Failures*).
+    static func crashedTest(message: String) -> TestID? {
+        guard message.hasPrefix("Crash: ") else { return nil }
+        var frame = Substring(message)
+        for wrapper in [" at ", " in ", " for "] {
             if let last = frame.ranges(of: wrapper).last { frame = frame[last.upperBound...] }
         }
         if frame.hasPrefix("@objc ") { frame = frame.dropFirst("@objc ".count) }
         if let offset = frame.firstMatch(of: #/ \+ \d+$/#) { frame = frame[..<offset.range.lowerBound] }
-        guard let parts = frame.wholeMatch(of: #/(?:\S+\.)?([^.\s]+)\.([^.\s(]+\([^()]*\))/#) else { return nil }
-        let test = TestID(suite: parts.1, name: parts.2)
-        if parts.2.hasPrefix("test"), parts.2.hasSuffix("()") { return test }
-        let listed = (nodes ?? []).contains { node in
-            guard node["nodeType"] as? String == "Test Case", let parts = (node["nodeIdentifier"] as? String)?.split(separator: "/"), parts.count > 1 else { return false }
-            return TestID(suite: String(parts[parts.count - 2]), name: String(parts[parts.count - 1])) == test
-        }
-        return listed ? test : nil
+        guard let parts = frame.wholeMatch(of: #/(?:\S+\.)?([^.\s]+)\.(test[^.\s(]*\(\))/#) else { return nil }
+        return TestID(suite: parts.1, name: parts.2)
     }
 
     /// `    /path/File.swift:12`, the line after a failure, an error or a warning that says where it happened.

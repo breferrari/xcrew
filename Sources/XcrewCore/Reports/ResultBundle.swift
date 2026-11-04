@@ -86,7 +86,7 @@ public struct ResultBundle: Sendable {
             let caseName = cases[test]?.first?["name"] as? String ?? ""
             var named = test
             if MobileBuildMCPLine.isProcessCrash(caseName) {
-                guard let crashed = MobileBuildMCPLine.crashedTest(message: line, in: found) else { return nil }
+                guard let crashed = MobileBuildMCPLine.crashedTest(message: line) else { return nil }
                 named = crashed
             }
             guard listed.insert(named).inserted else { return nil }
@@ -101,7 +101,7 @@ public struct ResultBundle: Sendable {
         var found: [TestID: TestID] = [:]
         for node in nodes where node["nodeType"] as? String == "Test Case" && MobileBuildMCPLine.isProcessCrash(node["name"] as? String ?? "") {
             guard let id = (node["nodeIdentifier"] as? String).map(TestID.init(xcresultID:)), let message = firstFailureMessage(in: [node]),
-                  let test = MobileBuildMCPLine.crashedTest(message: failure(message).line, in: nodes), found[test] == nil else { continue }
+                  let test = MobileBuildMCPLine.crashedTest(message: failure(message).line), found[test] == nil else { continue }
             found[test] = id
         }
         return found
@@ -270,7 +270,7 @@ public struct ResultBundle: Sendable {
         let images = report["usedImages"] as? [[String: Any]] ?? []
         let exception = report["exception"] as? [String: Any]
         let crashed = (exception?["type"] as? String).map { type in "crashed: \(type)\((exception?["signal"] as? String).map { " (\($0))" } ?? "")" }
-        let named = test.map { $0.shown.prefix { $0 != "(" }.replacingOccurrences(of: "/", with: ".") + "(" }
+        let named = test.map { ($0.shown.contains("(") ? $0.shown : $0.shown + "()").replacingOccurrences(of: "/", with: ".") }
         let ownIndex = frames.firstIndex { frame in named.map { names(frame["symbol"] as? String ?? "", $0) } == true && ownFrame(frame) != nil }
             ?? frames.firstIndex { ownFrame($0) != nil }
         let own = ownIndex.map { min($0 + 1, mostFrames) } ?? topFrames
@@ -282,10 +282,13 @@ public struct ResultBundle: Sendable {
         return ((crashed.map { [$0] } ?? []) + top, ownIndex.flatMap { ownFrame(frames[$0]) })
     }
 
-    /// Whether a frame's symbol names `key`, `Suite.test(`, as a whole name: not inside a longer one, as `NotSuite.test(`.
+    /// Whether a frame's symbol names `key`, `Suite.test(value:)`, the test's whole name: not inside a longer one, as
+    /// `NotSuite.test(value:)`, and not another overload, as `Suite.test(other:)`.
     static func names(_ symbol: String, _ key: String) -> Bool {
         symbol.ranges(of: key).contains { range in
-            range.lowerBound == symbol.startIndex || !symbol[symbol.index(before: range.lowerBound)].isLetter && !symbol[symbol.index(before: range.lowerBound)].isNumber && symbol[symbol.index(before: range.lowerBound)] != "_"
+            guard range.lowerBound > symbol.startIndex else { return true }
+            let before = symbol[symbol.index(before: range.lowerBound)]
+            return !before.isLetter && !before.isNumber && before != "_"
         }
     }
 

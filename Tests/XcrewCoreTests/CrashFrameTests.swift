@@ -41,13 +41,21 @@ struct CrashFrameTests {
         #expect(MobileBuildMCPLine.crashedTest(message: "Crash: xctest at Model.load(from:)") == nil)
     }
 
-    static var list: TestList { TestList(#"{"testNodes":[{"nodeType":"Test Case","name":"test()","nodeIdentifier":"AppTests/Suite/test()","result":"Failed"},{"nodeType":"Test Case","name":"test(value:)","nodeIdentifier":"AppTests/Suite/test(value:)","result":"Failed"}]}"#) }
+    /// A helper whose name doesn't begin with `test`, or a test of another overload, is no test the message names; a
+    /// parameterised Swift Testing test, whose name XCTest's rule can't tell from a helper's, is none either.
+    @Test func aHelperOrAParameterisedFrameNamesNoTest() {
+        #expect(MobileBuildMCPLine.crashedTest(message: "Crash: xctest at Suite.parses()") == nil)
+        #expect(MobileBuildMCPLine.crashedTest(message: "Crash: xctest at implicit closure #1 in Suite.test(value:)") == nil)
+    }
 
-    /// With the run's list, a helper the message ends on is no test, and a parameterised test the list holds is one.
-    @Test func withTheListAHelperIsNoTestAndAParameterisedTestIsOne() {
-        #expect(MobileBuildMCPLine.crashedTest(message: "Crash: xctest at Cache.reset()", in: Self.list.nodes) == nil)
-        #expect(MobileBuildMCPLine.crashedTest(message: "Crash: xctest at implicit closure #1 in Suite.test(value:)", in: Self.list.nodes) == TestID(suite: "Suite", name: "test(value:)"))
-        #expect(MobileBuildMCPLine.crashedTest(message: "Crash: xctest at Suite.parses()", in: Self.list.nodes) == nil)
-        #expect(MobileBuildMCPLine.crashedTest(message: "Crash: xctest at Suite.test()", in: Self.list.nodes) == TestID(suite: "Suite", name: "test()"))
+    /// A process whose name holds " at " still names the test its message ends on.
+    @Test func aProcessNameWithAtStillNamesTheTest() {
+        #expect(MobileBuildMCPLine.crashedTest(message: "Crash: Look at Me at Suite.testPop()") == TestID(suite: "Suite", name: "testPop()"))
+    }
+
+    /// Another overload of the test's function is another test: its frame isn't the test's.
+    @Test func anotherOverloadsFrameIsntTheTests() {
+        let log = Self.log([("AppTests.Suite.test(other:)", "Other.swift", 3), ("AppTests.Suite.test(value:)", "SuiteTests.swift", 31)])
+        #expect(ResultBundle.crashReport(log: log, test: TestID(xcresultID: "Suite/test(value:)"))?.location == "SuiteTests.swift:31")
     }
 }
