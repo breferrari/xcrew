@@ -213,13 +213,6 @@ struct GoldenOutputTests {
             let text = try String(contentsOf: captures.appending(path: "concurrency/build_sim.txt"), encoding: .utf8)
             return try await report(text, isError: false, kind: "build", flags: []) { _ in FakeRunner() }
         })
-        for log in ["build_sim", "xcodebuild-warnings", "xcodebuild-errors"] {
-            for flags in [[], ["--json"]] {
-                outputs.append(Output(name: named(["concurrency", log], flags)) {
-                    try await Place().run(["concurrency", "--log", captures.appending(path: "concurrency/\(log).log").path] + flags)
-                })
-            }
-        }
         outputs.append(Output(name: "look-snapshots-mobilebuildmcp") {
             let bundle = "/runs/Snapshots.xcresult"
             return try await Place().run(["look", "--bundle", bundle], try CaptureRunner(folder: captures.appending(path: "snapshots/mobilebuildmcp"), bundle: bundle))
@@ -258,7 +251,9 @@ struct GoldenOutputTests {
     }
 
     /// The test bed's capture folders the goldens hold, and those they don't with why: `repetitions` holds a test list
-    /// with no result text (its tests compose one), and `simctl` an answer the field's two-display capture replays.
+    /// with no result text (its tests compose one), and `simctl` an answer the field's two-display capture replays. The
+    /// `concurrency` command's own output isn't held: it reads the group docs of the Xcode the log names from the Mac's
+    /// disk, which differ by machine and Xcode.
     static let heldFolders: Set = ["concurrency", "coverage", "environment", "field", "raw", "snapshots", "uitests"]
     static let notHeldFolders: Set = ["repetitions", "simctl"]
 

@@ -1,2 +1,0 @@
-{"count":1,"errors":1,"groups":[{"count":1,"modules":[{"count":1,"name":"App"}],"name":"MutableGlobalVariable","title":"Unsafe mutable global and static variables"}],"groupsFromDocs":true,"modules":[{"count":1,"name":"App"}],"ungrouped":0,"xcode":"/Applications/Xcode-27.2.0.app"}
---- exit 0
