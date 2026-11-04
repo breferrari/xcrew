@@ -270,7 +270,7 @@ public struct ResultBundle: Sendable {
         let images = report["usedImages"] as? [[String: Any]] ?? []
         let exception = report["exception"] as? [String: Any]
         let crashed = (exception?["type"] as? String).map { type in "crashed: \(type)\((exception?["signal"] as? String).map { " (\($0))" } ?? "")" }
-        let named = test.map { $0.shown.replacingOccurrences(of: "/", with: ".") + "(" }
+        let named = test.map { $0.suite.isEmpty ? String($0.name.prefix { $0 != "(" }) + "(" : $0.shown.replacingOccurrences(of: "/", with: ".") + "(" }
         let ownIndex = frames.firstIndex { frame in named.map { (frame["symbol"] as? String)?.contains($0) == true } == true && ownFrame(frame) != nil }
             ?? frames.firstIndex { ownFrame($0) != nil }
         let own = ownIndex.map { min($0 + 1, mostFrames) } ?? topFrames

@@ -12,14 +12,14 @@ public struct TestID: Sendable, Hashable {
         self.name = name.hasSuffix("()") ? String(name.dropLast(2)) : String(name)
     }
 
-    /// A test from `xcresulttool`'s `Suite/test()`, split at the first `/`. An id with no `/` that ends as a function
-    /// does is a top-level Swift Testing test, `seededFailure()`, with no suite; any other, as the case a crash under
-    /// `System Failures` is filed as, `xctest (<pid>) encountered an error`, is kept whole as the suite.
+    /// A test from `xcresulttool`'s `Suite/test()`, split at the first `/`. An id with no `/` that ends in `)`, as a
+    /// function does, is a top-level Swift Testing test, `seededFailure()`, with no suite; any other, as the case a crash
+    /// under `System Failures` is filed as, `xctest (<pid>) encountered an error`, is kept whole as the suite.
     public init(xcresultID: some StringProtocol) {
         let parts = xcresultID.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
         if parts.count > 1 {
             self.init(suite: parts[0], name: parts[1])
-        } else if xcresultID.hasSuffix(")"), !MobileBuildMCPLine.isProcessCrash(String(xcresultID)) {
+        } else if xcresultID.hasSuffix(")") {
             self.init(suite: "", name: xcresultID)
         } else {
             self.init(suite: xcresultID, name: "")

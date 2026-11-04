@@ -21,7 +21,8 @@ public enum Look {
         return await report(bundle: bundle, test: nil, cases: ResultBundle.testCases(in: listing.nodes), failed: failed, keptIn: folder, now: now)
     }
 
-    /// The test a name means, among the bundle's: the name as given, `()` or not, else the name without its first part,
+    /// The test a name means, among the bundle's: the name as given, `()` or not, a top-level test's by its function's name
+    /// alone, else the name without its first part,
     /// which `-only-testing:` spells as the target (`Target/Suite/test`), a nested suite's `/` kept either way; else, as
     /// the run's text names a test, the one nested id that ends with it, or the `System Failures` case a crash of it is
     /// filed under. When the bundle lists none, a name ending as an id does, `()` or its arguments' labels, is taken as
@@ -32,6 +33,8 @@ public enum Look {
         let withoutTarget = parts.count > 1 && parts[1].contains("/") ? TestID(xcresultID: parts[1]) : nil
         if lookup.cases[exact] != nil { return exact }
         if let withoutTarget, lookup.cases[withoutTarget] != nil { return withoutTarget }
+        let suiteless = named.contains("/") ? nil : TestID(suite: "", name: named)
+        if let suiteless, lookup.cases[suiteless] != nil { return suiteless }
         for candidate in [exact, withoutTarget].compactMap(\.self) {
             if let id = lookup.resolution(of: candidate).found { return id }
         }

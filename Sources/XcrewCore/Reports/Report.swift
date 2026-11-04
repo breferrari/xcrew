@@ -156,7 +156,9 @@ public struct Report: Sendable, Equatable, Codable {
     /// a failure the text lists under a name that matched none of the bundle's ids, as a display name, is still the
     /// text's, so it gets no line of its own. Only an entry whose name `unresolved` says matched no id counts, each for one
     /// failure. An entry's message is what follows its `Suite / name: `, and its place the first its lines name, a path or
-    /// a file alone, up to the blank line that ends it. A failure with no place is never the text's.
+    /// a file alone, up to the blank line that ends it. A failure with no place is never the text's. Two of the bundle's
+    /// failures with one message at one place, matching one such entry, are told apart by nothing: the first in the
+    /// bundle's list takes it.
     static func notListedByText(_ failures: [(TestID, ToolOutput.Failure)], in text: MobileText, exempt: Set<TestID>, unresolved: (TestID) -> Bool) -> [(TestID, ToolOutput.Failure)] {
         var listed: [String: Int] = [:]
         for (index, line) in text.lines.enumerated() {

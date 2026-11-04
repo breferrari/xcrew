@@ -360,6 +360,12 @@ func failingRunText(passing: Int) -> String {
         #expect(ResultBundle.crashReport(log: log, test: TestID(xcresultID: "Outer/Inner/test()"))?.location == "NestedTests.swift:20")
     }
 
+    /// A top-level test's line is its own frame too, its function in its module, `AppTests.seededFailure()`.
+    @Test func aTopLevelTestsCrashsLineIsItsOwnFrame() {
+        let log = #"{"app_name":"xctest"}\#n{"faultingThread":0,"exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"usedImages":[{"name":"libswiftCore.dylib"},{"name":"Queue"},{"name":"AppTests"}],"threads":[{"frames":[{"imageIndex":0,"symbol":"_assertionFailure(_:_:file:line:flags:)"},{"imageIndex":1,"symbol":"Queue.pop()","sourceFile":"/work/Packages/Queue/Sources/Queue.swift","sourceLine":40},{"imageIndex":2,"symbol":"AppTests.seededFailure()","sourceFile":"/work/App/Tests/SeededTests.swift","sourceLine":9}]}]}"#
+        #expect(ResultBundle.crashReport(log: log, test: TestID(xcresultID: "seededFailure()"))?.location == "SeededTests.swift:9")
+    }
+
     /// The test's line is its own frame, found by its name, though a dependency built from source trapped first.
     @Test func aCrashsLineIsTheTestsOwnFrame() {
         let log = #"{"app_name":"xctest"}\#n{"faultingThread":0,"exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"usedImages":[{"name":"libswiftCore.dylib"},{"name":"Queue"},{"name":"AppTests"}],"threads":[{"frames":[{"imageIndex":0,"symbol":"_assertionFailure(_:_:file:line:flags:)"},{"imageIndex":1,"symbol":"Queue.pop()","sourceFile":"/work/Packages/Queue/Sources/Queue.swift","sourceLine":40},{"imageIndex":2,"symbol":"QueueTests.testPop()","sourceFile":"/work/App/Tests/QueueTests.swift","sourceLine":12}]}]}"#

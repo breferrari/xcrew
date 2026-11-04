@@ -94,6 +94,13 @@ import XcrewTestSupport
         #expect(Look.test("Outer/Inner/sizes(value:)", among: TestLookup(cases: [:])) == TestID(xcresultID: "Outer/Inner/sizes(value:)"))
     }
 
+    /// A top-level test is found by its function's name, `()` or not, as any test is.
+    @Test func aTopLevelTestIsFoundWithOrWithoutItsParentheses() {
+        let lookup = TestLookup(cases: [TestID(xcresultID: "seededFailure()"): []])
+        #expect(Look.test("seededFailure()", among: lookup) == TestID(xcresultID: "seededFailure()"))
+        #expect(Look.test("seededFailure", among: lookup) == TestID(xcresultID: "seededFailure()"))
+    }
+
     /// The name `look` suggests for a test, a nested suite's, one taking arguments and a crash's case, finds that test.
     @Test(arguments: ["Outer/Inner/fails()", "Suite/sizes(value:)", "xctest (1) encountered an error"])
     func theNameLookSuggestsFindsItsTest(id: String) {
