@@ -3,29 +3,35 @@ import Foundation
 /// A failing test run's failures, read against its result bundle's test list: each fact about them worked out here once.
 /// It holds the bundle's id for each test the text names, the label on each failure line it adds, the bundle-only
 /// failures it places in the text, and the run's failures in the order the run reported them.
-/// It stays in the task that made it, as its test list does.
-struct FailingRun {
+/// It stays in the task that made it, as its test list does, and its facts grow as the report asks for them.
+final class FailingRun {
+    /// The run's test list, which every fact here is read from.
     let listing: TestList
+    /// The bundle's id for a name the text gives, read from `listing`.
     let lookup: TestLookup
-    /// The bundle's id for each failing test the text names, by the rule `TestLookup` keeps, and for each failure line
-    /// this run added to the text.
+    /// The bundle's failed tests, nil when `listing` isn't one to read.
+    let bundled: [ToolOutput.Failure]?
+    /// The bundle's id for each failing test the text names, by the rule `TestLookup` keeps, for each failure line this
+    /// run added to the text, and, once `ordering` has run, for each failed test it ordered.
     private(set) var resolutions: [TestID: TestLookup.Resolution] = [:]
     /// The label on each failure line this run added to the text.
     private(set) var labels: [TestID: String] = [:]
 
+    /// A run whose facts are read from `listing`, its ids found by `lookup`, made from the same list.
     init(listing: TestList, lookup: TestLookup) {
         self.listing = listing
         self.lookup = lookup
+        bundled = ResultBundle.failedTests(listing: listing)
     }
 
     /// `text` with the bundle's failed tests it doesn't list: a name's candidates where the name matches several of the
     /// bundle's tests, the rest after its failures, each labelled. Nil when nothing changes.
-    mutating func placing(in text: MobileText) -> MobileText? {
+    func placing(in text: MobileText) -> MobileText? {
         var text = text
         var changed = false
         resolutions = Dictionary(text.lines.compactMap { $0.failing?.test }.map { ($0, lookup.resolution(of: $0)) }) { first, _ in first }
         let named = Set(resolutions.values.compactMap(\.found)).union(resolutions.keys)
-        let notNamed = (ResultBundle.failedTests(listing: listing) ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
+        let notNamed = (bundled ?? []).map { (TestID(xcresultID: $0.title), $0) }.filter { !named.contains($0.0) }
         let failed = Set(notNamed.map(\.0))
         let reported = resolutions.compactMapValues { resolution -> [TestID]? in
             if case let .ambiguous(ids) = resolution, ids.contains(where: failed.contains) { ids } else { nil }
@@ -60,32 +66,18 @@ struct FailingRun {
         return changed ? text : nil
     }
 
-    /// The run's failures in the order it reported them, with what that ordering found.
-    struct Order {
-        /// The failures, the bundle's with the text's (`Report.inRunOrder`); nil when the test list can't be read, and the
-        /// text's stand.
-        let failures: [ToolOutput.Failure]?
-        /// The note on the tests the text lists as failed that the bundle doesn't.
-        let note: String?
-        /// The bundle's id for each failed test, the text's too.
-        let resolutions: [TestID: TestLookup.Resolution]
-    }
-
-    /// `failures`, the text's, ordered with the bundle's failed tests.
-    func ordering(_ failures: [ToolOutput.Failure]) -> Order {
-        let bundled = ResultBundle.failedTests(listing: listing)
-        let recorded = bundled == nil ? [:] : ResultBundle.results(in: listing.nodes)
-        var resolutions = resolutions
-        if bundled != nil {
-            for test in failures.filter(\.isTest).map({ TestID(xcresultID: $0.title) }) where resolutions[test] == nil { resolutions[test] = lookup.resolution(of: test) }
-        }
+    /// `failures`, the text's, in the order the run reported them with the bundle's failed tests (`Report.inRunOrder`),
+    /// and the note on those the text lists as failed that the bundle doesn't; nil when the test list can't be read, and
+    /// the text's stand. Each failed test the text names gets its id in `resolutions`.
+    func ordering(_ failures: [ToolOutput.Failure]) -> (failures: [ToolOutput.Failure], note: String?)? {
+        guard let bundled else { return nil }
+        for test in failures.filter(\.isTest).map({ TestID(xcresultID: $0.title) }) where resolutions[test] == nil { resolutions[test] = lookup.resolution(of: test) }
+        let recorded = ResultBundle.results(in: listing.nodes)
         let results = recorded.merging(resolutions.compactMap { test, resolution in
             resolution.found.flatMap { recorded[$0] }.map { (test, $0) }
         }) { own, _ in own }
-        guard let bundled else { return Order(failures: nil, note: nil, resolutions: resolutions) }
         let ordered = Report.inRunOrder(bundled, text: failures, cleared: ResultBundle.cleared(in: results), resolutions: resolutions)
-        let note = Report.notFailedInBundleNote(ordered.disagreeing, results: results, ambiguous: Set(resolutions.filter(\.value.isAmbiguous).keys))
-        return Order(failures: ordered.failures, note: note, resolutions: resolutions)
+        return (ordered.failures, Report.notFailedInBundleNote(ordered.disagreeing, results: results, ambiguous: Set(resolutions.filter(\.value.isAmbiguous).keys)))
     }
 
     /// Of `failures`, the bundle's, those `text` doesn't list, by message and place, `exempt` kept whatever the text lists:

@@ -51,7 +51,7 @@ struct GoldenOutputTests {
         func run(_ argv: [String], _ runner: any CommandRunning = FakeRunner(), project: Project? = nil, stdin: String = "") async -> String {
             let guarded = GuardedRunner(base: runner)
             let run = await Run(argv: argv, context: CheckContext(project: project ?? self.project, machine: machine(guarded)), stdin: stdin)
-            GoldenOutputTests.expectWithin(guarded, [root.path] + (project.map { [$0.root.path] } ?? []))
+            GoldenOutputTests.expectWithin(guarded, [root.path] + (project.map { [$0.root.path] } ?? []), home: home)
             return neutral(run.text + "\n--- exit \(run.status)" + run.errors.map { "\nstderr: \($0)" }.joined())
         }
 
@@ -75,10 +75,11 @@ struct GoldenOutputTests {
     /// The start of each folder a result bundle's attachments are exported to, a new one for each export.
     static let exports = FileManager.default.temporaryDirectory.appending(path: "xcrew-attachments-").path
 
-    /// A run's commands named no path outside `folders` and `reachable`, and its home isn't the Mac's own.
-    static func expectWithin(_ runner: GuardedRunner, _ folders: [String], sourceLocation: SourceLocation = #_sourceLocation) {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        #expect(!folders.contains { $0 == home || $0.hasPrefix(home + "/") }, "a run's own folder is in the Mac's home", sourceLocation: sourceLocation)
+    /// A run's commands named no path outside `folders` and `reachable`, and neither its `home` nor its folders are in the
+    /// Mac's own home.
+    static func expectWithin(_ runner: GuardedRunner, _ folders: [String], home: URL, sourceLocation: SourceLocation = #_sourceLocation) {
+        let mine = FileManager.default.homeDirectoryForCurrentUser.path
+        #expect(!([home.path] + folders).contains { $0 == mine || $0.hasPrefix(mine + "/") }, "a run's home or folder is in the Mac's home", sourceLocation: sourceLocation)
         let outside = runner.outside(folders + reachable).filter { !$0.hasPrefix(exports) }
         #expect(outside.isEmpty, "the run reached paths outside its folders: \(outside)", sourceLocation: sourceLocation)
     }
@@ -224,7 +225,7 @@ struct GoldenOutputTests {
                 let guarded = GuardedRunner(base: given.runner)
                 let bundle = ResultBundle(path: given.path, runner: guarded, exportFolder: given.exportFolder)
                 let text = await Look.report(bundle: bundle, named: test, keptIn: place.home.appending(path: "images"), now: now)
-                expectWithin(guarded, [place.root.path])
+                expectWithin(guarded, [place.root.path], home: place.home)
                 return place.neutral(text)
             })
             outputs.append(Output(name: "look-uitests-mobilebuildmcp" + suffix) {
@@ -250,7 +251,7 @@ struct GoldenOutputTests {
                 defer { try? FileManager.default.removeItem(at: project.root.deletingLastPathComponent()) }
                 let guarded = GuardedRunner(base: context.machine.runner)
                 let run = await Run(argv: ["evidence"], context: CheckContext(project: project, machine: context.machine.running(guarded)), stdin: TestbedEvidenceTests.input)
-                expectWithin(guarded, [project.root.deletingLastPathComponent().path])
+                expectWithin(guarded, [project.root.deletingLastPathComponent().path], home: context.machine.home)
                 let text = run.text + "\n--- exit \(run.status)" + run.errors.map { "\nstderr: \($0)" }.joined()
                 return text.replacingOccurrences(of: project.root.path, with: "<project>").replacingOccurrences(of: ProjectLayout.canonicalPath(project.root.path), with: "<project>")
             })

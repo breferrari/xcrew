@@ -5,7 +5,7 @@ import XcrewCore
 /// A runner that answers as `base` does and keeps every path it's asked about, so a golden's run can be held to the
 /// folders it was given: a run that reaches the Mac's own files says what this Mac has, not what the code does.
 struct GuardedRunner: CommandRunning {
-    /// The paths the runner's commands named, shared by its copies.
+    /// The paths the runner's commands named, as an argument or after an option's `=`, shared by its copies.
     final class Reached: Sendable {
         let paths = Mutex<[String]>([])
     }
@@ -14,7 +14,8 @@ struct GuardedRunner: CommandRunning {
     let reached = Reached()
 
     func run(_ argv: [String], stdin: Data?) async -> CommandResult {
-        reached.paths.withLock { $0 += argv.filter { $0.hasPrefix("/") } }
+        let paths = argv.compactMap { argument in argument.hasPrefix("/") ? argument : argument.range(of: "=/").map { String(argument[argument.index(after: $0.lowerBound)...]) } }
+        reached.paths.withLock { $0 += paths }
         return await base.run(argv, stdin: stdin)
     }
 
