@@ -18,17 +18,17 @@ struct SetupCommand: Command {
     ]
 
     let name = "setup"
-    var valuedOptions: Set<String> { Set(Self.mcsKeys.keys).union(["debugger-backend"]) }
+    var valuedOptions: Set<String> { Set(Self.mcsKeys.keys).union(["debugger-backend", "finished-test-bundles"]) }
     let flags: Set<String> = ["force", "worktree", "no-simulator", "fresh-simulator", "choices"]
     let usage = [
         "setup [--container NAME] [--test-simulator NAME] [--app-simulator NAME]",
         "      [--app-scheme NAME] [--bundle-id ID] [--ui-scheme NAME] [--test-scheme NAME]",
-        "      [--debugger-backend dap|lldb-cli] [--force]",
+        "      [--debugger-backend dap|lldb-cli] [--finished-test-bundles keep|drop] [--force]",
         "      write .mobilebuildmcp/config.yaml; simulators default to the newest iPhone installed,",
         "      and the test scheme to the shared scheme that runs the most unit-test targets; over a config for the same",
         "      container, each profile keeps what it holds unless an option names another, or none when empty",
         "setup --choices [--container NAME]   what the setup form offers, as JSON: containers, shared schemes with what each builds and tests, installed simulators, the starting picks, and the config there is; writes nothing",
-        "setup --worktree [--force] [--no-simulator | --fresh-simulator]   in a linked git worktree, write its config from the main checkout's, with simulators of its own, cloned from the main checkout's while they're shut down unless --fresh-simulator; --no-simulator shares the main checkout's",
+        "setup --worktree [--force] [--no-simulator | --fresh-simulator] [--finished-test-bundles keep|drop]   in a linked git worktree, write its config from the main checkout's, with simulators of its own, cloned from the main checkout's while they're shut down unless --fresh-simulator; --no-simulator shares the main checkout's",
     ]
 
     /// The container the config at the project builds, which setup keeps unless an option names another.
@@ -69,6 +69,7 @@ struct SetupCommand: Command {
         for flag in ["no-simulator", "fresh-simulator"] where invocation.arguments.has(flag) {
             throw UsageError(description: "setup --\(flag) goes with --worktree: plain setup makes no simulator")
         }
+        let bundles = try Self.bundlesChoice(in: invocation)
         let existing = try? String(contentsOf: context.project.mobileBuildMCPConfig, encoding: .utf8)
         let chosenContainer = Self.chosenContainer(existing, in: context)
         let named = try invocation.arguments["container"] ?? chosenContainer ?? Self.container(in: context)
@@ -135,8 +136,11 @@ struct SetupCommand: Command {
         if !carriedKeys.isEmpty, ConfigWriter.keeping(context.project) != nil {
             notes.append("xcrew: carried \(carriedKeys.joined(separator: ", ")) from the old config into " + (answers.profileNames.isEmpty ? "the session defaults" : "each profile"))
         }
+        // Recorded first: outside git it can't be, and setup then writes nothing.
+        try await bundles?.write(for: context.project, using: context.runner)
         let outcome = try ConfigWriter.write(answers, to: context.project, simulatorIDs: simulatorIDs, carried: carried, force: invocation.arguments.has("force"), now: context.machine.now())
         Self.report(outcome, in: invocation, written: notes + ["xcrew: wrote .mobilebuildmcp/config.yaml for \(answers.container)"])
+        if let bundles { invocation.print(Self.bundlesLine(bundles)) }
         if answers.appScheme == nil {
             invocation.print("xcrew: no app profile yet; /xcrew:setup adds the app and UI-test profiles from your schemes")
         }
@@ -159,8 +163,10 @@ struct SetupCommand: Command {
         }
         async let catalog = SimulatorCatalog.load(using: context.runner, choosingADefault: true)
         async let checkout = Worktree.checkout(of: context.project, using: context.runner)
+        async let bundles = FinishedTestBundlesChoice.read(for: context.project, using: context.runner)
         var choices = SetupChoices.read(container: container, containers: context.project.layout(.anywhereButHome).containers, containerProblem: problem, in: context.project, home: context.machine.home, catalog: await catalog)
         if await checkout != nil { choices.worktree = true }
+        choices.finishedTestBundles = await bundles
         // mcs's answers are what setup writes with no option, unless the config's profiles hold the person's own.
         func mcs(_ option: String) -> String? { Self.mcsKeys[option].flatMap { context.machine.value("MCS_RESOLVED_\($0)") } }
         if existing.map({ ConfigRenderer.profiles(in: $0).names.isEmpty }) ?? true {
@@ -196,6 +202,22 @@ struct SetupCommand: Command {
         }
     }
 
+    /// The choice `--finished-test-bundles` names, if any.
+    static func bundlesChoice(in invocation: Invocation) throws -> FinishedTestBundlesChoice? {
+        try invocation.arguments["finished-test-bundles"].map { given in
+            guard let choice = FinishedTestBundlesChoice(rawValue: given) else { throw UsageError(description: "--finished-test-bundles takes keep or drop") }
+            return choice
+        }
+    }
+
+    /// What setup says it recorded for `--finished-test-bundles`.
+    static func bundlesLine(_ choice: FinishedTestBundlesChoice) -> String {
+        switch choice {
+        case .drop: "xcrew: after each test run, the older test runs' own test products are deleted and the newest kept, in every checkout of this repository"
+        case .keep: "xcrew: test runs' products are kept, until MobileBuildMCP's own sweep removes them"
+        }
+    }
+
     /// The line setup prints when the config changed what MobileBuildMCP reads only when it launches; the setup form tells
     /// it by how it begins.
     static let restartLine = "xcrew: restart Claude Code for the config's tool groups and server settings; builds and tests don't wait for it"
@@ -214,9 +236,10 @@ struct SetupCommand: Command {
     /// simulators of its own; none while a config setup won't replace keeps its own.
     func worktree(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
-        guard invocation.arguments.values.isEmpty else {
-            throw UsageError(description: "setup --worktree takes no option but --force, --no-simulator and --fresh-simulator: the profiles are the main checkout's")
+        guard Set(invocation.arguments.values.keys).isSubset(of: ["finished-test-bundles"]) else {
+            throw UsageError(description: "setup --worktree takes no option but --force, --no-simulator, --fresh-simulator and --finished-test-bundles: the profiles are the main checkout's")
         }
+        let bundles = try Self.bundlesChoice(in: invocation)
         if invocation.arguments.has("no-simulator"), invocation.arguments.has("fresh-simulator") {
             throw UsageError(description: "setup --worktree takes --no-simulator or --fresh-simulator, not both")
         }
@@ -238,10 +261,12 @@ struct SetupCommand: Command {
                 for: worktreeTop, main: checkout.main, config: config, fresh: invocation.arguments.has("fresh-simulator"), record: record, using: context.runner
             )
         }
+        try await bundles?.write(for: context.project, using: context.runner)
         let outcome = try ConfigWriter.write(config, to: context.project, force: force, now: context.machine.now())
         Self.report(outcome, in: invocation, written: ["xcrew: wrote .mobilebuildmcp/config.yaml from the main checkout's (\(main.path))"]
             + leftOut.map { "xcrew: left out \($0.key) \($0.path), which the main checkout uses: this worktree's builds go in a DerivedData of its own" }
             + simulators)
+        if let bundles { invocation.print(Self.bundlesLine(bundles)) }
         await Self.keepOutOfGit(in: invocation)
         return 0
     }

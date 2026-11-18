@@ -520,7 +520,8 @@ type Backgrounded = Ending & { repeated: boolean; launches: boolean; log?: strin
 
 /**
  * Records how a run ended: its failures, the ledger when the CLI read the run (`isRead`) and
- * read more than a log's verdict, and the card; then, once the result is returned, its row, the band or a toast, the
+ * read more than a log's verdict, the card, and for a MobileBuildMCP test run the tidy of its finished bundles; then,
+ * once the result is returned, its row, the band or a toast, the
  * notification for a long run, and its time in the history (`endAfterResult`); the loop note, when a full run crossed
  * the budget.
  */
@@ -542,6 +543,7 @@ async function recordEnding($: EngineInterface, run: Ending, outcome: Report, is
   // A failed run may have stopped early: its count is no total for the next run's.
   if (key !== undefined && outcome.ok && outcome.tests !== undefined) await quietly(() => $.store.set(testsKey(key), outcome.tests))
   saveCard($)
+  if (kind === 'test' && run.server === 'MobileBuildMCP') tidy($)
   // A whole suite run again and again: past the budget, the tests the change can break would do.
   // Only a run the CLI read and that ran tests counts: a test build that failed ran none.
   const ranTests = outcome.tests === undefined ? outcome.ok || outcome.failures.some(failure => failure.isTest) : outcome.tests > 0
@@ -913,6 +915,21 @@ function afterSetup($: EngineInterface): void {
 function startRun($: EngineInterface, run: BandRun): Promise<unknown> {
   return update($, runState, () => run)
 }
+
+/**
+ * Asks the CLI to drop this checkout's finished test-run bundles, which it does only once setup recorded that choice
+ * (`xcrew tidy`). Deleting several gigabytes takes a moment, so it's never awaited, and one runs at a time.
+ */
+function tidy($: EngineInterface): void {
+  // One waiting is enough: it lists the folder when it starts, after the runs that ended meanwhile.
+  if (tidyWaits) return
+  tidyWaits = true
+  tidying = tidying.then(() => { tidyWaits = false; return answerInBackground($, ['tidy']) }).catch(() => undefined)
+}
+
+/** The tidy in flight, so test runs ending together delete one after another, and whether another waits behind it. */
+let tidying: Promise<unknown> = Promise.resolve()
+let tidyWaits = false
 
 /**
  * Saves the project card for this folder and branch, for the session-start hook to print: Claude Code passes over a

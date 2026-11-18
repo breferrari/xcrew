@@ -86,6 +86,39 @@ test('writing runs setup with exactly the picks', async ($, on) => {
   await ui.unmount()
 })
 
+/** Named on every write, so a choice another checkout recorded since the form read it can't hide what the person picked. */
+test('dropping finished test bundles is offered as recorded, and the pick is passed on every write', async ($, on) => {
+  const { calls } = await session($, on, { ...CHOICES, finishedTestBundles: 'keep' })
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Select', key: 'finished-test-bundles' }))?.props).toMatchObject({ value: 'keep' })
+  await ui.press({ key: 'write' })
+  await ui.select({ key: 'finished-test-bundles', value: 'drop' })
+  await ui.press({ key: 'write' })
+  const writes = calls.filter(call => call.args[0] === 'setup' && !call.args.includes('--choices'))
+  expect(writes[0]?.args.slice(-2)).toEqual(['--finished-test-bundles', 'keep'])
+  expect(writes[1]?.args.slice(-2)).toEqual(['--finished-test-bundles', 'drop'])
+  await ui.unmount()
+})
+
+test('a linked worktree offers the choice too, for the whole repository', async ($, on) => {
+  const { calls } = await session($, on, { ...CHOICES, worktree: true, finishedTestBundles: 'keep' })
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.select({ key: 'finished-test-bundles', value: 'drop' })
+  await ui.press({ key: 'write' })
+  expect(calls.find(call => call.args[0] === 'setup' && !call.args.includes('--choices'))?.args).toEqual(['setup', '--worktree', '--finished-test-bundles', 'drop'])
+  await ui.unmount()
+})
+
+test('outside git, where no choice can be kept, the form offers none', async ($, on) => {
+  await session($, on)
+  await runCommand($, 'xcrew', 'setup')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Select', key: 'finished-test-bundles' })).toBeUndefined()
+  await ui.unmount()
+})
+
 /** Setup keeps the profiles a config has unless an option names a choice, so the pane names each one, "none" as empty. */
 test('a pick of none is passed as an empty option, so setup drops that profile', async ($, on) => {
   const { calls } = await session($, on)

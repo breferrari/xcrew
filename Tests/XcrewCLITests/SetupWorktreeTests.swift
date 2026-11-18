@@ -113,7 +113,7 @@ import XcrewTestSupport
         let (worktree, context) = Self.worktree(main: main)
         let run = await Run("setup", "--worktree", "--test-scheme", "AppTests", context: context)
         #expect(run.status == 64)
-        #expect(run.errors == ["setup --worktree takes no option but --force, --no-simulator and --fresh-simulator: the profiles are the main checkout's"])
+        #expect(run.errors == ["setup --worktree takes no option but --force, --no-simulator, --fresh-simulator and --finished-test-bundles: the profiles are the main checkout's"])
         #expect(Self.config(worktree) == nil)
     }
 

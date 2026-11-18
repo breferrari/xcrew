@@ -1291,10 +1291,13 @@ import XcrewTestSupport
         choices.simulators = [.init(name: "iPhone", runtime: "27.2", twoDisplays: true)]
         choices.picks = .init(appScheme: "S", uiScheme: "S", testScheme: "S", bundleID: "b", testSimulator: "iPhone", appSimulator: "iPhone")
         choices.config = .init(owner: .edited, scheme: "S", debuggerBackend: "dap")
+        choices.finishedTestBundles = .drop
         let json = String(decoding: try JSONEncoder().encode(choices), as: UTF8.self)
         let keys = Set(json.matches(of: /"(\w+)":/).map { String($0.1) })
         for key in keys { #expect(block.contains("\(key)"), "types/index.d.ts' SetupChoices doesn't name \(key)") }
-        for value in ["app", "unit-tests", "ui-tests", "xcrew", "edited", "other"] { #expect(block.contains("'\(value)'"), "\(value)") }
+        for value in ["app", "unit-tests", "ui-tests", "xcrew", "edited", "other", "keep", "drop"] { #expect(block.contains("'\(value)'"), "\(value)") }
+        // What the form passes back as --finished-test-bundles is what setup takes.
+        for value in ["keep", "drop"] { #expect(FinishedTestBundlesChoice(rawValue: value) != nil, "\(value)") }
     }
 
     /// The setup form tells Claude what setup printed by the lines' starts: the `session_set_defaults` calls and the
