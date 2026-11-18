@@ -1272,6 +1272,15 @@ import XcrewTestSupport
         #expect(options.isSubset(of: SetupCommand().valuedOptions.union(SetupCommand().flags)), "\(options.subtracting(SetupCommand().valuedOptions).sorted())")
     }
 
+    /// The options setup takes that no mcs prompt answers are the person's to opt into, so the skill's confirming step
+    /// offers each: named only where it runs setup, Claude never brought them up.
+    @Test func theSetupSkillOffersEveryOptInWhereThePersonConfirms() throws {
+        let step = try #require(try text("skills/setup/SKILL.md").split(separator: "\n").first { $0.hasPrefix("2. ") })
+        let optIns = SetupCommand().valuedOptions.subtracting(SetupCommand.mcsKeys.keys)
+        #expect(!optIns.isEmpty)
+        for option in optIns { #expect(step.contains("`--\(option)"), "step 2 doesn't offer --\(option)") }
+    }
+
     /// The setup form builds `xcrew setup`'s options from its picks; one setup doesn't declare would be refused.
     @Test func theSetupFormPassesOnlyOptionsSetupDeclares() throws {
         let form = try text("hooks/mod/form.ts")
