@@ -12,6 +12,7 @@ import XcrewTestSupport
         FakeRunner(responses: [
             "xcrun simctl list devices available --json": .init(status: 0, stdout: #"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"name":"iPhone 18","udid":"U18","isAvailable":true}]}}"#),
             "git -C \(project.root.path) rev-parse --path-format=absolute --git-common-dir": .init(status: 0, stdout: "\(project.root.path)/.git\n"),
+            "ps -axo pid=,ppid=,etime=,command=": .init(status: 0, stdout: "    1     0 10:00 /sbin/launchd\n"),
         ])
     }
     var context: CheckContext { .fake(runner, project: project) }

@@ -26,15 +26,48 @@ import XcrewTestSupport
     }
 
     /// Two runs that overlapped: the one that started first finished last, and its result named its bundle last.
-    @Test func theBundleKeptIsTheOneWhoseRunFinishedLast() throws {
+    @Test func theBundleKeptIsTheOneWhoseRunFinishedLast() async throws {
         let folder = folder()
         let finishedLast = "test_sim_2026-11-18T09-00-00-000Z_pid4242_0a1b2c3d.xctestproducts"
         let startedLast = "test_macos_2026-11-18T09-05-00-000Z_pid4243_0a1b2c3e.xctestproducts"
         try bundle(finishedLast, in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_996_000))
         try bundle(startedLast, in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_995_400))
 
-        #expect(FinishedTestBundles.drop(project: project, home: home) == 1)
+        #expect(await drop() == 1)
         #expect(names(in: folder) == [finishedLast, finishedLast + ".mobilebuildmcp-completed"])
+    }
+
+    /// Drops on a Mac whose running processes have `running` as their command lines, or whose `ps` fails when nil.
+    func drop(running: [String]? = []) async -> Int {
+        var runner = FakeRunner()
+        if let running {
+            let lines = running.enumerated().map { "  \($0.offset + 100)     1 00:10 \($0.element)\n" }.joined()
+            runner.responses["ps -axo pid=,ppid=,etime=,command="] = .init(status: 0, stdout: lines)
+        }
+        return await FinishedTestBundles.drop(project: project, machine: CheckContext.fake(runner, project: project).machine)
+    }
+
+    /// A run again from a kept bundle doesn't mark it: its own run's marker is still there. A process naming the bundle
+    /// is what shows it's in use.
+    @Test func aBundleARunningProcessNamesStays() async throws {
+        let folder = folder()
+        let rerun = "test_sim_2026-11-18T09-00-00-000Z_pid4242_0a1b2c3d.xctestproducts"
+        let newest = "test_sim_2026-11-18T10-00-00-000Z_pid4243_0a1b2c3e.xctestproducts"
+        try bundle(rerun, in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_994_000))
+        try bundle(newest, in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_996_000))
+
+        let running = ["/usr/bin/xcodebuild test-without-building -testProductsPath \(folder.path)/\(rerun) -destination id=ABC"]
+        #expect(await drop(running: running) == 0)
+        #expect(names(in: folder).contains(rerun))
+    }
+
+    @Test func whenTheRunningProcessesCantBeReadNothingGoes() async throws {
+        let folder = folder()
+        try bundle("test_sim_2026-11-18T09-00-00-000Z_pid4242_0a1b2c3d.xctestproducts", in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_994_000))
+        try bundle("test_sim_2026-11-18T10-00-00-000Z_pid4243_0a1b2c3e.xctestproducts", in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_996_000))
+
+        #expect(await drop(running: nil) == 0)
+        #expect(names(in: folder).count == 4)
     }
 
     func names(in folder: URL) -> Set<String> {
@@ -42,28 +75,28 @@ import XcrewTestSupport
     }
 
     /// The newest stays: its result named it, so a later call may run from it without building.
-    @Test func everyFinishedTestRunBundleButTheNewestGoesWithItsMarker() throws {
+    @Test func everyFinishedTestRunBundleButTheNewestGoesWithItsMarker() async throws {
         let folder = folder()
         let newest = "test_sim_2026-11-18T10-00-00-000Z_pid4244_0a1b2c3f.xctestproducts"
         try bundle("test_sim_2026-11-18T09-00-00-000Z_pid4242_0a1b2c3d.xctestproducts", in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_994_000))
         try bundle(newest, in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_996_000))
         try bundle("test_macos_2026-11-18T09-30-00-000Z_pid4243_0a1b2c3e.xctestproducts", in: folder, finished: true, finishedAt: Date(timeIntervalSince1970: 1_794_995_000))
 
-        let dropped = FinishedTestBundles.drop(project: project, home: home)
+        let dropped = await drop()
 
         #expect(dropped == 2)
         #expect(names(in: folder) == [newest, newest + ".mobilebuildmcp-completed"])
     }
 
-    @Test func aLoneFinishedBundleStays() throws {
+    @Test func aLoneFinishedBundleStays() async throws {
         let folder = folder()
         try bundle("test_sim_2026-11-18T09-00-00-000Z_pid4242_0a1b2c3d.xctestproducts", in: folder, finished: true)
 
-        #expect(FinishedTestBundles.drop(project: project, home: home) == 0)
+        #expect(await drop() == 0)
         #expect(names(in: folder).count == 2)
     }
 
-    @Test func aRunStillGoingABuildForTestingsAndAnotherToolsBundleStay() throws {
+    @Test func aRunStillGoingABuildForTestingsAndAnotherToolsBundleStay() async throws {
         let folder = folder()
         let going = "test_sim_2026-11-18T09-00-00-000Z_pid4242_0a1b2c3d.xctestproducts"
         let prepared = "build_sim_2026-11-18T09-00-00-000Z_pid4242_0a1b2c3d.xctestproducts"
@@ -74,21 +107,21 @@ import XcrewTestSupport
         try bundle(prepared, in: folder, finished: true)
         try bundle(foreign, in: folder, finished: true)
 
-        #expect(FinishedTestBundles.drop(project: project, home: home) == 0)
+        #expect(await drop() == 0)
         #expect(names(in: folder) == [newest, newest + ".mobilebuildmcp-completed", going, prepared, prepared + ".mobilebuildmcp-completed", foreign, foreign + ".mobilebuildmcp-completed"])
     }
 
-    @Test func anotherCheckoutsWorkspaceStays() throws {
+    @Test func anotherCheckoutsWorkspaceStays() async throws {
         let other = folder(root: "/work/Other")
         let name = "test_sim_2026-11-18T09-00-00-000Z_pid4242_0a1b2c3d.xctestproducts"
         try bundle(name, in: other, finished: true)
         try bundle("test_sim_2026-11-18T10-00-00-000Z_pid4243_0a1b2c3e.xctestproducts", in: other, finished: true)
 
-        #expect(FinishedTestBundles.drop(project: project, home: home) == 0)
+        #expect(await drop() == 0)
         #expect(names(in: other).contains(name))
     }
 
-    @Test func noWorkspaceDropsNothing() {
-        #expect(FinishedTestBundles.drop(project: project, home: home) == 0)
+    @Test func noWorkspaceDropsNothing() async {
+        #expect(await drop() == 0)
     }
 }

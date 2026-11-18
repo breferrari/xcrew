@@ -11,16 +11,23 @@ public enum FinishedTestBundles {
     static var name: Regex<Substring> { /^test_[a-z_]+_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z_pid\d+_[a-f0-9]{8}\.xctestproducts$/ }
 
     /// Deletes this checkout's finished test-run bundles but the one whose run finished last, by its marker's time, each
-    /// with its marker, and says how many went. A bundle that can't be deleted is left for the next time.
-    public static func drop(project: Project, home: URL) -> Int {
-        let items = RunLog.listed(in: "test-products", project: project.root, home: home, dated: true)
+    /// with its marker, and says how many went. A run again from a bundle leaves its marker as it was, so a bundle a
+    /// running process names stays, and when the running processes can't be read, nothing goes. A bundle that can't be
+    /// deleted is left for the next time.
+    public static func drop(project: Project, machine: Machine) async -> Int {
+        let items = RunLog.listed(in: "test-products", project: project.root, home: machine.home, dated: true)
         let finishedAt = Dictionary(items.map { ($0.name, $0.modified) }, uniquingKeysWith: { first, _ in first })
         let finished = items.compactMap { item -> (folder: URL, name: String, at: Date)? in
             // A marker whose time can't be read leaves its bundle out, kept: it may be the run that finished last.
             guard item.name.wholeMatch(of: name) != nil, let at = finishedAt[item.name + ResultBundle.completionMark] ?? nil else { return nil }
             return (item.folder, item.name, at)
         }
-        return finished.sorted { $0.at > $1.at }.dropFirst().count { item in
+        let older = finished.sorted { $0.at > $1.at }.dropFirst()
+        guard !older.isEmpty else { return 0 }
+        let ps = await machine.runner.run("ps", "-axo", "pid=,ppid=,etime=,command=")
+        guard ps.succeeded else { return 0 }
+        let commands = ProcessList(ps: ps.stdout).processes.map(\.command)
+        return older.filter { item in !commands.contains { $0.contains(item.name) } }.count { item in
             guard (try? FileManager.default.removeItem(at: item.folder.appending(path: item.name))) != nil else { return false }
             try? FileManager.default.removeItem(at: item.folder.appending(path: item.name + ResultBundle.completionMark))
             return true

@@ -14,7 +14,7 @@ struct TidyCommand: Command {
     func run(_ invocation: Invocation) async throws -> Int32 {
         let context = invocation.context
         let chosen = await FinishedTestBundlesChoice.read(for: context.project, using: context.runner)
-        let dropped = chosen == .drop ? FinishedTestBundles.drop(project: context.project, home: context.machine.home) : 0
+        let dropped = chosen == .drop ? await FinishedTestBundles.drop(project: context.project, machine: context.machine) : 0
         invocation.print(String(decoding: try JSONEncoder.sorted.encode(Answer(dropped: dropped)), as: UTF8.self))
         return 0
     }
