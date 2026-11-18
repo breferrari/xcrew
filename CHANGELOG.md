@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `xcrew setup --finished-test-bundles drop`, or the setup form's new choice, keeps only the newest finished MobileBuildMCP test run's own test products and deletes the older ones. MobileBuildMCP copies the built tests into a new bundle on every run, several gigabytes on a large app, and keeps each three days, though only the newest is one a later call may run from; on a small disk a few days of test runs could fill it. It's off until you choose it, recorded once for every checkout of the repository, and leaves alone a run still going and a bundle a `build_sim` made for a later call. It needs the mod, which runs the new `xcrew tidy` after each test run.
+
 ## 0.17.1 — 2026-11-04
 
 - A Swift Testing test with a display name, as `@Test("Adds numbers")`, is read as that test and listed once, under the result bundle's name, with every line MobileBuildMCP gave under either of its two names. Before, it was listed twice, once from the text and once from the bundle, with a note that the bundle had no entry under that name.

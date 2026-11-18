@@ -75,10 +75,12 @@ export type SetupChoices = {
   simulators: { name: string; runtime: string; twoDisplays?: boolean }[]
   config?: { owner: 'xcrew' | 'edited' | 'other'; scheme?: string; debuggerBackend?: string }
   worktree?: boolean
+  /** Whether only the newest finished test run's own bundle is kept, as recorded for the repository; absent outside git. */
+  finishedTestBundles?: 'keep' | 'drop'
 }
 
 /** What the person picked in the setup form, each passed to `xcrew setup` as its option. */
-export type SetupPicks = SetupChoices['picks'] & { container?: string; debuggerBackend?: 'dap' | 'lldb-cli'; worktreeSimulator?: 'clone' | 'fresh' | 'share' }
+export type SetupPicks = SetupChoices['picks'] & { container?: string; debuggerBackend?: 'dap' | 'lldb-cli'; worktreeSimulator?: 'clone' | 'fresh' | 'share'; finishedTestBundles?: SetupChoices['finishedTestBundles'] }
 
 /** The setup form: its choices once read, or why they couldn't be, the picks, and what the last write said. */
 export type SetupForm = { choices: SetupChoices | null; picks: SetupPicks; unread?: string; isWriting?: boolean; written?: string[] }

@@ -117,6 +117,8 @@ public struct SetupChoices: Sendable, Equatable, Codable {
     public var config: Config?
     /// A linked git worktree, whose config is set up from the main checkout's; absent otherwise.
     public var worktree: Bool?
+    /// Whether xcrew keeps only the newest finished test run's own bundle, as recorded for the repository.
+    public var finishedTestBundles: FinishedTestBundlesChoice?
 
     /// The choices for `container`, a path from the root or a full one, or for none when `containerProblem` says why.
     /// The config's choices are its container's: another container starts from setup's own picks.

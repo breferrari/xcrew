@@ -17,10 +17,7 @@ public struct WorktreeSimulatorRecord: Sendable, Equatable {
 
     /// The record's file for the repository `folder` is in; nil outside git.
     public static func file(for folder: URL, using runner: any CommandRunning) async -> URL? {
-        let ran = await runner.run("git", "-C", folder.path, "rev-parse", "--path-format=absolute", "--git-common-dir")
-        let common = ran.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard ran.succeeded, !common.isEmpty else { return nil }
-        return URL(fileURLWithPath: common).appending(path: path)
+        await GitCommonFolder.file(path, for: folder, using: runner)
     }
 
     /// The record in `file`: one `udid<TAB>path` per line; none when it isn't there or can't be read.

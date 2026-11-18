@@ -51,6 +51,7 @@ struct DirectReadsTests {
         "Sources/XcrewCore/Reports/ResultBundle.swift": [.input],
         "Sources/XcrewCore/Reports/RunLog.swift": [.input, .machineFolder],
         "Sources/XcrewCore/Storage/AgedEntries.swift": [.machineFolder],
+        "Sources/XcrewCore/Storage/FinishedTestBundlesChoice.swift": [.project],
         "Sources/XcrewCore/Storage/ProjectWorkspaces.swift": [.input],
         "Sources/XcrewCore/System/StandardInput.swift": [.input],
         "Sources/XcrewCore/System/TextFile.swift": [.input],

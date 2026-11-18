@@ -34,9 +34,15 @@ export function drawsForm(surfaces: readonly string[]): boolean {
   return surfaces.some(surface => surface === 'terminal' || surface === 'desktop' || surface === 'vscode')
 }
 
-/** The picks the form starts from: the choices' own, the container read, and the config's debugger backend. */
+/** The picks the form starts from: the choices' own, the container read, the config's debugger backend, and what's recorded for finished test bundles. */
 export function startingPicks(choices: SetupChoices): SetupPicks {
-  return { ...choices.picks, ...(choices.container ? { container: choices.container } : {}), debuggerBackend: choices.config?.debuggerBackend === 'lldb-cli' ? 'lldb-cli' : 'dap', worktreeSimulator: 'clone' }
+  return {
+    ...choices.picks,
+    ...(choices.container ? { container: choices.container } : {}),
+    debuggerBackend: choices.config?.debuggerBackend === 'lldb-cli' ? 'lldb-cli' : 'dap',
+    worktreeSimulator: 'clone',
+    finishedTestBundles: choices.finishedTestBundles,
+  }
 }
 
 /**
@@ -65,11 +71,14 @@ function replaces(choices: SetupChoices): boolean {
 /** The `xcrew setup` the picks make, each pick its option, `--force` only where the person is shown it replaces a config. */
 export function setupArgs(choices: SetupChoices, picks: SetupPicks): string[] {
   const force = replaces(choices) ? ['--force'] : []
+  const option = (name: string, value: string | undefined) => (value ? [`--${name}`, value] : [])
+  // The repository's, recorded apart from the config: named whenever the form offers it, so a choice another checkout
+  // recorded since the form read its own can't hide the person's pick.
+  const bundles = choices.finishedTestBundles ? option('finished-test-bundles', picks.finishedTestBundles) : []
   if (choices.worktree) {
     const simulator = picks.worktreeSimulator === 'fresh' ? ['--fresh-simulator'] : picks.worktreeSimulator === 'share' ? ['--no-simulator'] : []
-    return ['setup', '--worktree', ...simulator, ...force]
+    return ['setup', '--worktree', ...simulator, ...bundles, ...force]
   }
-  const option = (name: string, value: string | undefined) => (value ? [`--${name}`, value] : [])
   // Setup keeps what a config's profiles hold unless an option names a choice, so each is named, none as empty.
   const choice = (name: string, value: string | undefined) => [`--${name}`, value ?? '']
   return [
@@ -83,6 +92,7 @@ export function setupArgs(choices: SetupChoices, picks: SetupPicks): string[] {
     ...choice('app-simulator', picks.appSimulator),
     // Always named: setup otherwise keeps the backend the old config had.
     ...option('debugger-backend', picks.debuggerBackend ?? 'dap'),
+    ...bundles,
     ...force,
   ]
 }
@@ -95,7 +105,7 @@ export type FormElements = Elements & {
 }
 
 /** Each picker's key, with the pick it sets. */
-export const PICK_KEYS: Readonly<Record<string, keyof SetupPicks>> = { 'app-scheme': 'appScheme', 'ui-scheme': 'uiScheme', 'test-scheme': 'testScheme', 'bundle-id': 'bundleID', 'test-simulator': 'testSimulator', 'app-simulator': 'appSimulator', 'debugger-backend': 'debuggerBackend', 'worktree-simulator': 'worktreeSimulator' }
+export const PICK_KEYS: Readonly<Record<string, keyof SetupPicks>> = { 'app-scheme': 'appScheme', 'ui-scheme': 'uiScheme', 'test-scheme': 'testScheme', 'bundle-id': 'bundleID', 'test-simulator': 'testSimulator', 'app-simulator': 'appSimulator', 'debugger-backend': 'debuggerBackend', 'worktree-simulator': 'worktreeSimulator', 'finished-test-bundles': 'finishedTestBundles' }
 
 /** The schemes once per name, as `xcodebuild -scheme` takes them: a workspace's and its project's of one name are one. */
 function schemesByName(schemes: SetupChoices['schemes']): SetupChoices['schemes'] {
@@ -169,6 +179,12 @@ export function formTree({ Box, Text, Select, Input, Button }: FormElements, for
         { value: 'lldb-cli', label: 'lldb-cli, which also runs LLDB commands such as expr' },
       ], picks.debuggerBackend))
     }
+  }
+  if (choices.finishedTestBundles && (choices.worktree || choices.container)) {
+    rows.push(select('finished-test-bundles', 'Finished test bundles', [
+      { value: 'keep', label: 'keep, until MobileBuildMCP\'s own sweep removes them' },
+      { value: 'drop', label: 'keep the newest test run\'s own, delete the older ones, in every checkout of this repository' },
+    ], picks.finishedTestBundles))
   }
   const config = choices.config
   rows.push(Text({ color: 'subtle', children: [
