@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.18.1 — 2026-11-18
 
 - `/xcrew:setup` now offers its opt-ins when it asks you to confirm the schemes and simulators: deleting older finished test bundles, and the LLDB debugger backend. In 0.18.0 the skill only mentioned them when it ran setup, so Claude never brought them up.
 
