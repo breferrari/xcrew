@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `/xcrew:setup` now offers its opt-ins when it asks you to confirm the schemes and simulators: deleting older finished test bundles, and the LLDB debugger backend. In 0.18.0 the skill only mentioned them when it ran setup, so Claude never brought them up.
+
 ## 0.18.0 — 2026-11-18
 
 - `xcrew setup --finished-test-bundles drop`, or the setup form's new choice, keeps only the newest finished MobileBuildMCP test run's own test products and deletes the older ones. MobileBuildMCP copies the built tests into a new bundle on every run, several gigabytes on a large app, and keeps each three days, though only the newest is one a later call may run from; on a small disk a few days of test runs could fill it. It's off until you choose it, recorded once for every checkout of the repository, and leaves alone a run still going and a bundle a `build_sim` made for a later call. It needs the mod, which runs the new `xcrew tidy` after each test run.
