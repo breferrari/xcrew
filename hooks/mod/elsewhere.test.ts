@@ -30,7 +30,9 @@ function session(on: On, answers: unknown[], options: { problems?: Problem[]; su
     return { value: undefined }
   })
   on('ui.toast', () => ({ value: undefined }))
-  on('ui.render', ($, e) => $.ui.resolve(e).Text({ children: ['engine'] }))
+  // Scoped to xcrew: since Claude Code 2.1.323 each mod draws its own row in the band, and an unscoped stand-in for
+  // Claude Code's drawing is a row of its own, below xcrew's.
+  on('ui.render', { plugin: 'xcrew' }, ($, e) => $.ui.resolve(e).Text({ children: ['engine'] }))
   on('prompt.submit', (_, e) => ({ text: e.text }))
   on('tool.call', async () => {
     if (options.held) await options.held
