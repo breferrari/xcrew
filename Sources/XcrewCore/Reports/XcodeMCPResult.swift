@@ -40,7 +40,7 @@ struct XcodeMCPResult: Decodable, Sendable {
     }
 
     /// A build's errors, or a run's build's.
-    var allErrors: [BuildError]? { errors ?? buildErrors }
+    private var allErrors: [BuildError]? { errors ?? buildErrors }
 
     /// The build's errors, without its warnings.
     var realErrors: [BuildError] { (allErrors ?? []).filter { !$0.isWarning } }

@@ -1,8 +1,8 @@
 import Foundation
 
 /// What a Claude Code session in an Apple-platform project starts with: the routing rules, the profiles this project's
-/// config defines, the scheme that launches its app for the Xcode MCP's runs, the Xcode it pins, the simulators booted now, whatever this Mac or project still lacks, the project
-/// card, then the test plans that run each test under several configurations. Claude Code passes on 10,000 characters
+/// config defines, the scheme that launches its app for the Xcode MCP's runs, the Xcode it pins, the simulators booted
+/// now, whatever this Mac or project still lacks, the project card, then the test plans that run each test under several configurations. Claude Code passes on 10,000 characters
 /// of a session-start hook's context, so what can run long comes last and names a few.
 /// Silent in any other project.
 public struct SessionBriefing: Sendable {
@@ -24,10 +24,10 @@ public struct SessionBriefing: Sendable {
         async let bootedNow = booted()
         async let head = GitHead.of(project, using: machine.runner)
         async let simulatorApp = simulatorApp()
-        async let appSchemes = AppSchemes.of(project, home: machine.home)
+        async let appScheme = AppScheme.of(project)
         let mobileBuildMCP = await status
         let failover = mobileBuildMCP.failsOver ? mobileBuildMCP.problem.map { Self.failoverNote(reason: "\($0.reason): ask the person to run `\($0.fix)`, then restart Claude Code") } : nil
-        let notes = [failover, failover == nil ? profiles() : nil, await appSchemes.briefingNote, pinnedXcode(), await simulatorApp, bootedNote(await bootedNow), await offer].compactMap { $0 }
+        let notes = [failover, failover == nil ? profiles() : nil, await appScheme?.briefingNote, pinnedXcode(), await simulatorApp, bootedNote(await bootedNow), await offer].compactMap { $0 }
         let lines = [routing.trimmingCharacters(in: .whitespacesAndNewlines)] + notes.map { "- **xcrew:** \($0)" }
         let card = ProjectCard.text(folder: project.canonicalRoot, branch: ProjectCard.branchKey(await head), on: machine)
         let planned = (await plans).map { "- **xcrew:** \($0)" }

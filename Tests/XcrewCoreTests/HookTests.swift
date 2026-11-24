@@ -52,11 +52,11 @@ import XcrewTestSupport
     /// and in a generated project that a regenerate resets the selection.
     @Test(arguments: [true, false])
     func briefingNamesTheAppsSchemeForTheXcodeMCPsRuns(generated: Bool) async {
-        let project = AppSchemesTests().project()
-        project.writeScheme("App", building: ["App"], launching: "App")
+        let project = AppSchemeTests().project()
         if generated { project.write("import ProjectDescription\n", to: "Tuist.swift") }
         let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
-        #expect(text.contains("- **xcrew:** The Xcode MCP's `RunProject` builds and runs Xcode's active scheme and takes no scheme of its own; `XcodeSwitchScheme` selects one and keeps the run destination. `App` launches the app."), "\(text)")
+        let line = text.components(separatedBy: "\n").first { $0.hasPrefix("- **xcrew:** The Xcode MCP's `RunProject`") }
+        #expect(line?.contains("`App` launches the app.") == true, "\(text)")
         #expect(text.contains("A regenerate resets Xcode's selection to the first scheme in alphabetical order.") == generated, "\(text)")
     }
 

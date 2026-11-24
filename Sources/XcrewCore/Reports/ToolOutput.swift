@@ -137,8 +137,7 @@ public struct ToolOutput: Sendable {
 
     /// Whether the Xcode MCP's run built and then launched nothing.
     var launchFailedAfterBuild: Bool {
-        guard case let .xcodeMCPJSON(result) = shape else { return false }
-        return result.launchFailedAfterBuild
+        if case let .xcodeMCPJSON(result) = shape { result.launchFailedAfterBuild } else { false }
     }
 
     /// The outcome the result itself says, in the shape its server gives one; nil when it says none.

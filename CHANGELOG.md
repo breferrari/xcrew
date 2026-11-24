@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Device runs through Xcode now show as failed when they fail to build or launch, and Claude is told which scheme launches your app, including after a regenerate resets Xcode's selection.
+- Device runs through Xcode now show as failed when they fail to build or launch, and Claude is told the app scheme your `app` profile names, so a regenerate that resets Xcode's selection doesn't leave it running a module.
 
 ## 0.18.1 — 2026-11-18
 

@@ -38,7 +38,6 @@ struct DirectReadsTests {
         "Sources/XcrewCore/MobileBuildMCP/MobileBuildMCPStatus.swift": [.machineFolder],
         "Sources/XcrewCore/MobileBuildMCP/SetupChoices.swift": [.project],
         "Sources/XcrewCore/MobileBuildMCP/XcodeSelection.swift": [.project],
-        "Sources/XcrewCore/Project/AppSchemes.swift": [.project],
         "Sources/XcrewCore/Project/GitExclusion.swift": [.project],
         "Sources/XcrewCore/Project/Project.swift": [.project],
         "Sources/XcrewCore/Project/ProjectLayout.swift": [.project],

@@ -85,7 +85,7 @@ struct ProjectCommand: Command {
         }
         if invocation.arguments.has("profiles") {
             if let profile = invocation.arguments["profile"] {
-                answer.scheme = (try? String(contentsOf: project.mobileBuildMCPConfig, encoding: .utf8)).flatMap { ConfigRenderer.schemeToBuild(in: $0, profile: profile) }
+                answer.scheme = project.scheme(ofProfile: profile)
             } else if let scheme = project.schemeToBuild {
                 answer.scheme = scheme
             } else {

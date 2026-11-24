@@ -1286,12 +1286,11 @@ final class RecordingRunner: CommandRunning {
     }
 
     @Test func aRunThatLaunchedNothingNamesTheAppsScheme() async {
-        let project = AppSchemesTests().project()
-        project.writeScheme("App", building: ["App"], launching: "App")
-        let note = AppSchemes(names: ["App"], isGenerated: false).failedLaunchNote
-        #expect(await report("xcodeRunLaunchFailed", project: project).notes.last == note)
+        let project = AppSchemeTests().project()
+        let named = "`App` launches the app."
+        #expect(await report("xcodeRunLaunchFailed", project: project).notes.last?.contains(named) == true)
         for name in ["xcodeRunLaunched", "xcodeRunBuildFailed"] {
-            #expect(await !report(name, project: project).notes.contains { $0 == note }, "\(name)")
+            #expect(await !report(name, project: project).notes.contains { $0.contains(named) }, "\(name)")
         }
     }
 }

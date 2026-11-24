@@ -25,6 +25,11 @@ public struct Project: Sendable, Equatable {
         (try? String(contentsOf: mobileBuildMCPConfig, encoding: .utf8)).flatMap { ConfigRenderer.schemeToBuild(in: $0) }
     }
 
+    /// The scheme of the config's profile named `profile`; nil without a config, that profile, or a scheme in it.
+    public func scheme(ofProfile profile: String) -> String? {
+        (try? String(contentsOf: mobileBuildMCPConfig, encoding: .utf8)).flatMap { ConfigRenderer.schemeToBuild(in: $0, profile: profile) }
+    }
+
     /// Whether MobileBuildMCP has a scheme to build this project with. MobileBuildMCP writes a config itself when Claude
     /// saves session defaults, so a config alone doesn't say setup ran.
     public var hasSchemeToBuild: Bool {

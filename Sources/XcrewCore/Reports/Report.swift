@@ -430,7 +430,7 @@ public struct Report: Sendable, Equatable {
         let order = if bundle != nil, isTest, !summary.ok { await failingRun().ordering(final.failures) } else { nil as FailingRun.Ordered? }
         let failures = order?.failures ?? final.failures
         if let note = order?.note { notes.append(note) }
-        if kind == .run, read.launchFailedAfterBuild, let project, let note = AppSchemes.of(project, home: machine.home).failedLaunchNote { notes.append(note) }
+        if kind == .run, read.launchFailedAfterBuild, let project, let note = AppScheme.of(project)?.failedLaunchNote { notes.append(note) }
         // The tests the run passed, asked for by the ledger: the Xcode MCP's from its results, MobileBuildMCP's from its
         // bundle, whose test list is read once however many ask.
         var passedTests: [PassedTest]?
