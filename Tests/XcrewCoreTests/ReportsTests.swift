@@ -1253,3 +1253,45 @@ final class RecordingRunner: CommandRunning {
 
     func which(_ name: String) -> String? { wrapped.which(name) }
 }
+
+/// The Xcode MCP's `RunProject` answers with `runResult` and `buildErrors`, not a build's `buildResult` and `errors`.
+@Suite struct RunProjectReportTests {
+    func report(_ name: String, project: Project? = nil) async -> Report {
+        await Report.make(kind: .run, output: Captured.output(name), home: Captured.home, runner: FakeRunner(), project: project)
+    }
+
+    @Test func aRunThatLaunchedPasses() async {
+        #expect(await report("xcodeRunLaunched").ok)
+    }
+
+    @Test func aRunWhoseBuildFailedListsTheBuildsErrors() async {
+        let report = await report("xcodeRunBuildFailed")
+        #expect(!report.ok)
+        #expect(report.detail == "Feature.swift:12 Cannot find type 'Thing' in scope")
+        #expect(report.failures == [.init(title: "Feature.swift:12", message: "Cannot find type 'Thing' in scope")])
+    }
+
+    @Test func aRunThatLaunchedNothingFailsWithItsResult() async {
+        let report = await report("xcodeRunLaunchFailed")
+        #expect(!report.ok)
+        #expect(report.detail == "The app failed to launch after building successfully.")
+    }
+
+    /// The launched process decides, not `runResult`'s wording, which a later Xcode may change.
+    @Test func aRunPassesByItsLaunchedProcessWhateverItsResultSays() {
+        let launched = #"{"buildErrors":[],"processIdentifier":1351,"runResult":"Running."}"#
+        let none = #"{"buildErrors":[],"runResult":"The app was launched successfully."}"#
+        #expect(ToolOutput(text: launched, server: .xcode).summary == .init(ok: true))
+        #expect(ToolOutput(text: none, server: .xcode).summary == .init(ok: false, detail: "The app was launched successfully."))
+    }
+
+    @Test func aRunThatLaunchedNothingNamesTheAppsScheme() async {
+        let project = AppSchemesTests().project()
+        project.writeScheme("App", building: ["App"], launching: "App")
+        let note = AppSchemes(names: ["App"], isGenerated: false).failedLaunchNote
+        #expect(await report("xcodeRunLaunchFailed", project: project).notes.last == note)
+        for name in ["xcodeRunLaunched", "xcodeRunBuildFailed"] {
+            #expect(await !report(name, project: project).notes.contains { $0 == note }, "\(name)")
+        }
+    }
+}

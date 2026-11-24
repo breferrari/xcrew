@@ -48,6 +48,18 @@ import XcrewTestSupport
         #expect(text?.contains("`Other`") == false)
     }
 
+    /// The Xcode MCP's `RunProject` runs Xcode's active scheme, so Claude starts knowing the one that launches the app,
+    /// and in a generated project that a regenerate resets the selection.
+    @Test(arguments: [true, false])
+    func briefingNamesTheAppsSchemeForTheXcodeMCPsRuns(generated: Bool) async {
+        let project = AppSchemesTests().project()
+        project.writeScheme("App", building: ["App"], launching: "App")
+        if generated { project.write("import ProjectDescription\n", to: "Tuist.swift") }
+        let text = await SessionBriefing(project: project, machine: Self.machine(project, version: "2.7.1")).text(routing: "rules\n") ?? ""
+        #expect(text.contains("- **xcrew:** The Xcode MCP's `RunProject` builds and runs Xcode's active scheme and takes no scheme of its own; `XcodeSwitchScheme` selects one and keeps the run destination. `App` launches the app."), "\(text)")
+        #expect(text.contains("A regenerate resets Xcode's selection to the first scheme in alphabetical order.") == generated, "\(text)")
+    }
+
     /// Xcode 27 opens simulators in DeviceHub and has no Simulator.app, so `open -a Simulator` fails; an Xcode with
     /// Simulator.app isn't named.
     @Test(arguments: [(["Contents/Applications/DeviceHub.app"], true), (["Contents/Applications/DeviceHub.app", "Contents/Developer/Applications/Simulator.app"], false), ([], false)])

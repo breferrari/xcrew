@@ -1,0 +1,1 @@
+{"buildErrors":[{"classification":"error","filePath":"/work/App/Sources/Feature.swift","lineNumber":12,"message":"Cannot find type 'Thing' in scope"}],"elapsedTime":32.574,"fullLogPath":"/var/folders/xx/T/ActionArtifacts/default/RunProject/RunProject-Log.txt","runResult":"The build failed; errors are summarized in the 'buildErrors' field of the output."}

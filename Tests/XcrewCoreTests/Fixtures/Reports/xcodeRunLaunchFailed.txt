@@ -1,0 +1,1 @@
+{"buildErrors":[],"elapsedTime":1.455,"fullLogPath":"/var/folders/xx/T/ActionArtifacts/default/RunProject/RunProject-Log.txt","runResult":"The app failed to launch after building successfully."}

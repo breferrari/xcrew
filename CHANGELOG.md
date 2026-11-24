@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Device runs through Xcode now show as failed when they fail to build or launch, and Claude is told which scheme launches your app, including after a regenerate resets Xcode's selection.
+
 ## 0.18.1 — 2026-11-18
 
 - `/xcrew:setup` now offers its opt-ins when it asks you to confirm the schemes and simulators: deleting older finished test bundles, and the LLDB debugger backend. In 0.18.0 the skill only mentioned them when it ran setup, so Claude never brought them up.
