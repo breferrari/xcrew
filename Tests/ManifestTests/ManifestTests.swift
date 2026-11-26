@@ -319,6 +319,7 @@ import XcrewTestSupport
         let loop = try #require(try text("hooks/mod/loop.ts").firstMatch(of: /export function loopNote[\s\S]*?\n}/)).output
         let setupFact = try #require(try text("hooks/mod/form.ts").firstMatch(of: /export const SETUP_FACT = '([^']*)'/)?.1)
         let concurrencyNote = try #require(ConcurrencyReport(count: 12, modules: [.init(name: "Kit", count: 8), .init(name: "Feature", count: 4)]).summary?.note)
+        let appScheme = AppScheme(name: "App", isGenerated: true)
         // Built in typed parts: one literal of every note overruns the oldest toolchain's type-checker.
         let briefing: [String] = [
             String(setupFact),
@@ -328,6 +329,7 @@ import XcrewTestSupport
             SessionBriefing.deviceHubNote("Xcode 27.2"),
             SessionBriefing.failoverNote(reason: "it isn't installed"),
             String(loop),
+            appScheme.briefingNote,
         ]
         let runNotes: [String] = [
             Report.noTestsNote,
@@ -347,6 +349,7 @@ import XcrewTestSupport
             ResultBundle.noRepetitionsNote,
             ResultBundle.repetitionsNote([.init(test: "S/t", failed: 2, passed: 3, runs: 5, verdict: .flaky), .init(test: "S/u", failed: 5, passed: 0, runs: 5, verdict: .real)]) ?? "",
             Report.warningsNote([ToolOutput.Warning(message: "unused", path: "/a/A.swift", line: 3)], of: 2) ?? "",
+            appScheme.failedLaunchNote,
         ]
         let one = #"{"totalTestCount":5,"expectedFailures":1}"#, two = #"{"totalTestCount":5,"expectedFailures":2}"#
         let expectedFailureNotes: [String?] = [

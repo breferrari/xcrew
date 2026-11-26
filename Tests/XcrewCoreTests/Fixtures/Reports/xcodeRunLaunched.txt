@@ -1,0 +1,1 @@
+{"buildErrors":[],"elapsedTime":14.822,"fullLogPath":"/var/folders/xx/T/ActionArtifacts/default/RunProject/RunProject-Log.txt","launchSessionReference":"9b21dae80","processIdentifier":1351,"runResult":"The app was launched successfully."}
