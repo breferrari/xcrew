@@ -29,7 +29,7 @@ struct XcodeMCPResult: Decodable, Sendable {
     @Lenient var errors: [BuildError]?
     @Lenient var runResult: String?
     @Lenient var buildErrors: [BuildError]?
-    @Lenient var processIdentifier: JSONText?
+    @Lenient var processIdentifier: Int?
     @Lenient var elapsedTime: Double?
 
     /// The tests its results give as passed; nil when it gives no results. The Xcode MCP names no test bundle.

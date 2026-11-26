@@ -1281,8 +1281,10 @@ final class RecordingRunner: CommandRunning {
     @Test func aRunPassesByItsLaunchedProcessWhateverItsResultSays() {
         let launched = #"{"buildErrors":[],"processIdentifier":1351,"runResult":"Running."}"#
         let none = #"{"buildErrors":[],"runResult":"The app was launched successfully."}"#
+        let null = #"{"buildErrors":[],"processIdentifier":null,"runResult":"The app was launched successfully."}"#
         #expect(ToolOutput(text: launched, server: .xcode).summary == .init(ok: true))
         #expect(ToolOutput(text: none, server: .xcode).summary == .init(ok: false, detail: "The app was launched successfully."))
+        #expect(ToolOutput(text: null, server: .xcode).summary == .init(ok: false, detail: "The app was launched successfully."))
     }
 
     @Test func aRunThatLaunchedNothingNamesTheAppsScheme() async {
